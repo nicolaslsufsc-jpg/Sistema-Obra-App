@@ -257,7 +257,7 @@ suite('FVS na bancada (Chrome)', () => {
 
       // C dentro do prazo: cancelar não grava nada
       let pergunta = ''
-      p.once('dialog', (d) => { pergunta = d.message(); void d.dismiss() })
+      p.once('dialog', (d: any) => { pergunta = d.message(); void d.dismiss() })
       await item(p, 7, 'C').click()
       await expect.poll(() => pergunta).toContain('Desforma')
       expect(pergunta).toContain('Marcar C mesmo assim?')
@@ -265,7 +265,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await doItem(7)).toEqual([])
       expect(await p.locator('.fv-item[data-item="7"] button[data-r="C"].on').count()).toBe(0)
       // OK: grava, com a observação
-      p.once('dialog', (d) => void d.accept())
+      p.once('dialog', (d: any) => void d.accept())
       await item(p, 7, 'C').click()
       await p.locator('.fv-item[data-item="7"] button[data-r="C"].on').waitFor()
       const desforma = await doItem(7)

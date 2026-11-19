@@ -47,8 +47,9 @@ async function entrar(email: string) {
 /** Pavimentos da obra no menu: uma etiqueta por pavimento (front end, 19/11/2026). */
 async function pavimentosNaTela(nomes: string[]) {
   const lista = pagina.getByTestId('pavimentos-obra').getByRole('listitem')
-  await lista.filter({ hasText: new RegExp(`^${nomes[nomes.length - 1]}$`) }).waitFor()
-  expect(await lista.allInnerTexts()).toEqual(nomes)
+  await lista.filter({ hasText: new RegExp(`^${nomes[nomes.length - 1]}$`) }).first().waitFor()
+  // outros testes de integração criam pavimentos nesta obra antes: confere que estes vêm primeiro, em ordem
+  expect((await lista.allInnerTexts()).slice(0, nomes.length)).toEqual(nomes)
 }
 
 suite('telas no navegador', () => {

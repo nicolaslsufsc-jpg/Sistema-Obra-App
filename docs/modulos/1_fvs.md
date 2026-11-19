@@ -125,6 +125,14 @@ Pedido de 18/11 (frente 03 · FVS-EST). Decisões do Nicolas ("sim para todos", 
 - **Tela das regras (só leitura, desde 19/11):** no início da FVS, "Regras da obra: N prazos · M ligações" (só aparece quando a obra tem regras) abre a lista: cada prazo com o nome, o item (título na ficha vigente e código) e "Libera N dias depois da concretagem da peça" ou "depois do C no item X"; cada ligação com os dois itens. Avisa quantas entradas do arquivo ficaram de fora por formato errado e quantos itens citados não estão nas fichas da obra. Não edita nada: para mudar, troca-se o `config_fvs.json` (`regras_tela.ts`, `telas/TelaRegras.tsx`).
 - **Bancada:** `dev/fvs.html?regras=1` grava regras de teste (desforma do pilar 3 dias depois da concretagem; armadura liga o prumo); teste de tela em `testes/fvs_bancada.e2e.test.ts` em 375, 768 e 1024.
 
+## Rastreio do concreto (item da ficha C pelo caminhão, desde 19/11/2026)
+Decisões do Nicolas (18 e 19/11): o item "controle de concreto e rastreabilidade" fica C quando a peça tem caminhão lançado no Concreto; é só calculado, nada é gravado na FVS; sem caminhão o item fica como está (nunca NC). Só pilar e viga (laje depois). Os caminhões vêm de `concreto/rastreio.ts` (frente do Concreto); o texto e a ligação na ficha são da FVS (`app/src/fvs/rastreio.ts`).
+- **Qual item:** o marcado com `"rastreio_concreto": true` na ficha (dado da obra, um por ficha; `publicar_fichas.py` confere). Ficha sem a marca: nada muda.
+- **Como entra:** a cada leitura da FVS (inclusive quando a sincronização traz caminhão novo), cada peça com caminhão ganha um registro calculado C nesse item, com a data da concretagem (o caminhão mais novo) e a rodada do item. Ele vale como os outros pelo "vale o último": marcação à mão feita depois dele fica por cima; a de antes perde para o caminhão. Não vai para a lista do que lançar no sistema oficial e não é gravado.
+- **No painel:** "C · V01 · Pelo Concreto: caminhão 2 · NF 4321 · 19/11", sem hora nem quem marcou; NF vazia: "NF não informada"; vários caminhões separados por "; "; "(parte da peça)" quando a soma dos caminhões não fecha a peça.
+- **Prazo:** o prazo que conta da concretagem usa a data do caminhão primeiro (só depois o C à mão num item da etapa de concretagem).
+- **Bancada:** `dev/fvs.html?rastreio=1` marca o item 6 do pilar como o do rastreio e põe um caminhão no P6 (e2e em 375, 768 e 1024).
+
 ## Folha única (o pavimento inteiro numa planta, sem trechos)
 Pedido do Nicolas em 06/11: abrir os DWG, plotar como uma folha única e fazer a segmentação no mesmo esquema.
 **Como as janelas se encaixam (`folha_unica.py`):**

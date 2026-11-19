@@ -24,6 +24,7 @@ import {
 import { anexarFoto, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import { ehDaLigacao, maisLigados, textoDosLigados } from '../ligacoes'
+import { ehDoConcreto } from '../rastreio'
 import { dia, mb, quando } from '../formato'
 import { casaComodo, textoDoComodo } from '../busca'
 import { abrirPacoteOuAnterior, dataCurta, furosDoManifest, NOME_DA_DISCIPLINA, NOME_DA_PARTE, partesDoManifest, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
@@ -2168,9 +2169,18 @@ function Painel(p: PropsPainel) {
             )}
             {v?.resultado && (
               <div class={`fv-hr r-${v.resultado}`}>
-                {v.resultado} {quando(v.criado_em_dispositivo)} · {rotuloRodada(v.rodada)} · {nomeDe(v)}
-                {/* C com observação: veio da ligação (diz de onde) ou foi marcado antes do prazo */}
-                {v.resultado === 'C' && v.observacao ? <span data-testid="fvs-obs-c"> · {v.observacao}</span> : v.lote_id && ' · em lote'}
+                {ehDoConcreto(v) ? (
+                  // calculado pelo caminhão do Concreto: só o dia (não tem hora nem quem marcou)
+                  <>
+                    {v.resultado} · {rotuloRodada(v.rodada)} · <span data-testid="fvs-obs-c">{v.observacao}</span>
+                  </>
+                ) : (
+                  <>
+                    {v.resultado} {quando(v.criado_em_dispositivo)} · {rotuloRodada(v.rodada)} · {nomeDe(v)}
+                    {/* C com observação: veio da ligação (diz de onde) ou foi marcado antes do prazo */}
+                    {v.resultado === 'C' && v.observacao ? <span data-testid="fvs-obs-c"> · {v.observacao}</span> : v.lote_id && ' · em lote'}
+                  </>
+                )}
               </div>
             )}
             {passadas.length > 0 && (

@@ -1,5 +1,7 @@
 // Leitura e registro dos dados da FVS no aparelho (pelo núcleo: funciona sem internet).
 
+import { caminhoesDasPecas, type CaminhaoDaPeca } from '../concreto/rastreio'
+import { datasDoConcreto, ehDoConcreto, registroDoRastreio } from './rastreio'
 import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
 import { banco, cliente, sincronizador } from '../nucleo/servicos'
@@ -169,11 +171,13 @@ export async function marcarLancados(obraId: string, ids: readonly string[]) {
 
 /** O que foi marcado no app e falta lançar no sistema oficial. Sem lancados: tudo o que foi marcado no app. */
 export function paraLancarDaObra(d: DadosFvs, lancados?: ReadonlySet<string> | null): LinhaDeLancamento[] {
+  // o item calculado pelo Concreto não foi marcado por ninguém: não entra na lista do que lançar
+  const eventosDe = new Map([...d.eventosDe].map(([k, l]) => [k, l.some(ehDoConcreto) ? l.filter((e) => !ehDoConcreto(e)) : l]))
   return listarParaLancar(
     {
       pecas: d.pecaPorId.values(),
       pavimentos: d.pavimentos,
-      eventosDe: d.eventosDe,
+      eventosDe,
       fichaPorId: d.fichaPorId,
       fichasCampoDe: d.fichasCampoDe,
       quem: (e) => quemMarcou(e, d, d.usuarioId ?? ''),
@@ -359,6 +363,8 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     banco.lerMeta<string[]>(chaveLancados(obraId)),
     sincronizador.linhas('fvs_regras', obraId),
   ])
+  // caminhões do Concreto por peça (sem Concreto na obra, nenhum): o item do rastreio fica C, só calculado
+  const caminhoes = await caminhoesDasPecas(obraId).catch(() => new Map<string, CaminhaoDaPeca[]>())
   const setor = new Map(set.map((s) => [s.id, { nome: String(s.nome_projeto), disciplina: String(s.disciplina ?? 'estrutura') }]))
   const arquivo = new Map(arqs.map((a) => [a.id, { id: a.id, caminho: String(a.caminho), hash: String(a.hash), tamanho: Number(a.tamanho) }]))
   const substituidas = new Set(pla.map((p) => p.substitui_id as string | null).filter(Boolean) as string[])
@@ -420,6 +426,16 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     const s = l.criado_em_servidor as string | undefined
     if (s && (!servidorMaisNovo || s > servidorMaisNovo)) servidorMaisNovo = s
   }
+  const fichaPorId = new Map(fichas.map((f) => [f.id, f]))
+  const areaPorId = new Map(areas.map((a) => [a.id, a]))
+  const eventosDe = agrupar(evs.map(paraEvento), (e) => e.elemento_id)
+  for (const p of pecas) {
+    const lista = caminhoes.get(p.id)
+    if (!lista) continue
+    const ficha = fichaDoLocalNaObra({ areaPorId, fichaPorId, fichas }, p)
+    const calculado = registroDoRastreio(p.id, ficha, lista, eventosDe.get(p.id) ?? [])
+    if (calculado) eventosDe.set(p.id, [...(eventosDe.get(p.id) ?? []), calculado])
+  }
   return {
     pavimentos: pav.map((p) => ({ id: p.id, nome: String(p.nome), ordem: Number(p.ordem) })).sort((a, b) => a.ordem - b.ordem),
     plantasDe,
@@ -427,13 +443,13 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     anterioresDe,
     vigenteDe,
     fichas,
-    fichaPorId: new Map(fichas.map((f) => [f.id, f])),
+    fichaPorId,
     fichasCampoDe: agrupar(fichasCampo.filter((f) => f.elemento_id), (f) => String(f.elemento_id)),
     fichasCampoSemPeca: fichasCampo.filter((f) => !f.elemento_id).sort((a, b) => ordemNatural.compare(a.local, b.local)),
     pecaPorId: new Map(pecas.map((p) => [p.id, p])),
     areasDe: agrupar(areas, (a) => a.pavimento_id),
-    areaPorId: new Map(areas.map((a) => [a.id, a])),
-    eventosDe: agrupar(evs.map(paraEvento), (e) => e.elemento_id),
+    areaPorId,
+    eventosDe,
     fotosDe,
     arquivoPorId: arquivo,
     nomePorUsuario: new Map(Object.entries(nomes ?? {})),
@@ -628,7 +644,7 @@ export function prazoDoItemNaPeca(
   agora = new Date(),
 ): PrazoDoItem | null {
   if (!d.regras.prazos.length) return null
-  return prazoPendente(d.regras, { eventos, ficha, fichaPorId: (id) => d.fichaPorId.get(id) }, item, agora)
+  return prazoPendente(d.regras, { eventos, ficha, fichaPorId: (id) => d.fichaPorId.get(id), datasDoConcreto: datasDoConcreto(eventos) }, item, agora)
 }
 
 /**

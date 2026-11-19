@@ -51,6 +51,11 @@ export interface ItemFicha {
    */
   concretagem?: boolean
   /**
+   * Item do rastreio do concreto (19/11/2026): fica C, só calculado, quando a peça tem caminhão lançado
+   * no Concreto (fvs/rastreio.ts). Um por ficha, só em pilar e viga. Vem da ficha, como dado.
+   */
+  rastreio_concreto?: boolean
+  /**
    * Item de uma parte do pilar ("consolo", "capitel"): só vale no pilar que tem a parte na planta
    * (o pacote diz quais têm). Nos outros, só conta se alguém marcar. Vem da ficha modelo, como dado.
    */

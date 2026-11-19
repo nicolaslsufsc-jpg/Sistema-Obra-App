@@ -42,7 +42,7 @@ const FICHAS_TESTE: Record<'P' | 'V', ItemFicha[]> = {
     { n: 3, etapa: 'MONTAGEM', titulo: 'Locação conferida', descricao: 'Eixos e gastalho.', dispositivo: 'Trena', tolerancia: '3 mm' },
     { n: 4, etapa: 'MONTAGEM', titulo: 'Armadura e espaçadores', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
     { n: 5, etapa: 'MONTAGEM', titulo: 'Prumo da fôrma', dispositivo: 'Prumo', tolerancia: '2 mm' },
-    { n: 6, etapa: 'CONCRETAGEM', titulo: 'Rastreabilidade do concreto', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+    { n: 6, etapa: 'CONCRETAGEM', titulo: 'Rastreabilidade do concreto', dispositivo: 'Visual', tolerancia: 'Conforme projeto', ...(params.get('rastreio') ? { rastreio_concreto: true } : {}) },
     { n: 7, etapa: 'DESFORMA', titulo: 'Sem falhas de concretagem', dispositivo: 'Visual', tolerancia: 'Visual' },
   ],
   V: [
@@ -548,6 +548,24 @@ async function semearAmbientes(base: Record<string, unknown>) {
  * ?regras=1: regras da obra de teste (como viriam do config_fvs.json): a desforma do pilar (item 7)
  * espera 3 dias da concretagem (item 6), e o item 4 (armadura) marca C no item 5 (prumo) pela ligação.
  */
+/**
+ * ?rastreio=1: o item 6 do pilar (rastreabilidade) é o do rastreio do concreto, e o P6 tem um caminhão
+ * (caminhão 2, NF 4321) numa concretagem de hoje. O P7 fica sem caminhão.
+ */
+async function semearRastreio() {
+  const p6 = (await banco.registros.where('[tabela+obra_id]').equals(['elementos', OBRA]).toArray()).find((r) => r.linha.nome === 'P6')
+  if (!p6) return
+  const hoje = new Date()
+  const data = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
+  const base = { obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: new Date().toISOString(), apagado: false }
+  const linhas = [
+    { tabela: 'concretagens', linha: { ...base, id: 'c1000000-0000-0000-0000-0000000000c1', data, substitui_id: null, cancelado: false } },
+    { tabela: 'caminhoes', linha: { ...base, id: 'c2000000-0000-0000-0000-0000000000c1', concretagem_id: 'c1000000-0000-0000-0000-0000000000c1', sequencia: 2, nota_fiscal: '4321', substitui_id: null, cancelado: false } },
+    { tabela: 'caminhao_elementos', linha: { ...base, id: 'c3000000-0000-0000-0000-0000000000c1', caminhao_id: 'c2000000-0000-0000-0000-0000000000c1', elemento_id: p6.id, origem: 'desenho', fracao: 1, incluido: true } },
+  ]
+  await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.linha.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
+}
+
 async function semearRegras() {
   const regras = {
     prazos: [{ id: 'desforma', ficha: 'TESTE-PVS-P', item: 7, dias: 3, depois_de: { tipo: 'concretagem' }, texto: 'Desforma' }],
@@ -787,6 +805,7 @@ if (pasta) {
   semear().then(async () => {
   if (params.get('revisao')) await semearRevisaoNova()
   if (params.get('regras')) await semearRegras()
+  if (params.get('rastreio')) await semearRastreio()
   const abrir = params.get('abrir')
   const plantaId = abrir === 'ambientes' ? PLANTA_AMB : PLANTA
   history.replaceState(abrir === '0' ? { tela: 'fvs' } : { tela: 'fvs', fvs: { nome: 'planta', plantaId } }, '')

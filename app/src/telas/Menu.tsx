@@ -99,16 +99,24 @@ export function Menu({
         </ul>
       </section>
 
-      <section>
-        <h2>Cadastro da obra no aparelho</h2>
+      {/* Pavimentos da obra em etiquetas: mais fácil de ler que uma frase corrida (front end, 19/11/2026) */}
+      <section data-testid="pavimentos-obra">
+        <h2>
+          Pavimentos{pavimentos.length > 0 && <span class="discreto"> ({pavimentos.length})</span>}
+        </h2>
         {pavimentos.length === 0 ? (
           <p class="discreto">Nenhum pavimento baixado ainda.</p>
         ) : (
-          <p>
-            {pavimentos.length} {pavimentos.length === 1 ? 'pavimento' : 'pavimentos'}: {pavimentos.map((p) => String(p.nome)).join(', ')}
-          </p>
+          <ul class="lista-pavimentos">
+            {pavimentos.map((p) => (
+              <li key={String(p.id)}>{String(p.nome)}</li>
+            ))}
+          </ul>
         )}
       </section>
+
+      {/* Fora do bloco recolhido: sem proteção, o navegador pode apagar o que ainda não foi enviado (C4) */}
+      <AvisoDadosDesprotegidos />
 
       {/* Salvamento e detalhes técnicos do aparelho num bloco recolhido (demonstração, 14/11/2026) */}
       {estado.local ? (
@@ -211,6 +219,12 @@ function BarraSincronizacao({
         {texto}
       </p>
       <p data-testid="fila">{fila}</p>
+      {estado.deOutros > 0 && (
+        <p data-testid="fila-de-outros">
+          {estado.deOutros} {estado.deOutros === 1 ? 'registro de outra pessoa esperando' : 'registros de outra pessoa esperando'} envio: ela
+          precisa entrar neste aparelho para enviar. Não apague os dados do app.
+        </p>
+      )}
       {(estado.sessao === 'entrar' || estado.sessao === 'outro') && estado.online ? (
         <button type="button" class="principal" onClick={aoEntrarDeNovo}>
           Entrar de novo
@@ -292,6 +306,31 @@ function Aparelho() {
         )}
         <li>Código do aparelho: {dispositivo.slice(0, 8)}</li>
       </ul>
+    </section>
+  )
+}
+
+/**
+ * Aviso à vista quando o navegador não protege os dados do app (correção C4, risco R4): sem a proteção,
+ * o Chrome do Android pode apagar o banco do aparelho quando falta espaço, e com ele a fila. Pede a
+ * proteção de novo ao abrir o menu; com o app instalado o Chrome costuma dar.
+ */
+function AvisoDadosDesprotegidos() {
+  const [protegido, setProtegido] = useState<boolean | null>(null)
+  useEffect(() => {
+    let vivo = true
+    pedirArmazenamentoPersistente().then((p) => vivo && setProtegido(p))
+    return () => {
+      vivo = false
+    }
+  }, [])
+  if (protegido !== false) return null
+  return (
+    <section class="barra atencao" data-testid="aviso-protecao">
+      <p>
+        <strong>Instale o app para não perder marcações.</strong> Sem instalar, o navegador pode apagar os dados deste aparelho quando faltar espaço,
+        inclusive o que ainda não foi enviado.
+      </p>
     </section>
   )
 }

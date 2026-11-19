@@ -184,7 +184,7 @@ describe('ligação entre fichas (mesma peça)', () => {
     const r = { prazos: [], ligacoes: [lig('a', ['EXE-VIG', 4], ['EXE-VIG', 3])] }
     const [a] = alvosDaLigacao(r, { ficha: VIGA, item: 4 }, [VIGA], [])
     const obs = observacaoDaLigacao(a)
-    expect(obs).toBe('Pela ligação: EXE-VIG item 4 (Concretagem)')
+    expect(obs).toBe('Pela ligação: item 4 (Concretagem)')
     expect(ehDaLigacao({ observacao: obs })).toBe(true)
     expect(ehDaLigacao({ observacao: 'outra' })).toBe(false)
   })

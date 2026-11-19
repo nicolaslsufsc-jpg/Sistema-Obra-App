@@ -157,6 +157,63 @@ const alvosPequenos = (p: Page): Promise<string[]> =>
       .map((e) => `${(e.textContent || e.getAttribute('aria-label') || e.tagName).trim().replace(/\s+/g, ' ').slice(0, 24)} (${Math.round(e.getBoundingClientRect().height)} px)`),
   )
 
+/** Textos visíveis com contraste abaixo de 4,5:1 (o mesmo cálculo do local.e2e). */
+function contrasteBaixo(p: Page): Promise<string[]> {
+  return p.evaluate(() => {
+    const cv = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!
+    const rgba = (c: string) => {
+      cv.clearRect(0, 0, 1, 1)
+      cv.fillStyle = '#000'
+      cv.fillStyle = c
+      cv.fillRect(0, 0, 1, 1)
+      const d = cv.getImageData(0, 0, 1, 1).data
+      return [d[0], d[1], d[2], d[3] / 255]
+    }
+    const lum = ([r, g, b]: number[]) => {
+      const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+    }
+    const fundo = (e: Element | null): number[] => {
+      const camadas: number[][] = []
+      for (; e; e = e.parentElement) {
+        const c = rgba(getComputedStyle(e).backgroundColor)
+        if (c[3] > 0) camadas.push(c)
+        if (c[3] > 0.9) break
+      }
+      let base = [255, 255, 255]
+      for (const c of camadas.reverse()) base = base.map((v, i) => v * (1 - c[3]) + c[i] * c[3])
+      return base
+    }
+    const vis = (e: Element) => {
+      const r = e.getBoundingClientRect()
+      return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && getComputedStyle(e).visibility !== 'hidden'
+    }
+    const ruins = new Set<string>()
+    const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+      const e = n.parentElement
+      const t = n.textContent!.trim()
+      if (!e || t.length < 2 || !vis(e) || e.closest('.leaflet-pane')) continue
+      const c = rgba(getComputedStyle(e).color)
+      const b = fundo(e)
+      const texto = c.slice(0, 3).map((v, i) => v * c[3] + b[i] * (1 - c[3]))
+      const l1 = lum(texto), l2 = lum(b)
+      const r = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+      if (r < 4.5 && !(e.closest('button') as HTMLButtonElement | null)?.disabled) ruins.add(`${t.slice(0, 30)} ${r.toFixed(1)}:1`)
+    }
+    return [...ruins]
+  })
+}
+
+/** Contraste nos dois temas (escuro, o padrão, e o claro do modo sol). */
+async function contrasteNosDoisTemas(p: Page): Promise<string[]> {
+  const escuro = await contrasteBaixo(p)
+  await p.evaluate(() => (document.documentElement.dataset.tema = 'claro'))
+  const claro = await contrasteBaixo(p)
+  await p.evaluate(() => delete document.documentElement.dataset.tema)
+  return [...escuro.map((t) => `escuro: ${t}`), ...claro.map((t) => `claro: ${t}`)]
+}
+
 const item = (p: Page, n: number, r: 'C' | 'NC' | 'NA') => p.locator(`.fv-item[data-item="${n}"] button[data-r="${r}"]`)
 const nomeNoPainel = (p: Page, nome: string) => p.waitForFunction((n: string) => document.querySelector('.fv-nm')?.textContent === n, nome)
 
@@ -246,6 +303,13 @@ suite('FVS na bancada (Chrome)', () => {
       expect(lig).toContain('Prumo da fôrma')
       expect(await p.getByTestId('fvs-regras-fora').count()).toBe(0)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(await contrasteNosDoisTemas(p), 'contraste da tela das regras').toEqual([])
+      // nada abaixo de 14 px na tela das regras (leitura no sol)
+      const pequenos = await p.locator('.fv-regras li *').evaluateAll((l: Element[]) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 14).map((e) => e.textContent))
+      expect(pequenos).toEqual([])
+      // celular: o título fica numa linha só, embaixo do Voltar
+      const titulo = await p.locator('.fv-regras h1').evaluate((e: HTMLElement) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight || '32')))
+      expect(titulo).toBeLessThanOrEqual(1)
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_regras_${largura}.png`), fullPage: true })
       await p.locator('.fv-regras .fv-voltar').click()
@@ -265,6 +329,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-item[data-item="6"] button[data-r="C"].on').waitFor()
       await expect.poll(() => selo.innerText(), { timeout: 5000 }).toMatch(/faltam 3 dias \(libera em \d\d\/\d\d\)/)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect((await contrasteNosDoisTemas(p)).filter((t) => t.includes('Aguardando')), 'contraste do selo').toEqual([])
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.locator('.fv-item[data-item="7"]').screenshot({ path: path.join(PRINTS, `fvs_prazo_${largura}.png`) })
 
@@ -292,10 +357,10 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-item[data-item="5"] button[data-r="C"].on').waitFor()
       const prumo = await doItem(5)
       expect(prumo.map((e) => e.r)).toEqual(['C'])
-      expect(prumo[0].obs).toBe('Pela ligação: TESTE-PVS-P item 4 (Armadura e espaçadores)')
+      expect(prumo[0].obs).toBe('Pela ligação: item 4 (Armadura e espaçadores)')
       expect(prumo[0].lote).toBeTruthy()
       // o painel mostra a origem no lugar de "em lote"; o C antes do prazo mostra o aviso
-      expect(await p.locator('.fv-item[data-item="5"]').getByTestId('fvs-obs-c').innerText()).toContain('Pela ligação: TESTE-PVS-P item 4')
+      expect(await p.locator('.fv-item[data-item="5"]').getByTestId('fvs-obs-c').innerText()).toContain('Pela ligação: item 4')
       expect(await p.locator('.fv-item[data-item="7"]').getByTestId('fvs-obs-c').innerText()).toContain('Marcado antes do prazo')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_ligacao_${largura}.png`) })

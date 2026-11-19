@@ -85,7 +85,7 @@ let url = ''
 /** Abre o bloco "Cópia de segurança e aparelho" do menu (fechado por padrão), tocando no título como a pessoa. */
 async function abrirCopia(p: Page) {
   const bloco = p.getByTestId('bloco-copia')
-  if (!(await bloco.evaluate((d: HTMLDetailsElement) => d.open))) await bloco.locator('summary').click()
+  if (!(await bloco.evaluate((d: HTMLDetailsElement) => d.open))) await bloco.locator(':scope > summary').click()
 }
 
 /** Textos visíveis com contraste abaixo de 4,5:1 contra o fundo (o primeiro fundo opaco acima deles).
@@ -222,7 +222,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByRole('button', { name: 'Salvar arquivo' }).isVisible()).toBe(false)
       expect(await p.getByTestId('persistente').isVisible()).toBe(false)
       expect(await p.getByTestId('aviso-sem-copia').count()).toBe(0)
-      expect((await p.getByTestId('bloco-copia').locator('summary').boundingBox()).height).toBeGreaterThanOrEqual(44)
+      expect((await p.getByTestId('bloco-copia').locator(':scope > summary').boundingBox()).height).toBeGreaterThanOrEqual(44)
       await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
       expect(await p.getByRole('button', { name: 'Sair', exact: true }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Trocar de obra', exact: true }).count()).toBe(0)

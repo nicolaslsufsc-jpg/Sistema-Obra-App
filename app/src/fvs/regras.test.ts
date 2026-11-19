@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { alvosDaLigacao, ehDaLigacao, observacaoDaLigacao } from './ligacoes'
 import { estadoDoPrazo, inicioDoPrazo, observacaoDoPrazo, perguntaDoPrazo, prazoPendente, seloDoPrazo, type ContextoDoPrazo } from './prazos'
 import { lerRegras, regrasVigentes, SEM_REGRAS, type Prazo } from './regras'
+import { regrasNaTela, resumoDasRegras } from './regras_tela'
 import type { EventoFvs, Ficha, Resultado } from './situacao'
 
 const VIGA: Ficha = {
@@ -186,5 +187,34 @@ describe('ligação entre fichas (mesma peça)', () => {
     expect(obs).toBe('Pela ligação: EXE-VIG item 4 (Concretagem)')
     expect(ehDaLigacao({ observacao: obs })).toBe(true)
     expect(ehDaLigacao({ observacao: 'outra' })).toBe(false)
+  })
+})
+
+describe('tela das regras (só leitura)', () => {
+  it('mostra prazos e ligações com o título do item na ficha vigente; o que falta e o que ficou de fora é contado', () => {
+    const regras = lerRegras({
+      prazos: [
+        { id: 'p1', ficha: 'EXE-VIG', item: 5, dias: 14, depois_de: { tipo: 'concretagem' }, texto: 'Escoramento' },
+        { id: 'p2', ficha: 'EXE-VIG', item: 6, dias: 1, depois_de: { tipo: 'item', ficha: 'EXE-VIG', item: 5 } },
+        { id: 'p3', ficha: 'EXE-VIG', item: 5, dias: null, depois_de: { tipo: 'concretagem' } },
+      ],
+      ligacoes: [{ id: 'l1', de: { ficha: 'EXE-VIG', item: 3 }, para: { ficha: 'EXE-OUTRA', item: 1 } }],
+    })
+    expect(regras.fora).toBe(1)
+    const nova = { ...VIGA, id: 'f-exe-vig-r1', revisao: '1', itens: VIGA.itens.map((i) => (i.n === 5 ? { ...i, titulo: 'Retirada das escoras' } : i)) }
+    const t = regrasNaTela(regras, [VIGA, nova])
+    expect(t.prazos.map((p) => [p.texto, p.item.titulo, p.regra])).toEqual([
+      ['Escoramento', 'Retirada das escoras', '14 dias depois da concretagem da peça'],
+      [null, 'Reescoramento', '1 dia depois do C no item 5 (Retirada das escoras)'],
+    ])
+    expect(t.ligacoes[0]).toEqual({ id: 'l1', de: { ref: 'EXE-VIG item 3', titulo: 'Rastreabilidade' }, para: { ref: 'EXE-OUTRA item 1', titulo: null } })
+    expect([t.semFicha, t.fora]).toEqual([1, 1])
+    expect(resumoDasRegras(regras)).toBe('2 prazos · 1 ligação')
+  })
+
+  it('arquivo só com entradas tortas: nada vale, mas a tela conta', () => {
+    const r = lerRegras({ prazos: [{ id: 'x', dias: 3 }], ligacoes: [] })
+    expect([r.prazos.length, r.ligacoes.length, r.fora]).toEqual([0, 0, 1])
+    expect(lerRegras({ prazos: [], ligacoes: [] })).toBe(SEM_REGRAS)
   })
 })

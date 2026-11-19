@@ -30,6 +30,8 @@ export interface Ligacao {
 export interface RegrasFvs {
   prazos: Prazo[]
   ligacoes: Ligacao[]
+  /** entradas do arquivo deixadas de fora por formato errado (a tela das regras mostra) */
+  fora?: number
 }
 
 export const SEM_REGRAS: RegrasFvs = Object.freeze({ prazos: [], ligacoes: [] }) as RegrasFvs
@@ -78,7 +80,10 @@ export function lerRegras(regras: unknown): RegrasFvs {
   }
   const prazos = Array.isArray(r.prazos) ? unicos(r.prazos.map(lerPrazo).filter((p): p is Prazo => !!p)) : []
   const ligacoes = Array.isArray(r.ligacoes) ? unicos(r.ligacoes.map(lerLigacao).filter((l): l is Ligacao => !!l)) : []
-  return prazos.length || ligacoes.length ? { prazos, ligacoes } : SEM_REGRAS
+  const total = (Array.isArray(r.prazos) ? r.prazos.length : 0) + (Array.isArray(r.ligacoes) ? r.ligacoes.length : 0)
+  const fora = total - prazos.length - ligacoes.length
+  if (!prazos.length && !ligacoes.length && !fora) return SEM_REGRAS
+  return { prazos, ligacoes, ...(fora ? { fora } : {}) }
 }
 
 interface LinhaDeRegras {

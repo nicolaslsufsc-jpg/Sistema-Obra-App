@@ -579,7 +579,7 @@ export function resumoDosAmbientes(locais: readonly LocalResumo[], fichas: reado
   return { total: ambientes.length, servicos }
 }
 
-function compararRevisao(a: string, b: string): number {
+export function compararRevisao(a: string, b: string): number {
   const na = Number(a.replace(/\D/g, ''))
   const nb = Number(b.replace(/\D/g, ''))
   if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb

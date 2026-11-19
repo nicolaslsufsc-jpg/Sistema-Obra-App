@@ -11,6 +11,7 @@ import { TelaDuplicadas } from './TelaDuplicadas'
 import { TelaInicio } from './TelaInicio'
 import { TelaLancamento } from './TelaLancamento'
 import { TelaPlanta } from './TelaPlanta'
+import { TelaRegras } from './TelaRegras'
 import { TelaReprovacoes } from './TelaReprovacoes'
 import '../fvs.css'
 
@@ -19,6 +20,7 @@ export type TelaFvs =
   | { nome: 'reprovacoes' }
   | { nome: 'lancamento' }
   | { nome: 'duplicadas' }
+  | { nome: 'regras' }
   /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item */
   | { nome: 'planta'; plantaId: string; pecaId?: string; fichaCampoId?: string | null; item?: number }
 
@@ -135,6 +137,7 @@ export function ModuloFvs(props: PropsModulo) {
   }
   if (tela.nome === 'reprovacoes') return <TelaReprovacoes ctx={ctx} aviso={aviso} />
   if (tela.nome === 'lancamento' && ctx.sistema) return <TelaLancamento ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
+  if (tela.nome === 'regras') return <TelaRegras ctx={ctx} />
   if (tela.nome === 'duplicadas' && ctx.sistema) return <TelaDuplicadas ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   return <TelaInicio ctx={ctx} aviso={aviso} />
 }

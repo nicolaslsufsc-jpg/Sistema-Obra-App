@@ -44,6 +44,13 @@ async function entrar(email: string) {
   await pagina.getByRole('button', { name: 'Entrar' }).click()
 }
 
+/** Pavimentos da obra no menu: uma etiqueta por pavimento (front end, 19/11/2026). */
+async function pavimentosNaTela(nomes: string[]) {
+  const lista = pagina.getByTestId('pavimentos-obra').getByRole('listitem')
+  await lista.filter({ hasText: new RegExp(`^${nomes[nomes.length - 1]}$`) }).waitFor()
+  expect(await lista.allInnerTexts()).toEqual(nomes)
+}
+
 suite('telas no navegador', () => {
   beforeAll(async () => {
     servidor = await iniciarServidorTeste({
@@ -96,7 +103,7 @@ suite('telas no navegador', () => {
     await pagina.getByRole('button', { name: /OBRA1/ }).click()
 
     await pagina.getByText(/Sincronizado hoje/).waitFor({ timeout: 20_000 })
-    await pagina.getByText(/Térreo, 2º Pavimento, Cobertura/).waitFor()
+    await pavimentosNaTela(['Térreo', '2º Pavimento', 'Cobertura'])
     expect(await pagina.getByTestId('papel').textContent()).toBe('Campo')
     await capturar('3-menu')
   })
@@ -110,14 +117,14 @@ suite('telas no navegador', () => {
     await contexto.setOffline(true)
     await pagina.reload()
     await pagina.getByText(/Sem internet\. Pode continuar trabalhando/).waitFor()
-    await pagina.getByText(/Térreo, 2º Pavimento, Cobertura/).waitFor()
+    await pavimentosNaTela(['Térreo', '2º Pavimento', 'Cobertura'])
     await capturar('4-menu-sem-internet')
 
     // O Concreto é um arquivo separado, carregado só ao abrir: sem internet vem do cache do app.
     await pagina.getByRole('button', { name: /^Concreto/ }).click()
     await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
     await pagina.goBack()
-    await pagina.getByText(/Térreo, 2º Pavimento, Cobertura/).waitFor()
+    await pavimentosNaTela(['Térreo', '2º Pavimento', 'Cobertura'])
 
     // Quando a internet volta, sincroniza de novo (a hora da última sincronização muda).
     const barra = pagina.getByTestId('estado-sincronizacao')

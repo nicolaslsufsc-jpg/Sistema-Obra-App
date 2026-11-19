@@ -217,8 +217,16 @@ async function assinatura(partes: string[]): Promise<string> {
   return [...h].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** As linhas do cadastro (pavimentos, trechos, peças, arquivos, plantas e fichas), com ids derivados. */
-export async function linhasDoCadastro(obra: ObraLocal, indice: IndicePacote, fichas: readonly FichaDoPacote[]): Promise<{ linhas: LinhaDeCadastro[]; idDaFicha: Map<string, string> }> {
+/** O config_fvs.json serve se a raiz for um objeto ({"prazos": [...], "ligacoes": [...]}); outra coisa fica de fora. */
+function regrasValidas(config: unknown): config is Record<string, unknown> {
+  return typeof config === 'object' && config !== null && !Array.isArray(config)
+}
+
+/**
+ * As linhas do cadastro (pavimentos, trechos, peças, arquivos, plantas, fichas e regras da FVS), com ids derivados.
+ * `configFvs`: o config_fvs.json do pacote. O objeto da raiz vai inteiro em fvs_regras.regras, numa linha só por obra.
+ */
+export async function linhasDoCadastro(obra: ObraLocal, indice: IndicePacote, fichas: readonly FichaDoPacote[], configFvs?: unknown): Promise<{ linhas: LinhaDeCadastro[]; idDaFicha: Map<string, string> }> {
   const base = { obra_id: obra.id, usuario_id: USUARIO_DO_PACOTE, dispositivo_id: DISPOSITIVO_DO_PACOTE, criado_em_dispositivo: new Date().toISOString(), apagado: false }
   const linhas: LinhaDeCadastro[] = []
   let ordem = 0
@@ -259,6 +267,8 @@ export async function linhasDoCadastro(obra: ObraLocal, indice: IndicePacote, fi
     idDaFicha.set(f.codigo, id)
     linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id, codigo: f.codigo, titulo: f.titulo, revisao: f.revisao ?? '0', tipo_modelo: f.tipo_modelo ?? null, aplica_a: f.aplica_a, itens: f.itens } })
   }
+  // Uma linha por obra, com id fixo: o pacote novo troca a anterior (gravarComoBaixado apaga e grava de novo).
+  if (regrasValidas(configFvs)) linhas.push({ tabela: 'fvs_regras', linha: { ...base, id: await uuidDeterministico(`${obra.id}:fvs_regras`), regras: configFvs } })
   return { linhas, idDaFicha }
 }
 
@@ -281,7 +291,7 @@ export function linhasDoHistorico(obra: ObraLocal, h: HistoricoDoPacote, idDaFic
   return linhas
 }
 
-const TABELAS_DO_CADASTRO = ['pavimentos', 'setores', 'elementos', 'arquivos', 'plantas', 'fichas_modelo']
+const TABELAS_DO_CADASTRO = ['pavimentos', 'setores', 'elementos', 'arquivos', 'plantas', 'fichas_modelo', 'fvs_regras']
 const TABELAS_DO_HISTORICO = ['fvs_fichas_campo', 'fvs_eventos']
 /** Tabelas da FVS cujas linhas apontam para uma ficha (fichas_modelo) pelo ficha_id. */
 const TABELAS_QUE_USAM_FICHA = ['fvs_eventos', 'fvs_fichas_campo', 'fvs_areas']
@@ -381,10 +391,12 @@ export async function prepararObraLocal(
     aoProgresso?.({ etapa: 'cadastro', feitas: 0, total: plantas.length })
     const fichas = (await lerJson<FichaDoPacote[]>(fonte, 'fichas.json')) ?? []
     const textoFichas = JSON.stringify(fichas)
-    const assinaturaNova = await assinatura([pacote.textoIndice, textoFichas])
+    const configFvs = await lerJson<unknown>(fonte, 'config_fvs.json')
+    // Sem config_fvs.json a assinatura fica a de antes: pacote antigo não regrava o cadastro à toa.
+    const assinaturaNova = await assinatura([pacote.textoIndice, textoFichas, ...(configFvs === null ? [] : [JSON.stringify(configFvs)])])
     const anterior = await banco.lerMeta<{ assinatura: string }>(chaveDoPacote(obra.id))
     if (anterior?.assinatura !== assinaturaNova) {
-      const { linhas, idDaFicha } = await linhasDoCadastro(obra, indice, fichas)
+      const { linhas, idDaFicha } = await linhasDoCadastro(obra, indice, fichas, configFvs)
       // Ficha que saiu do pacote (a rev. 0 quando chega a rev. 1, por exemplo) continua no aparelho se algo
       // marcado aqui usa ela. Sem isso, a peça marcada na revisão antiga perdia as marcações da tela e
       // voltava a pendente, embora os registros continuassem guardados.

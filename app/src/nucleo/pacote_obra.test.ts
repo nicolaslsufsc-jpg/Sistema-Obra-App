@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { BancoLocal } from './banco_local'
 import { ehModoLocal } from './local'
-import { pacotesNoAparelho } from '../fvs/pacote'
+import { pacotesNoAparelho, removerPacotes } from '../fvs/pacote'
 import { fichaDaPeca, fichasPara, type EventoFvs, type Ficha } from '../fvs/situacao'
 import { compararComOAtual, dataDoPacoteGuardado, eFaltaDeEspaco, tamanhoQueFalta, textoSemEspaco, precisaConfirmar, linhasDoCadastro, linhasDoHistorico, localizarPacote, obraDoPacote, prepararObraLocal, uuidDeterministico, USUARIO_DO_PACOTE, type IndicePacote } from './pacote_obra'
 
@@ -100,6 +100,49 @@ describe('pacote da obra', () => {
     // abrir de novo dá os mesmos ids
     const outra = await linhasDoCadastro(obra, INDICE, FICHAS)
     expect(outra.linhas.map((l) => l.linha.id)).toEqual(linhas.map((l) => l.linha.id))
+  })
+
+  it('config_fvs.json vira uma linha de fvs_regras com o objeto inteiro; sem ele (ou fora do formato), nenhuma', async () => {
+    const obra = await obraDoPacote(INDICE)
+    const config = { prazos: [{ id: 'escoramento', ficha: 'EXE-PVS-001', item: 1, dias: 21, depois_de: { tipo: 'concretagem' } }], ligacoes: [] }
+    const regras = (await linhasDoCadastro(obra, INDICE, FICHAS, config)).linhas.filter((l) => l.tabela === 'fvs_regras')
+    expect(regras).toHaveLength(1)
+    expect(regras[0].linha).toMatchObject({ obra_id: obra.id, usuario_id: USUARIO_DO_PACOTE, regras: config, apagado: false })
+    expect(regras[0].linha.id).toMatch(UUID)
+    // id fixo por obra: o pacote seguinte troca a linha em vez de somar outra
+    const outra = (await linhasDoCadastro(obra, INDICE, FICHAS, { prazos: [] })).linhas.find((l) => l.tabela === 'fvs_regras')
+    expect(outra?.linha.id).toBe(regras[0].linha.id)
+    for (const fora of [undefined, null, [], 'texto', 3]) {
+      expect((await linhasDoCadastro(obra, INDICE, FICHAS, fora)).linhas.some((l) => l.tabela === 'fvs_regras')).toBe(false)
+    }
+  })
+
+  it('preparar a obra com config_fvs.json: grava a regra; pacote com config nova troca; sem config, sai', async () => {
+    const raiz = 'http://pc/dados_obra/'
+    const arquivos: Record<string, unknown> = {
+      'indice.json': INDICE,
+      'fichas.json': FICHAS,
+      'config_fvs.json': { prazos: [{ id: 'a', ficha: 'EXE-PVS-001', item: 1, dias: 21, depois_de: { tipo: 'concretagem' } }] },
+      '06_3_pavimento/Planta_inteira/manifest.json': MANIFEST,
+      '06_3_pavimento/Planta_inteira/pacote.bin': new Blob([]),
+    }
+    servirPasta(raiz, arquivos)
+    const banco = novoBanco()
+    const { obra } = await prepararObraLocal(banco, (await localizarPacote(raiz))!)
+    const regras = async () => (await banco.registros.where('[tabela+obra_id]').equals(['fvs_regras', obra.id]).toArray()).map((r) => r.linha as Record<string, unknown>)
+    expect((await regras()).map((l) => l.regras)).toEqual([arquivos['config_fvs.json']])
+
+    // só a config mudou: o pacote conta como novo e a linha é trocada
+    arquivos['config_fvs.json'] = { prazos: [], ligacoes: [{ id: 'l', de: { ficha: 'EXE-PVS-001', item: 1 }, para: { ficha: 'EXE-PVS-001', item: 2 } }] }
+    await prepararObraLocal(banco, (await localizarPacote(raiz))!)
+    expect((await regras()).map((l) => l.regras)).toEqual([arquivos['config_fvs.json']])
+
+    // a config saiu do pacote: a regra sai do aparelho
+    delete arquivos['config_fvs.json']
+    await prepararObraLocal(banco, (await localizarPacote(raiz))!)
+    expect(await regras()).toEqual([])
+    // a planta guardada é do aparelho, não do banco: tira, para o teste seguinte guardar de novo
+    await removerPacotes([PLANTA])
   })
 
   it('histórico: ficha aberta só liga à peça da planta; registro de ficha desconhecida fica de fora', async () => {

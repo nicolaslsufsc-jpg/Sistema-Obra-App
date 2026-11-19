@@ -53,6 +53,16 @@ O app entra com código mandado por e-mail. O Supabase só manda o código se o 
    ```
    **Confirm sign up** é o que vai para quem entra pela primeira vez (cadastro livre).
 
+### Trocar a senha de app (o código parou de chegar)
+
+Sinal: no app, "Não conseguimos mandar o e-mail agora" (ou "Error sending magic link email" / "Error sending confirmation email"); em Logs > Auth do Supabase, erro de SMTP do Gmail (`535`, "Username and Password not accepted"). Acontece quando a senha de app foi revogada ou a senha da Conta Google mudou (o Google apaga as senhas de app ao trocar a senha da conta). Aconteceu de 18/11 a 19/11/2026.
+
+1. Em myaccount.google.com/apppasswords (com a Conta Google do e-mail que manda os códigos), apague a senha de app "Supabase" antiga e crie outra com o mesmo nome. O Google mostra 16 letras uma vez só: copie sem os espaços.
+2. No Supabase: Authentication > Emails > SMTP Settings > Password: cole a senha nova (os outros campos ficam iguais: `smtp.gmail.com`, porta `465`, o mesmo Gmail em Sender email e Username) > Save changes.
+3. Teste: no app, saia e peça o código de novo com o seu e-mail. Se não chegar em 2 minutos, olhe a pasta de spam e o Logs > Auth.
+4. A senha de app não vai para o repositório, para o chat nem para o `.env`: fica só no Supabase. Quem for fazer isso é o Nicolas (conta Google dele).
+5. Se aparecer limite ("rate limit"), espere uma hora ou suba o limite em Authentication > Rate Limits.
+
 Neste projeto o código tem 8 dígitos (decisão do Nicolas, 03/11/2026; ajuste em Authentication > Sign In / Providers > Email > "Email OTP length"). O app e o `exportar_obra.py` aceitam de 6 a 10.
 
 ## Liberar acesso a uma pessoa

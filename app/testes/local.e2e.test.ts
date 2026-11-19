@@ -139,6 +139,22 @@ function contrasteBaixo(p: Page): Promise<string[]> {
   })
 }
 
+/** Botões, campos e etiquetas de marcar visíveis com menos de 44 px de altura ou largura. */
+function toquesPequenos(p: Page): Promise<string[]> {
+  return p.evaluate(() =>
+    [...document.querySelectorAll('button, a[href], select, input:not([type=hidden]):not([type=file]), summary, label:has(input)')]
+      .filter((e) => {
+        const r = e.getBoundingClientRect()
+        const escondido = getComputedStyle(e).visibility === 'hidden' || e.closest('details:not([open]) > :not(summary)')
+        return r.width > 0 && r.height > 0 && !escondido && (r.height < 44 || r.width < 44)
+      })
+      .map((e) => {
+        const r = e.getBoundingClientRect()
+        return `${(e.textContent || e.getAttribute('aria-label') || e.tagName).trim().slice(0, 30)} ${Math.round(r.width)}x${Math.round(r.height)}`
+      }),
+  )
+}
+
 /** Abre o app: a pasta da obra entra sozinha e o menu da EXE aparece. */
 /** Abre o endereço do app. Desde 18/11 reabrir volta ao último módulo aberto: aqui ele é esquecido antes (o menu). */
 async function irAoApp(p: Page) {
@@ -1545,5 +1561,52 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await contexto.close()
       }
     }, 120_000)
+  }
+
+  // Telas comuns (front end, 19/11/2026): entrada sem obra, Nova obra e menu com o bloco da cópia aberto,
+  // nos dois temas, no celular, no tablet em pé e no tablet deitado. Em todas: contraste ≥ 4,5:1,
+  // nada de tocar menor que 44 px, nenhuma rolagem para o lado e nenhum erro na página.
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: telas comuns nos dois temas (contraste, toque de 44 px, sem rolagem lateral)`, async () => {
+      for (const tema of ['escuro', 'claro'] as const) {
+        const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+        if (tema === 'claro') await contexto.addInitScript(() => localStorage.setItem('tema', 'claro'))
+        const p: Page = await contexto.newPage()
+        const erros: string[] = []
+        p.on('pageerror', (e: Error) => erros.push(e.message))
+        const conferir = async (tela: string) => {
+          await p.waitForTimeout(300)
+          if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `comum-${tema}-${largura}-${tela}.png`), fullPage: true })
+          const onde = `${tema}, ${largura}, ${tela}`
+          expect(await contrasteBaixo(p), onde).toEqual([])
+          expect(await toquesPequenos(p), onde).toEqual([])
+          expect(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth), onde).toBeLessThanOrEqual(0)
+        }
+        try {
+          // entrada, como no Cloudflare: sem a pasta da obra ao lado
+          await contexto.route('**/dados_obra/**', (r: any) => r.fulfill({ status: 404, body: '' }))
+          await irAoApp(p)
+          await p.getByRole('heading', { name: 'Sem conta, sem internet' }).waitFor({ timeout: 30_000 })
+          await conferir('entrada')
+          await p.goto(new URL('nova_obra.html', url).href)
+          await p.getByRole('heading', { name: 'Nova obra' }).waitFor({ timeout: 30_000 })
+          await conferir('nova-obra')
+          // menu da obra, com a pasta de volta
+          await contexto.unroute('**/dados_obra/**')
+          await abrirNaObra(p)
+          await p.getByTestId('pavimentos-obra').getByRole('listitem').first().waitFor()
+          await conferir('menu')
+          await abrirCopia(p)
+          await conferir('menu-copia')
+          expect(erros, tema).toEqual([])
+        } finally {
+          await contexto.close()
+        }
+      }
+    }, 180_000)
   }
 })

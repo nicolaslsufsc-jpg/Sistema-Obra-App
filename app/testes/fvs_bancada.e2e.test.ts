@@ -222,6 +222,80 @@ suite('FVS na bancada (Chrome)', () => {
     })
   }
 
+  // Regras da obra (19/11): o prazo só avisa (pede confirmação e grava "Marcado antes do prazo");
+  // a ligação marca C no item ligado da mesma peça, mostra a origem e se desfaz.
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: prazo da desforma avisa e pede confirmação; a ligação marca C e se desfaz`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&regras=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, 'P6')
+      await nomeNoPainel(p, 'P6')
+      const selo = p.locator('.fv-item[data-item="7"]').getByTestId('fvs-prazo')
+      const doItem = async (n: number) => (await registros(p)).filter((e) => e.item === n)
+
+      // sem concretagem marcada: o prazo ainda não tem data
+      await selo.waitFor()
+      expect(await selo.innerText()).toContain('ainda sem data')
+      // concretagem C: o prazo começa a contar
+      await item(p, 6, 'C').click()
+      await p.locator('.fv-item[data-item="6"] button[data-r="C"].on').waitFor()
+      await expect.poll(() => selo.innerText(), { timeout: 5000 }).toMatch(/faltam 3 dias \(libera em \d\d\/\d\d\)/)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(await alvosPequenos(p)).toEqual([])
+      if (PRINTS) await p.locator('.fv-item[data-item="7"]').screenshot({ path: path.join(PRINTS, `fvs_prazo_${largura}.png`) })
+
+      // C dentro do prazo: cancelar não grava nada
+      let pergunta = ''
+      p.once('dialog', (d) => { pergunta = d.message(); void d.dismiss() })
+      await item(p, 7, 'C').click()
+      await expect.poll(() => pergunta).toContain('Desforma')
+      expect(pergunta).toContain('Marcar C mesmo assim?')
+      await p.waitForTimeout(300)
+      expect(await doItem(7)).toEqual([])
+      expect(await p.locator('.fv-item[data-item="7"] button[data-r="C"].on').count()).toBe(0)
+      // OK: grava, com a observação
+      p.once('dialog', (d) => void d.accept())
+      await item(p, 7, 'C').click()
+      await p.locator('.fv-item[data-item="7"] button[data-r="C"].on').waitFor()
+      const desforma = await doItem(7)
+      expect(desforma.map((e) => e.r)).toEqual(['C'])
+      expect(desforma[0].obs).toMatch(/^Marcado antes do prazo \(libera em \d\d\/\d\d\)$/)
+      await expect.poll(() => selo.count(), { timeout: 5000 }).toBe(0)
+
+      // ligação: C na armadura (item 4) marca C no prumo (item 5), com a origem; Desfazer limpa só o ligado
+      await item(p, 4, 'C').click()
+      await p.locator('.fv-toast', { hasText: 'também C pela ligação: Prumo da fôrma' }).waitFor()
+      await p.locator('.fv-item[data-item="5"] button[data-r="C"].on').waitFor()
+      const prumo = await doItem(5)
+      expect(prumo.map((e) => e.r)).toEqual(['C'])
+      expect(prumo[0].obs).toBe('Pela ligação: TESTE-PVS-P item 4 (Armadura e espaçadores)')
+      expect(prumo[0].lote).toBeTruthy()
+      // o painel mostra a origem no lugar de "em lote"; o C antes do prazo mostra o aviso
+      expect(await p.locator('.fv-item[data-item="5"]').getByTestId('fvs-obs-c').innerText()).toContain('Pela ligação: TESTE-PVS-P item 4')
+      expect(await p.locator('.fv-item[data-item="7"]').getByTestId('fvs-obs-c').innerText()).toContain('Marcado antes do prazo')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_ligacao_${largura}.png`) })
+      await p.getByTestId('fvs-desfazer').click()
+      await p.locator('.fv-toast', { hasText: 'Desfeito: 1 item' }).waitFor()
+      await expect.poll(() => p.locator('.fv-item[data-item="5"] button.on').count(), { timeout: 5000 }).toBe(0)
+      expect(await p.locator('.fv-item[data-item="4"] button[data-r="C"].on').count()).toBe(1)
+
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
   for (const [nome, largura, altura] of [
     ['tablet', 1280, 800],
     ['celular', 375, 812],

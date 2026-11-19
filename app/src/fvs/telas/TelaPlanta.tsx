@@ -21,7 +21,9 @@ import {
   type Ponto,
   type TravaDaArea,
 } from '../areas'
-import { anexarFoto, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, type Contexto } from '../dados'
+import { anexarFoto, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
+import { ehDaLigacao, maisLigados, textoDosLigados } from '../ligacoes'
 import { dia, mb, quando } from '../formato'
 import { casaComodo, textoDoComodo } from '../busca'
 import { abrirPacoteOuAnterior, dataCurta, furosDoManifest, NOME_DA_DISCIPLINA, NOME_DA_PARTE, partesDoManifest, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
@@ -952,17 +954,23 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const ficha = barrasDaLaje(id).length ? { ...semFuros, itens: semFuros.itens.filter((i) => !i.barras) } : semFuros
       const { etapa: et, resultado } = pincel
       const cDoPincel = { ...c, fichaCampoId: aberta?.id ?? null }
+      // itens dentro do prazo das regras da obra: uma pergunta só; Cancelar marca só os outros (19/11)
+      const noPrazo = resultado === 'C' ? prazosDoLote(dados, [{ id, ficha, eventos: daFichaAberta(eventosDe(id), cDoPincel.fichaCampoId) }], et || null) : new Map<string, string>()
+      const comPrazo = noPrazo.size > 0 && confirm(`${e.nome}: ${perguntaDoLote(noPrazo.size)}`)
+      const fichaDoPincel = comPrazo || !noPrazo.size ? ficha : { ...ficha, itens: ficha.itens.filter((i) => !noPrazo.has(`${id}#${i.n}`)) }
       const toque: Toque = { tipo: 'lote', id: crypto.randomUUID(), obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: cDoPincel.fichaCampoId, pecas: [{ id, fichaId: ficha.id, fichaCampoId: cDoPincel.fichaCampoId }], etapa: et || null, resultado }
       anotarToque(toque)
       executar(async (evs) => {
-        const gravados = await marcarLote(cDoPincel, [{ id, ficha, eventos: daFichaAberta(evs(id), cDoPincel.fichaCampoId) }], et || null, resultado, toque.id).finally(() => esquecerToque(toque.obraId, toque.id))
+        const evsDaPeca = daFichaAberta(evs(id), cDoPincel.fichaCampoId)
+        const gravados = await marcarLote(cDoPincel, [{ id, ficha: fichaDoPincel, eventos: evsDaPeca }], et || null, resultado, toque.id, noPrazo).finally(() => esquecerToque(toque.obraId, toque.id))
+        const ligados = resultado === 'C' ? await ligarDepoisDe(cDoPincel, dados.regras, id, daPeca, gravados.map((g) => Number(g.item)), [...evsDaPeca, ...(gravados as unknown as EventoFvs[])]) : []
         const n = gravados.length
         // segundo toque na mesma peça (toque duplo): não tira o "Desfazer" da tela
         if (n || ultimaDoPincel.current !== id) {
-          avisarLote(n ? `${e.nome}: ${n} ${n === 1 ? 'item' : 'itens'} ${resultado}${et ? ` em ${et.toLowerCase()}` : ''}` : `${e.nome}: nada a marcar (já estava preenchido)`, gravados)
+          avisarLote(n ? `${e.nome}: ${n} ${n === 1 ? 'item' : 'itens'} ${resultado}${et ? ` em ${et.toLowerCase()}` : ''}${maisLigados(ligados)}` : `${e.nome}: nada a marcar (já estava preenchido)`, [...gravados, ...ligados])
         }
         ultimaDoPincel.current = id
-        return gravados
+        return [...gravados, ...ligados]
       })
       return
     }
@@ -1000,6 +1008,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if ('aviso' in a) return avisar(a.aviso)
     const { ficha, item, cx } = a
     const fichaCampoId = cx.fichaCampoId ?? null
+    // C dentro do prazo das regras da obra: só avisa (pergunta) e grava "Marcado antes do prazo"
+    if (resultado === 'C' && esperado !== 'C') {
+      const prazo = prazoDoItemNaPeca(dados, ficha, daFichaAberta(eventosDe(id), fichaCampoId), item.n)
+      if (prazo) {
+        if (!confirm(perguntaDoPrazo(prazo, nome))) return
+        obs = observacaoDoPrazo(prazo)
+      }
+    }
     const base = { id: crypto.randomUUID(), obraId: cx.obraId, usuarioId: cx.usuarioId, plantaId: cx.plantaId, fichaCampoId, pecaId: id, fichaId: ficha.id, item: item.n }
     const toque: Toque = resultado ? { ...base, tipo: 'item', resultado, observacao: obs } : { ...base, tipo: 'desmarcar' }
     anotarToque(toque)
@@ -1015,18 +1031,22 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const gravado = await (resultado ? tocarItem(cx, id, ficha, item.n, resultado, eventos, toque.id, obs) : desmarcarR(cx, id, ficha, item.n, eventos, toque.id)).finally(() =>
         esquecerToque(toque.obraId, toque.id),
       )
+      // ligação entre fichas: o C marca os itens ligados da peça (o "Desfazer" volta os dois)
+      const ligados = gravado.resultado === 'C' ? await ligarDepoisDe(cx, dados.regras, id, ficha, [item.n], [...eventos, gravado as unknown as EventoFvs]) : []
+      const depois = [...eventos, gravado as unknown as EventoFvs, ...(ligados as unknown as EventoFvs[])]
       // o toque que fecha a ficha inteira da peça avisa
-      const fechou = situacaoDaPeca(ficha, eventos) !== 'liberado' && situacaoDaPeca(ficha, [...eventos, gravado as unknown as EventoFvs]) === 'liberado'
+      const fechou = situacaoDaPeca(ficha, eventos) !== 'liberado' && situacaoDaPeca(ficha, depois) === 'liberado'
       const reinspecao = esperado === 'NC' ? ` (reinspeção ${rotuloRodada(Number(gravado.rodada))})` : ''
-      avisar(`${nome} · ${item.titulo}: ${textoDoResultado(resultado)}${reinspecao}${fechou ? ' · ficha completa' : ''}`, () => {
+      avisar(`${nome} · ${item.titulo}: ${textoDoResultado(resultado)}${reinspecao}${maisLigados(ligados)}${fechou ? ' · ficha completa' : ''}`, () => {
         setMsg(null)
         executar(async (evs2) => {
+          const desfeitos = ligados.length ? await desfazerLote(cx, ligados, (x) => daFichaAberta(evs2(x), fichaCampoId)) : []
           const volta = await voltarItem(cx, gravado, anterior, daFichaAberta(evs2(id), fichaCampoId))
           avisar(volta ? `Desfeito: ${nome} · ${item.titulo}` : 'Nada a desfazer: o item já mudou.')
-          return volta
+          return volta ? [...desfeitos, volta] : desfeitos
         })
       })
-      return gravado
+      return [gravado, ...ligados]
     })
   }
 
@@ -2092,13 +2112,17 @@ function Painel(p: PropsPainel) {
                 onClick={() => {
                   const toque: Toque = { tipo: 'lote', id: crypto.randomUUID(), obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: c.fichaCampoId ?? null, pecas: [{ id: p.id, fichaId: ficha.id, fichaCampoId: c.fichaCampoId ?? null }], etapa: et, resultado: 'C' }
                   anotarToque(toque)
+                  // itens da etapa ainda dentro do prazo das regras da obra: uma pergunta só (decisão de 19/11)
+                  const noPrazo = prazosDoLote(ctx.dados, [{ id: p.id, ficha, eventos }], et)
+                  const comPrazo = noPrazo.size > 0 && confirm(perguntaDoLote(noPrazo.size))
                   gravar(async (evs) => {
-                    const fichaDoLote = { ...ficha, itens: ficha.itens.filter((x) => !automatico(x)) }
-                    const gravados = await marcarLote(c, [{ id: p.id, ficha: fichaDoLote, eventos: evs }], et, 'C', toque.id).finally(() => esquecerToque(toque.obraId, toque.id))
+                    const fichaDoLote = { ...ficha, itens: ficha.itens.filter((x) => !automatico(x) && (comPrazo || !noPrazo.has(`${p.id}#${x.n}`))) }
+                    const gravados = await marcarLote(c, [{ id: p.id, ficha: fichaDoLote, eventos: evs }], et, 'C', toque.id, noPrazo).finally(() => esquecerToque(toque.obraId, toque.id))
+                    const ligados = await ligarDepoisDe(c, ctx.dados.regras, p.id, ficha, gravados.map((g) => Number(g.item)), [...evs, ...(gravados as unknown as EventoFvs[])])
                     const n = gravados.length
                     // toque duplo: o segundo não acha nada vazio e não pode tirar o "Desfazer" da tela
-                    if (n) p.avisarLote(`${peca.nome}: ${n} ${n === 1 ? 'item' : 'itens'} C${et ? ` em ${et.toLowerCase()}` : ''}`, gravados)
-                    return gravados
+                    if (n) p.avisarLote(`${peca.nome}: ${n} ${n === 1 ? 'item' : 'itens'} C${et ? ` em ${et.toLowerCase()}` : ''}${maisLigados(ligados)}`, [...gravados, ...ligados])
+                    return [...gravados, ...ligados]
                   })
                 }}
                 title="Marca C (conforme) nos itens ainda vazios desta etapa (fica registrado como lote)"
@@ -2122,11 +2146,18 @@ function Painel(p: PropsPainel) {
       // área com barras no pacote: o item de armadura é das barras (aba Barras), não da mão (plano A, 18/11)
       const pelasBarras = !!it.barras && !!p.barras
       const automatico = pelosFuros || pelasBarras
+      // prazo das regras da obra (escoramento, reescoramento): só aparece enquanto o item não está C
+      const prazo = v?.resultado === 'C' ? null : prazoDoItemNaPeca(ctx.dados, ficha, eventos, it.n)
       linhas.push(
         <div class={`fv-item${p.etapa && p.etapa !== it.etapa ? ' apagada' : ''}${p.itemInicial === it.n ? ' destaque' : ''}`} key={it.n} data-item={it.n}>
           <div class="fv-num">{it.n}</div>
           <div class="fv-tx">
             <div class="fv-tt">{it.titulo}</div>
+            {prazo && (
+              <div class="fv-prazo" data-testid="fvs-prazo">
+                Aguardando · {seloDoPrazo(prazo)}
+              </div>
+            )}
             {it.descricao && <div class="fv-ds">{it.descricao}</div>}
             {(it.dispositivo || it.tolerancia) && (
               <div class="fv-mt">
@@ -2138,7 +2169,8 @@ function Painel(p: PropsPainel) {
             {v?.resultado && (
               <div class={`fv-hr r-${v.resultado}`}>
                 {v.resultado} {quando(v.criado_em_dispositivo)} · {rotuloRodada(v.rodada)} · {nomeDe(v)}
-                {v.lote_id && ' · em lote'}
+                {/* C com observação: veio da ligação (diz de onde) ou foi marcado antes do prazo */}
+                {v.resultado === 'C' && v.observacao ? <span data-testid="fvs-obs-c"> · {v.observacao}</span> : v.lote_id && ' · em lote'}
               </div>
             )}
             {passadas.length > 0 && (
@@ -2225,11 +2257,22 @@ function Painel(p: PropsPainel) {
                   class={v?.resultado === r && !reprovado ? 'on' : reprovado && r === 'NC' ? 'on' : ''}
                   aria-pressed={v?.resultado === r}
                   onClick={() => {
+                    // C dentro do prazo das regras da obra: só avisa (pergunta) e grava "Marcado antes do prazo"
+                    const viraC = r === 'C' && v?.resultado !== 'C'
+                    if (viraC && prazo && !confirm(perguntaDoPrazo(prazo, peca.nome))) return
+                    const obs = viraC && prazo ? observacaoDoPrazo(prazo) : null
                     // o diário anota já, no toque; a gravação vem na fila (toques anteriores primeiro)
                     const id = crypto.randomUUID()
-                    const toque: Toque = { tipo: 'item', id, obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: c.fichaCampoId ?? null, pecaId: p.id, fichaId: ficha.id, item: it.n, resultado: r }
+                    const toque: Toque = { tipo: 'item', id, obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: c.fichaCampoId ?? null, pecaId: p.id, fichaId: ficha.id, item: it.n, resultado: r, ...(obs ? { observacao: obs } : {}) }
                     anotarToque(toque)
-                    gravar((evs) => tocarItem(c, p.id, ficha, it.n, r, evs, id).finally(() => esquecerToque(toque.obraId, toque.id)))
+                    gravar(async (evs) => {
+                      const gravado = await tocarItem(c, p.id, ficha, it.n, r, evs, id, obs).finally(() => esquecerToque(toque.obraId, toque.id))
+                      if (gravado.resultado !== 'C') return gravado
+                      // ligação entre fichas: o C marca os itens ligados da peça; o aviso traz "Desfazer" deles
+                      const ligados = await ligarDepoisDe(c, ctx.dados.regras, p.id, ficha, [it.n], [...evs, gravado as unknown as EventoFvs])
+                      if (ligados.length) p.avisarLote(textoDosLigados(peca.nome, ficha, ligados), ligados)
+                      return [gravado, ...ligados]
+                    })
                   }}
                 >
                   {r}
@@ -2518,7 +2561,7 @@ function Painel(p: PropsPainel) {
                   .map((e) => (
                     <li key={e.id}>
                       <b class={e.resultado ? `r-${e.resultado}` : ''}>{e.resultado ?? 'Desmarcado'}</b> item {e.item} · {rotuloRodada(e.rodada)} · {quando(e.criado_em_dispositivo)} · {nomeDe(e)}
-                      {e.lote_id && ' · em lote'}
+                      {e.lote_id && !ehDaLigacao(e) && ' · em lote'}
                       {e.observacao && <span class="fv-hist-obs"> · {e.observacao}</span>}
                     </li>
                   ))}

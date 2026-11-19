@@ -14,6 +14,9 @@ import { listarReprovacoes, type Reprovacao } from './reprovacoes'
 import { cadeiaDeRevisoes, type RevisaoAnterior } from './revisoes'
 import { TABELAS_FVS } from './tabelas'
 import { refazerToques } from './toques'
+import { regrasVigentes, type RegrasFvs } from './regras'
+import { alvosDaLigacao, observacaoDaLigacao } from './ligacoes'
+import { observacaoDoPrazo, prazoPendente, type PrazoDoItem } from './prazos'
 
 export { TABELAS_FVS }
 
@@ -80,6 +83,8 @@ export interface DadosFvs {
   lancados: Set<string>
   /** hora do servidor no registro mais novo que chegou dele: serve para notar relógio atrasado */
   servidorMaisNovo: string | null
+  /** regras da obra entre itens das fichas: prazos e ligações (fvs_regras; sem linha, nenhuma) */
+  regras: RegrasFvs
 }
 
 /** Diferença normal entre o relógio do aparelho e o do servidor: abaixo disto, não incomoda ninguém. */
@@ -339,7 +344,7 @@ function paraFichaCampo(l: Linha): FichaCampo {
 
 /** Lê tudo da FVS da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosFvs> {
-  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados] = await Promise.all([
+  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras] = await Promise.all([
     sincronizador.linhas('pavimentos', obraId),
     sincronizador.linhas('setores', obraId),
     sincronizador.linhas('elementos', obraId),
@@ -352,6 +357,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     sincronizador.linhas('fvs_areas', obraId),
     banco.lerMeta<Record<string, string>>(CHAVE_NOMES),
     banco.lerMeta<string[]>(chaveLancados(obraId)),
+    sincronizador.linhas('fvs_regras', obraId),
   ])
   const setor = new Map(set.map((s) => [s.id, { nome: String(s.nome_projeto), disciplina: String(s.disciplina ?? 'estrutura') }]))
   const arquivo = new Map(arqs.map((a) => [a.id, { id: a.id, caminho: String(a.caminho), hash: String(a.hash), tamanho: Number(a.tamanho) }]))
@@ -433,6 +439,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     nomePorUsuario: new Map(Object.entries(nomes ?? {})),
     lancados: new Set(lancados ?? []),
     servidorMaisNovo,
+    regras: regrasVigentes(regras),
   }
 }
 
@@ -489,8 +496,9 @@ export async function tocarItem(c: Contexto, pecaId: string, ficha: Ficha, item:
     item,
     resultado: novo.resultado,
     rodada: novo.rodada,
-    // a observação de um R continua no R seguinte da mesma rodada; reinspeção começa limpa
-    observacao: (novo.resultado === 'NC' && observacao?.trim()) || null,
+    // a observação de um R continua no R seguinte da mesma rodada; reinspeção começa limpa. No C, só a
+    // que a tela manda (o "Marcado antes do prazo" das regras da obra)
+    observacao: ((novo.resultado === 'NC' || novo.resultado === 'C') && observacao?.trim()) || null,
     planta_id: c.plantaId,
     ...daFichaAbertaDe(c),
   })
@@ -551,6 +559,101 @@ export async function marcarPelosFuros(c: Contexto, vigaId: string, ficha: Ficha
   })
 }
 
+/**
+ * Ligação entre fichas (regras da obra): depois do C em `item`, marca C nos itens ligados da mesma peça
+ * que ainda estão vazios, com a origem na observação. Todos com o mesmo lote_id: o "Desfazer" do toque
+ * os desfaz juntos (desfazerLote). Devolve os registros gravados (vazio sem ligação).
+ */
+export async function marcarPelasLigacoes(
+  c: Contexto,
+  regras: RegrasFvs,
+  pecaId: string,
+  ficha: Ficha,
+  item: number,
+  fichasDaPeca: readonly Ficha[],
+  eventos: readonly EventoFvs[],
+): Promise<Linha[]> {
+  const alvos = alvosDaLigacao(regras, { ficha, item }, fichasDaPeca, eventos)
+  if (!alvos.length) return []
+  const lote = crypto.randomUUID()
+  const gravados: Linha[] = []
+  for (const a of alvos) {
+    const atual = ultimosPorItem(eventos.filter((e) => e.ficha_id === a.ficha.id)).get(a.item)
+    gravados.push(
+      await sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
+        ...doLocal(c, pecaId),
+        ficha_id: a.ficha.id,
+        item: a.item,
+        resultado: 'C',
+        rodada: atual?.rodada ?? 1,
+        observacao: observacaoDaLigacao(a),
+        planta_id: c.plantaId,
+        lote_id: lote,
+        ...daFichaAbertaDe(c),
+      }),
+    )
+  }
+  return gravados
+}
+
+/**
+ * Ligações depois de vários C na mesma peça (Etapa C, pincel, "Por item"): um item depois do outro, cada
+ * um vendo o que os anteriores marcaram. Devolve tudo o que as ligações gravaram.
+ */
+export async function ligarDepoisDe(
+  c: Contexto,
+  regras: RegrasFvs,
+  pecaId: string,
+  ficha: Ficha,
+  itens: readonly number[],
+  eventos: readonly EventoFvs[],
+): Promise<Linha[]> {
+  if (!regras.ligacoes.length || !itens.length) return []
+  let evs = [...eventos]
+  const todos: Linha[] = []
+  for (const item of itens) {
+    const g = await marcarPelasLigacoes(c, regras, pecaId, ficha, item, [ficha], evs)
+    todos.push(...g)
+    evs = [...evs, ...g.map(paraEvento)]
+  }
+  return todos
+}
+
+/** O prazo das regras da obra que ainda segura este item da peça (null = nenhum). */
+export function prazoDoItemNaPeca(
+  d: Pick<DadosFvs, 'regras' | 'fichaPorId'>,
+  ficha: Ficha,
+  eventos: readonly EventoFvs[],
+  item: number,
+  agora = new Date(),
+): PrazoDoItem | null {
+  if (!d.regras.prazos.length) return null
+  return prazoPendente(d.regras, { eventos, ficha, fichaPorId: (id) => d.fichaPorId.get(id) }, item, agora)
+}
+
+/**
+ * Itens de um lote (Etapa C, pincel) ainda vazios e dentro do prazo das regras da obra: `peça#item` →
+ * a observação que vai no registro. Vazio sem prazos.
+ */
+export function prazosDoLote(
+  d: Pick<DadosFvs, 'regras' | 'fichaPorId'>,
+  pecas: ReadonlyArray<{ id: string; ficha: Ficha; eventos: readonly EventoFvs[] }>,
+  etapa: string | null,
+  agora = new Date(),
+): Map<string, string> {
+  const m = new Map<string, string>()
+  if (!d.regras.prazos.length) return m
+  for (const p of pecas) {
+    const ult = ultimosPorItem(p.eventos.filter((e) => e.ficha_id === p.ficha.id))
+    for (const it of p.ficha.itens) {
+      if ((etapa && it.etapa !== etapa) || ult.get(it.n)?.resultado) continue
+      const prazo = prazoDoItemNaPeca(d, p.ficha, p.eventos, it.n, agora)
+      if (prazo) m.set(`${p.id}#${it.n}`, observacaoDoPrazo(prazo))
+    }
+  }
+  return m
+}
+
 /** "O que fazer?" de um item reprovado: registro novo igual ao atual, com a observação. */
 export async function observar(c: Contexto, atual: EventoFvs, observacao: string) {
   return sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
@@ -578,6 +681,8 @@ export async function marcarLote(
   resultado: 'C' | 'NA',
   /** o lote anotado no diário de toques: refeito depois de recarregar, completa o mesmo lote */
   loteId?: string,
+  /** observação de alguns itens (`peça#item`): o "Marcado antes do prazo" das regras da obra */
+  observacoes?: ReadonlyMap<string, string>,
 ): Promise<Linha[]> {
   const lote = loteId ?? crypto.randomUUID()
   const aMarcar: Array<{ peca: string; ficha: string; item: number; rodada: number }> = []
@@ -601,7 +706,7 @@ export async function marcarLote(
         item: m.item,
         resultado,
         rodada: m.rodada,
-        observacao: null,
+        observacao: (resultado === 'C' && observacoes?.get(`${m.peca}#${m.item}`)) || null,
         planta_id: c.plantaId,
         lote_id: lote,
         ...daFichaAbertaDe(c),

@@ -16,6 +16,8 @@ export interface EstadoSincronizacao {
   sincronizando: boolean
   pendentes: number
   comErro: number
+  /** Itens da fila de outra pessoa que usou este aparelho: só sobem quando ela entrar aqui (C5). */
+  deOutros: number
   /** Hora (ISO) da última sincronização completa sem erro. */
   ultima?: string
   /** Por que a última tentativa não foi até o fim (vazio = foi). */
@@ -35,6 +37,7 @@ export function usarSincronizacao(usuarioId: string, obraId: string, aoPerderObr
     sincronizando: false,
     pendentes: 0,
     comErro: 0,
+    deOutros: 0,
     versaoDados: 0,
   })
   const timer = useRef<ReturnType<typeof setTimeout>>()
@@ -45,8 +48,8 @@ export function usarSincronizacao(usuarioId: string, obraId: string, aoPerderObr
   const chaveUltima = `ultima_sincronizacao:${obraId}`
 
   const contar = useCallback(async () => {
-    const c = await sincronizador.contarFila(usuarioId)
-    if (ativo.current) setEstado((e) => ({ ...e, ...c }))
+    const [c, deOutros] = await Promise.all([sincronizador.contarFila(usuarioId), sincronizador.contarDeOutros(usuarioId)])
+    if (ativo.current) setEstado((e) => ({ ...e, ...c, deOutros }))
     return c
   }, [usuarioId])
 

@@ -206,9 +206,18 @@ export class Conta {
   }
 }
 
-function traduzirErroLogin(erro: { message?: string; status?: number; code?: string }, etapa: 'pedir' | 'confirmar'): string {
-  if (isAuthRetryableFetchError(erro)) return 'Sem internet. Para entrar o aparelho precisa estar conectado.'
+/** Exportada só para o teste (conta_erros_login.test.ts). */
+export function traduzirErroLogin(erro: { message?: string; status?: number; code?: string }, etapa: 'pedir' | 'confirmar'): string {
   const m = (erro.message ?? '').toLowerCase()
+  // O servidor respondeu com erro dele (500 a 530). O supabase-js marca isso como "retryable", igual à falta
+  // de internet, mas a internet está ok. Em 18/11/2026 o Gmail recusou a senha SMTP: o Supabase respondia
+  // 500 "Error sending magic link email" e o app dizia "Sem internet".
+  if ((erro.status ?? 0) >= 500 || (etapa === 'pedir' && /error sending|smtp/.test(m))) {
+    return etapa === 'pedir'
+      ? 'Não conseguimos mandar o e-mail agora. Tente de novo em alguns minutos. Se continuar, avise o administrador.'
+      : 'O servidor não respondeu agora. Tente de novo em alguns minutos.'
+  }
+  if (isAuthRetryableFetchError(erro)) return 'Sem internet. Para entrar o aparelho precisa estar conectado.'
   if (etapa === 'confirmar' && (erro.code === 'otp_expired' || m.includes('expired') || m.includes('invalid'))) {
     return 'Código errado ou vencido. Confira ou peça um novo.'
   }

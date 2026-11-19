@@ -38,6 +38,7 @@ export function Entrar({
     <main class="tela tela-estreita">
       <h1>Sistema Obra</h1>
       <p>Digite seu e-mail. Vamos mandar um código por e-mail.</p>
+      <p class="discreto">Se o site já pediu um código para abrir, este é outro: o código do app.</p>
       <form onSubmit={enviar}>
         <label for="email">E-mail</label>
         <input

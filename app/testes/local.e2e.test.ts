@@ -207,7 +207,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('persistente').isVisible()).toBe(false)
       expect(await p.getByTestId('aviso-sem-copia').count()).toBe(0)
       expect((await p.getByTestId('bloco-copia').locator('summary').boundingBox()).height).toBeGreaterThanOrEqual(44)
-      await p.getByText('1 pavimento: 3º Pavimento').waitFor()
+      await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
       expect(await p.getByRole('button', { name: 'Sair', exact: true }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Trocar de obra', exact: true }).count()).toBe(0)
       await p.getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor() // a troca de obra sem conta é pelo pacote, à vista
@@ -216,7 +216,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       for (const m of ['FVS', 'Concreto', 'Documentos']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(1)
       // Projetos, IFC e Relatórios fora do menu desde 18/11/2026
       for (const m of ['Projetos', 'IFC', 'Relatórios']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(BETAS_NO_MENU ? 1 : 0)
-      await p.getByText('1 pavimento: 3º Pavimento').waitFor()
+      await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
 
       // FVS: o pavimento da pasta, com a planta já guardada no aparelho (botão Abrir, não Baixar)
       await p.getByRole('button', { name: /^FVS/ }).click()
@@ -884,7 +884,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await p.getByRole('heading', { name: /EXE/ }).waitFor()
-        await p.getByText('1 pavimento: 3º Pavimento').waitFor()
+        await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
         await print('2-menu')
 
         // fechado e aberto de novo, sem a pasta e sem o .zip: abre direto na obra, com a planta
@@ -903,7 +903,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByTestId('abrir-pacote').getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor()
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
-        await p.getByText('1 pavimento: 3º Pavimento').waitFor()
+        await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
 
         // nada saiu da tela pelos lados
         expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -995,7 +995,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByRole('button', { name: 'Escolher outro arquivo' }).waitFor()
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(leve)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
-        await p.getByText('1 pavimento: 3º Pavimento').waitFor()
+        await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
         expect(await plantas()).toBe(1)
         if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `espaco-${nome}-2-outro-arquivo.png`), fullPage: true })
         expect(erros).toEqual([])

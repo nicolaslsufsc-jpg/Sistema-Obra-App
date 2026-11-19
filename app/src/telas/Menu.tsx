@@ -99,14 +99,19 @@ export function Menu({
         </ul>
       </section>
 
-      <section>
-        <h2>Cadastro da obra no aparelho</h2>
+      {/* Pavimentos da obra em etiquetas: mais fácil de ler que uma frase corrida (front end, 19/11/2026) */}
+      <section data-testid="pavimentos-obra">
+        <h2>
+          Pavimentos{pavimentos.length > 0 && <span class="discreto"> ({pavimentos.length})</span>}
+        </h2>
         {pavimentos.length === 0 ? (
           <p class="discreto">Nenhum pavimento baixado ainda.</p>
         ) : (
-          <p>
-            {pavimentos.length} {pavimentos.length === 1 ? 'pavimento' : 'pavimentos'}: {pavimentos.map((p) => String(p.nome)).join(', ')}
-          </p>
+          <ul class="lista-pavimentos">
+            {pavimentos.map((p) => (
+              <li key={String(p.id)}>{String(p.nome)}</li>
+            ))}
+          </ul>
         )}
       </section>
 

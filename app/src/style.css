@@ -109,6 +109,13 @@ button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* Botão principal desativado: cinza, para não parecer que já dá para tocar (front end, 19/11/2026) */
+button.principal:disabled {
+  opacity: 1;
+  background: var(--superficie);
+  border-color: var(--borda);
+  color: var(--discreto);
+}
 
 form button.principal {
   width: 100%;
@@ -142,6 +149,10 @@ form button.principal {
   border-radius: var(--raio);
   padding: 1rem;
   margin: 1rem 0;
+}
+/* Sem espaço vazio no topo do cartão quando ele começa por um título */
+.cartao > :first-child {
+  margin-top: 0;
 }
 
 .lista {
@@ -499,4 +510,59 @@ button:active:not(:disabled) {
 }
 .bloco-recolhido > :not(summary) {
   margin: 0 1rem 1rem;
+}
+
+/* Topo do menu: nome da obra e botão do tema na mesma linha, também no celular (front end, 19/11/2026) */
+.cabecalho-obra {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.cabecalho-obra > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cabecalho-obra .botao-tema {
+  flex: none;
+}
+
+/* Pavimentos da obra: uma etiqueta por pavimento */
+.lista-pavimentos {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.lista-pavimentos li {
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  background: var(--superficie);
+}
+
+@media (max-width: 599px) {
+  .cabecalho-obra .botao-tema {
+    padding: 0.5rem 0.75rem;
+  }
+  /* Cartões dos módulos mais baixos no celular: título e "Abrir" na mesma linha, descrição embaixo */
+  .modulo {
+    min-height: 0;
+    grid-template-columns: 1fr auto;
+    column-gap: 0.75rem;
+    row-gap: 0.2rem;
+    padding: 0.8rem 1rem;
+  }
+  .modulo strong {
+    grid-column: 1;
+    font-size: 1.3rem;
+  }
+  .modulo > span:not(.modulo-abrir) {
+    grid-column: 1 / -1;
+  }
+  .modulo-abrir {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+  }
 }

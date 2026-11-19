@@ -134,7 +134,8 @@ suite('Nova obra (telas)', () => {
       await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
       await p.getByRole('heading', { name: /EX2/ }).waitFor()
       expect(await p.getByText('Obra Exemplo 2').count()).toBeGreaterThan(0)
-      await p.getByText('2 pavimentos: Térreo, Tipo 1').waitFor()
+      await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^Tipo 1$/ }).waitFor()
+      expect(await p.getByTestId('pavimentos-obra').getByRole('listitem').allInnerTexts()).toEqual(['Térreo', 'Tipo 1'])
       await print(p, `${nome}_5_app`)
       // a FVS abre numa obra ainda sem planta, sem erro
       await p.getByRole('button', { name: /FVS/ }).click()

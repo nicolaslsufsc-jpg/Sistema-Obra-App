@@ -68,7 +68,8 @@ export function registroDoRastreio(
     lote_id: null,
     planta_id: null,
     usuario_id: '',
-    criado_em_dispositivo: inicioDoDiaIso(caminhoes[caminhoes.length - 1].data),
+    // a concretagem mais nova: concreto/rastreio.ts já devolve em ordem de data, mas aqui não se depende disso
+    criado_em_dispositivo: inicioDoDiaIso(caminhoes.reduce((m, c) => (c.data > m ? c.data : m), caminhoes[0].data)),
     ficha_campo_id: null,
     verificado_por: 'Concreto',
     origem_id: ORIGEM_CONCRETO,

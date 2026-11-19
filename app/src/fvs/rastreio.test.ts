@@ -49,6 +49,11 @@ describe('rastreio do concreto na FVS', () => {
     expect([d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours()]).toEqual([2026, 11, 19, 0])
   })
 
+  it('a data é a da concretagem mais nova, em qualquer ordem da lista', () => {
+    const r = registroDoRastreio('p1', PILAR, [cam(2, '9', '2026-11-21'), cam(1, '8', '2026-11-18')], [])!
+    expect(new Date(r.criado_em_dispositivo).getDate()).toBe(21)
+  })
+
   it('sem caminhão, ficha sem o item ou sem ficha: nada', () => {
     expect(registroDoRastreio('p1', PILAR, [], [])).toBeNull()
     expect(registroDoRastreio('p1', PILAR, undefined, [])).toBeNull()

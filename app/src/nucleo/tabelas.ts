@@ -9,12 +9,20 @@ import { TABELAS_FVS, TABELAS_FVS_HISTORICO } from '../fvs/tabelas'
 import { TABELAS_PROJETOS } from '../projetos/tabelas'
 import { TABELAS_RELATORIOS } from '../relatorios/tabelas'
 
+/**
+ * Regras da obra para a FVS (prazos e ligações entre itens): migração 20261119120000_fvs_regras.sql.
+ * Bloco à parte, no fim: enquanto a migração não estiver aplicada num servidor, só esta tabela dá erro
+ * e as outras continuam chegando.
+ */
+export const TABELAS_FVS_REGRAS = ['fvs_regras'] as const
+
 export const TABELAS_SINCRONIZADAS: readonly string[] = [
   ...TABELAS_NUCLEO,
   ...TABELAS_FVS,
   ...TABELAS_CONCRETO,
   ...TABELAS_PROJETOS,
   ...TABELAS_RELATORIOS,
+  ...TABELAS_FVS_REGRAS,
   // em 07/11 a migração das áreas de laje (20261106130000_fvs_areas.sql) ainda não estava aplicada
   ...TABELAS_FVS_HISTORICO,
 ]
@@ -33,4 +41,5 @@ export const BLOCOS_SINCRONIZADOS: readonly (readonly string[])[] = [
   TABELAS_RELATORIOS,
   // Bloco à parte: a tabela cuja migração ainda não foi aplicada no servidor só para este bloco.
   TABELAS_FVS_HISTORICO,
+  TABELAS_FVS_REGRAS,
 ]

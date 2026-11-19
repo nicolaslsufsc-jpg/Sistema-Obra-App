@@ -1,0 +1,854 @@
+/* Módulo Concreto. Celular e tablet primeiro: botões de 48px, nada que dependa de mouse. */
+
+.cc-topo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.cc-topo .cc-titulo {
+  flex: 1;
+  min-width: 0;
+}
+.cc-titulo h1 {
+  font-size: 1.25rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cc-titulo p {
+  margin: 0;
+}
+.cc-voltar {
+  flex: none;
+  padding: 0.5rem 0.75rem;
+}
+.cc-sync {
+  font-size: 0.9rem;
+}
+
+.cc-linha {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  padding: 0.6rem 0.9rem;
+  border-color: var(--borda);
+  color: var(--texto);
+  font-weight: 400;
+}
+.cc-linha > span:not(.cc-bolinha):not(.selo) {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+.cc-largo {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+.cc-pequeno {
+  min-height: 2.6rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.95rem;
+}
+button.perigo {
+  border-color: var(--erro-claro);
+  color: var(--erro-claro);
+}
+h2.sem-topo {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selo {
+  flex: none;
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 2px solid;
+  white-space: nowrap;
+}
+.selo.ruim {
+  color: var(--texto-8e1b16);
+  background: var(--erro-fundo);
+  border-color: var(--erro-claro);
+}
+.selo.info {
+  color: var(--atencao-texto);
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+}
+.selo.neutro {
+  color: var(--texto-0d3c78);
+  background: var(--fundo-e8f0fb);
+  border-color: var(--borda-1565c0);
+}
+.selo.bom {
+  color: var(--texto-1b5e20);
+  background: var(--ok-fundo);
+  border-color: var(--ok-borda-claro);
+}
+.cc-selos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0;
+}
+
+.cc-bolinha {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  color: var(--texto-ffffff);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.cc-bolinha.grande {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.2rem;
+}
+
+.cc-dados {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+.cc-dados dt {
+  color: var(--discreto);
+}
+.cc-dados dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.cc-idades .cc-idade {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 0.6rem 0.8rem;
+}
+.cc-idade-cab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+}
+.cc-form-resultado {
+  margin-top: 0.5rem;
+}
+
+.cc-pecas,
+.cc-lista-pecas {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+}
+.cc-pecas li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--borda);
+}
+/* no celular, "Tirar" não encolhe nem quebra no meio da palavra (rodada de 09/11) */
+.cc-pecas li > button {
+  flex-shrink: 0;
+}
+.cc-lista-pecas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.25rem 0.75rem;
+}
+.cc-lista-pecas input {
+  width: 1.5rem;
+  min-height: 1.5rem;
+  vertical-align: middle;
+}
+
+/* formulários: campos em grade (2 colunas no tablet, 1 no celular) */
+.cc-campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0 1rem;
+}
+.cc-campo {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0;
+}
+.cc-campo > span:first-child {
+  font-weight: 600;
+}
+.cc-campo.com-erro input {
+  border-color: var(--erro-claro);
+}
+/* hora do caminhão: o campo e o botão "Agora" na mesma linha (08/11/2026) */
+.cc-hora {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.cc-hora input {
+  flex: 1;
+  min-width: 0;
+}
+.cc-agora {
+  flex: none;
+  min-width: 5.5rem;
+  min-height: 48px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* + e − do mapa: no canto de baixo à direita da planta (o painel e a alça ficam fora dele) */
+.cc-zoom {
+  position: absolute;
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+  bottom: calc(2.6rem + 0.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cc-mapa-tela.com-painel .cc-zoom {
+  bottom: calc(42vh + 0.75rem);
+}
+.cc-zoom button {
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  padding: 0;
+  font-size: 1.6rem;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  /* sem o realce azul do toque do Android: ele deixava o botão desligado com cara de ativo */
+  -webkit-tap-highlight-color: transparent;
+}
+/* no limite do zoom o botão fica claramente desligado (cinza, sem sombra) */
+.cc-zoom button:disabled {
+  opacity: 1;
+  background: var(--fundo-e9edf1);
+  border-color: var(--borda);
+  color: var(--texto-8a96a3);
+  box-shadow: none;
+}
+textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 1.05rem;
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  color: var(--texto);
+}
+.cc-form > button.principal {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+/* ---------------- mapa (tela cheia) ---------------- */
+.cc-mapa-tela {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--fundo);
+  --painel-larg: min(420px, 42vw);
+}
+.cc-mapa-topo {
+  flex: none;
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+  padding: calc(env(safe-area-inset-top, 0px) + 0.4rem) max(0.6rem, env(safe-area-inset-right, 0px)) 0.4rem max(0.6rem, env(safe-area-inset-left, 0px));
+  z-index: 1001;
+}
+.cc-mapa-linha {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cc-mapa-linha .cc-titulo {
+  flex: 1;
+  min-width: 0;
+}
+.cc-mapa-linha h1 {
+  font-size: 1.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cc-mapa-linha .discreto {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cc-mapa-linha button {
+  flex: none;
+  padding: 0.4rem 0.75rem;
+}
+.cc-chips {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-top: 0.4rem;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.cc-chips select {
+  flex: none;
+  max-width: 15rem;
+}
+.cc-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.35rem;
+  border-color: var(--borda);
+  color: var(--texto);
+}
+.cc-chip.on {
+  border-color: var(--texto);
+  box-shadow: 0 0 0 2px var(--texto) inset;
+}
+/* Celular: a concretagem ocupa a linha toda e os caminhões ficam só com a bolinha numerada
+   (a NF aparece no painel e ao segurar o dedo), para caberem numa linha sem esconder nenhum à
+   direita. Muitos caminhões: quebram linha, até 2 linhas inteiras, e o resto rola para baixo.
+   Mais alto que isso o topo come o mapa e cobre o + e o −. */
+@media (max-width: 599px) {
+  .cc-chips {
+    flex-wrap: wrap;
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: calc(3 * 3.25rem + 2 * 0.4rem + 0.4rem);
+  }
+  .cc-chips select {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    box-sizing: border-box;
+  }
+  .cc-chip .cc-chip-nf {
+    display: none;
+  }
+  .cc-chips {
+    gap: 0.3rem;
+  }
+  .cc-chip {
+    padding: 0.3rem 0.5rem;
+  }
+  /* bolinha de 2rem + folga: 46 px, e Ver + 3 caminhões + "+ Caminhão" cabem numa linha em 375 px */
+  .cc-chip:has(.cc-bolinha) {
+    padding: 0.3rem;
+  }
+}
+.cc-mapa {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: var(--fundo-ffffff);
+  /* a caneta e o dedo nunca rolam a página por baixo do mapa */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.cc-tinta {
+  position: absolute;
+  inset: 0;
+  z-index: 650; /* acima das camadas do Leaflet, abaixo dos controles */
+  pointer-events: none;
+}
+.cc-rotulo {
+  font: 600 12px/18px system-ui, sans-serif;
+  color: var(--texto-222222);
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 0 3px var(--texto-ffffff), 0 0 3px var(--texto-ffffff);
+  pointer-events: none;
+}
+.cc-sem-planta {
+  flex: 1;
+  overflow: auto;
+}
+.cc-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0.75rem;
+  z-index: 1000;
+  width: max-content;
+  text-align: center;
+  max-width: calc(100vw - 2rem);
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--raio);
+  background: var(--texto);
+  color: var(--texto-ffffff);
+  font-size: 0.95rem;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+/* Celular em pé: o aviso fica embaixo, à esquerda da coluna do + e do − (antes, centrado, cobria
+   o − por alguns segundos: F2 do front end, achado do Testador de 09/11). */
+@media (max-width: 699px), (orientation: portrait) {
+  .cc-toast {
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    right: calc(52px + 1.5rem + env(safe-area-inset-right, 0px));
+    transform: none;
+    width: auto;
+    max-width: none;
+    text-align: left;
+  }
+}
+
+/* painel: embaixo no retrato, do lado na paisagem */
+.cc-painel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1001;
+  background: var(--superficie);
+  border-top: 2px solid var(--borda);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  flex-direction: column;
+}
+.cc-painel.aberto {
+  height: 42vh;
+}
+.cc-alca {
+  flex: none;
+  min-height: 2.6rem;
+  border: 0;
+  border-bottom: 1px solid var(--borda);
+  border-radius: 0;
+  width: 100%;
+  font-size: 0.9rem;
+}
+.cc-painel-corpo {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.6rem 0.9rem;
+}
+.cc-painel-corpo h2 {
+  font-size: 1.05rem;
+}
+.cc-painel-corpo h3 {
+  font-size: 0.95rem;
+  margin: 0.6rem 0 0.3rem;
+}
+.cc-pecas-compacto {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cc-pecas-compacto li {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  font-weight: 600;
+}
+.cc-pecas-compacto li.parcial {
+  border-style: dashed;
+}
+/* Laje do trecho: a forma não traz o contorno, então ela é marcada por este botão (lajes.ts) */
+.cc-laje {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  margin: 0.6rem 0 0.2rem;
+  text-align: left;
+  border-color: var(--borda);
+  color: var(--texto);
+  background: var(--superficie);
+}
+.cc-laje.on {
+  border-color: var(--texto);
+  box-shadow: 0 0 0 2px var(--texto) inset;
+}
+.cc-laje-marca {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 2px solid var(--borda);
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+}
+.cc-laje.on .cc-laje-marca {
+  color: var(--texto-ffffff);
+}
+.cc-legenda {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.cc-legenda i {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 3px;
+  vertical-align: -0.15rem;
+  margin-right: 0.4rem;
+}
+/* o mapa encolhe para o painel não cobrir a planta */
+.cc-mapa-tela.com-painel .cc-mapa {
+  margin-bottom: 42vh;
+}
+.cc-mapa-tela:not(.com-painel) .cc-mapa {
+  margin-bottom: 2.6rem;
+}
+@media (orientation: landscape) and (min-width: 700px) {
+  .cc-painel,
+  .cc-painel.aberto {
+    left: auto;
+    top: 0;
+    width: var(--painel-larg);
+    height: auto;
+    border-top: 0;
+    border-left: 2px solid var(--borda);
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .cc-mapa-tela .cc-mapa-topo {
+    margin-right: var(--painel-larg);
+  }
+  .cc-mapa-tela.com-painel .cc-mapa,
+  .cc-mapa-tela:not(.com-painel) .cc-mapa {
+    margin-bottom: 0;
+    margin-right: var(--painel-larg);
+  }
+  .cc-mapa-tela:not(.com-painel) {
+    --painel-larg: 12rem;
+  }
+  /* na paisagem o painel fica do lado: o + e − descem para o canto de baixo */
+  .cc-mapa-tela .cc-zoom,
+  .cc-mapa-tela.com-painel .cc-zoom {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    right: calc(var(--painel-larg) + 0.75rem);
+  }
+}
+
+/* ---------------- relatório ---------------- */
+.cc-seg {
+  display: inline-flex;
+  border: 2px solid var(--primaria-claro);
+  border-radius: var(--raio);
+  overflow: hidden;
+}
+.cc-seg button {
+  border: 0;
+  border-radius: 0;
+}
+.cc-seg button.on {
+  background: var(--primaria);
+  color: var(--primaria-texto);
+}
+.cc-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  background: var(--superficie);
+  font-size: 0.95rem;
+}
+.cc-tabela th,
+.cc-tabela td {
+  border: 1px solid var(--borda);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.cc-tabela th {
+  background: var(--fundo-eef2f5);
+}
+/* número de nota e volume não quebram no meio; só a última coluna (lista de peças) quebra */
+.cc-tabela th:not(:last-child),
+.cc-tabela td:not(:last-child) {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.cc-alertas h2 {
+  margin-top: 0;
+}
+.cc-parcial {
+  font-style: italic;
+}
+.cc-impressao {
+  margin: 0.5rem 0;
+}
+@media print {
+  .nao-imprimir,
+  .cc-topo,
+  .cc-sync,
+  .faixa-atualizacao {
+    display: none !important;
+  }
+  .tela {
+    max-width: none;
+    padding: 0;
+  }
+  .cc-bolinha {
+    color: var(--texto-000000);
+    background: none !important;
+    border: 1px solid var(--borda-000000);
+  }
+}
+
+/* Ficha de concreto (larga: rola de lado no celular, imprime deitada) */
+.cc-rolagem {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 1rem -1rem;
+  padding: 0 1rem;
+}
+.cc-tabela-ficha {
+  font-size: 0.85rem;
+  min-width: 60rem;
+  margin: 0;
+}
+.cc-tabela-ficha th,
+.cc-tabela-ficha td {
+  white-space: nowrap;
+  padding: 0.3rem 0.4rem;
+}
+.cc-tabela-ficha td:last-child {
+  white-space: normal;
+  min-width: 14rem;
+}
+
+/* Laudo: uma linha por caminhão, uma caixa por CP (rola de lado no celular se tiver muitos CPs) */
+.cc-laudo {
+  margin: 0;
+}
+.cc-laudo th,
+.cc-laudo td {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.cc-laudo input {
+  width: 4rem;
+  min-height: 44px;
+  font-size: 1rem;
+  text-align: right;
+}
+.cc-laudo input.cc-errado {
+  border-color: var(--erro-claro);
+  background: var(--erro-fundo);
+}
+.cc-laudo-cam {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.cc-laudo td.cc-abaixo {
+  color: var(--erro-claro);
+  font-weight: 600;
+}
+.cc-link {
+  background: none;
+  border: 0;
+  padding: 0.25rem 0.5rem;
+  min-height: 2.25rem;
+  color: var(--primaria-claro);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.cc-so-impressao {
+  display: none;
+}
+@media print {
+  .cc-so-impressao {
+    display: initial;
+  }
+  .cc-ficha-cab {
+    border: 0;
+    padding: 0;
+  }
+  .cc-rolagem {
+    overflow: visible;
+    margin: 0.5rem 0;
+    padding: 0;
+  }
+  .cc-tabela-ficha {
+    min-width: 0;
+    width: 100%;
+    font-size: 9pt;
+  }
+  .cc-tabela-ficha th,
+  .cc-tabela-ficha td {
+    border-color: var(--borda-000000);
+  }
+}
+.cc-dica-rolagem {
+  display: none;
+  margin: 0 0 0.25rem;
+}
+@media (max-width: 64rem) {
+  .cc-dica-rolagem {
+    display: block;
+  }
+}
+
+/* mapa de concretagens: uma linha por concretagem, com a cor dela (07/11/2026) */
+.cc-legenda-conc {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.cc-legenda-conc li {
+  margin: 0 0 0.3rem;
+}
+.cc-legenda-conc .cc-linha {
+  width: 100%;
+  text-align: left;
+}
+.cc-legenda-conc i {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 3px;
+}
+.cc-legenda-conc li.on .cc-linha {
+  outline: 2px solid var(--borda-111111);
+}
+.cc-canetas {
+  align-items: center;
+}
+
+/* ---------------- FVM: recebimento de materiais ---------------- */
+.fvm-retidos {
+  border: 2px solid var(--erro-claro);
+  background: var(--erro-fundo);
+  border-radius: var(--raio);
+  margin: 0.5rem 0;
+}
+.fvm-bloco {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 0.75rem;
+  margin: 1rem 0;
+  min-width: 0;
+}
+.fvm-bloco legend {
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+.fvm-check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3rem;
+}
+.fvm-check input {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+}
+.fvm-item {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--borda);
+}
+.fvm-item:first-of-type {
+  border-top: 0;
+}
+.fvm-item.com-erro .fvm-resposta {
+  border-color: var(--erro-claro);
+}
+.fvm-item-texto {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.fvm-resposta {
+  display: flex;
+  width: 100%;
+  max-width: 22rem;
+}
+.fvm-resposta button {
+  flex: 1;
+  min-height: 3rem;
+}
+.cc-seg.fvm-resposta button.on.fvm-NC {
+  background: var(--erro-fundo);
+  color: var(--texto-8e1b16);
+  box-shadow: inset 0 0 0 3px var(--erro-claro);
+  font-weight: 800;
+}
+.fvm-situacoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.fvm-situacoes button {
+  flex: 1 1 9rem;
+  min-height: 3rem;
+}
+.fvm-situacoes button.on {
+  background: var(--primaria);
+  color: var(--primaria-texto);
+}
+.fvm-situacoes button.on.fvm-sit-retido,
+.fvm-situacoes button.on.fvm-sit-devolvido {
+  background: var(--erro-fundo);
+  color: var(--texto-8e1b16);
+  border-color: var(--erro-claro);
+  box-shadow: inset 0 0 0 1px var(--erro-claro);
+  font-weight: 800;
+}
+.fvm-via {
+  border: 1px dashed var(--borda);
+  border-radius: var(--raio);
+}
+.fvm-conferencia {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.fvm-conferencia li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  overflow-wrap: anywhere;
+}
+.fvm-fotos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.fvm-foto {
+  width: 8rem;
+  height: 8rem;
+  object-fit: cover;
+  border-radius: var(--raio);
+  border: 1px solid var(--borda);
+}

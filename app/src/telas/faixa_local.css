@@ -1,0 +1,25 @@
+/* Faixa do modo sem conta (FaixaLocal.tsx): texto e Salvar na mesma linha, quebra no celular.
+   Arquivo próprio para servir a qualquer módulo sem mexer no style.css de todos. */
+.faixa-local {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: 0.95rem;
+}
+.faixa-local span {
+  flex: 1 1 14rem;
+}
+.faixa-local button {
+  min-height: 44px;
+  padding: 0 1.25rem;
+}
+.faixa-local.salvo {
+  background: var(--ok-fundo);
+  border-bottom-color: var(--ok-borda);
+}
+@media print {
+  .faixa-local {
+    display: none !important;
+  }
+}

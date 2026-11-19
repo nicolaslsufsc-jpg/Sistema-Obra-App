@@ -1,0 +1,66 @@
+# Roda todos os testes em cada PR. Resultado aparece no PR como ✓ (passou) ou ✗ (falhou).
+# Cota: 2.000 min/mês no plano gratuito (repositório privado), e cada rodada leva uns 14 min.
+# Para economizar (18/11/2026, 90% da cota usada): não roda de novo depois do merge na main (o PR
+# já testou o código junto com a main) e não roda em PR que só muda texto (docs e .md).
+# Rodar à mão: aba Actions > Testes > Run workflow.
+name: Testes
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # Nomes de obra e de empresa que não podem ir no site (fora do repositório, como segredo).
+      # Sem o segredo, o build para no GitHub: ver app/sem_dados_de_obra.ts.
+      NOMES_PROIBIDOS: ${{ secrets.NOMES_PROIBIDOS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Dependências do app
+        working-directory: app
+        run: npm ci
+
+      - name: Banco (migrações e regras de acesso)
+        run: bash supabase/testes/rodar_testes.sh
+
+      - name: Scripts do PC (pipeline)
+        run: python3 -m unittest discover -s pipeline/testes -v
+
+      - name: Compilação do app
+        working-directory: app
+        run: npm run build
+
+      # Os galhos de sistema oficial (app/src/integracoes/*/, pipeline/integracoes/*/) têm de sair sem
+      # quebrar nada: numa cópia sem eles, build, testes e uma varredura do nome (docs/modulos/integracoes.md).
+      - name: Sem integrações (galhos apagados numa cópia)
+        run: python3 supabase/testes/sem_integracoes.py
+
+      - name: Navegador para os testes de tela
+        working-directory: app
+        # Mesma versão do ambiente das sessões do Claude. --no-save: não entra no package.json.
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      - name: App contra PostgREST de verdade, exportação e telas
+        run: E2E=1 bash supabase/testes/rodar_integracao.sh

@@ -1,0 +1,135 @@
+[
+ {
+  "codigo": "EXE-PVS-001",
+  "titulo": "Exemplo - Pilares (com consolo e capitel)",
+  "revisao": "1",
+  "tipo_modelo": "ESTRUTURA",
+  "aplica_a": [
+   "P"
+  ],
+  "itens": [
+   {
+    "n": 1,
+    "etapa": "INÍCIO",
+    "titulo": "Projeto na mão",
+    "descricao": "Conferir se a prancha usada é a revisão vigente.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA"
+   },
+   {
+    "n": 2,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Prumo",
+    "descricao": "Conferir o prumo da forma nas duas direções.",
+    "dispositivo": "Prumo",
+    "tolerancia": "5 mm"
+   },
+   {
+    "n": 3,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Cobrimento",
+    "descricao": "Conferir os espaçadores da armadura.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto"
+   },
+   {
+    "n": 4,
+    "etapa": "CONSOLO - ARMADURA",
+    "titulo": "Barras principais (tirante)",
+    "descricao": "Bitola, quantidade e posição das barras do tirante conforme o detalhe do consolo.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "consolo"
+   },
+   {
+    "n": 5,
+    "etapa": "CONSOLO - ARMADURA",
+    "titulo": "Estribos e costura",
+    "descricao": "Bitola, quantidade e espaçamento dos estribos e da armadura de costura.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "consolo"
+   },
+   {
+    "n": 6,
+    "etapa": "CONSOLO - ARMADURA",
+    "titulo": "Ancoragem e dobras",
+    "descricao": "Comprimento de ancoragem no pilar e dobras das barras conforme o detalhe.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "consolo"
+   },
+   {
+    "n": 7,
+    "etapa": "CONSOLO - ARMADURA",
+    "titulo": "Posição e cobrimento",
+    "descricao": "Altura do consolo no pilar e cobrimento da armadura.",
+    "dispositivo": "Trena",
+    "tolerancia": "3,0 cm",
+    "parte": "consolo"
+   },
+   {
+    "n": 8,
+    "etapa": "CONSOLO - ARMADURA",
+    "titulo": "Fixação",
+    "descricao": "Armadura amarrada e travada, sem se mexer na concretagem.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA",
+    "parte": "consolo"
+   },
+   {
+    "n": 9,
+    "etapa": "CAPITEL - ARMADURA",
+    "titulo": "Armadura do maciço",
+    "descricao": "Bitola e quantidade das barras do maciço no pilar conforme a prancha da laje.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "capitel"
+   },
+   {
+    "n": 10,
+    "etapa": "CAPITEL - ARMADURA",
+    "titulo": "Espaçamento e extensão X/Y",
+    "descricao": "Espaçamento das barras e extensão do maciço nas duas direções.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "capitel"
+   },
+   {
+    "n": 11,
+    "etapa": "CAPITEL - ARMADURA",
+    "titulo": "Armadura de punção e estribos",
+    "descricao": "Armadura de punção e estribos, quando houver no detalhe.",
+    "dispositivo": "Visual",
+    "tolerancia": "conforme projeto",
+    "parte": "capitel"
+   },
+   {
+    "n": 12,
+    "etapa": "CAPITEL - ARMADURA",
+    "titulo": "Ancoragem e transpasse com a laje",
+    "descricao": "Ancoragem e transpasse das barras do maciço com a armadura da laje.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "capitel"
+   },
+   {
+    "n": 13,
+    "etapa": "CAPITEL - ARMADURA",
+    "titulo": "Cobrimento e suportes",
+    "descricao": "Espaçadores e caranguejos sob a armadura do maciço.",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "parte": "capitel"
+   },
+   {
+    "n": 14,
+    "etapa": "FIM",
+    "titulo": "Limpeza",
+    "descricao": "Conferir se a forma está limpa antes de concretar.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA"
+   }
+  ]
+ }
+]

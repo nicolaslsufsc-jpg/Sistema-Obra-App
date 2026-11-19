@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Conferência FVS</title>
+<style>/*LEAFLET_CSS*/</style>
+<style>
+/* Ferramenta de campo: planta ocupa a tela, painel do elemento abre ao lado (paisagem) ou embaixo (retrato). */
+:root{color-scheme:light;
+  --top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px);--esq:env(safe-area-inset-left,0px);--dir:env(safe-area-inset-right,0px);
+  --bg:#f3f3f0;--card:#ffffff;--tx:#1b1c1e;--tx2:#5b5d61;--tx3:#8a8c90;--ln:#d8d8d3;--ln2:#c4c4be;
+  --ac:#1b5fa8;--acbg:#e3edf8;
+  --ok:#21751a;--okbg:#e2f1da;--nc:#b3261e;--ncbg:#fbe3e1;--na:#5d5f63;--nabg:#ebebe8;--pe:#9a5d00;--pebg:#fbefd6;
+  --hdr:52px}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+button,select,input,textarea{font:inherit;color:var(--tx)}
+button{height:38px;padding:0 12px;border:1px solid var(--ln2);border-radius:8px;background:var(--card);cursor:pointer;white-space:nowrap}
+button:active{transform:scale(.97)}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+select{height:38px;border:1px solid var(--ln2);border-radius:8px;background:var(--card);padding:0 8px}
+
+#topo{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--card);border-bottom:1px solid var(--ln);
+  padding:var(--top) max(10px,var(--dir)) 0 max(10px,var(--esq));height:calc(var(--hdr) + var(--top));display:flex;align-items:center;gap:8px}
+#tit{min-width:0;flex:0 1 auto;display:flex;flex-direction:column;line-height:1.15}
+#tit b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tit select{height:26px;padding:0 4px;font-size:13px;border-color:var(--ln);color:var(--tx2);margin-top:2px;max-width:150px}
+.seg{display:flex;border:1px solid var(--ln2);border-radius:8px;overflow:hidden;flex:none}
+.seg button{border:0;border-radius:0;height:36px;padding:0 12px}
+.seg button+button{border-left:1px solid var(--ln2)}
+.seg button.on{background:var(--ac);color:#fff}
+#etapa{max-width:190px}
+#busca{width:96px;height:38px;border:1px solid var(--ln2);border-radius:8px;padding:0 10px;background:var(--card)}
+.esp{flex:1}
+#prog{font-size:13px;color:var(--tx2);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;line-height:1.2}
+#mapa{position:fixed;top:calc(var(--hdr) + var(--top));left:0;right:0;bottom:0;background:#fff}
+#leg{position:absolute;left:calc(8px + var(--esq));bottom:calc(8px + var(--bot));z-index:900;background:rgba(255,255,255,.94);border:1px solid var(--ln);border-radius:8px;padding:6px 9px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;pointer-events:none}
+#leg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:-1px;border:1.5px solid}
+
+#painel{position:fixed;top:calc(var(--hdr) + var(--top));right:0;bottom:0;width:min(580px,50vw);background:var(--card);border-left:1px solid var(--ln);z-index:1001;overflow-y:auto;-webkit-overflow-scrolling:touch;transform:translateX(102%);transition:transform .18s;padding-bottom:calc(16px + var(--bot))}
+#painel.aberto{transform:none}
+@media (orientation:portrait),(max-width:700px){#painel{top:auto;left:0;width:auto;height:64vh;border-left:0;border-top:2px solid var(--ln2);transform:translateY(102%)}}
+@media (prefers-reduced-motion:reduce){#painel{transition:none}}
+#cab{position:sticky;top:0;background:var(--card);display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--ln);z-index:3}
+#cab .nm{font-size:22px;font-weight:700;letter-spacing:-.01em}
+#cab .inf{flex:1;min-width:0;color:var(--tx2);font-size:13px;line-height:1.25}
+#cab .inf b{color:var(--tx);font-weight:600}
+.sec{padding:10px 12px;border-bottom:1px solid var(--ln)}
+.sec h3{margin:0 0 6px;font-size:12px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px}
+.sec h3 span{flex:1}
+.sec h3 button{height:30px;font-size:12px;text-transform:none;letter-spacing:0;font-weight:600;padding:0 10px;color:var(--ok);border-color:var(--ok)}
+.det img{width:100%;display:block;border:1px solid var(--ln);border-radius:6px;background:#fff;cursor:zoom-in}
+.det .dica{font-size:12px;color:var(--tx3);margin:4px 0 0}
+.aviso{background:var(--pebg);color:#5e3800;border-radius:8px;padding:8px 10px;font-size:13px}
+.it{display:flex;align-items:flex-start;gap:8px;padding:9px 0;border-bottom:1px solid var(--ln)}
+.it:last-child{border-bottom:0}
+.it .num{flex:none;width:24px;text-align:right;color:var(--tx3);font-variant-numeric:tabular-nums;font-size:13px;padding-top:1px}
+.it .tx{flex:1;min-width:0}
+.it .tt{font-weight:600}
+.it .ds{font-size:13px;color:var(--tx2);margin-top:1px}
+.it .mt{font-size:12px;color:var(--tx3);margin-top:2px}
+.it .hr{display:inline-block;font-size:12px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
+.it .bt{display:flex;gap:5px;flex:none}
+.it .bt button{min-width:46px;height:42px;padding:0 6px;font-weight:700;font-size:14px}
+.it .bt button.on[data-r=C]{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
+.it .bt button.on[data-r=NC]{background:var(--ncbg);border-color:var(--nc);color:var(--nc)}
+.it .bt button.on[data-r=NA]{background:var(--nabg);border-color:var(--na);color:var(--na)}
+.obs{width:100%;margin-top:6px;height:38px;border:1px solid var(--ln2);border-radius:8px;padding:0 10px;background:var(--card)}
+textarea.obs{height:64px;padding:8px 10px;resize:vertical}
+@media (max-width:520px){.it{flex-wrap:wrap}.it .bt{width:100%;padding-left:32px}.it .bt button{flex:1}}
+
+#zoomdet{position:fixed;inset:0;background:#2a2b2d;z-index:2000;overflow:auto;-webkit-overflow-scrolling:touch}
+#zoomdet img{display:block;background:#fff;max-width:none}
+#zbar{position:fixed;top:calc(10px + var(--top));right:calc(10px + var(--dir));z-index:2001;display:flex;gap:6px}
+#erro{position:fixed;bottom:calc(12px + var(--bot));left:12px;right:12px;z-index:3000;background:var(--tx);color:#fff;padding:10px 12px;border-radius:8px;text-align:center}
+.folha{position:fixed;inset:0;z-index:2500;background:rgba(20,20,22,.45);display:flex;align-items:flex-end;justify-content:center}
+.folha>div{background:var(--card);width:min(600px,100%);max-height:88vh;overflow:auto;border-radius:12px 12px 0 0;padding:14px 16px calc(16px + var(--bot));display:flex;flex-direction:column;gap:10px}
+.folha h2{margin:0;font-size:17px}
+.folha p{margin:0;font-size:13px;color:var(--tx2)}
+.folha textarea{width:100%;height:170px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--ln2);border-radius:8px;padding:8px}
+.folha .lin{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.forte{background:var(--ac)!important;border-color:var(--ac)!important;color:#fff!important}
+button.perigo{color:var(--nc);border-color:var(--nc)}
+.leaflet-container{background:#fff;font:inherit}
+.rot{background:transparent;border:0}
+@media (max-width:900px){#tit b{font-size:14px}#etapa{max-width:120px}.seg button{padding:0 9px}}
+@media (max-width:700px){
+  :root{--hdr:92px}
+  #topo{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-content:center;gap:6px 5px}
+  #topo>*{min-width:0}
+  #tit{grid-column:1/6;grid-row:1}#prog{grid-column:6/8;grid-row:1;text-align:center}#bcsv{grid-column:8/11;grid-row:1}#bmais{grid-column:11/13;grid-row:1}
+  .seg{grid-column:1/5;grid-row:2}#etapa{grid-column:5/10;grid-row:2}#busca{grid-column:10/13;grid-row:2}
+  .seg button{flex:1;padding:0 4px;font-size:14px}#bcsv,#bmais{padding:0 4px}
+  #tit b{display:none}
+  #tit select{height:38px;margin:0;max-width:none;width:100%;font-size:15px;color:var(--tx);border-color:var(--ln2);padding:0 6px}
+  .esp{display:none}
+  #prog{font-size:11px}
+  #etapa,#busca{width:100%;max-width:none}
+  #leg{display:none}
+}
+
+</style>
+</head>
+<body>
+<div id="topo">
+  <div id="tit"><b id="titnome"></b><select id="trecho" aria-label="Trecho"></select></div>
+  <div class="seg" role="group" aria-label="Tipo de elemento"><button id="tP" class="on">Pilares</button><button id="tV">Vigas</button></div>
+  <select id="etapa" aria-label="Etapa"></select>
+  <input id="busca" list="lista" placeholder="Buscar" autocomplete="off" aria-label="Buscar elemento">
+  <datalist id="lista"></datalist>
+  <span class="esp"></span>
+  <span id="prog"></span>
+  <button id="bcsv">Exportar</button>
+  <button id="bmais">Mais</button>
+</div>
+<div id="mapa"><div id="leg"><span><i style="border-color:#1b5fa8;background:rgba(27,95,168,.15)"></i>Pendente</span><span><i style="border-color:#c27800;background:rgba(232,160,20,.5)"></i>Em andamento</span><span><i style="border-color:#21751a;background:rgba(47,154,20,.55)"></i>Concluído</span><span><i style="border-color:#b3261e;background:rgba(209,47,47,.6)"></i>Com NC</span></div></div>
+<div id="painel" aria-live="polite">
+  <div id="cab"><div class="nm" id="pnome"></div><div class="inf" id="pinfo"></div><button id="pfechar">Fechar</button></div>
+  <div id="pcorpo"></div>
+</div>
+<div id="zoomdet" hidden><div id="zbar"><button id="zmenos" aria-label="Diminuir">−</button><button id="zmais" aria-label="Aumentar">+</button><button id="zfechar">Fechar</button></div><img id="zimg" alt=""></div>
+<div id="erro" hidden></div>
+<div class="folha" id="fsaida" hidden><div>
+  <h2 id="fstit"></h2>
+  <p id="fsdica"></p>
+  <div class="lin" id="fsesc" hidden><label><input type="radio" name="esc" value="t" checked> Este trecho</label><label><input type="radio" name="esc" value="a"> Todos os trechos neste aparelho</label></div>
+  <textarea id="fstxt" readonly></textarea>
+  <div class="lin"><button class="forte" id="fsbaixar">Baixar arquivo</button><button id="fscopiar">Copiar</button><button id="fsfechar">Fechar</button></div>
+</div></div>
+<div class="folha" id="fmais" hidden><div>
+  <h2>Mais opções</h2>
+  <p>As marcações ficam guardadas só no navegador deste aparelho. Faça um backup no fim do dia.</p>
+  <div class="lin"><button id="mbackup">Backup completo</button></div>
+  <p>Para restaurar, cole o texto do backup abaixo ou escolha o arquivo.</p>
+  <textarea id="mtxt" placeholder='{"chave":"...","dados":{...}}'></textarea>
+  <div class="lin"><input type="file" id="marq" accept=".json,application/json"><button id="mrest">Restaurar</button></div>
+  <div class="lin"><button class="perigo" id="mapagar">Apagar marcações deste trecho</button><button id="mfechar">Fechar</button></div>
+</div></div>
+<script>/*LEAFLET_JS*/</script>
+<script>
+const D=/*DADOS*/null;
+const $=i=>document.getElementById(i);
+const PFX="fvs:"+D.chave+":";
+const RES=["C","NC","NA"];
+const TIPO={P:"Pilar",V:"Viga"};
+let tipo="P",etapaSel="",atual=null,mem={},memOk=true;
+
+/* ---------- armazenamento (uma chave por elemento, log por trecho) ---------- */
+function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){memOk=false;return mem[k]??null;}}
+function lsSet(k,v){mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v));}catch(e){if(memOk)aviso("O navegador não está salvando. Exporte o log antes de fechar.");memOk=false;}}
+function lsKeys(){try{const o=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(PFX))o.push(k);}return o;}catch(e){return Object.keys(mem).filter(k=>k.startsWith(PFX));}}
+const kEl=id=>PFX+"el:"+id, kLog=t=>PFX+"log:"+t;
+const est=id=>lsGet(kEl(id))||{r:{},obs_geral:""};
+function logAdd(reg){const k=kLog(D.trecho);const l=lsGet(k)||[];l.push(reg);lsSet(k,l);}
+function logObs(id,n,obs){const k=kLog(D.trecho);const l=lsGet(k)||[];for(let i=l.length-1;i>=0;i--){if(l[i].el==id&&l[i].n==n){l[i].obs=obs;break;}}lsSet(k,l);}
+
+function aviso(t){const e=$("erro");e.textContent=t;e.hidden=false;clearTimeout(aviso.t);aviso.t=setTimeout(()=>e.hidden=true,5000);}
+const hora=iso=>new Date(iso).toLocaleTimeString("pt-BR"), dataBR=iso=>new Date(iso).toLocaleDateString("pt-BR");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- topo ---------- */
+$("titnome").textContent=D.obra+" · "+D.pavimento;
+D.trechos.forEach(t=>{const o=document.createElement("option");o.value=t.arquivo;o.textContent=t.nome;if(t.nome==D.trecho)o.selected=true;$("trecho").appendChild(o);});
+$("trecho").onchange=e=>{location.href=e.target.value;};
+function montaEtapas(){const s=$("etapa");s.innerHTML="";const o=document.createElement("option");o.value="";o.textContent="Todas as etapas";s.appendChild(o);
+  [...new Set(D.itens[tipo].itens.map(i=>i.etapa))].forEach(e=>{const x=document.createElement("option");x.value=e;x.textContent=e.charAt(0)+e.slice(1).toLowerCase();s.appendChild(x);});
+  s.value=[...s.options].some(o=>o.value==etapaSel)?etapaSel:"";etapaSel=s.value;}
+$("etapa").onchange=e=>{etapaSel=e.target.value;pintarTodos();progresso();};
+
+/* ---------- mapa ---------- */
+const map=L.map("mapa",{crs:L.CRS.Simple,minZoom:-3,maxZoom:3,zoomSnap:.25,zoomDelta:.5,attributionControl:false,zoomControl:false,preferCanvas:true});
+const rend=L.canvas({tolerance:7,padding:.3});
+const B=L.latLngBounds([[-D.altura,0],[0,D.largura]]);
+map.setMaxBounds(B.pad(.15));
+const T=L.GridLayer.extend({createTile(c){const i=document.createElement("img");i.alt="";const s=D.tiles[c.z+"/"+c.x+"/"+c.y];if(s)i.src="data:image/webp;base64,"+s;return i;}});
+new T({tileSize:D.tile,minNativeZoom:Math.min(...D.niveis),maxNativeZoom:Math.max(...D.niveis),minZoom:-3,maxZoom:3,bounds:B,noWrap:true,keepBuffer:4}).addTo(map);
+map.fitBounds(B);
+const ll=r=>L.latLngBounds([[-r[1],r[0]],[-r[3],r[2]]]);
+const camadas={},alvos={};
+const grupoP=L.layerGroup(),grupoV=L.layerGroup();
+Object.entries(D.elementos).forEach(([id,e])=>{
+  const g=e.tipo=="P"?grupoP:grupoV;
+  const alvo=L.rectangle(ll(e.rotulo).pad(.15),{renderer:rend,stroke:false,fillOpacity:0,fillColor:"#000"}).addTo(g);alvo.on("click",ev=>{abrir(id);map.panInside(ev.latlng,{paddingBottomRight:folga(),paddingTopLeft:[20,20]});});
+  const shapes=(e.polys.length?e.polys:[null]).map(p=>p?L.polygon(p.map(([x,y])=>[-y,x]),{renderer:rend,weight:2}):L.rectangle(ll(e.rotulo),{renderer:rend,weight:2,dashArray:"4 3"}));
+  shapes.forEach(s=>{s.addTo(g);s.on("click",ev=>{abrir(id);map.panInside(ev.latlng,{paddingBottomRight:folga(),paddingTopLeft:[20,20]});});});
+  camadas[id]=shapes;alvos[id]=alvo;
+  const o=document.createElement("option");o.value=e.nome;$("lista").appendChild(o);
+});
+grupoV.addTo(map);grupoP.addTo(map);
+
+function itensDe(id){return D.itens[D.elementos[id].tipo].itens;}
+function status(id){const e=est(id);const its=itensDe(id).filter(i=>!etapaSel||i.etapa==etapaSel);const v=its.map(i=>e.r[i.n]).filter(Boolean);
+  if(!v.length)return"nada";if(v.some(x=>x.r=="NC"))return"nc";if(v.length>=its.length)return"ok";return"pe";}
+const COR={nada:["#1b5fa8",.12],pe:["#c27800",.45],ok:["#21751a",.5],nc:["#b3261e",.58]};
+function pintar(id){const s=status(id);const[c,f]=COR[s];const ativo=D.elementos[id].tipo==tipo;
+  camadas[id].forEach(l=>l.setStyle({color:atual==id?"#111":c,fillColor:c,fillOpacity:ativo?f:f*.25,opacity:ativo?1:.3,weight:atual==id?4:2}));}
+function pintarTodos(){Object.keys(camadas).forEach(pintar);}
+function setTipo(t){tipo=t;$("tP").classList.toggle("on",t=="P");$("tV").classList.toggle("on",t=="V");
+  if(t=="P"){grupoV.remove();grupoV.addTo(map);grupoP.remove();grupoP.addTo(map);}else{grupoP.remove();grupoP.addTo(map);grupoV.remove();grupoV.addTo(map);}
+  Object.entries(alvos).forEach(([id,a])=>{if(D.elementos[id].tipo==t)a.bringToFront();});
+  montaEtapas();pintarTodos();progresso();}
+$("tP").onclick=()=>setTipo("P");$("tV").onclick=()=>setTipo("V");
+function progresso(){const ids=Object.keys(D.elementos).filter(id=>D.elementos[id].tipo==tipo);let ok=0,nc=0;ids.forEach(id=>{const s=status(id);if(s=="ok")ok++;if(s=="nc")nc++;});
+  $("prog").innerHTML=ok+"/"+ids.length+" "+(tipo=="P"?"pilares":"vigas")+(nc?'<br><span style="color:var(--nc)">'+nc+" com NC</span>":"");}
+
+/* ---------- painel do elemento ---------- */
+function abrir(id){
+  const e=D.elementos[id];if(e.tipo!=tipo)setTipo(e.tipo);
+  const ant=atual;atual=id;if(ant)pintar(ant);pintar(id);
+  const d=e.detalhe?D.detalhes[e.detalhe]:null;const s=est(id);
+  $("pnome").textContent=e.nome;
+  $("pinfo").innerHTML=TIPO[e.tipo]+(e.secao?" · seção <b>"+esc(e.secao)+"</b>":"")+"<br>"+(d?"Detalhe: "+esc(d.prancha.replace(/\.pdf$/i,"")):"Sem detalhe carregado");
+  let h="";
+  if(d){h+='<div class="sec det"><h3><span>Detalhe'+(e.detalhe.slice(2)!=e.nome?" ("+esc(e.detalhe.slice(2))+")":"")+'</span></h3><img src="data:image/webp;base64,'+d.img+'" data-z alt="Detalhe '+esc(e.nome)+'"><p class="dica">Toque na imagem para ampliar</p>';
+    if(d.tabela)h+='<h3 style="margin-top:12px"><span>Tabela de aço</span></h3><img src="data:image/webp;base64,'+d.tabela+'" data-z alt="Tabela de aço '+esc(e.nome)+'">';
+    h+='</div>';}
+  else h+='<div class="sec"><div class="aviso">O detalhe deste elemento não está nas pranchas carregadas.</div></div>';
+  let et=null;
+  itensDe(id).forEach(it=>{
+    if(it.etapa!=et){if(et!==null)h+='</div>';et=it.etapa;const hid=etapaSel&&etapaSel!=et;
+      h+='<div class="sec"'+(hid?' style="opacity:.55"':"")+'><h3><span>'+esc(et)+'</span><button data-tudo="'+esc(et)+'">Tudo C</button></h3>';}
+    const v=s.r[it.n];
+    h+='<div class="it" data-n="'+it.n+'"><div class="num">'+it.n+'</div><div class="tx"><div class="tt">'+esc(it.titulo)+'</div><div class="ds">'+esc(it.desc)+'</div><div class="mt">Dispositivo: '+esc(it.disp)+' · Tolerância: '+esc(it.tol)+'</div>'+
+      (v?'<span class="hr" style="color:'+(v.r=="NC"?"var(--nc)":v.r=="C"?"var(--ok)":"var(--na)")+'">'+v.r+" às "+hora(v.t)+'</span>':"")+
+      (v&&v.r=="NC"?'<input class="obs" data-obs="'+it.n+'" placeholder="Descreva a não conformidade" value="'+esc(v.obs||"")+'">':"")+
+      '</div><div class="bt">'+RES.map(r=>'<button data-r="'+r+'" class="'+(v&&v.r==r?"on":"")+'" aria-pressed="'+(v&&v.r==r?"true":"false")+'">'+r+'</button>').join("")+'</div></div>';
+  });
+  h+='</div><div class="sec"><h3><span>Observação geral</span></h3><textarea class="obs" id="obsg" placeholder="Opcional">'+esc(s.obs_geral||"")+'</textarea></div>';
+  const top=$("painel").scrollTop;const mesmo=ant==id;
+  $("pcorpo").innerHTML=h;$("painel").classList.add("aberto");$("painel").scrollTop=mesmo?top:0;
+}
+function marcar(id,n,r,t){const e=D.elementos[id];const s=est(id);const it=itensDe(id).find(i=>i.n==n);
+  if(r){s.r[n]={r,t,obs:(s.r[n]&&s.r[n].r=="NC"&&r=="NC")?s.r[n].obs:""};}else delete s.r[n];
+  lsSet(kEl(id),s);
+  logAdd({t,trecho:D.trecho,tipo:TIPO[e.tipo],el:e.nome,secao:e.secao,etapa:it.etapa,n,item:it.titulo,r:r||"desmarcado",obs:""});}
+$("pcorpo").addEventListener("click",ev=>{
+  const z=ev.target.closest("[data-z]");if(z){abrirZoom(z.src);return;}
+  const tb=ev.target.closest("button[data-tudo]");
+  if(tb){const et=tb.dataset.tudo;const t=new Date().toISOString();const s=est(atual);let k=0;
+    itensDe(atual).filter(i=>i.etapa==et&&!s.r[i.n]).forEach(i=>{marcar(atual,i.n,"C",t);k++;});
+    if(!k)aviso("Todos os itens dessa etapa já estavam marcados.");abrir(atual);pintar(atual);progresso();return;}
+  const b=ev.target.closest(".bt button[data-r]");if(!b)return;
+  const n=+b.closest(".it").dataset.n,r=b.dataset.r;const s=est(atual);const ant=s.r[n];
+  marcar(atual,n,ant&&ant.r==r?"":r,new Date().toISOString());
+  abrir(atual);pintar(atual);progresso();
+  if(r=="NC"&&!(ant&&ant.r==r)){const inp=document.querySelector('input[data-obs="'+n+'"]');if(inp)inp.focus();}
+});
+$("pcorpo").addEventListener("change",ev=>{
+  const s=est(atual);
+  if(ev.target.id=="obsg"){s.obs_geral=ev.target.value;lsSet(kEl(atual),s);const e=D.elementos[atual];
+    logAdd({t:new Date().toISOString(),trecho:D.trecho,tipo:TIPO[e.tipo],el:e.nome,secao:e.secao,etapa:"",n:"",item:"Observação geral",r:"",obs:ev.target.value});return;}
+  const n=ev.target.dataset.obs;if(!n||!s.r[n])return;s.r[n].obs=ev.target.value;lsSet(kEl(atual),s);logObs(D.elementos[atual].nome,+n,ev.target.value);
+});
+function fechar(){$("painel").classList.remove("aberto");const a=atual;atual=null;if(a)pintar(a);}
+$("pfechar").onclick=fechar;
+
+/* ---------- zoom do detalhe ---------- */
+let zf=1;
+function abrirZoom(src){const i=$("zimg");i.src=src;zf=1;$("zoomdet").hidden=false;i.onload=()=>{i.style.width=Math.max(innerWidth,i.naturalWidth*0.8)+"px";};if(i.complete)i.onload();}
+$("zmais").onclick=()=>{const i=$("zimg");i.style.width=(i.clientWidth*1.4)+"px";};
+$("zmenos").onclick=()=>{const i=$("zimg");i.style.width=Math.max(innerWidth*.6,i.clientWidth/1.4)+"px";};
+$("zfechar").onclick=()=>$("zoomdet").hidden=true;
+
+/* ---------- busca ---------- */
+$("busca").addEventListener("change",e=>{const q=e.target.value.trim().toUpperCase().replace(/\s+/g,"");if(!q)return;
+  const id=Object.keys(D.elementos).find(k=>D.elementos[k].nome.toUpperCase()==q);
+  if(!id){aviso(e.target.value+" não está neste trecho.");return;}
+  const b=camadas[id].reduce((a,l)=>a.extend(l.getBounds()),L.latLngBounds(camadas[id][0].getBounds().getSouthWest(),camadas[id][0].getBounds().getNorthEast()));
+  abrir(id);map.flyToBounds(b.pad(0.3),{maxZoom:0.5,paddingBottomRight:folga(),paddingTopLeft:[16,16],duration:.6});e.target.value="";e.target.blur();});
+function folga(){const v=matchMedia("(orientation:portrait),(max-width:700px)").matches;return v?[0,Math.round(innerHeight*.64)]:[Math.round(Math.min(580,innerWidth*.5)),0];}
+
+/* ---------- exportar / backup ---------- */
+function baixar(nome,txt,tipoM){try{const b=new Blob([txt],{type:tipoM});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=nome;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},800);}catch(e){}}
+function stamp(){const d=new Date(),p=x=>String(x).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes());}
+let saida=null;
+function csvTxt(todos){
+  const logs=todos?lsKeys().filter(k=>k.startsWith(PFX+"log:")).flatMap(k=>lsGet(k)||[]):(lsGet(kLog(D.trecho))||[]);
+  logs.sort((a,b)=>a.t<b.t?-1:1);
+  const q=s=>'"'+String(s??"").replace(/"/g,'""')+'"';
+  const lin=[["data","hora","trecho","tipo","elemento","secao","etapa","item_n","item","resultado","observacao"].join(";")];
+  logs.forEach(l=>lin.push([dataBR(l.t),hora(l.t),l.trecho,l.tipo,l.el,l.secao,l.etapa,l.n,l.item,l.r,l.obs].map(q).join(";")));
+  return {txt:lin.join("\r\n"),n:logs.length};
+}
+function mostrarCsv(){const todos=document.querySelector('input[name=esc]:checked').value=="a";const c=csvTxt(todos);
+  saida={nome:stamp()+"_log-fvs_"+D.chave+"_"+(todos?"todos":D.trecho.replace(/\s+/g,""))+".csv",txt:"﻿"+c.txt,tipo:"text/csv;charset=utf-8"};
+  $("fstit").textContent="Log de conferência";$("fsdica").textContent=c.n+" registros. Separado por ponto e vírgula, abre direto no Excel.";$("fstxt").value=c.txt;}
+$("bcsv").onclick=()=>{$("fsesc").hidden=false;mostrarCsv();$("fsaida").hidden=false;};
+document.querySelectorAll('input[name=esc]').forEach(r=>r.onchange=mostrarCsv);
+$("fscopiar").onclick=()=>{const t=$("fstxt");const sel=()=>{t.focus();t.select();aviso("Texto selecionado. Use copiar do teclado.");};
+  try{navigator.clipboard.writeText(t.value).then(()=>aviso("Copiado."),sel);}catch(e){sel();}};
+$("fsbaixar").onclick=()=>{baixar(saida.nome,saida.txt,saida.tipo);aviso("Se o download não começar, use Copiar.");};
+$("fsfechar").onclick=()=>$("fsaida").hidden=true;
+$("bmais").onclick=()=>{const b=$("mapagar");b.textContent="Apagar marcações deste trecho";b.dataset.arm="";$("fmais").hidden=false;};
+$("mfechar").onclick=()=>$("fmais").hidden=true;
+$("mbackup").onclick=()=>{const dados={};lsKeys().forEach(k=>dados[k.slice(PFX.length)]=lsGet(k));const txt=JSON.stringify({chave:D.chave,gerado:new Date().toISOString(),dados});
+  $("fmais").hidden=true;$("fsesc").hidden=true;saida={nome:stamp()+"_backup-fvs_"+D.chave+".json",txt,tipo:"application/json"};
+  $("fstit").textContent="Backup completo";$("fsdica").textContent="Todos os trechos marcados neste aparelho. Guarde o arquivo ou o texto.";$("fstxt").value=txt;$("fsaida").hidden=false;};
+function restaurar(txt){try{const b=JSON.parse(txt);if(!b||!b.dados)throw 0;let n=0;
+  Object.entries(b.dados).forEach(([k,v])=>{if(k.startsWith("log:")){const atualL=lsGet(PFX+k)||[];const vis=new Set(atualL.map(x=>x.t+x.el+x.n+x.r));v.forEach(x=>{if(!vis.has(x.t+x.el+x.n+x.r)){atualL.push(x);n++;}});lsSet(PFX+k,atualL);}else lsSet(PFX+k,v);});
+  pintarTodos();progresso();$("fmais").hidden=true;aviso("Backup restaurado"+(b.chave!=D.chave?" (era de "+b.chave+")":"")+". "+n+" registros de log novos.");}catch(e){aviso("Backup inválido. Confira se o texto está completo.");}}
+$("mrest").onclick=()=>{const f=$("marq").files[0];if(f){const r=new FileReader();r.onload=()=>restaurar(r.result);r.readAsText(f);return;}const t=$("mtxt").value.trim();if(!t){aviso("Cole o texto do backup ou escolha o arquivo.");return;}restaurar(t);};
+$("mapagar").onclick=e=>{const b=e.currentTarget;if(!b.dataset.arm){b.dataset.arm="1";b.textContent="Toque de novo para apagar";return;}
+  Object.keys(D.elementos).forEach(id=>{try{localStorage.removeItem(kEl(id));}catch(x){}delete mem[kEl(id)];});
+  try{localStorage.removeItem(kLog(D.trecho));}catch(x){}delete mem[kLog(D.trecho)];
+  fechar();pintarTodos();progresso();$("fmais").hidden=true;aviso("Marcações deste trecho apagadas.");};
+
+setTipo("P");
+</script>
+</body>
+</html>

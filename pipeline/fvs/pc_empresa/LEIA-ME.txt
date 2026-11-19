@@ -1,0 +1,45 @@
+SISTEMA OBRA
+Não precisa instalar nada, nem Git, nem Node, nem Python. Nada sai deste PC.
+
+PARA ABRIR
+  1. Extraia este zip: botão direito no zip, "Extrair tudo".
+  2. Dados da obra: o arquivo dados_obra_FVS.zip precisa estar dentro da pasta extraída, ao lado do
+     ABRIR_SISTEMA_OBRA.bat. Não precisa extrair: o programa extrai sozinho na primeira vez (até um
+     minuto). Se fechar no meio, ele recomeça na vez seguinte.
+  3. Dois cliques em ABRIR_SISTEMA_OBRA.bat. O app abre no navegador, já na obra do pacote.
+     Na primeira vez ele guarda as plantas no navegador (uns segundos). Deixe a janela preta aberta
+     enquanto usa. Para encerrar, feche a janela.
+
+  Se o Windows avisar sobre o arquivo: "Mais informações" e "Executar assim mesmo".
+  Sem o dados_obra_FVS.zip, o app pede login por e-mail (precisa de internet e de conta).
+
+O QUE TEM NO APP
+  FVS           As plantas de forma dos 9 pavimentos, as fichas (PVS) de pilares, vigas, lajes e
+                ambientes, e o histórico do sistema oficial. Toque na peça, marque a ficha.
+                Cinza: pendente · amarelo: em andamento · azul: liberado para concretar ·
+                verde: liberado · vermelho: com R. Lajes: aba Lajes, "+ Área".
+                O que falta lançar no sistema oficial da obra e as fichas duplicadas só aparecem
+                quando o pacote diz qual é esse sistema (docs/modulos/integracoes.md no repositório).
+  Concreto      Rastreabilidade: concretagem, caminhões e corpos de prova. No mapa, com um caminhão
+                escolhido, a caneta desenha onde ele foi: caneta dos pilares ou caneta das vigas e
+                laje. Sem caminhão escolhido, o mapa de concretagens (uma cor por concretagem).
+  Relatórios    Diário de obra (clima, relato do dia, mão de obra, equipamentos, serviços, materiais,
+                ocorrências, fotos com o lugar na planta) e relatórios (problema, limpeza, segurança...).
+                Vem com três dias de exemplo.
+  IFC           Importe o IFC do projeto: modelo 3D, busca de elementos e cortes.
+  Projetos      Revisões e cópias das pranchas.
+
+SALVAR O QUE FOI REGISTRADO
+  Tudo fica no navegador deste PC. Para guardar fora dele: menu da obra, "Salvar arquivo" (gera um
+  .obra). "Restaurar de um arquivo" repõe num outro PC. "Escolher pasta" salva sozinho a cada registro.
+
+SE NÃO ABRIR
+  - O .bat não roda: botão direito em servidor.ps1, "Executar com o PowerShell".
+  - O PowerShell não abre: com Python no PC, o .bat tenta sozinho pelo Python.
+  - Se a empresa não permite rodar programa assim neste PC, não force: fale com o TI ou use pelo seu PC.
+
+SEGURANÇA
+  O programa só atende este próprio PC (localhost). Ninguém da rede alcança. Não altera o Windows.
+  Os dados da obra não ficam no GitHub, porque são da empresa. Só o zip da obra tem dados de obra.
+
+ABRIR_FVS.bat é o pacote antigo (só a FVS, pela bancada). Continua funcionando com os mesmos dados.

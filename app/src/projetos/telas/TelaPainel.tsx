@@ -1,0 +1,301 @@
+// Painel das cópias em campo (protótipo aprovado pelo Nicolas em 14/11/2026).
+// Lê a base importada (lista vigente + distribuição), cruza no aparelho e mostra: em dia, desatualizadas,
+// conferir, faixas de atraso, barras por empresa e por disciplina e as listas.
+import { useState } from 'preact/hooks'
+import { importarBase, type BaseProjetos } from '../base'
+import { chaveNumero, ErroDeArquivo, FAIXAS, rotuloRev, type Barra, type CopiaCruzada, type Resumo } from '../painel'
+import type { ResumoEscritorio } from '../edicoes'
+import { CabecalhoBase, tocavel, usarBase } from './baseComum'
+import { podeGerir } from '../dados'
+import type { Contexto } from './ModuloProjetos'
+import { dataBR, plural } from './comum'
+import { alvoDe } from './TelaPranchaBase'
+
+const LIMITE = 40
+
+export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: () => void; importar?: boolean }) {
+  const { ir, trocar } = ctx
+  const { base, setBase, resumo, escritorio } = usarBase(ctx)
+
+  if (base === undefined) return <main class="tela">Carregando…</main>
+  const mostrarImportar = importar || !resumo
+
+  return (
+    <main class="tela pj-painel">
+      <CabecalhoBase ctx={ctx} aba={mostrarImportar ? 'importar' : 'painel'} aoSair={aoSair} base={base} temCruzamento={!!resumo} />
+      {mostrarImportar ? (
+        <Importar
+          ctx={ctx}
+          base={base}
+          aoImportar={(b) => {
+            setBase(b)
+            trocar({ nome: 'painel' })
+          }}
+        />
+      ) : (
+        resumo && escritorio && <Painel resumo={resumo} escritorio={escritorio} ir={ir} />
+      )}
+    </main>
+  )
+}
+
+function Painel({ resumo: r, escritorio: esc, ir }: { resumo: Resumo; escritorio: ResumoEscritorio; ir: Contexto['ir'] }) {
+  const [todasDes, setTodasDes] = useState(false)
+  const [todasConf, setTodasConf] = useState(false)
+  const maxFaixa = Math.max(1, ...r.faixas)
+  return (
+    <>
+      <ul class="pj-cartoes" aria-label="Resumo" data-testid="painel-resumo">
+        <li class="bom">
+          <span class="numero">{r.emDia}</span>
+          <strong>em dia</strong>
+          <span class="discreto">de {plural(r.emCampo, 'cópia', 'cópias')} em campo</span>
+        </li>
+        <li class="ruim">
+          <span class="numero" data-testid="painel-desatualizadas">{r.desatualizadas.length}</span>
+          <strong>desatualizadas</strong>
+          <span class="discreto">recolher e entregar a nova</span>
+        </li>
+        <li class="atencao">
+          <span class="numero" data-testid="painel-conferir">{r.conferir.length}</span>
+          <strong>conferir</strong>
+          <span class="discreto">não achada, revisão maior, datas</span>
+        </li>
+        <li class="neutro">
+          <span class="numero" data-testid="painel-escritorio">{esc.desatualizados.length}</span>
+          <strong>escritório desatualizado</strong>
+          <span class="discreto">
+            pasta sem a vigente{esc.semRegistro ? ` · ${plural(esc.semRegistro, 'folha', 'folhas')} sem registro` : ''}
+          </span>
+        </li>
+      </ul>
+
+      <section class="pj-bloco">
+        <h2>Há quanto tempo estão desatualizadas</h2>
+        <ol class="pj-faixas" data-testid="painel-faixas">
+          {FAIXAS.map((f, i) => (
+            <li key={f.rotulo} class={r.faixas[i] ? `f${i}` : 'zerada'} title={`${r.faixas[i]} de ${maxFaixa}`}>
+              <b>{r.faixas[i]}</b>
+              {f.rotulo}
+            </li>
+          ))}
+        </ol>
+        <p class="discreto pj-nota">Contado desde a data da revisão vigente. Sem prazo fixo para recolher.</p>
+      </section>
+
+      <div class="pj-grade">
+        <Barras titulo="Desatualizadas, por empresa" barras={r.porEmpresa} comAtraso />
+        <Barras titulo="Desatualizadas, por disciplina" barras={r.porDisciplina} />
+      </div>
+
+      <section class="pj-bloco">
+        <h2>Desatualizadas, mais antigas primeiro</h2>
+        {r.desatualizadas.length === 0 && <p class="discreto">Nenhuma cópia desatualizada em campo.</p>}
+        <ul class="pj-lista-painel" data-testid="painel-lista">
+          {(todasDes ? r.desatualizadas : r.desatualizadas.slice(0, LIMITE)).map((x) => (
+            <LinhaDesatualizada key={x.copia.linha} x={x} abrir={() => ir({ nome: 'prancha-base', ...alvoDe(x) })} />
+          ))}
+        </ul>
+        {!todasDes && r.desatualizadas.length > LIMITE && (
+          <button type="button" class="pj-pequeno" onClick={() => setTodasDes(true)}>
+            Mostrar todas ({r.desatualizadas.length})
+          </button>
+        )}
+      </section>
+
+      <section class="pj-bloco">
+        <h2>
+          Conferir <span class="pj-selo conf">{r.conferir.length}</span>
+        </h2>
+        <ul class="pj-lista-painel" data-testid="painel-lista-conferir">
+          {(todasConf ? r.conferir : r.conferir.slice(0, LIMITE)).map((x) => (
+            <LinhaConferir key={x.copia.linha} x={x} abrir={() => ir({ nome: 'prancha-base', ...alvoDe(x) })} />
+          ))}
+        </ul>
+        {!todasConf && r.conferir.length > LIMITE && (
+          <button type="button" class="pj-pequeno" onClick={() => setTodasConf(true)}>
+            Mostrar todas ({r.conferir.length})
+          </button>
+        )}
+      </section>
+
+      <section class="pj-bloco">
+        <h2>Escritório desatualizado</h2>
+        {esc.desatualizados.length === 0 && (
+          <p class="discreto">
+            {esc.emDia === 0
+              ? 'Nenhuma pasta do escritório registrada ainda. Abra uma prancha e toque em "Atualizar" quando a pasta estiver com a vigente.'
+              : 'Todas as pastas registradas estão com a vigente.'}
+          </p>
+        )}
+        <ul class="pj-lista-painel" data-testid="painel-lista-escritorio">
+          {esc.desatualizados.map((x) => (
+            <li
+              key={x.vigente.codigo}
+              class="pj-linha-painel pj-tocavel"
+              {...tocavel(() => ir({ nome: 'prancha-base', disciplina: x.vigente.disciplina, numero: chaveNumero(x.vigente.de), folha: x.vigente.codigo }))}
+            >
+              <div>
+                <b>{x.vigente.codigo}</b> <span class="discreto">{x.vigente.titulo}</span>
+                <br />
+                pasta: <span class="pj-rev velha">{rotuloRev(x.registro.fase, x.registro.revisao)}</span> · vigente{' '}
+                <span class="pj-rev nova">{rotuloRev(x.vigente.fase, x.vigente.revisao)}</span>
+              </div>
+              <div class={`pj-dias${x.dias <= 15 ? ' leve' : ''}`}>
+                {x.dias} d<small>desde {dataBR(x.vigente.data)}</small>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <p class="discreto pj-nota" data-testid="painel-recolhidas">
+        {plural(r.recolhidas, 'cópia ficou', 'cópias ficaram')} fora da conta como <span class="pj-selo rec">provavelmente recolhida</span>: a mesma empresa tem uma cópia mais nova da mesma prancha.
+      </p>
+    </>
+  )
+}
+
+function Barras({ titulo, barras, comAtraso }: { titulo: string; barras: Barra[]; comAtraso?: boolean }) {
+  const max = Math.max(1, ...barras.map((b) => b.quantas))
+  return (
+    <section class="pj-bloco">
+      <h2>{titulo}</h2>
+      {barras.length === 0 && <p class="discreto">Nenhuma.</p>}
+      {barras.map((b) => (
+        <div class="pj-barra" key={b.nome}>
+          <b>{b.nome}</b>
+          <span>
+            {b.quantas}
+            {comAtraso ? ` · até ${b.maiorAtraso} d` : ''}
+          </span>
+          <div class="trilho">
+            <i class={b.maiorAtraso > 15 ? '' : 'leve'} style={{ width: `${Math.max(3, (b.quantas / max) * 100)}%` }} />
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }) {
+  const c = x.copia
+  const v = x.vigente!
+  return (
+    <li class="pj-linha-painel pj-tocavel" {...tocavel(abrir)}>
+      <div>
+        <b>
+          {c.disciplinaNome} {c.codigo}
+        </b>{' '}
+        <span class="discreto">{c.titulo}</span>
+        <br />
+        <span class="pj-rev velha">{rotuloRev(c.fase, c.revisao)}</span> → <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span>
+        {x.loDepois && <span class="discreto"> a LO saiu depois da entrega</span>}
+        <div class="discreto">
+          {c.empresa}
+          {c.colaborador ? ` · ${c.colaborador}` : ''} · entregue {dataBR(c.entrega)}
+        </div>
+      </div>
+      <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>
+        {x.dias ?? '?'} d<small>desde {dataBR(v.data)}</small>
+      </div>
+    </li>
+  )
+}
+
+const TEXTO_MOTIVO: Record<string, string> = {
+  'não achada': 'não achada na lista vigente',
+  'revisão maior': 'revisão em campo maior que a vigente',
+  datas: 'a cópia já diz LO, mas a LO da lista é bem posterior à entrega',
+  'mais de uma folha': 'o número tem mais de uma folha e o título não decide',
+  'data de entrega': `data de entrega com erro`,
+  'revisão ilegível': 'revisão ilegível na planilha',
+}
+
+function LinhaConferir({ x, abrir }: { x: CopiaCruzada; abrir: () => void }) {
+  const c = x.copia
+  return (
+    <li class="pj-linha-painel pj-tocavel" {...tocavel(abrir)}>
+      <div>
+        <b>
+          {c.disciplinaNome} {c.codigo}
+        </b>{' '}
+        <span class="discreto">{c.titulo}</span>
+        <br />
+        em campo <span class="pj-rev">{rotuloRev(c.fase, c.revisao)}</span>
+        {x.vigente && (
+          <>
+            {' '}
+            · vigente <span class="pj-rev">{rotuloRev(x.vigente.fase, x.vigente.revisao)}</span> de {dataBR(x.vigente.data)}
+          </>
+        )}
+        <div class="discreto">
+          {c.empresa} · {TEXTO_MOTIVO[x.motivo ?? ''] ?? x.motivo}
+          {x.motivo === 'data de entrega' ? ` ("${c.entregaTexto}")` : ''}
+        </div>
+      </div>
+      <span class="pj-selo conf">{x.motivo}</span>
+    </li>
+  )
+}
+
+function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos | null; aoImportar: (b: BaseProjetos) => void }) {
+  const { obra, avisar } = ctx
+  const [vig, setVig] = useState<File | null>(null)
+  const [dist, setDist] = useState<File | null>(null)
+  const [erro, setErro] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  if (!podeGerir(obra.papel)) return <p class="pj-vazio">Só o gestor importa a base desta obra.</p>
+
+  const importar = async (e: Event) => {
+    e.preventDefault()
+    setErro('')
+    if (!vig && !dist) {
+      setErro('Escolha pelo menos um dos dois arquivos.')
+      return
+    }
+    setSalvando(true)
+    try {
+      const b = await importarBase(obra.id, { vigentes: vig, distribuicao: dist })
+      avisar(`Base importada: ${plural(b.vigentes.length, 'linha', 'linhas')} da lista vigente e ${plural(b.copias.length, 'cópia', 'cópias')} da distribuição.`)
+      aoImportar(b)
+    } catch (err) {
+      setErro(err instanceof ErroDeArquivo ? err.message : 'Não consegui ler o arquivo. Salve como CSV (separado por ";") no Excel e tente de novo.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <form class="pj-bloco pj-importar" onSubmit={importar} data-testid="painel-importar">
+      <h2>Importar a base da obra</h2>
+      <p class="discreto">
+        Os arquivos ficam só neste aparelho e não entram no "Salvar arquivo". Quando a lista ou a planilha mudar, importe de novo: o painel é refeito.
+      </p>
+      <label class="pj-campo">
+        <span>Lista vigente (.csv)</span>
+        <input type="file" accept=".csv,text/csv" data-testid="arquivo-vigentes" onChange={(e) => setVig(e.currentTarget.files?.[0] ?? null)} />
+        <span class="discreto">
+          Colunas: disciplina, numero_de, numero_ate, codigo_exemplo, revisao, data (e, se tiver, pasta, status, titulo).
+          {base?.vigentesArquivo ? ` Atual: ${base.vigentesArquivo} (${base.vigentes.length} linhas).` : ''}
+        </span>
+      </label>
+      <label class="pj-campo">
+        <span>Distribuição de cópias (.csv)</span>
+        <input type="file" accept=".csv,text/csv" data-testid="arquivo-distribuicao" onChange={(e) => setDist(e.currentTarget.files?.[0] ?? null)} />
+        <span class="discreto">
+          Colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.
+          {base?.copiasArquivo ? ` Atual: ${base.copiasArquivo} (${base.copias.length} cópias).` : ''}
+        </span>
+      </label>
+      {erro && (
+        <p class="erro" role="alert">
+          {erro}
+        </p>
+      )}
+      <button type="submit" class="principal" disabled={salvando}>
+        {salvando ? 'Importando…' : 'Importar'}
+      </button>
+    </form>
+  )
+}

@@ -1,0 +1,1570 @@
+/* Módulo FVS. Mesma linguagem do HTML em uso na obra (pipeline/legado/modelo_app.html):
+   planta ocupa a tela, painel embaixo (celular em pé) ou ao lado (tablet deitado). */
+
+.fv-planta {
+  --fv-top: env(safe-area-inset-top, 0px);
+  --fv-bot: env(safe-area-inset-bottom, 0px);
+  --fv-hdr: 56px;
+  --fv-ok: var(--texto-21751a);
+  --fv-okbg: var(--fundo-e2f1da);
+  --fv-nc: var(--texto-b3261e);
+  --fv-ncbg: var(--fundo-fbe3e1);
+  --fv-na: var(--texto-5d5f63);
+  --fv-nabg: var(--fundo-ebebe8);
+  --fv-pe: var(--texto-9a5d00);
+  --fv-ln: var(--borda-d8d8d3);
+  --fv-ln2: var(--borda-c4c4be);
+  font-size: 15px;
+}
+.fv-planta button,
+.fv-planta select,
+.fv-planta input,
+.fv-planta textarea {
+  font: inherit;
+  color: inherit;
+}
+.fv-planta button {
+  /* 44 px: alvo mínimo de toque com luva/pressa (falha 7 do Testador, 08/11) */
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fv-planta button:active {
+  transform: scale(0.97);
+}
+.fv-planta select,
+.fv-planta input {
+  height: 44px;
+  /* o estilo geral do app dá 3rem de altura mínima a campos: aqui o topo é apertado */
+  min-height: 0;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  padding: 0 8px;
+  min-width: 0;
+}
+
+.fv-topo {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: var(--fundo-ffffff);
+  border-bottom: 1px solid var(--fv-ln);
+  padding: var(--fv-top) 10px 0;
+  height: calc(var(--fv-hdr) + var(--fv-top));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fv-tit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fv-voltar {
+  font-size: 22px;
+  min-width: 44px;
+  padding: 0 10px !important;
+}
+.fv-nomes {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+.fv-nomes b,
+.fv-nomes span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fv-nomes select {
+  height: 30px !important;
+  font-size: 13px;
+  margin-top: 2px;
+  max-width: 150px;
+  padding: 0 4px;
+}
+.fv-seg {
+  display: flex;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+}
+.fv-seg button {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.fv-seg button + button {
+  border-left: 1px solid var(--fv-ln2) !important;
+}
+.fv-seg button.on,
+.fv-bpincel.on,
+.fv-bitem.on {
+  background: var(--primaria, var(--fundo-1f4e79)) !important;
+  color: var(--texto-ffffff);
+}
+.fv-etapa {
+  max-width: 190px;
+}
+.fv-servico {
+  max-width: 230px;
+  font-weight: 600;
+}
+.fv-busca {
+  width: 100px;
+}
+/* número do ambiente escrito por cima da planta (não recebe toque: quem recebe é o contorno) */
+.fv-rot {
+  pointer-events: none;
+}
+.fv-rot span {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--texto-1b1c1e);
+  text-shadow: 0 0 2px var(--texto-ffffff),
+    0 0 2px var(--texto-ffffff),
+    0 0 3px var(--texto-ffffff);
+}
+/* a caixa da área de laje: o nome em cima do polígono, na cor da situação da ficha ligada a ela */
+.fv-caixa {
+  /* tamanho zero: quem tem tamanho é o texto, centrado no ponto */
+  overflow: visible;
+}
+.fv-caixa span {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 2px solid var(--borda-6b7075);
+  border-radius: 6px;
+  /* pendente (não iniciado) é cinza, como na legenda e no pedido do Nicolas (07/11) */
+  background: var(--fundo-e4e5e2);
+  color: var(--texto-1b1c1e);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.fv-caixa span.s-andamento {
+  border-color: var(--borda-c27800);
+  background: var(--fundo-fdf1d9);
+}
+.fv-caixa span.s-concretagem {
+  border-color: var(--borda-1565c0);
+  background: var(--fundo-1565c0);
+  color: var(--texto-ffffff);
+}
+.fv-caixa span.s-liberado {
+  border-color: var(--borda-21751a);
+  background: var(--fundo-21751a);
+  color: var(--texto-ffffff);
+}
+.fv-caixa span.s-reprovado {
+  border-color: var(--erro-claro);
+  background: var(--fundo-b3261e);
+  color: var(--texto-ffffff);
+}
+.fv-caixa span.on {
+  outline: 3px solid var(--borda-111111);
+  outline-offset: 1px;
+}
+/* desenhando: toque em cima de outra área também é um canto, e a caixa dela não pode segurar o toque */
+.fv-planta.desenhando .fv-caixa,
+.fv-planta.desenhando .fv-caixa span {
+  pointer-events: none;
+}
+.fv-planta.desenhando .fv-mapa.leaflet-container {
+  cursor: crosshair;
+}
+.fv-dica-area {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 900;
+  margin: 0 auto;
+  max-width: 460px;
+  padding: 8px 12px;
+  border: 1px solid var(--fv-ln);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fundo-ffffff) 95%, transparent);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+.fv-caixa-form {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  top: calc(var(--fv-hdr) + var(--fv-top) + 8px);
+  z-index: 1004;
+  margin: 0 auto;
+  max-width: 480px;
+  max-height: calc(100dvh - var(--fv-hdr) - var(--fv-top) - 16px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 2px solid var(--primaria-claro, var(--borda-1f4e79));
+  border-radius: 12px;
+  background: var(--fundo-ffffff);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.fv-caixa-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--texto-5b5d61);
+}
+.fv-caixa-form input,
+.fv-caixa-form select,
+.fv-caixa-form textarea {
+  width: 100%;
+  color: var(--texto-1b1c1e);
+}
+.fv-caixa-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fv-planta .fv-caixa-acoes button.on {
+  background: var(--primaria, var(--fundo-1f4e79));
+  border-color: var(--primaria-claro, var(--borda-1f4e79));
+  color: var(--texto-ffffff);
+  font-weight: 700;
+}
+.fv-planta .fv-caixa-acoes button:disabled,
+.fv-barpincel button:disabled {
+  opacity: 0.5;
+}
+.fv-prog {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--texto-5b5d61);
+  text-align: right;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.fv-txt-r {
+  color: var(--fv-nc, var(--texto-b3261e));
+  font-weight: 600;
+}
+.fv-planta .fv-link-r {
+  /* o texto continua do mesmo tamanho; o toque pega 44 px de altura (a margem negativa não mexe na linha) */
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  min-height: 44px;
+  padding: 0 4px;
+  margin: -14px -4px;
+  border: 0;
+  background: none;
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--fv-nc, var(--texto-b3261e));
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.fv-pend {
+  color: var(--atencao-texto);
+  font-size: 11px;
+}
+
+.fv-mapa {
+  position: fixed;
+  top: calc(var(--fv-hdr) + var(--fv-top));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--fundo-ffffff);
+}
+.fv-mapa .leaflet-container,
+.fv-mapa.leaflet-container {
+  background: var(--fundo-ffffff);
+  font: inherit;
+}
+.fv-legenda {
+  position: absolute;
+  left: 8px;
+  bottom: calc(8px + var(--fv-bot));
+  z-index: 900;
+  background: color-mix(in srgb, var(--fundo-ffffff) 94%, transparent);
+  border: 1px solid var(--fv-ln);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+.fv-planta .fv-bt-legenda {
+  display: none;
+}
+.fv-legenda i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  border: 1.5px solid;
+}
+
+.fv-toast {
+  position: fixed;
+  top: calc(var(--fv-hdr) + var(--fv-top) + 8px);
+  left: 12px;
+  right: 12px;
+  z-index: 1003;
+  margin: 0;
+  background: var(--fundo-1b1c1e);
+  color: var(--texto-ffffff);
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-align: center;
+}
+.fv-toast.com-acao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  text-align: left;
+}
+.fv-planta .fv-toast button {
+  flex: none;
+  background: none;
+  border-color: var(--borda-ffffff);
+  color: var(--texto-ffffff);
+  font-weight: 700;
+}
+/* O aviso nunca fica por cima do painel nem dos botões do topo (achado do Testador de 09/11):
+   tablet deitado com painel: só sobre a planta, à esquerda do painel;
+   celular ou tablet em pé: embaixo da planta (acima do painel aberto ou do botão Legenda).
+   Com o pincel aberto continua em cima: embaixo fica a barra do pincel. */
+.fv-planta.com-painel .fv-toast {
+  right: calc(min(580px, 50vw) + 12px);
+}
+@media (orientation: portrait), (max-width: 700px) {
+  .fv-planta:not(.desenhando) .fv-toast {
+    top: auto;
+    bottom: calc(60px + var(--fv-bot));
+  }
+  .fv-planta.com-painel .fv-toast {
+    right: 12px;
+  }
+  /* celular com o painel aberto: sobra pouca planta; o aviso vira uma faixa de uma linha colada
+     no painel, em vez de um bloco no meio da planta (obra de demonstração, 13/11) */
+  .fv-planta.com-painel:not(.desenhando) .fv-toast {
+    bottom: 62vh;
+    left: 0;
+    right: 0;
+    border-radius: 0;
+    padding: 2px 6px 2px 10px;
+    font-size: 13px;
+  }
+  .fv-planta.com-painel:not(.desenhando) .fv-toast span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* a planta aberta é de uma revisão anterior: a nova já foi publicada e ainda não foi baixada */
+.fv-rev-antiga {
+  position: fixed;
+  top: calc(var(--fv-hdr) + var(--fv-top));
+  left: 0;
+  right: 0;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--atencao-fundo);
+  border-bottom: 1px solid var(--atencao-borda);
+  color: var(--atencao-texto);
+  font-size: 13px;
+  line-height: 1.2;
+}
+.fv-planta.com-painel .fv-rev-antiga {
+  right: min(580px, 50vw);
+}
+.fv-planta .fv-rev-antiga button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 8px;
+  color: var(--atencao-texto);
+  border-color: var(--atencao-borda);
+  font-weight: 600;
+}
+.fv-planta .fv-rev-antiga button:disabled {
+  opacity: 0.7;
+}
+
+.fv-barpincel {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + var(--fv-bot));
+  z-index: 1002;
+  background: var(--fundo-ffffff);
+  border: 2px solid var(--primaria-claro, var(--borda-1f4e79));
+  border-radius: 12px;
+  padding: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.fv-barpincel b {
+  font-size: 13px;
+  flex-basis: 100%;
+}
+.fv-barpincel select {
+  flex: 1;
+}
+/* "Por item": a escolha do item ocupa o que sobra; o contador não quebra */
+.fv-bar-item select {
+  min-width: 0;
+}
+.fv-modo-item {
+  display: flex;
+  gap: 4px;
+}
+/* celular: a escolha do item ocupa a primeira linha inteira (espremida ao lado dos botões, o nome não se lia) */
+@media (max-width: 700px) {
+  .fv-bar-item select {
+    flex: 1 1 100%;
+  }
+  .fv-bar-item .fv-conta-item {
+    margin-right: auto;
+  }
+  /* a barra do "Por item" tem duas linhas: o aviso fica acima dela */
+  .fv-planta.por-item:not(.desenhando) .fv-toast {
+    bottom: calc(122px + var(--fv-bot));
+  }
+}
+.fv-conta-item {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fv-barpincel button.on {
+  background: var(--fv-okbg);
+  border-color: var(--fv-ok);
+  color: var(--fv-ok);
+  font-weight: 700;
+}
+
+/* painel: ao lado no tablet deitado / PC */
+.fv-painel {
+  position: fixed;
+  top: calc(var(--fv-hdr) + var(--fv-top));
+  right: 0;
+  bottom: 0;
+  width: min(580px, 50vw);
+  background: var(--fundo-ffffff);
+  border-left: 1px solid var(--fv-ln);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+}
+.fv-planta.com-painel .fv-mapa {
+  right: min(580px, 50vw);
+}
+.fv-cab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--fv-ln);
+  flex: none;
+}
+.fv-nm {
+  font-size: 22px;
+  font-weight: 700;
+}
+.fv-inf {
+  flex: 1;
+  min-width: 0;
+  color: var(--texto-5b5d61);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.fv-sit {
+  font-weight: 700;
+}
+.fv-sit.s-liberado {
+  color: var(--fv-ok);
+}
+.fv-sit.s-reprovado {
+  color: var(--fv-nc);
+}
+.fv-sit.s-andamento {
+  color: var(--fv-pe);
+}
+.fv-sit.s-concretagem,
+.fv-txt-concretar {
+  color: var(--texto-1565c0);
+  font-weight: 600;
+}
+.fv-corpo {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  padding-bottom: calc(16px + var(--fv-bot));
+}
+.fv-sec {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--fv-ln);
+}
+.fv-sec h3,
+.fv-etapa-tit {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--texto-5b5d61);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fv-etapa-tit span {
+  flex: 1;
+}
+.fv-etapa-tit button {
+  min-height: 44px !important;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: var(--fv-ok);
+  border-color: var(--fv-ok) !important;
+}
+.apagada {
+  opacity: 0.55;
+}
+.fv-det img {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--fv-ln);
+  border-radius: 6px;
+  background: var(--fundo-ffffff);
+  cursor: zoom-in;
+}
+/* fichas do sistema oficial na peça; duplicada = duas, uma de cada vez no painel */
+.fv-aberta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--texto-5b5d61);
+  text-align: left;
+  white-space: normal;
+}
+.fv-aberta b {
+  color: var(--texto-1b1c1e);
+}
+.fv-planta button.fv-aberta {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  white-space: normal;
+}
+.fv-planta button.fv-aberta.on {
+  border: 2px solid var(--borda-6a1b9a);
+  background: var(--fundo-f6edfa);
+}
+.fv-dup {
+  color: var(--texto-6a1b9a) !important;
+}
+/* atalhos para os outros ambientes do apartamento, na cor da situação de cada um */
+.fv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fv-planta .fv-chip {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-width: 2px;
+}
+.fv-sem-quebra {
+  white-space: nowrap;
+}
+.fv-chip-nm {
+  font-weight: 400;
+}
+.fv-chip.s-andamento {
+  border-color: var(--borda-c27800);
+  background: var(--fundo-fdf1d9);
+}
+.fv-chip.s-concretagem {
+  border-color: var(--borda-1565c0);
+  background: var(--fundo-dceafb);
+}
+.fv-chip.s-liberado {
+  border-color: var(--fv-ok);
+  background: var(--fv-okbg);
+}
+.fv-chip.s-reprovado {
+  border-color: var(--fv-nc);
+  background: var(--fv-ncbg);
+}
+.fv-chip.on {
+  outline: 3px solid var(--borda-111111);
+  outline-offset: 1px;
+}
+.fv-dica,
+.fv-ficha {
+  font-size: 12px;
+  color: var(--texto-5b5d61);
+  margin: 4px 0 0;
+}
+.fv-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--fv-ln);
+}
+.fv-num {
+  flex: none;
+  width: 24px;
+  text-align: right;
+  color: var(--texto-5b5d61);
+  font-size: 13px;
+  padding-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.fv-tx {
+  flex: 1;
+  min-width: 0;
+}
+.fv-tt {
+  font-weight: 600;
+}
+.fv-ds {
+  font-size: 13px;
+  color: var(--texto-5b5d61);
+}
+.fv-mt,
+.fv-hist {
+  font-size: 12px;
+  color: var(--texto-5b5d61);
+  margin-top: 2px;
+}
+/* todos os registros da ficha, do mais novo para o mais antigo: nada se apaga, e aqui dá para ver */
+.fv-hist-peca {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--texto-5b5d61);
+}
+.fv-hist-peca summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.fv-hist-peca ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fv-hist-peca li {
+  padding: 4px 0;
+  border-top: 1px solid var(--fv-ln);
+  overflow-wrap: anywhere;
+}
+.fv-hist-peca b.r-C {
+  color: var(--fv-ok);
+}
+.fv-hist-peca b.r-NC {
+  color: var(--fv-nc);
+}
+.fv-hist-peca b.r-NA {
+  color: var(--fv-na);
+}
+.fv-hist summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  text-decoration: underline;
+}
+.fv-hist-r {
+  margin: 2px 0 6px;
+  padding-left: 8px;
+  border-left: 3px solid var(--fv-nc);
+  color: var(--texto-5b5d61);
+}
+.fv-hist-obs {
+  color: var(--texto-1b1c1e);
+  overflow-wrap: anywhere;
+}
+.fv-fotos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fv-planta .fv-foto-mini {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 6px;
+  background: var(--fundo-f1f1ee);
+  font-size: 12px;
+  color: var(--texto-5b5d61);
+  cursor: zoom-in;
+}
+.fv-foto-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fv-hr {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 3px;
+}
+.fv-hr.r-C {
+  color: var(--fv-ok);
+}
+.fv-hr.r-NC {
+  color: var(--fv-nc);
+}
+.fv-hr.r-NA {
+  color: var(--fv-na);
+}
+.fv-bt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: none;
+  width: 156px;
+}
+.fv-bt button {
+  min-width: 48px;
+  min-height: 44px !important;
+  padding: 0 6px !important;
+  font-weight: 700;
+}
+.fv-bt button.on[data-r='C'] {
+  background: var(--fv-okbg);
+  border-color: var(--fv-ok);
+  color: var(--fv-ok);
+}
+.fv-bt button.on[data-r='NC'] {
+  background: var(--fv-ncbg);
+  border-color: var(--fv-nc);
+  color: var(--fv-nc);
+}
+.fv-bt button.on[data-r='NA'] {
+  background: var(--fv-nabg);
+  border-color: var(--fv-na);
+  color: var(--fv-na);
+}
+.fv-nc {
+  margin-top: 6px;
+  background: var(--fv-ncbg);
+  border-radius: 8px;
+  padding: 8px;
+}
+.fv-nc label {
+  font-size: 13px;
+  font-weight: 600;
+  display: block;
+}
+.fv-nc textarea {
+  width: 100%;
+  margin-top: 4px;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 14px;
+  background: var(--fundo-ffffff);
+}
+.fv-nc-acoes {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.fv-foto {
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  cursor: pointer;
+}
+.fv-foto input {
+  display: none;
+}
+.fv-link {
+  border: 0 !important;
+  background: none !important;
+  text-decoration: underline;
+  color: var(--fv-nc);
+}
+.fv-reinsp {
+  flex-basis: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fv-nc);
+}
+
+.fv-zoom {
+  position: fixed;
+  inset: 0;
+  background: var(--fundo-2a2b2d);
+  z-index: 2000;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.fv-zoom img {
+  display: block;
+  background: var(--fundo-ffffff);
+  min-width: 100%;
+  width: 160%;
+  max-width: none;
+}
+.fv-zoom-fechar {
+  position: fixed;
+  top: calc(10px + var(--fv-top, 0px));
+  right: 10px;
+  z-index: 2001;
+}
+
+/* início */
+.fv-topo-inicio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.fv-topo-inicio h1 {
+  margin: 0;
+}
+.fv-topo-inicio p {
+  margin: 0;
+}
+.fv-voltar {
+  flex: none;
+  white-space: nowrap;
+  min-height: 44px;
+  border: 1px solid var(--borda, var(--borda-c9d2da));
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  padding: 0 12px;
+  font: inherit;
+}
+.fv-pavimento h2 {
+  margin: 0;
+}
+.fv-pavimento > p {
+  margin: 2px 0 8px;
+}
+/* cada pavimento se abre e fecha: obra grande no celular seriam metros de rolagem */
+.fv-pav-corpo > summary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding-right: 28px;
+  cursor: pointer;
+  list-style: none;
+}
+.fv-pav-corpo > summary::-webkit-details-marker {
+  display: none;
+}
+.fv-pav-corpo > summary::after {
+  content: '›';
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--texto-5b5d61);
+  transform: translateY(-50%) rotate(90deg);
+}
+.fv-pav-corpo[open] > summary::after {
+  transform: translateY(-50%) rotate(-90deg);
+}
+.fv-pav-corpo[open] > summary {
+  margin-bottom: 8px;
+}
+.fv-trecho {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-top: 1px solid var(--borda, var(--borda-c9d2da));
+}
+.fv-trecho > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fv-trecho .discreto {
+  font-size: 0.8rem;
+}
+.fv-txt-rev {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--atencao-texto);
+}
+/* revisão nova: abrir a anterior e baixar a nova */
+.fv-trecho-acoes {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 55%;
+}
+.fv-disciplina {
+  margin: 12px 0 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texto-5b5d61);
+}
+.fv-sem-peca {
+  margin-top: 8px;
+}
+.fv-sem-peca summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+.fv-sem-peca li {
+  padding: 6px 0;
+  border-top: 1px solid var(--borda, var(--borda-c9d2da));
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.fv-servicos {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.fv-abrir,
+.fv-baixar {
+  min-height: 48px;
+  min-width: 96px;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  padding: 0 14px;
+  flex: none;
+}
+.fv-abrir {
+  background: var(--primaria, var(--fundo-1f4e79));
+  color: var(--texto-ffffff);
+  border: 0;
+}
+.fv-baixar {
+  background: var(--fundo-ffffff);
+  border: 2px solid var(--primaria-claro, var(--borda-1f4e79));
+  color: var(--primaria-claro, var(--texto-1f4e79));
+}
+.fv-baixar:disabled {
+  opacity: 0.5;
+}
+.fv-baixar-pav {
+  margin: 6px 0 8px;
+}
+.fv-baixar-pav .fv-baixar {
+  width: 100%;
+}
+.fv-baixar-pav progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  margin-top: 6px;
+}
+
+/* busca de peça na obra inteira, no início */
+.fv-busca-obra {
+  /* as cores da situação vêm de variáveis da tela da planta */
+  --fv-ok: var(--texto-21751a);
+  --fv-nc: var(--texto-b3261e);
+  --fv-pe: var(--texto-9a5d00);
+  margin-bottom: 12px;
+}
+.fv-busca-obra input {
+  width: 100%;
+  min-height: 48px;
+}
+.fv-busca-obra .fv-rep-lista {
+  margin-top: 8px;
+}
+.fv-busca-obra .discreto {
+  margin: 8px 0 0;
+}
+.fv-rep.fv-busca-linha {
+  border-left-color: var(--borda-6b7075);
+}
+.fv-rep.fv-busca-linha.s-andamento {
+  border-left-color: var(--borda-c27800);
+}
+.fv-rep.fv-busca-linha.s-concretagem {
+  border-left-color: var(--borda-1565c0);
+}
+.fv-rep.fv-busca-linha.s-liberado {
+  border-left-color: var(--borda-21751a);
+}
+
+/* item que a lista de reprovações mandou olhar */
+.fv-item.destaque {
+  outline: 3px solid var(--fv-nc, var(--borda-b3261e));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* lista de reprovações */
+.fv-entra-rep {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--borda, var(--borda-c9d2da));
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fv-entra-rep span {
+  font-size: 0.85rem;
+  color: var(--texto-5b5d61);
+}
+.fv-rep-filtros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.fv-rep-filtros label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texto-5b5d61);
+  min-width: 0;
+}
+.fv-rep-filtros select {
+  width: 100%;
+  min-width: 0;
+}
+.fv-rep-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fv-rep-lista > li {
+  margin-bottom: 8px;
+  /* lista longa: o navegador só desenha o que está na tela */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+.fv-rep {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--borda, var(--borda-c9d2da));
+  border-left: 4px solid var(--erro-claro);
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.fv-rep.fechada {
+  border-left-color: var(--borda-21751a);
+}
+.fv-rep .discreto {
+  font-size: 0.8rem;
+}
+.fv-rep-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.fv-rep-peca {
+  font-size: 1.1rem;
+}
+.fv-rep-onde {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--texto-5b5d61);
+}
+.fv-rep-res {
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.fv-rep-res.r-NC {
+  color: var(--erro-claro);
+}
+.fv-rep-res.r-ok,
+.fv-rep-ok {
+  color: var(--texto-21751a);
+}
+.fv-rep-ok {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.fv-rep-item {
+  font-weight: 600;
+}
+.fv-rep-obs {
+  margin: 2px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--fundo-fbe3e1);
+}
+.fv-rep.fechada .fv-rep-obs {
+  background: var(--fundo-f1f1ee);
+}
+.fv-rep-dup {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texto-6a1b9a);
+}
+.fv-rep.com-foto {
+  padding-right: 88px;
+}
+.fv-rep-foto {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--borda, var(--borda-c9d2da));
+  border-radius: 6px;
+  background: var(--fundo-f1f1ee);
+  font-size: 0.75rem;
+  color: var(--texto-5b5d61);
+  overflow: hidden;
+}
+.fv-rep-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fv-rep-foto em {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--texto-ffffff);
+  font-style: normal;
+}
+.fv-duplicadas {
+  /* as cores da situação vêm de variáveis da tela da planta */
+  --fv-ok: var(--texto-21751a);
+  --fv-nc: var(--texto-b3261e);
+  --fv-pe: var(--texto-9a5d00);
+}
+.fv-rep.fv-dup {
+  border-left-color: var(--borda-6a1b9a);
+}
+.fv-dup-ficha {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-top: 1px solid var(--borda, var(--borda-c9d2da));
+  font-size: 0.85rem;
+  color: var(--texto-5b5d61);
+}
+.fv-dup-ficha b {
+  color: var(--texto-1b1c1e);
+}
+.fv-dup-filtro {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 360px;
+}
+@media (max-width: 700px) {
+  .fv-rep-filtros.fv-dup-filtro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.fv-rep-oferta {
+  margin: 6px 0 2px;
+}
+.fv-rep-oferta p {
+  margin: 0 0 6px;
+}
+.fv-rep-oferta .fv-baixar {
+  margin: 0 6px 6px 0;
+}
+@media (max-width: 700px) {
+  .fv-rep-filtros {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* lançar no sistema oficial */
+.fv-lan-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 12px;
+}
+.fv-lan-acoes button:disabled {
+  opacity: 0.5;
+}
+.fv-mais-pav summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  font-size: 0.85rem;
+  color: var(--texto-5b5d61);
+  cursor: pointer;
+  list-style: none;
+}
+.fv-mais-pav summary::-webkit-details-marker {
+  display: none;
+}
+.fv-link-lan {
+  min-height: 44px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--primaria-claro, var(--texto-1f4e79));
+  text-decoration: underline;
+  cursor: pointer;
+}
+.fv-lan-ficha h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.fv-lan-ficha h2 .discreto {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+.fv-lan-ficha > p {
+  margin: 2px 0 8px;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.fv-lan-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-top: 1px solid var(--borda, var(--borda-c9d2da));
+  font-size: 0.9rem;
+}
+.fv-lan-item > span:last-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fv-lan-item .discreto {
+  font-size: 0.8rem;
+}
+.fv-lan-res {
+  flex: none;
+  min-width: 34px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+.fv-lan-res.r-C {
+  background: var(--fundo-e2f1da);
+  color: var(--texto-21751a);
+}
+.fv-lan-res.r-NC {
+  background: var(--fundo-fbe3e1);
+  color: var(--erro-claro);
+}
+.fv-lan-res.r-NA,
+.fv-lan-res.r-vazio {
+  background: var(--fundo-ebebe8);
+  color: var(--texto-5d5f63);
+}
+.fv-lan-obs {
+  display: block;
+  margin-top: 4px;
+}
+
+/* celular em pé: painel embaixo, topo em duas linhas */
+@media (orientation: portrait), (max-width: 700px) {
+  .fv-painel {
+    top: auto;
+    left: 0;
+    width: auto;
+    height: 62vh;
+    border-left: 0;
+    border-top: 2px solid var(--fv-ln2);
+  }
+  .fv-planta.com-painel .fv-mapa {
+    right: 0;
+    bottom: 62vh;
+  }
+  .fv-planta.com-painel .fv-rev-antiga {
+    right: 0;
+  }
+}
+@media (max-width: 900px) {
+  /* tablet em pé: o título não pode ser espremido até sumir ("Planta inteira" saía uma letra por
+     linha, 14/11); quem cede é o contador, que quebra em duas linhas */
+  .fv-tit {
+    flex: none;
+    min-width: 112px;
+    max-width: 160px;
+  }
+  .fv-prog {
+    white-space: normal;
+    min-width: 0;
+  }
+  .fv-etapa {
+    max-width: 120px;
+  }
+  .fv-seg button {
+    padding: 0 9px !important;
+  }
+}
+@media (max-width: 700px) {
+  .fv-planta {
+    --fv-hdr: 104px;
+  }
+  .fv-topo {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-content: center;
+    gap: 6px 5px;
+  }
+  .fv-topo > * {
+    min-width: 0;
+  }
+  .fv-tit {
+    grid-column: 1 / 6;
+    grid-row: 1;
+  }
+  /* celular: "1/24 liberados" numa linha e "1 p/ concretar" na outra, sem quebrar no meio
+     (no Linux do GitHub a fonte é mais larga e o texto corrido saía do topo) */
+  .fv-prog {
+    grid-column: 6 / 10;
+    grid-row: 1;
+    text-align: center;
+    font-size: 11px;
+    margin: 0;
+    white-space: normal;
+  }
+  .fv-prog .fv-txt-concretar {
+    display: block;
+  }
+  .fv-prog .fv-txt-concretar .fv-sep {
+    display: none;
+  }
+  .fv-bpincel {
+    grid-column: 10 / 13;
+    grid-row: 1;
+    padding: 0 4px !important;
+  }
+  /* aba Pilares com o "Por item" (18/11): os dois botões dividem o canto, o título e o progresso apertam */
+  .fv-topo.com-item .fv-tit {
+    grid-column: 1 / 5;
+  }
+  .fv-topo.com-item .fv-prog {
+    grid-column: 5 / 9;
+  }
+  .fv-topo.com-item .fv-bpincel,
+  .fv-topo.com-item .fv-bitem {
+    grid-row: 1;
+    grid-column: 9 / 11;
+    font-size: 12px;
+    line-height: 1.1;
+    white-space: normal;
+    padding: 0 2px !important;
+  }
+  .fv-topo.com-item .fv-bitem {
+    grid-column: 11 / 13;
+  }
+  .fv-seg,
+  .fv-servico {
+    grid-column: 1 / 6;
+    grid-row: 2;
+  }
+  .fv-servico {
+    max-width: none;
+    width: 100%;
+  }
+  .fv-seg button {
+    flex: 1 0 auto;
+    padding: 0 6px !important;
+  }
+  /* mais abas do que cabem (Furos, Barras): a fila rola de lado e a escolhida vem para a vista (TelaPlanta) */
+  .fv-seg {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .fv-seg::-webkit-scrollbar {
+    display: none;
+  }
+  .fv-etapa {
+    grid-column: 6 / 10;
+    grid-row: 2;
+    max-width: none;
+    width: 100%;
+  }
+  /* planta com um tipo de local e uma ficha só: a etapa ocupa o lugar da escolha */
+  .fv-topo.sem-seg .fv-etapa {
+    grid-column: 1 / 10;
+  }
+  .fv-busca {
+    grid-column: 10 / 13;
+    grid-row: 2;
+    width: 100%;
+  }
+  /* no celular a legenda fica recolhida: cobriria a planta */
+  .fv-legenda {
+    display: none;
+    bottom: calc(56px + var(--fv-bot));
+  }
+  .fv-legenda.aberta {
+    display: flex;
+  }
+  .fv-planta .fv-bt-legenda {
+    display: block;
+    position: fixed;
+    left: 8px;
+    bottom: calc(8px + var(--fv-bot));
+    z-index: 950;
+    background: color-mix(in srgb, var(--fundo-ffffff) 94%, transparent);
+  }
+  .fv-item {
+    flex-wrap: wrap;
+  }
+  .fv-bt {
+    width: 100%;
+    padding-left: 32px;
+  }
+  .fv-bt button {
+    flex: 1;
+  }
+}
+@media (max-width: 700px) {
+  .fv-bt {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fv-planta button:active {
+    transform: none;
+  }
+}
+/* consolo e capitel do pilar: seção à parte, fechada até tocar na parte (item 2, 17/11) */
+.fv-parte {
+  margin-top: 12px;
+  border: 1px dashed var(--fv-ln);
+  border-radius: 8px;
+  padding: 0 10px 6px;
+}
+.fv-parte > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.fv-parte .fv-det img {
+  max-width: 100%;
+}
+
+/* barras de laje (plano A, 18/11): resumo e "Tudo OK nesta camada" no painel da área */
+.fv-barras-area {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--fv-ln);
+  border-radius: 6px;
+}
+.fv-barras-area p {
+  margin: 4px 0;
+}
+.fv-barras-area > button {
+  min-height: 44px;
+  width: 100%;
+}
+.fv-caixa-form textarea {
+  font: inherit;
+  padding: 6px;
+}

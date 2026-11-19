@@ -1,0 +1,502 @@
+/* Uso em campo: letra grande, botões grandes, contraste alto (sol na tela). */
+@import './tema.css';
+:root {
+  --fundo: var(--fundo-f4f6f8);
+  --superficie: var(--fundo-ffffff);
+  --texto: var(--texto-14202b);
+  --discreto: var(--texto-52606d);
+  --primaria: var(--fundo-1f4e79);
+  --primaria-texto: var(--texto-ffffff);
+  --borda: var(--borda-c9d2da);
+  --ok-fundo: var(--fundo-e6f4ea);
+  --ok-borda: var(--borda-2e7d32);
+  --atencao-fundo: var(--fundo-fff4e0);
+  --atencao-borda: var(--borda-b26a00);
+  --atencao-texto: var(--texto-7a4500);
+  --erro: var(--texto-b3261e);
+  --erro-fundo: var(--fundo-fdecea);
+  --raio: 10px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 18px;
+  line-height: 1.45;
+  color: var(--texto);
+  background: var(--fundo);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  /* e-mail longo quebra a linha em vez de estourar a tela do celular */
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+p {
+  margin: 0.4rem 0;
+}
+
+.tela {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.tela-estreita {
+  max-width: 28rem;
+  padding-top: 2rem;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin: 1rem 0 0.25rem;
+}
+
+input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 1.1rem;
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  color: var(--texto);
+}
+
+input:focus {
+  outline: 3px solid var(--primaria-claro);
+  outline-offset: 1px;
+}
+
+input.codigo {
+  font-size: 1.8rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  min-height: 3rem;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: 2px solid var(--primaria-claro);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  color: var(--primaria-claro);
+  cursor: pointer;
+}
+
+button.principal {
+  background: var(--primaria);
+  color: var(--primaria-texto);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+form button.principal {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.erro {
+  color: var(--erro-claro);
+  font-weight: 600;
+}
+
+.aviso {
+  color: var(--atencao-texto);
+}
+
+.discreto {
+  color: var(--discreto);
+  font-size: 0.9rem;
+}
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.lista {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.item-obra {
+  width: 100%;
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.75rem 1rem;
+}
+
+.codigo-obra {
+  font-size: 1.2rem;
+}
+
+.cabecalho h1 .nome-obra {
+  font-weight: 400;
+  color: var(--discreto);
+}
+
+.barra {
+  border: 2px solid var(--ok-borda-claro);
+  background: var(--ok-fundo);
+  border-radius: var(--raio);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.barra.atencao {
+  border-color: var(--atencao-borda);
+  background: var(--atencao-fundo);
+}
+
+.barra.erro-fila {
+  border-color: var(--erro-claro);
+  background: var(--erro-fundo);
+}
+
+.barra button {
+  margin-top: 0.5rem;
+}
+
+.grade {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+
+.modulo {
+  width: 100%;
+  min-height: 6rem;
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.detalhes {
+  padding-left: 1.2rem;
+}
+
+.faixa-aviso,
+.faixa-atualizacao {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--atencao-fundo);
+  border-bottom: 2px solid var(--atencao-borda);
+}
+
+.faixa-atualizacao {
+  /* no alto da tela: não cobre os botões do fim da página */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Resultado de uma ação: fica grudado no alto da janela, visível de qualquer ponto da página. */
+.faixa-mensagem {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0.5rem -1rem;
+  padding: 0 1rem;
+}
+
+.faixa-mensagem.vazia {
+  display: none;
+}
+
+.faixa-mensagem p {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--raio);
+  font-weight: 600;
+}
+
+.faixa-mensagem.ok p {
+  background: var(--ok-fundo);
+  border: 2px solid var(--ok-borda-claro);
+  color: var(--texto);
+}
+
+.faixa-mensagem.erro p {
+  background: var(--erro-fundo);
+  border: 2px solid var(--erro-claro);
+  color: var(--erro-claro);
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.5rem 0;
+}
+
+select {
+  min-height: 3rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  color: var(--texto);
+}
+
+form select {
+  width: 100%;
+}
+
+.pessoa {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.acoes-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+label.sem-margem {
+  margin: 0;
+  font-weight: 400;
+}
+
+/* "Trocar de obra?": o pacote escolhido contra o que está no aparelho */
+.comparacao-pacote dt {
+  color: var(--discreto);
+}
+.comparacao-pacote dd {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+}
+
+/* relógio diferente entre aparelhos: aviso que não some, com o caminho para acertar */
+.fv-aviso-hora {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  background: var(--atencao-fundo);
+  border-left: 4px solid var(--atencao-borda);
+  border-radius: 4px;
+}
+.fv-aviso-hora p {
+  margin: 0;
+}
+.fv-aviso-hora summary {
+  margin-top: 0.4rem;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fv-aviso-hora details p {
+  margin-top: 0.3rem;
+}
+
+/* ---------------- Acabamento para a demonstração (09/11) ---------------- */
+
+/* Uma fonte só: botões e campos usavam a do navegador (Arial), o texto a do sistema. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Toque com luva ou dedo parado: o botão não seleciona o próprio texto nem abre o menu do
+   Android, e o realce azul do toque some (o :active abaixo dá o retorno no lugar dele). */
+button,
+summary,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+button:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* Cabeçalho da obra no menu: faixa da cor principal de ponta a ponta, código grande. */
+.cabecalho-obra {
+  background: var(--primaria);
+  color: var(--primaria-texto);
+  margin: -1rem -1rem 1rem;
+  padding: calc(1rem + env(safe-area-inset-top, 0px)) 1rem 0.9rem;
+  box-shadow: 0 0 0 100vmax var(--primaria);
+  clip-path: inset(0 -100vmax);
+}
+.cabecalho-obra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+/* Modo sol: contorno claro sobre a faixa da cor principal */
+.cabecalho-obra .botao-tema {
+  background: transparent;
+  color: var(--primaria-texto);
+  border-color: var(--primaria-texto);
+}
+.cabecalho-obra h1 {
+  font-size: 1.9rem;
+  line-height: 1.15;
+  margin: 0 0 0.25rem;
+}
+.cabecalho-obra h1 .nome-obra {
+  color: var(--texto-dbe6f0);
+}
+.cabecalho-obra .discreto {
+  color: var(--texto-dbe6f0);
+  margin: 0;
+}
+
+/* Módulos: cartões grandes, a ação principal do app. */
+.menu-modulos h2 {
+  margin-top: 0.5rem;
+}
+.menu-modulos .grade {
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  margin: 0;
+}
+.modulo {
+  min-height: 8rem;
+  align-content: start;
+  gap: 0.35rem;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 1px 3px rgba(20, 32, 43, 0.12);
+}
+.modulo strong {
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+.modulo > span:not(.discreto):not(.modulo-abrir) {
+  color: var(--texto);
+  font-weight: 400;
+}
+/* Selo "beta": módulo que funciona, mas ainda está em teste. */
+.selo-beta {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--fundo-fff3cd);
+  border: 1px solid var(--borda-c99a06);
+  color: var(--texto-6b4f00);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.modulo-abrir {
+  align-self: end;
+  justify-self: end;
+  font-weight: 700;
+}
+
+/* Caixa "Sem conta" no celular: a mesma informação em menos altura. */
+@media (max-width: 599px) {
+  .barra {
+    padding: 0.6rem 0.8rem;
+  }
+  .barra p {
+    margin: 0.15rem 0;
+  }
+  .barra button {
+    margin-top: 0;
+  }
+  .barra .acoes-linha {
+    margin-top: 0.5rem;
+  }
+  .barra .acoes-linha > button {
+    flex: 1 1 auto;
+  }
+  .barra .acoes-linha > span {
+    flex: 1 1 100%;
+    font-size: 0.95rem;
+  }
+}
+
+/* Bloco recolhido da tela inicial (cópia de segurança e aparelho): fechado por padrão, título de toque grande */
+.bloco-recolhido {
+  margin: 1.25rem 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+}
+.bloco-recolhido > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 44px;
+  padding: 0.75rem 2.5rem 0.75rem 1rem;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+}
+.bloco-recolhido > summary::-webkit-details-marker {
+  display: none;
+}
+.bloco-recolhido > summary::after {
+  content: '›';
+  position: absolute;
+  right: 1rem;
+  top: 0.75rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  transform: rotate(90deg);
+}
+.bloco-recolhido[open] > summary::after {
+  transform: rotate(-90deg);
+}
+.bloco-recolhido > summary .discreto {
+  font-size: 0.9rem;
+}
+.bloco-recolhido .aviso-calmo {
+  font-size: 0.9rem;
+  color: var(--atencao-texto);
+}
+.bloco-recolhido > :not(summary) {
+  margin: 0 1rem 1rem;
+}

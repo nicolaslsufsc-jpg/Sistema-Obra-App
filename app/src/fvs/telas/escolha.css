@@ -1,0 +1,54 @@
+/* Escolha entre peças do mesmo desenho (P101 e P101a): caixa por cima da planta.
+   Arquivo à parte para não mexer nos botões da planta e do painel (fvs.css). */
+.fv-escolha {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  top: calc(var(--fv-hdr) + var(--fv-top) + 8px);
+  z-index: 1004;
+  margin: 0 auto;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 2px solid var(--primaria-claro, var(--borda-1f4e79));
+  border-radius: 12px;
+  background: var(--fundo-ffffff);
+  color: var(--texto-1b1c1e);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.fv-escolha-pecas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fv-escolha .fv-escolha-pecas button {
+  flex: 1 1 140px;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  text-align: left;
+  padding: 6px 10px;
+}
+/* quadradinho com a cor da situação, como na legenda */
+.fv-escolha .fv-escolha-pecas button i {
+  grid-row: 1 / 3;
+  width: 18px;
+  height: 18px;
+  border: 2px solid;
+  border-radius: 3px;
+}
+.fv-escolha .fv-escolha-pecas button b {
+  font-size: 18px;
+}
+.fv-escolha .fv-escolha-pecas button span {
+  font-size: 13px;
+  color: var(--texto-5b5d61);
+}
+.fv-escolha .fv-escolha-cancelar {
+  min-height: 44px;
+}

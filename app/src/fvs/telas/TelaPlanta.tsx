@@ -1,0 +1,2618 @@
+// Planta de um trecho: toca no local (pilar, viga ou ambiente) e marca a ficha (PVS) no painel.
+// A mesma tela serve para a planta de forma (estrutura) e para a planta de ambientes (alvenaria,
+// reboco, pintura...): o que muda é o tipo dos locais que vêm no pacote.
+// Celular em pé: painel embaixo. Tablet deitado: painel ao lado. Tudo funciona sem internet
+// (planta no aparelho, marcações na fila do núcleo).
+
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { lembrarPainel } from '../onde_estava'
+import L from 'leaflet'
+import { opcoesDeToque } from '../toque'
+import { canvasDaPlanta, toqueSoNoMapa } from '../toque_canvas'
+import 'leaflet/dist/leaflet.css'
+import {
+  areaComoElemento,
+  centroDoContorno,
+  fichaInicialDaCaixa,
+  fichasDaCaixa,
+  problemaDoContorno,
+  proximoNomeDeArea,
+  type AreaDeLaje,
+  type Ponto,
+  type TravaDaArea,
+} from '../areas'
+import { anexarFoto, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, type Contexto } from '../dados'
+import { dia, mb, quando } from '../formato'
+import { casaComodo, textoDoComodo } from '../busca'
+import { abrirPacoteOuAnterior, dataCurta, furosDoManifest, NOME_DA_DISCIPLINA, NOME_DA_PARTE, partesDoManifest, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
+import { filtrosDoTrecho } from '../reprovacoes'
+import {
+  barraNaArea,
+  barrasDaArea,
+  barraTocada,
+  camadasDoPacote,
+  itemDasBarras,
+  NOME_DA_CAMADA,
+  nomeDaBarra,
+  observacaoDaBarra,
+  observacaoDasErradas,
+  resultadoPelasBarras,
+  resumoDasBarras,
+  situacaoDaBarra,
+  type CamadaDeBarras,
+} from '../barras'
+import {
+  daFichaAberta,
+  etapasDa,
+  fichaDaPeca,
+  fichaNaPeca,
+  situacaoDaParteNoLocal,
+  fichaSoNoApp,
+  fichasPara,
+  historico,
+  maisNovo,
+  ordenarFichasAbertas,
+  percentualConforme,
+  reprovacoesDoItem,
+  ROTULO_SITUACAO,
+  rotuloRodada,
+  situacaoDaFichaAberta,
+  itemDosFuros,
+  resultadoPelosFuros,
+  situacaoDaPeca,
+  situacaoDoFuro,
+  situacaoDoLocal,
+  resumoDosFuros,
+  NOME_DO_RESULTADO,
+  SO_NO_APP,
+  ultimosPorItem,
+  type EventoFvs,
+  type ItemFicha,
+  type Ficha,
+  type FichaCampo,
+  type Situacao,
+  type Resultado,
+} from '../situacao'
+import { guardarItem, itemGuardado, itemNaPeca, itensParaEscolher, nomeDoItem, proximoDoToque, registroDoItem, resultadoDoItem, resumoDoItem, textoDoResultado, type ItemEscolhido, type ModoDoToque } from '../porItem'
+import type { Linha } from '../../nucleo/banco_local'
+import { AvisoHora } from './AvisoHora'
+import { pecasDoMesmoDesenho } from '../mesmo_desenho'
+import { anotarToque, esquecerToque, type Toque } from '../toques'
+import './escolha.css'
+import type { ContextoFvs } from './ModuloFvs'
+import { filtrarListaAoAbrir } from './TelaReprovacoes'
+import { usarCamadas } from './usarCamadas'
+
+const COR: Record<Situacao, [string, number]> = {
+  nada: ['#6b7075', 0.12],
+  andamento: ['#c27800', 0.45],
+  concretagem: ['#1565c0', 0.5],
+  liberado: ['#21751a', 0.5],
+  reprovado: ['#b3261e', 0.58],
+}
+/** Contorno da peça com ficha duplicada no sistema oficial (a cor de dentro é a situação). */
+const COR_DUPLICADA = '#6a1b9a'
+/** "Por item": a peça com o item em NA (não se aplica), diferente do OK. */
+const COR_NA = '#00838f'
+/** Tipos de local em que o "Por item" funciona (pilar desde a fatia 1; viga e ambiente desde a fatia 2). */
+const TIPOS_POR_ITEM = ['P', 'V', 'A']
+/** Área de laje cobre muita planta: a cor fica mais leve que a das peças, para o desenho continuar legível. */
+const OPACIDADE_MAX_AREA = 0.35
+const COR_TRACADO = '#1565c0'
+/** O nome do "trecho" da planta que tem o pavimento inteiro (pipeline/fvs/folha_unica.py). */
+const TRECHO_FOLHA_UNICA = 'Planta inteira'
+// sempre a mesma lista vazia: é pela identidade da lista que a tela sabe que nada mudou na peça
+const SEM_EVENTOS: EventoFvs[] = []
+const SEM_FICHAS: FichaCampo[] = []
+/** Tocar perto assim do primeiro canto (em pixels de tela) fecha o polígono. */
+const FECHAR_PX = 18
+const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo' }
+const PLURAL_TIPO: Record<string, string> = { P: 'Pilares', V: 'Vigas', L: 'Lajes', A: 'Ambientes', F: 'Furos', B: 'Barras' }
+const ORDEM_TIPOS = ['P', 'V', 'L', 'A', 'F', 'B']
+/** Barra de laje: cor de cada situação (sem conferir em azul, para não sumir no cinza da planta). */
+const COR_BARRA: Record<'nada' | 'liberado' | 'reprovado', string> = { nada: '#1565c0', liberado: '#21751a', reprovado: '#b3261e' }
+/** Margem do toque na barra (px na tela) e a diferença mínima entre as duas mais perto para escolher uma. */
+const TOQUE_BARRA_PX = 40
+const FOLGA_BARRA_PX = 4
+/** Furo na planta: raio da bolinha e do alvo do dedo (44 px de diâmetro), em px de tela. */
+const RAIO_FURO_PX = 7
+const ALVO_FURO_PX = 22
+/** Limites de um desenho da planta: polígono ou a bolinha do furo. */
+const limitesDaCamada = (l: L.Path): L.LatLngBounds =>
+  l instanceof L.CircleMarker ? L.latLngBounds(l.getLatLng(), l.getLatLng()) : (l as L.Polygon).getBounds()
+/** Nome do ambiente por cima da planta: só aparece quando cabe no cômodo (tamanho na tela, em px). */
+const ROTULO_PX = { largura: 40, altura: 14 }
+/** Apartamento com mais ambientes que isto (a área comum) não mostra os atalhos no painel. */
+const MAX_ATALHOS = 40
+const semAcento = (t: string) => t.normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+
+const ll = ([x, y]: [number, number]): L.LatLngTuple => [-y, x]
+const caixa = (r: readonly number[]) => L.latLngBounds([-r[1], r[0]], [-r[3], r[2]])
+
+interface Props {
+  ctx: ContextoFvs
+  plantaId: string
+  /** abre centrada nesta peça, com o painel aberto (vindo da lista de reprovações) */
+  pecaInicial?: string
+  fichaCampoInicial?: string
+  itemInicial?: number
+  aviso: string
+}
+
+export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, aviso }: Props) {
+  const { dados, props, online, ir, voltar, recarregar, registrados, sistema } = ctx
+  const { usuario, obra } = props
+  const planta = dados.plantaPorId.get(plantaId)!
+  const irmas = dados.plantasDe.get(planta.pavimento_id) ?? [planta]
+  const pavimento = dados.pavimentos.find((p) => p.id === planta.pavimento_id)
+  const pode = podeRegistrar(obra.papel)
+
+  const [pacote, setPacote] = useState<PacoteAberto | null | undefined>(undefined)
+  /** Muda quando um pacote acaba de chegar: abre de novo. */
+  const [pacoteChegou, setPacoteChegou] = useState(0)
+  /** Percentual do download desta planta, feito daqui mesmo. */
+  const [baixando, setBaixando] = useState<number | null>(null)
+  const [erroBaixar, setErroBaixar] = useState('')
+  // o registro guarda a revisão que estava na tela, que pode ser a anterior (ver revisoes.ts)
+  const c: Contexto = { obraId: obra.id, usuarioId: usuario.id, plantaId: pacote?.manifest.planta_id ?? plantaId, areas: dados.areaPorId }
+  const [tipoEscolhido, setTipo] = useState('P')
+  /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
+  const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string } | null>(null)
+  /** A caixa que liga o polígono desenhado a uma ficha. */
+  const [caixaNova, setCaixaNova] = useState<{ contorno: Ponto[]; nome: string; fichaId: string; codigo: string } | null>(null)
+  const [etapa, setEtapa] = useState('')
+  const { sel, abrirPainel, fecharPainel, zoom, abrirZoom, fecharZoom, abrirSobre, fecharSobre, sair } = usarCamadas(pecaInicial)
+  // a peça do painel fica guardada: reabrir o Chrome volta nela (onde_estava.ts)
+  useEffect(() => lembrarPainel(obra.id, sel), [obra.id, sel])
+  const [codigoFicha, setCodigoFicha] = useState<Record<string, string>>({})
+  const [pincel, setPincel] = useState<{ etapa: string; resultado: 'C' | 'NA' } | null>(null)
+  const [msg, setMsg] = useState<{ texto: string; desfazer?: () => void } | null>(null)
+  const relogioDoAviso = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(relogioDoAviso.current), [])
+  const ultimaDoPincel = useRef<string | null>(null)
+  /** Modo "Por item" (18/11): um item da ficha, marcado peça a peça na planta (no tipo em que foi escolhido). */
+  const [porItem, setPorItem] = useState<(ItemEscolhido & { tipo: string }) | null>(null)
+  /** O que o toque marca no "Por item": OK (tocando de novo, NC) ou NA. */
+  const [modoItem, setModoItem] = useState<ModoDoToque>('C')
+  /** Pilar com o item OK que a pessoa tocou de novo: espera a observação e o Confirmar para gravar o NC. */
+  const [ncDoItem, setNcDoItem] = useState<{ id: string; texto: string } | null>(null)
+  const [verLegenda, setVerLegenda] = useState(false)
+
+  // Fila de gravação: toques seguidos são gravados um depois do outro, sem bloquear os botões
+  // e sem perder toque. Cada passo lê os registros mais novos (o toque anterior já conta).
+  const fila = useRef<Promise<unknown>>(Promise.resolve())
+  const atuais = useRef(dados)
+  atuais.current = dados
+  const executar = (passo: (eventosDe: (id: string) => EventoFvs[]) => Promise<Linha | Linha[] | void>) => {
+    fila.current = fila.current
+      .then(() => passo((id) => atuais.current.eventosDe.get(id) ?? []))
+      .then(async (gravado) => {
+        // registro novo entra direto nos dados da tela; só o que não devolve registro (foto) relê o aparelho
+        if (gravado) atuais.current = registrados(Array.isArray(gravado) ? gravado : [gravado])
+        else atuais.current = await recarregar()
+      })
+      .catch(async (e) => {
+        console.error('FVS: gravação falhou', e)
+        avisar(textoDoErroDeGravacao(e))
+        // lote que parou no meio: a tela mostra o que ficou gravado de verdade
+        atuais.current = await recarregar().catch(() => atuais.current)
+      })
+    return fila.current
+  }
+
+  useEffect(() => {
+    let vivo = true
+    abrirPacoteOuAnterior(plantaId, (dados.anterioresDe.get(plantaId) ?? []).map((a) => a.id)).then((p) => {
+      if (!vivo) return p?.fechar()
+      // revisão nova cadastrada com esta planta aberta: continua no mesmo pacote, sem mexer na tela
+      setPacote((atual) => {
+        if (atual && p && atual.manifest.planta_id === p.manifest.planta_id) {
+          p.fechar()
+          return atual
+        }
+        return p
+      })
+    })
+    return () => {
+      vivo = false
+    }
+  }, [plantaId, pacoteChegou])
+  useEffect(() => () => pacote?.fechar(), [pacote])
+
+  const tamanhoDaPlanta = (planta.manifest?.tamanho ?? 0) + (planta.pacote?.tamanho ?? 0)
+  /** Baixa daqui mesmo a planta vigente deste trecho e passa a mostrar ela. */
+  const baixarEsta = async () => {
+    setErroBaixar('')
+    setBaixando(0)
+    try {
+      let ultimo = 0
+      await baixarPlanta(planta, { obraId: obra.id, usuarioId: usuario.id }, (f) => {
+        const pct = Math.floor(f * 100)
+        if (pct !== ultimo) {
+          ultimo = pct
+          setBaixando(pct)
+        }
+      })
+      setPacoteChegou((n) => n + 1)
+    } catch (e) {
+      setErroBaixar(textoDoErroDeDownload(e))
+    } finally {
+      setBaixando(null)
+    }
+  }
+
+  const manifest = pacote?.manifest
+  // áreas de laje desenhadas nesta planta (as coordenadas só valem no trecho em que foram desenhadas)
+  const areasDoPavimento = dados.areasDe.get(planta.pavimento_id)
+  const areasDaPlanta = useMemo(() => (areasDoPavimento ?? []).filter((a) => a.setor_id === planta.setor_id), [areasDoPavimento, planta.setor_id])
+  const chaveDasAreas = areasDaPlanta.map((a) => a.versao).join()
+  const elementosDasAreas = useMemo(() => new Map(areasDaPlanta.map((a) => [a.id, areaComoElemento(a, manifest?.escala)])), [chaveDasAreas, manifest?.escala])
+  /** Peça do pacote ou área de laje. */
+  const elementoDe = (id: string): ElementoPacote | undefined => manifest?.elementos[id] ?? elementosDasAreas.get(id)
+  const elementos = useMemo(() => [...Object.entries(manifest?.elementos ?? {}), ...elementosDasAreas], [manifest, elementosDasAreas])
+  /** Peças que dividem o desenho com outra (P101 e P101a): o toque no desenho pergunta qual. */
+  const mesmoDesenho = useMemo(() => pecasDoMesmoDesenho(Object.entries(manifest?.elementos ?? {})), [manifest])
+  const [mesmoDesenhoAberto, setMesmoDesenhoAberto] = useState<string[] | null>(null)
+  // tipos de local que esta planta tem (forma: pilares, vigas e as lajes desenhadas; arquitetura: ambientes)
+  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && (pode || areasDaPlanta.length > 0)
+  // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
+  const barras = manifest?.barras
+  const camadasDasBarras = useMemo(() => camadasDoPacote(barras), [barras])
+  const [camadaEscolhida, setCamada] = useState<CamadaDeBarras | null>(null)
+  const camada: CamadaDeBarras | undefined = camadaEscolhida && camadasDasBarras.includes(camadaEscolhida) ? camadaEscolhida : camadasDasBarras[0]
+  /** Barra marcada como errada esperando a observação e o Confirmar (sem confirmar, não grava NC). */
+  const [ncDaBarra, setNcDaBarra] = useState<{ id: string; texto: string } | null>(null)
+  const tipos = useMemo(
+    () => ORDEM_TIPOS.filter((t) => (t === 'L' && aceitaAreas) || (t === 'B' && camadasDasBarras.length > 0) || elementos.some(([, e]) => e.tipo === t)),
+    [elementos, aceitaAreas, camadasDasBarras],
+  )
+  const tipo = tipos.includes(tipoEscolhido) ? tipoEscolhido : (tipos[0] ?? 'P')
+  // o modo "Por item" só vale na aba em que o item foi escolhido e fora do desenho de área
+  const porItemAtivo = porItem && porItem.tipo === tipo && TIPOS_POR_ITEM.includes(tipo) && !desenho ? porItem : null
+  // trocou de aba: o modo desliga (volta só tocando de novo em "Por item")
+  useEffect(() => {
+    if (porItem && porItem.tipo !== tipo) setPorItem(null)
+  }, [tipo])
+
+  // folha única tem a obra inteira do pavimento (até 850 peças): cada desenho da tela pergunta a
+  // ficha e a situação de todas, e o toque tem que responder em 0,1 s. Só calcula uma vez por desenho.
+  const fichaDoTipo = new Map<string, Ficha | undefined>()
+  const fichaDe = (t: string): Ficha | undefined => {
+    if (fichaDoTipo.has(t)) return fichaDoTipo.get(t)
+    const fs = fichasPara(t, dados.fichas)
+    const f = fs.find((x) => x.codigo === codigoFicha[t]) ?? fs[0]
+    fichaDoTipo.set(t, f)
+    return f
+  }
+  const fichasTipo = fichasPara(tipo, dados.fichas)
+  const fichaTipo = fichaDe(tipo)
+  const etapas = fichaTipo ? etapasDa(fichaTipo) : []
+  // etapa escolhida numa ficha pode não existir na outra (trocou de serviço ou de pilar para viga)
+  const etapaAtiva = etapas.includes(etapa) ? etapa : ''
+  const eventosDe = (id: string): EventoFvs[] => dados.eventosDe.get(id) ?? SEM_EVENTOS
+  const fichaPorId = (id: string) => dados.fichaPorId.get(id)
+  const abertasDe = (id: string): FichaCampo[] => dados.fichasCampoDe.get(id) ?? SEM_FICHAS
+  /** A ficha desta peça: a vigente ou, se ela já foi marcada numa revisão anterior, essa. A área de laje tem a sua. */
+  /** consolo e capitel que o pilar tem nesta planta (o pacote diz) */
+  const partesDe = (id: string) => tiposDasPartes(manifest?.elementos[id])
+  const fichaDoLocal = (id: string, t: string) => {
+    const area = dados.areaPorId.get(id)
+    return area ? fichaPorId(area.ficha_id) : fichaNaPeca(fichaDaPeca(fichaDe(t), eventosDe(id), fichaPorId), partesDe(id))
+  }
+  /** Situação do consolo ou capitel do pilar, só pelos itens da parte (undefined: a ficha não tem). */
+  const situacaoDaParte = (id: string, parte: string) => situacaoDaParteNoLocal(fichaDoLocal(id, 'P'), abertasDe(id), fichaPorId, eventosDe(id), parte)
+  const partesDaPlanta = useMemo(() => (manifest ? partesDoManifest(manifest) : []), [manifest])
+  /** Consolo e capitel pendentes dentro da área de laje: ela fica vermelha (decisão do Nicolas, 17/11). */
+  const travasDe = (id: string) => {
+    const area = dados.areaPorId.get(id)
+    return area && partesDaPlanta.length ? travasDaAreaNaObra(dados, area, partesDaPlanta, situacaoDaParte) : []
+  }
+  // O toque muda os registros de uma peça só: as outras continuam com a mesma lista e não recalculam.
+  const situacaoGuardada = useRef(new Map<string, { eventos: EventoFvs[]; abertas: FichaCampo[]; ficha: Ficha | undefined; etapa: string | undefined; s: Situacao }>())
+  /** Furos de cada viga desta planta (id da viga → ids dos furos). */
+  const furosPorViga = useMemo(() => (manifest ? furosDoManifest(manifest) : new Map<string, string[]>()), [manifest])
+  /** Os furos da viga com a situação de cada um (para o painel e a cor da viga). */
+  const furosDe = (vigaId: string) =>
+    (furosPorViga.get(vigaId) ?? []).flatMap((f) => {
+      const e = manifest?.elementos[f]
+      return e ? [{ id: f, nome: e.nome, sit: situacao(f, e) }] : []
+    })
+  /**
+   * O item de furação da ficha da viga do furo, que os furos marcam (undefined: a ficha de viga não tem;
+   * o furo fica só para ver). A ficha é a da viga: a mesma que o painel da viga mostra.
+   */
+  const furacaoDe = (furoId: string): { vigaId: string; ficha: Ficha; item: number } | undefined => {
+    const vigaId = manifest?.elementos[furoId]?.viga
+    const ficha = vigaId ? fichaDoLocal(vigaId, 'V') : undefined
+    const item = itemDosFuros(ficha)?.n
+    return vigaId && ficha && item !== undefined ? { vigaId, ficha, item } : undefined
+  }
+  /** O furo vira o item de furação da viga: OK, errado ou pendente pelo registro dele nesse item. */
+  const situacao = (id: string, e: ElementoPacote): Situacao => {
+    if (e.tipo !== 'F') return situacaoSo(id, e)
+    const f = furacaoDe(id)
+    return f ? situacaoDoFuro(f.ficha.id, f.item, eventosDe(id)) : 'nada'
+  }
+  const situacaoSo = (id: string, e: ElementoPacote): Situacao => {
+    // a trava depende dos registros dos pilares, e não só dos da área: fica fora da memória abaixo
+    if (e.tipo === 'L' && travasDe(id).length) return 'reprovado'
+    const eventos = eventosDe(id)
+    const abertas = abertasDe(id)
+    const et = e.tipo === tipo ? etapaAtiva || undefined : undefined
+    const ficha = fichaDoLocal(id, e.tipo)
+    const g = situacaoGuardada.current.get(id)
+    if (g && g.eventos === eventos && g.abertas === abertas && g.ficha === ficha && g.etapa === et) return g.s
+    const s = situacaoDoLocal(ficha, abertas, fichaPorId, eventos, et, partesDe(id))
+    situacaoGuardada.current.set(id, { eventos, abertas, ficha, etapa: et, s })
+    return s
+  }
+
+  // ------------------------------------------------------------------ modo "Por item" (18/11)
+  /** Os itens da ficha da aba (pilar, viga ou o serviço escolhido nos ambientes), sem os automáticos. */
+  const itensDoTipo = TIPOS_POR_ITEM.includes(tipo) ? itensParaEscolher(fichaTipo) : []
+  /** Onde o item fica guardado no aparelho: por tipo e, nos ambientes, por serviço. */
+  const ondeGuardar = (t: string) => (t === 'A' ? `A:${fichaDe('A')?.codigo ?? ''}` : t)
+  /**
+   * Onde o item escolhido é marcado nesta peça: a ficha dela (a aberta, se houver uma; a da revisão em que
+   * ela já foi marcada; ou a vigente) e o item nela. Peça com duas fichas, sem o item ou sem a parte: o aviso.
+   */
+  const alvoDoItem = (id: string, esc: ItemEscolhido): { ficha: Ficha; item: ItemFicha; cx: Contexto } | { aviso: string } => {
+    const e = elementoDe(id)
+    const t = e?.tipo ?? tipo
+    const nome = e?.nome ?? 'A peça'
+    // nos ambientes cada serviço tem a sua ficha aberta: só conta a do serviço escolhido no topo
+    const codigo = fichaDe(t)?.codigo
+    const abertas = t === 'A' ? abertasDe(id).filter((fc) => (fc.ficha_id ? dados.fichaPorId.get(fc.ficha_id)?.codigo : fc.ficha_codigo) === codigo) : abertasDe(id)
+    if (abertas.length > 1) return { aviso: `${nome} tem ${abertas.length} fichas ${sistema ? `no ${sistema.nome}` : 'abertas'}. Saia do "Por item" e escolha a ficha no painel.` }
+    const aberta = abertas[0]
+    const ficha = aberta ? fichaNaPeca(aberta.ficha_id ? dados.fichaPorId.get(aberta.ficha_id) : undefined, partesDe(id)) : fichaDoLocal(id, t)
+    const r = itemNaPeca(ficha, esc)
+    if ('falta' in r) {
+      if (r.falta === 'parte') return { aviso: `${nome} não tem ${(NOME_DA_PARTE[r.parte ?? ''] ?? r.parte ?? '').toLowerCase()} nesta planta.` }
+      if (r.falta === 'ficha') return { aviso: `Não há ficha para ${nome}.` }
+      return { aviso: `${nome} está noutra revisão da ficha, sem o item ${nomeDoItem(esc)}. Abra a peça fora do "Por item".` }
+    }
+    return { ficha: ficha!, item: r.item, cx: { ...c, fichaCampoId: aberta?.id ?? null } }
+  }
+  /** O item escolhido neste pilar: o resultado, ou 'fora' (não se marca aqui). */
+  const resultadoPorItem = (id: string, esc: ItemEscolhido): Resultado | null | 'fora' => {
+    const a = alvoDoItem(id, esc)
+    if ('aviso' in a) return 'fora'
+    return resultadoDoItem(a.ficha, daFichaAberta(eventosDe(id), a.cx.fichaCampoId ?? null), a.item.n)
+  }
+  const escolherItem = (it: ItemFicha) => {
+    const esc = { n: it.n, titulo: it.titulo }
+    setPorItem({ ...esc, tipo })
+    guardarItem(obra.id, ondeGuardar(tipo), esc)
+  }
+  /** O item guardado deste tipo (ou o primeiro da ficha). */
+  const itemDeVolta = () => {
+    const g = itemGuardado(obra.id, ondeGuardar(tipo))
+    return itensDoTipo.find((i) => g && i.n === g.n && i.titulo === g.titulo) ?? itensDoTipo[0]
+  }
+  const entrarPorItem = () => {
+    const it = itemDeVolta()
+    if (!it) return avisar('A ficha não tem item para marcar por aqui.')
+    setPincel(null)
+    fecharPainel()
+    setModoItem('C')
+    escolherItem(it)
+  }
+  // nos ambientes, trocar o serviço no topo troca a ficha: o item passa ao guardado da ficha nova (ou ao primeiro)
+  const codigoDaFichaDoTipo = fichaTipo?.codigo
+  useEffect(() => {
+    if (!porItemAtivo || tipo !== 'A') return
+    if (itensDoTipo.some((i) => i.n === porItemAtivo.n && i.titulo === porItemAtivo.titulo)) return
+    const it = itemDeVolta()
+    if (it) escolherItem(it)
+    else setPorItem(null)
+  }, [codigoDaFichaDoTipo])
+
+  function avisar(texto: string, desfazer?: () => void) {
+    setMsg({ texto, desfazer })
+    window.clearTimeout(relogioDoAviso.current)
+    // com o botão de desfazer, dá tempo de ler e de tocar; 8 s ficava tempo demais sobre a planta (obra de demonstração, 13/11)
+    relogioDoAviso.current = window.setTimeout(() => setMsg(null), desfazer ? 5000 : 4000)
+  }
+
+  /** Aviso de marcação em lote, com "Desfazer": um toque errado no pincel marca a ficha inteira. */
+  function avisarLote(texto: string, gravados: readonly Linha[]) {
+    if (!gravados.length) return avisar(texto)
+    avisar(texto, () => {
+      setMsg(null)
+      executar(async (evs) => {
+        const desfeitos = await desfazerLote(c, gravados, evs)
+        avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? 'item' : 'itens'}` : 'Nada a desfazer: os itens já mudaram.')
+        return desfeitos
+      })
+    })
+  }
+
+  // ------------------------------------------------------------------ mapa
+  const divMapa = useRef<HTMLDivElement>(null)
+  const mapa = useRef<L.Map | null>(null)
+  /** O mapa está no voo da busca (flyToBounds): ver o efeito do painel, que espera o voo acabar. */
+  const voando = useRef(false)
+  const camadas = useRef(new Map<string, L.Path[]>())
+  const grupos = useRef<Map<string, L.LayerGroup> | null>(null)
+  const tocarRef = useRef<(id: string) => void>(() => {})
+  /** Toque no desenho (e não no nome): se o desenho é de mais de uma peça, a pessoa escolhe qual. */
+  const tocarDesenhoRef = useRef<(id: string) => void>(() => {})
+  const tocarMapaRef = useRef<(pos: L.LatLng) => void>(() => {})
+  /** Toque no consolo ou capitel (fora do pilar): abre o pilar com a seção da parte aberta. */
+  const tocarParteRef = useRef<(id: string, parte: string) => void>(() => {})
+  /** Consolo e capitel desenhados: id do pilar → [tipo da parte, contornos] */
+  const camadasDasPartes = useRef(new Map<string, Array<[string, L.Path[]]>>())
+  // a seção da parte que o painel abre (tocou no consolo, e não no pilar)
+  const [parteAberta, setParteAberta] = useState<string | null>(null)
+  // um renderizador só: duas camadas de canvas fariam a de cima engolir o toque na de baixo
+  const rendRef = useRef<L.Canvas | null>(null)
+  const caixas = useRef(new Map<string, { marcador: L.Marker; texto: HTMLElement }>())
+  /** Desenho de cada barra de laje e o grupo de cada camada (só aparece na aba Barras). */
+  const camadasDeBarra = useRef(new Map<string, L.Polyline>())
+  const gruposDasBarras = useRef(new Map<string, L.LayerGroup>())
+  /** Alvo invisível de cada furo (44 px): só recebe o toque na aba Furos. */
+  const alvosDosFuros = useRef(new Map<string, L.CircleMarker>())
+  /** O último estilo de cada polígono: mudar o estilo redesenha a planta, e o toque muda só uma peça. */
+  const estilos = useRef(new WeakMap<L.Path, string>())
+
+  useEffect(() => {
+    if (!manifest || !pacote || !divMapa.current || mapa.current) return
+    const m = L.map(divMapa.current, {
+      crs: L.CRS.Simple,
+      // folha grande (6.500 pontos) em 375 px precisa de menos que -4 para caber inteira
+      minZoom: -6,
+      maxZoom: 3,
+      zoomSnap: 0.25,
+      zoomDelta: 0.5,
+      attributionControl: false,
+      zoomControl: false,
+      preferCanvas: true,
+    })
+    const limites = L.latLngBounds([-manifest.altura, 0], [0, manifest.largura])
+    m.setMaxBounds(limites.pad(0.15))
+    const Tiles = L.GridLayer.extend({
+      createTile(coords: L.Coords) {
+        const u = pacote.tile(coords.z, coords.x, coords.y)
+        // pedaço em branco não vem no pacote (na folha em L, é quase metade). Sem endereço, o navegador
+        // desenha uma borda em volta da imagem: um retângulo cinza no meio da planta
+        if (!u) return document.createElement('div')
+        const img = document.createElement('img')
+        img.alt = ''
+        img.src = u
+        return img
+      },
+    })
+    new (Tiles as unknown as new (o: L.GridLayerOptions) => L.GridLayer)({
+      tileSize: manifest.tile,
+      minNativeZoom: Math.min(...manifest.niveis),
+      maxNativeZoom: Math.max(...manifest.niveis),
+      minZoom: -6,
+      maxZoom: 3,
+      bounds: limites,
+      noWrap: true,
+      keepBuffer: 4,
+    }).addTo(m)
+    // abre enquadrando as peças (sem as margens da folha, carimbo e notas): a planta fica maior
+    const enquadro = (() => {
+      const lista = Object.values(manifest.elementos)
+      if (!lista.length) return limites
+      const b = caixa(lista[0].rotulo)
+      for (const e of lista) {
+        b.extend(caixa(e.rotulo))
+        for (const p of e.polys) for (const pt of p) b.extend(ll(pt))
+      }
+      return b.pad(0.03)
+    })()
+    m.fitBounds(enquadro)
+    // vindo da lista de reprovações: a peça no meio da tela, com folga em volta para situar
+    const pecaAlvo = pecaInicial ? elementoDe(pecaInicial) : undefined
+    const irAoAlvo = () => {
+      if (!pecaAlvo) return
+      const b = caixa(pecaAlvo.rotulo)
+      for (const p of pecaAlvo.polys) for (const pt of p) b.extend(ll(pt))
+      m.fitBounds(b.pad(1.2), { maxZoom: 0.5, animate: false })
+    }
+    const rend = canvasDaPlanta({ tolerance: 7, padding: 0.3 })
+    rendRef.current = rend
+    m.on('click', (ev: L.LeafletMouseEvent) => tocarMapaRef.current(ev.latlng))
+    const porTipo = new Map<string, L.LayerGroup>()
+    const nomes: Array<{ marcador: L.Marker; zoomMinimo: number }> = []
+    for (const [id, e] of Object.entries(manifest.elementos)) {
+      let g = porTipo.get(e.tipo)
+      if (!g) {
+        g = L.layerGroup()
+        porTipo.set(e.tipo, g)
+      }
+      if (e.tipo === 'A') {
+        // o número do ambiente não está impresso na prancha de arquitetura: o app escreve por cima
+        const texto = document.createElement('span')
+        texto.textContent = e.nome
+        const centro = caixa(e.rotulo).getCenter()
+        const marcador = L.marker(centro, { icon: L.divIcon({ className: 'fv-rot', html: texto, iconSize: [0, 0] }), interactive: false, keyboard: false })
+        // cômodo grande ganha o número antes; banheiro e shaft só com mais zoom (1 ponto = 2^zoom px)
+        const xs = e.polys.flat().map((pt) => pt[0])
+        const ys = e.polys.flat().map((pt) => pt[1])
+        const larg = xs.length ? Math.max(...xs) - Math.min(...xs) : 1
+        const alt = ys.length ? Math.max(...ys) - Math.min(...ys) : 1
+        nomes.push({ marcador, zoomMinimo: Math.log2(Math.max(ROTULO_PX.largura / Math.max(larg, 1), ROTULO_PX.altura / Math.max(alt, 1))) })
+      }
+      if (e.tipo === 'F') {
+        // furo: bolinha do mesmo tamanho na tela em qualquer zoom, com alvo de 44 px para o dedo
+        const centro = caixa(e.rotulo).getCenter()
+        const marca = L.circleMarker(centro, { renderer: rend, radius: RAIO_FURO_PX, weight: 2 })
+        const alvo = L.circleMarker(centro, { renderer: rend, radius: ALVO_FURO_PX, stroke: false, fillOpacity: 0, fillColor: '#000' })
+        marca.addTo(g)
+        alvo.addTo(g)
+        marca.on('click', () => tocarRef.current(id))
+        alvo.on('click', () => tocarRef.current(id))
+        camadas.current.set(id, [marca])
+        alvosDosFuros.current.set(id, alvo)
+        continue
+      }
+      // alvo invisível em volta do nome: a peça sem contorno também é tocável
+      const toque = opcoesDeToque(e.tipo) // viga com margem maior; laje e ambiente de fundo (toque.ts)
+      const alvo = L.rectangle(caixa(e.rotulo).pad(0.15), { renderer: rend, stroke: false, fillOpacity: 0, fillColor: '#000', ...toque })
+      const formas: L.Path[] = (e.polys.length ? e.polys : [null]).map((p) =>
+        p ? L.polygon(p.map(ll), { renderer: rend, weight: 2, ...toque }) : L.rectangle(caixa(e.rotulo), { renderer: rend, weight: 2, dashArray: '4 3', ...toque }),
+      )
+      // o nome vai direto à peça; o desenho pode ser de mais de uma (P101 e P101a)
+      alvo.addTo(g)
+      alvo.on('click', () => tocarRef.current(id))
+      for (const f of formas) {
+        f.addTo(g)
+        f.on('click', () => tocarDesenhoRef.current(id))
+      }
+      camadas.current.set(id, formas)
+      // consolo e capitel: tracejados em volta do pilar, no grupo dos pilares
+      const doPilar: Array<[string, L.Path[]]> = []
+      for (const pt of e.partes ?? []) {
+        const desenhos = pt.polys.map((poly) => L.polygon(poly.map(ll), { renderer: rend, weight: 1.5, dashArray: '6 4', ...opcoesDeToque(pt.tipo) }))
+        for (const f of desenhos) {
+          f.addTo(g)
+          f.on('click', () => tocarParteRef.current(id, pt.tipo))
+        }
+        doPilar.push([pt.tipo, desenhos])
+      }
+      if (doPilar.length) camadasDasPartes.current.set(id, doPilar)
+    }
+    for (const t of [...ORDEM_TIPOS].reverse()) porTipo.get(t)?.addTo(m)
+    grupos.current = porTipo
+    // barras: só desenho, sem toque próprio (o toque vai ao mapa e escolhe a barra mais perto)
+    for (const [id, b] of Object.entries(manifest.barras ?? {})) {
+      let g = gruposDasBarras.current.get(b.camada)
+      if (!g) {
+        g = L.layerGroup()
+        gruposDasBarras.current.set(b.camada, g)
+      }
+      const linha = L.polyline(b.linha.map(ll), { renderer: rend, color: COR_BARRA.nada, weight: 2.5, opacity: 0.95, interactive: false })
+      linha.addTo(g)
+      camadasDeBarra.current.set(id, linha)
+    }
+    const mostrarNomes = () => {
+      const z = m.getZoom()
+      for (const { marcador, zoomMinimo } of nomes) {
+        if (z < zoomMinimo) marcador.remove()
+        else if (!m.hasLayer(marcador)) marcador.addTo(m)
+      }
+    }
+    m.on('zoomend', mostrarNomes)
+    mapa.current = m
+    if (import.meta.env.DEV) (window as unknown as { __fvMapa: L.Map }).__fvMapa = m
+    // o zoom inicial só vale depois que a área do mapa tem tamanho na tela
+    const quadro = requestAnimationFrame(() => {
+      m.invalidateSize()
+      m.fitBounds(enquadro)
+      irAoAlvo()
+      mostrarNomes()
+    })
+    // Tela mudou de tamanho (girou o aparelho, por exemplo): enquanto a pessoa não mexeu na
+    // planta, ela continua enquadrada inteira; depois disso, fica onde a pessoa deixou.
+    let mexeu = !!pecaAlvo
+    const marcarMexeu = () => {
+      mexeu = true
+    }
+    const area = m.getContainer()
+    area.addEventListener('pointerdown', marcarMexeu)
+    area.addEventListener('wheel', marcarMexeu, { passive: true })
+    const aoRedimensionar = () => {
+      m.invalidateSize()
+      if (!mexeu) m.fitBounds(enquadro)
+    }
+    window.addEventListener('resize', aoRedimensionar)
+    return () => {
+      cancelAnimationFrame(quadro)
+      area.removeEventListener('pointerdown', marcarMexeu)
+      area.removeEventListener('wheel', marcarMexeu)
+      window.removeEventListener('resize', aoRedimensionar)
+      // o fim da animação de zoom vem num relógio do Leaflet, 250 ms depois: saindo antes, ele acharia o mapa já removido
+      ;(m as unknown as { _animatingZoom: boolean })._animatingZoom = false
+      m.remove()
+      mapa.current = null
+      rendRef.current = null
+      camadas.current.clear()
+      camadasDasPartes.current.clear()
+      alvosDosFuros.current.clear()
+      caixas.current.clear()
+      camadasDeBarra.current.clear()
+      gruposDasBarras.current.clear()
+    }
+  }, [manifest, pacote])
+
+  // áreas de laje: polígono na cor da situação e uma caixa com o nome, tocável em qualquer aba
+  useEffect(() => {
+    const m = mapa.current
+    const rend = rendRef.current
+    if (!m || !rend || !grupos.current) return
+    let g = grupos.current.get('L')
+    if (!g) {
+      g = L.layerGroup().addTo(m)
+      grupos.current.set('L', g)
+    }
+    const doGrupo = g
+    const marcadores: L.Marker[] = []
+    const ids = areasDaPlanta.map((a) => a.id)
+    for (const a of areasDaPlanta) {
+      const forma = L.polygon(a.contorno.map(ll), { renderer: rend, weight: 2, ...opcoesDeToque('L') }).addTo(doGrupo)
+      forma.on('click', () => tocarRef.current(a.id))
+      camadas.current.set(a.id, [forma])
+      const texto = document.createElement('span')
+      texto.textContent = a.nome
+      texto.setAttribute('data-testid', 'fvs-caixa-area')
+      const marcador = L.marker(ll(centroDoContorno(a.contorno)), { icon: L.divIcon({ className: 'fv-caixa', html: texto, iconSize: [0, 0] }), keyboard: false }).addTo(m)
+      marcador.on('click', () => tocarRef.current(a.id))
+      marcadores.push(marcador)
+      caixas.current.set(a.id, { marcador, texto })
+    }
+    return () => {
+      doGrupo.clearLayers()
+      for (const k of marcadores) k.remove()
+      for (const id of ids) {
+        camadas.current.delete(id)
+        caixas.current.delete(id)
+      }
+    }
+  }, [chaveDasAreas, manifest, pacote])
+
+  // vindo da lista: a planta abre no tipo da peça (viga, por exemplo)
+  useEffect(() => {
+    const t = pecaInicial ? elementoDe(pecaInicial)?.tipo : undefined
+    if (t) setTipo(t)
+  }, [manifest, pecaInicial])
+
+  // celular: a fila de abas pode não caber (Furos, Barras); a aba escolhida rola para a vista
+  const filaDeAbas = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const fila = filaDeAbas.current
+    const on = fila?.querySelector<HTMLElement>('button.on')
+    if (!fila || !on || fila.scrollWidth <= fila.clientWidth) return
+    const f = fila.getBoundingClientRect()
+    const b = on.getBoundingClientRect()
+    if (b.left < f.left || b.right > f.right) fila.scrollLeft += b.left - f.left - (f.width - b.width) / 2
+  }, [tipo, tipos.length])
+
+  // peça do tipo escolhido fica por cima (recebe o toque primeiro)
+  useEffect(() => {
+    const cima = grupos.current?.get(tipo)
+    const m = mapa.current
+    if (!cima || !m) return
+    cima.remove()
+    cima.addTo(m)
+  }, [tipo, manifest, chaveDasAreas])
+
+  // barras: só a camada escolhida, só na aba Barras, por cima de tudo
+  useEffect(() => {
+    const m = mapa.current
+    if (!m) return
+    // a barra passa por cima de viga e pilar: na aba Barras o toque vai todo para o mapa (tocarBarra)
+    toqueSoNoMapa(rendRef.current, tipo === 'B')
+    for (const [cam, g] of gruposDasBarras.current) {
+      if (tipo === 'B' && cam === camada) {
+        if (!m.hasLayer(g)) g.addTo(m)
+      } else g.remove()
+    }
+  }, [tipo, camada, manifest, pacote])
+
+  // cores (situação da peça na ficha, só a etapa escolhida, se houver)
+  useEffect(() => {
+    if (!manifest) return
+    for (const [id, e] of elementos) {
+      // "Por item": a peça fica na cor daquele item (OK verde, NA verde-azulado, errado vermelho, sem conferir
+      // cinza); a peça em que o item não se marca fica apagada
+      const doItem = porItemAtivo && e.tipo === porItemAtivo.tipo && !e.so_detalhe ? resultadoPorItem(id, porItemAtivo) : undefined
+      const s = doItem === undefined ? situacao(id, e) : doItem === 'C' || doItem === 'NA' ? 'liberado' : doItem === 'NC' ? 'reprovado' : 'nada'
+      const [cor, f] = doItem === 'NA' ? [COR_NA, 0.45] : COR[s]
+      const ativo = e.tipo === tipo && doItem !== 'fora'
+      const ehArea = elementosDasAreas.has(id)
+      // ambientes cobrem o pavimento inteiro, parede com parede: o ainda pendente fica com traço
+      // fino e quase sem cor, para a prancha continuar legível; o que já tem marcação se destaca
+      const pendenteLeve = e.tipo === 'A' && s === 'nada'
+      const duplicada = abertasDe(id).length > 1
+      const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : cor
+      // arranque (só detalhe): tracejado e quase sem cor, para não parecer peça a marcar
+      const soDetalhe = !!e.so_detalhe
+      const fillOpacity = soDetalhe ? 0.02 : ehArea ? (ativo ? Math.min(f, OPACIDADE_MAX_AREA) : Math.min(f, OPACIDADE_MAX_AREA) * 0.5) : pendenteLeve ? 0.05 : ativo ? f : f * 0.25
+      const opacity = ehArea ? (ativo ? 1 : 0.6) : !ativo ? 0.3 : soDetalhe && sel !== id ? 0.6 : pendenteLeve && sel !== id ? 0.6 : 1
+      const weight = sel === id ? 4 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : 2
+      const dashArray = soDetalhe ? '5 4' : undefined
+      if (e.tipo === 'F') {
+        // furo pendente: miolo branco (fica visível em cima da viga); fora da aba Furos, apagado e sem toque
+        const fill = s === 'nada' ? '#ffffff' : cor
+        const fo = ativo ? 0.95 : 0.25
+        const op = ativo ? 1 : 0.35
+        const w = sel === id ? 4 : 2
+        const chaveFuro = `${color}|${fill}|${fo}|${op}|${w}`
+        for (const l of camadas.current.get(id) ?? []) {
+          ;(l.options as { interactive?: boolean }).interactive = ativo
+          if (estilos.current.get(l) === chaveFuro) continue
+          estilos.current.set(l, chaveFuro)
+          l.setStyle({ color: sel === id ? '#111' : cor, fillColor: fill, fillOpacity: fo, opacity: op, weight: w })
+        }
+        const alvo = alvosDosFuros.current.get(id)
+        if (alvo) (alvo.options as { interactive?: boolean }).interactive = ativo
+        continue
+      }
+      const chave = `${color}|${cor}|${fillOpacity}|${opacity}|${weight}|${dashArray}`
+      for (const l of camadas.current.get(id) ?? []) {
+        // fora da aba Lajes, a área grande não pode roubar o toque de quem está marcando pilar e viga
+        if (ehArea) (l.options as { interactive?: boolean }).interactive = ativo
+        if (estilos.current.get(l) === chave) continue
+        estilos.current.set(l, chave)
+        l.setStyle({ color, fillColor: cor, fillOpacity, opacity, weight, ...(dashArray ? { dashArray } : {}) })
+      }
+      const caixa = caixas.current.get(id)
+      if (caixa) caixa.texto.className = `s-${s}${sel === id ? ' on' : ''}`
+    }
+    // consolo e capitel na cor dos itens deles (cinza se a ficha do pilar não tem itens da parte)
+    const pilaresAtivos = tipo === 'P'
+    for (const [id, partes] of camadasDasPartes.current) {
+      for (const [parte, desenhos] of partes) {
+        const [cor, f] = COR[situacaoDaParte(id, parte) ?? 'nada']
+        const escolhida = sel === id && parteAberta === parte
+        const color = escolhida ? '#111' : cor
+        const fillOpacity = pilaresAtivos ? Math.min(f, 0.25) : 0.04
+        const opacity = pilaresAtivos ? 0.9 : 0.3
+        const weight = escolhida ? 3 : 1.5
+        const chave = `${color}|${cor}|${fillOpacity}|${opacity}|${weight}`
+        for (const l of desenhos) {
+          if (estilos.current.get(l) === chave) continue
+          estilos.current.set(l, chave)
+          l.setStyle({ color, fillColor: cor, fillOpacity, opacity, weight })
+        }
+      }
+    }
+    if (tipo === 'B') {
+      for (const [id, l] of camadasDeBarra.current) {
+        const s = situacaoDaBarra(eventosDe(id))
+        const cor = COR_BARRA[s === 'liberado' || s === 'reprovado' ? s : 'nada']
+        const w = s === 'reprovado' ? 4 : 2.5
+        const chave = `${cor}|${w}`
+        if (estilos.current.get(l) === chave) continue
+        estilos.current.set(l, chave)
+        l.setStyle({ color: cor, weight: w })
+      }
+    }
+  })
+
+  // o polígono sendo desenhado: traço, preenchimento e cantos (o primeiro maior: tocar nele fecha)
+  useEffect(() => {
+    const m = mapa.current
+    const rend = rendRef.current
+    if (!m || !rend || !desenho) return
+    const g = L.layerGroup().addTo(m)
+    const pts = desenho.pontos.map(ll)
+    if (pts.length >= 3) L.polygon(pts, { renderer: rend, stroke: false, fillColor: COR_TRACADO, fillOpacity: 0.18, interactive: false }).addTo(g)
+    if (pts.length >= 2) L.polyline(pts, { renderer: rend, color: COR_TRACADO, weight: 3, interactive: false }).addTo(g)
+    pts.forEach((p, i) => L.circleMarker(p, { renderer: rend, radius: i === 0 ? 9 : 6, color: '#fff', weight: 2, fillColor: i === 0 ? '#c27800' : COR_TRACADO, fillOpacity: 1, interactive: false }).addTo(g))
+    return () => {
+      g.remove()
+    }
+  }, [desenho])
+
+  // desenhando, dois toques rápidos são dois cantos, e não zoom
+  const desenhando = !!desenho
+  useEffect(() => {
+    const m = mapa.current
+    if (!m || !desenhando) return
+    m.doubleClickZoom.disable()
+    return () => {
+      m.doubleClickZoom.enable()
+    }
+  }, [desenhando])
+
+  /** Começa o desenho de uma área. O voltar do aparelho cancela, sem sair da planta. */
+  const comecarDesenho = (areaId?: string) => {
+    setPincel(null)
+    setPorItem(null)
+    setCaixaNova(null)
+    fecharPainel()
+    abrirSobre(() => {
+      setDesenho(null)
+      setCaixaNova(null)
+    })
+    setDesenho({ pontos: [], areaId })
+  }
+
+  const cancelarDesenho = () => {
+    const volta = desenho?.areaId
+    setDesenho(null)
+    fecharSobre()
+    if (volta) abrirPainel(volta)
+  }
+
+  // terminou o desenho de um contorno novo: grava; área nova abre a caixa da ficha
+  const concluirDesenho = (pontos: Ponto[]) => {
+    const problema = problemaDoContorno(pontos)
+    if (problema) return avisar(problema)
+    const areaId = desenho?.areaId
+    setDesenho(null)
+    const area = areaId ? dados.areaPorId.get(areaId) : undefined
+    if (area) {
+      fecharSobre()
+      executar(async () => {
+        await mudarArea(c, area, { contorno: pontos })
+        avisar(`Contorno de ${area.nome} atualizado.`)
+      }).then(() => abrirPainel(area.id))
+      return
+    }
+    const opcoes = fichasDaCaixa(dados.fichas)
+    const todas = [...dados.areaPorId.values()]
+    const inicial = fichaInicialDaCaixa(opcoes, todas, fichaPorId)
+    setCaixaNova({ contorno: pontos, nome: proximoNomeDeArea(areasDoPavimento ?? []), fichaId: inicial?.id ?? '', codigo: '' })
+  }
+
+  const criarDaCaixa = () => {
+    if (!caixaNova) return
+    const nova = caixaNova
+    if (!nova.nome.trim() || !nova.fichaId) return
+    setCaixaNova(null)
+    fecharSobre()
+    let criada = ''
+    executar(async () => {
+      const linha = await criarArea(c, { pavimentoId: planta.pavimento_id, setorId: planta.setor_id, nome: nova.nome, fichaId: nova.fichaId, codigoFicha: nova.codigo, contorno: nova.contorno })
+      criada = linha.id
+    }).then(() => {
+      setTipo('L')
+      if (criada) abrirPainel(criada)
+    })
+  }
+
+  const apagarArea = (area: AreaDeLaje) => {
+    if (!confirm(`Apagar ${area.nome} da planta?\n\nO que já foi marcado fica guardado no histórico.`)) return
+    fecharPainel()
+    executar(async () => {
+      await mudarArea(c, area, { cancelada: true })
+      avisar(`${area.nome} apagada.`)
+    })
+  }
+
+  tocarMapaRef.current = (pos) => {
+    const m = mapa.current
+    if (!desenho && tipo === 'B' && m) return tocarBarra(pos, m)
+    if (!desenho || !m) return
+    const { pontos } = desenho
+    if (pontos.length >= 3 && m.latLngToContainerPoint(ll(pontos[0])).distanceTo(m.latLngToContainerPoint(pos)) <= FECHAR_PX) return concluirDesenho(pontos)
+    setDesenho({ ...desenho, pontos: [...pontos, [Math.round(pos.lng * 100) / 100, Math.round(-pos.lat * 100) / 100]] })
+  }
+
+  useEffect(() => {
+    // painel abriu, fechou ou mudou de peça: o mapa muda de tamanho e a peça continua à vista
+    // Durante o voo da busca, espera ele acabar: o panInside no meio do voo pega o zoom quebrado
+    // (-1,63), o Leaflet arredonda (-1,75) e agenda uma animação de zoom num quadro seguinte. Por uns
+    // 250 ms, todo enquadro (o toque da pessoa, "ver folha", o teste) era engolido ou desfeito por ela
+    // (testes instáveis do P6/P6a e do pincel na duplicada, 09 a 12/11). O voo já termina com a peça
+    // no meio, e o invalidateSize a mantém no meio quando o painel muda o tamanho do mapa.
+    let m: L.Map | null = null
+    const ajustar = () => {
+      if (!m) return
+      m.invalidateSize()
+      const forma = sel ? camadas.current.get(sel)?.[0] : undefined
+      if (forma) m.panInside(limitesDaCamada(forma).getCenter(), { padding: [30, 30] })
+    }
+    const t = window.setTimeout(() => {
+      m = mapa.current
+      if (!m) return
+      if (voando.current) m.once('moveend', ajustar)
+      else ajustar()
+    }, 60)
+    return () => {
+      window.clearTimeout(t)
+      m?.off('moveend', ajustar)
+    }
+  }, [sel])
+
+  // ------------------------------------------------------------------ toque na peça
+  tocarRef.current = (id: string) => {
+    // desenhando, o toque é um canto: quem recebe é o mapa (tocarMapaRef)
+    if (desenho) return
+    const e = elementoDe(id)
+    if (!e) return
+    // aba Barras: o toque é da barra (mapa); só a caixa da área de laje abre o painel dela, sem trocar de aba
+    if (tipo === 'B') {
+      if (!dados.areaPorId.has(id)) return
+      setParteAberta(null)
+      return abrirPainel(id)
+    }
+    if (porItemAtivo && pode) {
+      if (e.tipo !== porItemAtivo.tipo) return avisar(`No "Por item", toque ${porItemAtivo.tipo === 'P' ? 'nos pilares' : porItemAtivo.tipo === 'V' ? 'nas vigas' : 'nos ambientes'}. Para abrir ${e.nome}, toque em Sair.`)
+      return tocarPorItem(id, e, porItemAtivo)
+    }
+    if (e.tipo !== tipo) setTipo(e.tipo)
+    if (e.tipo === 'F' && pode && !pincel && abertasDe(id).length === 0) return tocarFuro(id, e)
+    if (pincel && pode) {
+      const abertas = abertasDe(id)
+      // duas fichas na mesma peça: quem decide em qual marcar é a pessoa, pelo painel
+      if (abertas.length > 1) return avisar(`${e.nome} tem ${abertas.length} fichas ${sistema ? `no ${sistema.nome}` : 'abertas'}. Toque sem o pincel e escolha a ficha.`)
+      const aberta = abertas[0]
+      const daPeca = aberta ? fichaNaPeca(aberta.ficha_id ? dados.fichaPorId.get(aberta.ficha_id) : undefined, partesDe(id)) : fichaDoLocal(id, e.tipo)
+      if (!daPeca) return avisar(`Não há ficha para ${NOME_TIPO[e.tipo] ?? e.tipo}.`)
+      // viga com furos: o item de furação fica com os furos, o pincel não marca
+      const semFuros = furosPorViga.has(id) ? { ...daPeca, itens: daPeca.itens.filter((i) => !i.furos) } : daPeca
+      // área de laje com barras: o item de armadura fica com as barras
+      const ficha = barrasDaLaje(id).length ? { ...semFuros, itens: semFuros.itens.filter((i) => !i.barras) } : semFuros
+      const { etapa: et, resultado } = pincel
+      const cDoPincel = { ...c, fichaCampoId: aberta?.id ?? null }
+      const toque: Toque = { tipo: 'lote', id: crypto.randomUUID(), obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: cDoPincel.fichaCampoId, pecas: [{ id, fichaId: ficha.id, fichaCampoId: cDoPincel.fichaCampoId }], etapa: et || null, resultado }
+      anotarToque(toque)
+      executar(async (evs) => {
+        const gravados = await marcarLote(cDoPincel, [{ id, ficha, eventos: daFichaAberta(evs(id), cDoPincel.fichaCampoId) }], et || null, resultado, toque.id).finally(() => esquecerToque(toque.obraId, toque.id))
+        const n = gravados.length
+        // segundo toque na mesma peça (toque duplo): não tira o "Desfazer" da tela
+        if (n || ultimaDoPincel.current !== id) {
+          avisarLote(n ? `${e.nome}: ${n} ${n === 1 ? 'item' : 'itens'} ${resultado}${et ? ` em ${et.toLowerCase()}` : ''}` : `${e.nome}: nada a marcar (já estava preenchido)`, gravados)
+        }
+        ultimaDoPincel.current = id
+        return gravados
+      })
+      return
+    }
+    setParteAberta(null)
+    abrirPainel(id)
+  }
+
+  /**
+   * Toque na peça no modo "Por item". Com OK na barra: sem conferir ou NA → C; C → errado (só com observação
+   * e Confirmar); errado → C na rodada seguinte (reinspeção; o NC fica nas reprovações). Com NA na barra:
+   * sem conferir, C ou errado → NA (sobre o errado, reinspeção); NA → sem conferir. O aviso traz "Desfazer",
+   * que volta ao que estava (é por ele que sai um NC posto por engano).
+   */
+  const tocarPorItem = (id: string, _e: ElementoPacote, esc: ItemEscolhido) => {
+    const a = alvoDoItem(id, esc)
+    if ('aviso' in a) return avisar(a.aviso)
+    const atual = resultadoDoItem(a.ficha, daFichaAberta(eventosDe(id), a.cx.fichaCampoId ?? null), a.item.n)
+    const passo = proximoDoToque(atual, modoItem)
+    if (passo === 'pedir-nc') {
+      setNcDoItem({ id, texto: '' })
+      abrirSobre(() => setNcDoItem(null))
+      return
+    }
+    gravarPorItem(id, esc, passo === 'limpar' ? null : passo, null, atual)
+  }
+
+  /**
+   * Grava o item na peça (C, NA, NC com a observação, ou null: tira o NA; C ou NA sobre NC é a reinspeção).
+   * O toque vai para o diário (toques.ts) na hora; na fila, se o item mudou desde o toque (toque duplo,
+   * outro aparelho), não grava.
+   */
+  const gravarPorItem = (id: string, esc: ItemEscolhido, resultado: 'C' | 'NC' | 'NA' | null, obs: string | null, esperado: Resultado | null) => {
+    const a = alvoDoItem(id, esc)
+    const nome = elementoDe(id)?.nome ?? id
+    if ('aviso' in a) return avisar(a.aviso)
+    const { ficha, item, cx } = a
+    const fichaCampoId = cx.fichaCampoId ?? null
+    const base = { id: crypto.randomUUID(), obraId: cx.obraId, usuarioId: cx.usuarioId, plantaId: cx.plantaId, fichaCampoId, pecaId: id, fichaId: ficha.id, item: item.n }
+    const toque: Toque = resultado ? { ...base, tipo: 'item', resultado, observacao: obs } : { ...base, tipo: 'desmarcar' }
+    anotarToque(toque)
+    executar(async (evs) => {
+      const eventos = daFichaAberta(evs(id), fichaCampoId)
+      const anterior = registroDoItem(ficha, eventos, item.n)
+      if ((anterior?.resultado ?? null) !== esperado) {
+        esquecerToque(toque.obraId, toque.id)
+        avisar(`${nome} · ${item.titulo}: já estava ${textoDoResultado(anterior?.resultado ?? null)}.`)
+        return []
+      }
+      // tirar o NA é desmarcar (mesma rodada); NC nunca é desmarcado por aqui
+      const gravado = await (resultado ? tocarItem(cx, id, ficha, item.n, resultado, eventos, toque.id, obs) : desmarcarR(cx, id, ficha, item.n, eventos, toque.id)).finally(() =>
+        esquecerToque(toque.obraId, toque.id),
+      )
+      // o toque que fecha a ficha inteira da peça avisa
+      const fechou = situacaoDaPeca(ficha, eventos) !== 'liberado' && situacaoDaPeca(ficha, [...eventos, gravado as unknown as EventoFvs]) === 'liberado'
+      const reinspecao = esperado === 'NC' ? ` (reinspeção ${rotuloRodada(Number(gravado.rodada))})` : ''
+      avisar(`${nome} · ${item.titulo}: ${textoDoResultado(resultado)}${reinspecao}${fechou ? ' · ficha completa' : ''}`, () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const volta = await voltarItem(cx, gravado, anterior, daFichaAberta(evs2(id), fichaCampoId))
+          avisar(volta ? `Desfeito: ${nome} · ${item.titulo}` : 'Nada a desfazer: o item já mudou.')
+          return volta
+        })
+      })
+      return gravado
+    })
+  }
+
+  const confirmarNcDoItem = () => {
+    if (!ncDoItem || !ncDoItem.texto.trim() || !porItem) return
+    const { id, texto } = ncDoItem
+    setNcDoItem(null)
+    fecharSobre()
+    gravarPorItem(id, porItem, 'NC', texto.trim(), 'C')
+  }
+
+  /**
+   * Toque no furo (gesto A do protótipo): sem conferir → OK; OK → errado (abre o painel para "O que
+   * fazer?" e a foto); errado → sem conferir. O aviso traz "Desfazer", que volta ao que estava.
+   */
+  const tocarFuro = (id: string, e: ElementoPacote) => {
+    const f = furacaoDe(id)
+    if (!f) {
+      setParteAberta(null)
+      abrirPainel(id)
+      return avisar('A ficha de viga não tem item de furação: o furo fica só para ver.')
+    }
+    const { ficha, item, vigaId } = f
+    executar(async (evs) => {
+      const eventos = daFichaAberta(evs(id), null)
+      const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === ficha.id)).get(item)
+      const r = anterior?.resultado ?? null
+      const gravado =
+        r === 'NC' ? await desmarcarR(c, id, ficha, item, eventos) : await tocarItem(c, id, ficha, item, r === 'C' ? 'NC' : r === 'NA' ? 'NA' : 'C', eventos)
+      const novo = gravado.resultado as string | null
+      avisar(`${e.nome}: ${novo === 'C' ? 'OK' : novo === 'NC' ? 'errado' : 'sem conferir'}`, () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const volta = await voltarItem(c, gravado, anterior, daFichaAberta(evs2(id), null))
+          avisar(volta ? `Desfeito: ${e.nome}` : 'Nada a desfazer: o furo já mudou.')
+          return volta
+        })
+        acertarViga(vigaId)
+      })
+      // errado: o painel abre para escrever o que fazer e tirar a foto
+      if (novo === 'NC') {
+        setParteAberta(null)
+        abrirPainel(id)
+      }
+      return gravado
+    })
+    acertarViga(vigaId)
+  }
+
+  /**
+   * Leva os furos ao item de furação da viga: algum errado NC (a observação diz quais), todos OK C,
+   * senão pendente. Só grava se o item mudou; roda depois de cada mudança feita num furo.
+   */
+  const acertarViga = (vigaId: string) =>
+    executar(async (evs) => {
+      const furos = furosPorViga.get(vigaId) ?? []
+      const f = furos.length ? furacaoDe(furos[0]) : undefined
+      if (!f) return
+      const sits = furos.map((id) => situacaoDoFuro(f.ficha.id, f.item, daFichaAberta(evs(id), null)))
+      const resultado = resultadoPelosFuros(sits)
+      const daViga = daFichaAberta(evs(vigaId), null)
+      const atual = ultimosPorItem(daViga.filter((x) => x.ficha_id === f.ficha.id)).get(f.item)
+      const errados = furos.filter((_, i) => sits[i] === 'reprovado').map((id) => manifest?.elementos[id]?.nome ?? id)
+      const obs = errados.length ? `Furo errado: ${errados.join(', ')}` : null
+      if ((atual?.resultado ?? null) === resultado && (resultado !== 'NC' || atual?.observacao === obs)) return
+      return marcarPelosFuros(c, vigaId, f.ficha, f.item, resultado, obs, daViga)
+    })
+
+  // ------------------------------------------------------------------ barras de laje
+  /** Ids das barras (de todas as camadas) que tocam a área de laje; vazio se não é área ou não há barras. */
+  const barrasDaLaje = (areaId: string): string[] => {
+    const area = dados.areaPorId.get(areaId)
+    return area && barras ? barrasDaArea(barras, area.contorno) : []
+  }
+  /**
+   * A ficha e o item de armadura em que a barra grava: o da ficha da área de laje onde ela está; sem
+   * área, o da primeira ficha de laje que tem o item. Nenhuma ficha com o item: a barra fica só para ver.
+   */
+  const armaduraDaBarra = (barraId: string): { ficha: Ficha; item: number } | undefined => {
+    const b = barras?.[barraId]
+    if (!b) return undefined
+    for (const a of areasDaPlanta) {
+      if (!barraNaArea(b.linha, a.contorno)) continue
+      const f = fichaPorId(a.ficha_id)
+      const it = itemDasBarras(f)
+      if (f && it) return { ficha: f, item: it.n }
+    }
+    const f = fichasPara('L', dados.fichas).find((x) => itemDasBarras(x))
+    return f ? { ficha: f, item: itemDasBarras(f)!.n } : undefined
+  }
+
+  /**
+   * Leva as barras ao item de armadura de cada área de laje que a barra toca (barra que cruza duas
+   * lajes conta nas duas): todas OK C, alguma errada NC com a observação de quais, senão pendente.
+   * Só grava se o item mudou.
+   */
+  const acertarLajes = (barraIds: readonly string[]) =>
+    executar(async (evs) => {
+      if (!barras) return
+      const gravados: Linha[] = []
+      const linhas = barraIds.map((id) => barras[id]?.linha).filter((l): l is Array<[number, number]> => !!l)
+      for (const a of areasDaPlanta) {
+        if (!linhas.some((l) => barraNaArea(l, a.contorno))) continue
+        const ficha = fichaPorId(a.ficha_id)
+        const item = itemDasBarras(ficha)?.n
+        if (!ficha || item === undefined) continue
+        const ids = barrasDaArea(barras, a.contorno)
+        const sits = ids.map((id) => situacaoDaBarra(evs(id)))
+        const resultado = resultadoPelasBarras(sits)
+        const erradas = ids.filter((_, i) => sits[i] === 'reprovado').map((id) => ({ barra: barras[id], obs: observacaoDaBarra(evs(id)) }))
+        const obs = resultado === 'NC' ? observacaoDasErradas(erradas) : null
+        const daArea = daFichaAberta(evs(a.id), null)
+        const atual = ultimosPorItem(daArea.filter((x) => x.ficha_id === ficha.id)).get(item)
+        if ((atual?.resultado ?? null) === resultado && (resultado !== 'NC' || (atual?.observacao ?? null) === obs)) continue
+        gravados.push(await marcarPelosFuros(c, a.id, ficha, item, resultado, obs, daArea))
+      }
+      return gravados
+    })
+
+  /** Grava a situação nova da barra (C OK, NC errada com observação, null sem conferir) e acerta as lajes. */
+  const gravarBarra = (barraId: string, resultado: 'C' | 'NC' | null, obs: string | null) => {
+    const b = barras?.[barraId]
+    const arm = armaduraDaBarra(barraId)
+    if (!b || !arm) return
+    executar(async (evs) => {
+      const eventos = daFichaAberta(evs(barraId), null)
+      let anterior: EventoFvs | undefined
+      for (const e of eventos) if (!anterior || maisNovo(e, anterior)) anterior = e
+      const gravado = await marcarPelosFuros(c, barraId, arm.ficha, arm.item, resultado, obs, eventos)
+      const texto = resultado === 'C' ? 'OK' : resultado === 'NC' ? 'errada' : 'sem conferir'
+      avisar(`${nomeDaBarra(b)}: ${texto}`, () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const volta = await voltarItem(c, gravado, anterior && anterior.ficha_id === gravado.ficha_id ? anterior : undefined, daFichaAberta(evs2(barraId), null))
+          avisar(volta ? `Desfeito: ${nomeDaBarra(b)}` : 'Nada a desfazer: a barra já mudou.')
+          return volta
+        })
+        acertarLajes([barraId])
+      })
+      return gravado
+    })
+    acertarLajes([barraId])
+  }
+
+  /** Toque na aba Barras: a barra mais perto da camada escolhida, com margem larga para o dedo. */
+  const tocarBarra = (pos: L.LatLng, m: L.Map) => {
+    if (!barras || !camada) return
+    const escala = 2 ** m.getZoom() // CRS.Simple: 1 ponto da folha = 2^zoom px
+    const r = barraTocada([pos.lng, -pos.lat], barras, camada, TOQUE_BARRA_PX / escala, FOLGA_BARRA_PX / escala)
+    if (!r) return avisar(`Nenhuma barra da camada ${NOME_DA_CAMADA[camada].toLowerCase()} aqui.`)
+    if ('ambiguo' in r) return avisar('Duas barras juntas aqui: aproxime a planta e toque de novo.')
+    const b = barras[r.id]
+    const s = situacaoDaBarra(eventosDe(r.id))
+    if (!pode) return avisar(`${b.texto ?? nomeDaBarra(b)}: ${s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errada' : 'sem conferir'}`)
+    if (!armaduraDaBarra(r.id)) return avisar('A ficha de laje não tem item de armadura marcado pelas barras: as barras ficam só para ver.')
+    // sem conferir → OK; OK → errada (só depois de escrever e confirmar); errada → sem conferir
+    if (s === 'nada') return gravarBarra(r.id, 'C', null)
+    if (s === 'liberado') {
+      setNcDaBarra({ id: r.id, texto: '' })
+      abrirSobre(() => setNcDaBarra(null))
+      return
+    }
+    gravarBarra(r.id, null, null)
+  }
+
+  const confirmarNcDaBarra = () => {
+    if (!ncDaBarra || !ncDaBarra.texto.trim()) return
+    const { id, texto } = ncDaBarra
+    setNcDaBarra(null)
+    fecharSobre()
+    gravarBarra(id, 'NC', texto.trim())
+  }
+
+  /** "Tudo OK nesta camada" no painel da laje: as barras sem conferir da camada, dentro da área. */
+  const tudoOkNaCamada = (areaId: string) => {
+    const area = dados.areaPorId.get(areaId)
+    if (!barras || !camada || !area) return
+    const cam = camada
+    const ids = barrasDaArea(barras, area.contorno, cam)
+    executar(async (evs) => {
+      const gravados: Linha[] = []
+      for (const id of ids) {
+        if (situacaoDaBarra(evs(id)) !== 'nada') continue
+        const arm = armaduraDaBarra(id)
+        if (arm) gravados.push(await marcarPelosFuros(c, id, arm.ficha, arm.item, 'C', null, daFichaAberta(evs(id), null)))
+      }
+      const n = gravados.length
+      const texto = n ? `${area.nome}: ${n} ${n === 1 ? 'barra OK' : 'barras OK'} (${NOME_DA_CAMADA[cam].toLowerCase()})` : `${area.nome}: nada a marcar nesta camada`
+      if (!n) avisar(texto)
+      else
+        avisar(texto, () => {
+          setMsg(null)
+          executar(async (evs2) => {
+            const desfeitos = await desfazerLote(c, gravados, evs2)
+            avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? 'barra' : 'barras'}` : 'Nada a desfazer: as barras já mudaram.')
+            return desfeitos
+          })
+          acertarLajes(ids)
+        })
+      return gravados
+    })
+    acertarLajes(ids)
+  }
+
+  tocarParteRef.current = (id: string, parte: string) => {
+    if (desenho || tipo === 'B') return
+    // com o pincel, o toque na parte é o toque no pilar (o lote não marca os itens da parte); no "Por item" também
+    if ((pincel || porItemAtivo) && pode) return tocarRef.current(id)
+    const e = elementoDe(id)
+    if (!e) return
+    if (e.tipo !== tipo) setTipo(e.tipo)
+    setParteAberta(parte)
+    abrirPainel(id)
+  }
+
+  tocarDesenhoRef.current = (id: string) => {
+    if (desenho || tipo === 'B') return
+    const ids = mesmoDesenho.get(id)
+    if (!ids) return tocarRef.current(id)
+    setMesmoDesenhoAberto(ids)
+    // o voltar do aparelho fecha a escolha, sem sair da planta
+    abrirSobre(() => setMesmoDesenhoAberto(null))
+  }
+  const escolherPeca = (id: string | null) => {
+    setMesmoDesenhoAberto(null)
+    fecharSobre()
+    if (id) tocarRef.current(id)
+  }
+
+  const limitesDe =(id: string, e: ElementoPacote) =>
+    (camadas.current.get(id) ?? []).reduce((acc, l) => acc.extend(limitesDaCamada(l)), caixa(e.rotulo))
+
+  /** A peça não está nesta planta: pode estar em outro trecho do mesmo pavimento. */
+  const procurarEmOutroTrecho = async (q: string, texto: string) => {
+    const pecas = [...dados.pecaPorId.values()].filter((p) => p.pavimento_id === planta.pavimento_id && p.nome.toUpperCase() === q)
+    if (!pecas.length) return avisar(`${texto} não está neste pavimento.`)
+    const noAparelho = await pecasNoAparelho()
+    for (const peca of pecas) {
+      // pacote de revisão anterior também vale: é com ele que o trecho abre até a nova ser baixada
+      const destino = noAparelho.get(peca.id)?.map((id) => dados.vigenteDe.get(id) ?? id).find((id) => irmas.some((p) => p.id === id))
+      if (destino) return ir({ nome: 'planta', plantaId: destino, pecaId: peca.id })
+    }
+    avisar(`${texto} está em outro trecho deste pavimento, que ainda não foi baixado.`)
+  }
+
+  /** Voo da busca até a peça. O fim (ou a interrupção: arrastar, outro enquadro) sempre dá moveend. */
+  const voar = (b: L.LatLngBounds, maxZoom: number) => {
+    const m = mapa.current
+    if (!m) return
+    voando.current = true
+    m.once('moveend', () => {
+      voando.current = false
+    })
+    m.flyToBounds(b, { maxZoom, duration: 0.5 })
+  }
+
+  const buscar = (texto: string) => {
+    const q = texto.trim().toUpperCase().replace(/\s+/g, '')
+    if (!q) return
+    // nome de área de laje tem espaço ("Laje 2")
+    // ambiente com nome de cômodo: "Living - Apto 303" (da lista) ou "living 303"
+    const achado = elementos.find(([, e]) => e.nome.toUpperCase().replace(/\s+/g, '') === q) ?? elementos.find(([, e]) => casaComodo(e, texto) === 2) ?? elementos.find(([, e]) => casaComodo(e, texto) === 1)
+    if (!achado) {
+      // "303" ou "Apto 303": leva ao apartamento inteiro
+      const chave = semAcento(texto)
+      const doGrupo = elementos.filter(([, e]) => e.grupo && (semAcento(e.grupo) === chave || semAcento(e.grupo) === `APTO${chave}`))
+      if (!doGrupo.length) return procurarEmOutroTrecho(q, texto)
+      const b = doGrupo.reduce((acc, [id, e]) => acc.extend(limitesDe(id, e)), limitesDe(doGrupo[0][0], doGrupo[0][1]))
+      setTipo(doGrupo[0][1].tipo)
+      fecharPainel()
+      voar(b.pad(0.1), 1.5)
+      return avisar(`${doGrupo[0][1].grupo}: ${doGrupo.length} ambientes`)
+    }
+    const [id, e] = achado
+    setTipo(e.tipo)
+    abrirPainel(id)
+    voar(limitesDe(id, e).pad(0.4), 0.5)
+  }
+
+  // ------------------------------------------------------------------ progresso
+  // arranque (só detalhe) não tem ficha: não conta no "x/y liberados"
+  const doTipo = useMemo(() => elementos.filter(([, e]) => e.tipo === tipo && !e.so_detalhe), [elementos, tipo])
+  let liberadas = 0
+  let paraConcretar = 0
+  let comR = 0
+  for (const [id, e] of doTipo) {
+    const s = situacao(id, e)
+    if (s === 'liberado') liberadas++
+    if (s === 'concretagem') paraConcretar++
+    if (s === 'reprovado') comR++
+  }
+  // furo não é peça (conta dentro da viga, pelo item de furação): "OK", como no painel da viga, e não
+  // "liberados", que no celular foi lido junto com o "x de y peças liberadas" do início (18/11)
+  const palavraDoProgresso = tipo === 'F' ? 'OK' : tipo === 'L' ? 'liberadas' : 'liberados'
+  // aba Barras: conta as barras da camada escolhida
+  const resumoDaCamada =
+    tipo === 'B' && barras && camada
+      ? resumoDasBarras(Object.entries(barras).filter(([, b]) => b.camada === camada).map(([id]) => situacaoDaBarra(eventosDe(id))))
+      : null
+  // aviso da sincronização em poucas palavras, no canto do topo (não cobre planta nem painel)
+  const quantos = /^(\d+) registro/.exec(aviso)?.[1]
+  const avisoCurto = aviso.startsWith('Sem internet') ? 'sem internet' : quantos ? `${quantos} ${aviso.includes('recusado') ? 'recusados' : 'a enviar'}` : ''
+  const temDuplicada = elementos.some(([id]) => abertasDe(id).length > 1)
+  // a lista da busca não muda com o toque: refazer 800 opções a cada marcação pesa no celular
+  const listaDaBusca = useMemo(
+    () => (
+      <datalist id="fv-lista">
+        {[...new Set(elementos.map(([, e]) => e.grupo).filter((g): g is string => !!g))].map((g) => (
+          <option value={g} key={`g:${g}`} />
+        ))}
+        {elementos.map(([id, e]) => (
+          <option value={e.nome} key={id} />
+        ))}
+        {elementos.map(([id, e]) => {
+          const t = textoDoComodo(e)
+          return t ? <option value={t} key={`c:${id}`} /> : null
+        })}
+      </datalist>
+    ),
+    [elementos],
+  )
+
+  if (pacote === undefined) return <main class="tela">Abrindo a planta…</main>
+  if (pacote === null) {
+    return (
+      <main class="tela fv-inicio" data-testid="fvs-fora-do-aparelho">
+        <header class="fv-topo-inicio">
+          <button type="button" class="fv-voltar" onClick={() => sair(voltar)} aria-label="Voltar">
+            ‹ Voltar
+          </button>
+          <div>
+            <h1>{pavimento?.nome}</h1>
+            <p class="discreto">
+              {planta.trecho} · {planta.prancha}
+            </p>
+          </div>
+        </header>
+        <p class="aviso">Esta planta ainda não está no aparelho.{!online && ' Precisa de internet uma vez para baixar.'}</p>
+        {erroBaixar && (
+          <p class="erro" role="alert">
+            {erroBaixar}
+          </p>
+        )}
+        <button type="button" class="fv-baixar" data-testid="fvs-baixar-agora" disabled={!online || baixando !== null} onClick={baixarEsta}>
+          {baixando !== null ? `Baixando ${baixando}%` : `Baixar agora${tamanhoDaPlanta ? ` (${mb(tamanhoDaPlanta)})` : ''}`}
+        </button>
+      </main>
+    )
+  }
+
+  const pecaSel = sel ? elementoDe(sel) : undefined
+  /** No painel do furo, a ficha é só o item de furação da ficha da viga. */
+  const fichaDoFuro = (id: string): Ficha | undefined => {
+    const f = furacaoDe(id)
+    return f ? { ...f.ficha, itens: f.ficha.itens.filter((i) => i.n === f.item) } : undefined
+  }
+  const areaSel = sel && elementosDasAreas.has(sel) ? dados.areaPorId.get(sel) : undefined
+  // área de laje com barras: o resumo, e o "Tudo OK" da camada escolhida
+  const idsDaLaje = areaSel ? barrasDaLaje(areaSel.id) : []
+  const barrasDoPainel =
+    idsDaLaje.length && barras
+      ? (() => {
+          const sits = idsDaLaje.map((id) => situacaoDaBarra(eventosDe(id)))
+          const daCamada = camada ? idsDaLaje.filter((id) => barras[id].camada === camada) : []
+          return {
+            resumo: resumoDasBarras(sits).texto,
+            camada: camada ? NOME_DA_CAMADA[camada] : '',
+            semConferir: daCamada.filter((id) => situacaoDaBarra(eventosDe(id)) === 'nada').length,
+            naCamada: daCamada.length,
+            aoTudoOk: () => tudoOkNaCamada(areaSel!.id),
+            aoVer: () => {
+              fecharPainel()
+              setTipo('B')
+            },
+          }
+        })()
+      : undefined
+  // os outros ambientes do mesmo apartamento, para pular de um para o outro pelo painel
+  const irmaos =
+    pecaSel?.grupo && sel
+      ? elementos
+          .filter(([, e]) => e.grupo === pecaSel.grupo)
+          .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
+          .map(([id, e]) => ({ id, nome: e.nome, comodo: e.comodo, sit: situacao(id, e) }))
+      : []
+  const escolha = tipos.length > 1 ? 'tipos' : fichasTipo.length > 1 ? 'fichas' : 'nada'
+  return (
+    <div class={`fv-planta${pecaSel ? ' com-painel' : ''}${desenho ? ' desenhando' : ''}${porItemAtivo ? ' por-item' : ''}`}>
+      <header class={`fv-topo${escolha === 'nada' ? ' sem-seg' : ''}${pode && itensDoTipo.length > 0 ? ' com-item' : ''}`}>
+        <div class="fv-tit">
+          <button type="button" class="fv-voltar" onClick={() => sair(voltar)} aria-label="Voltar">
+            ‹
+          </button>
+          <div class="fv-nomes">
+            <b>{pavimento?.nome}</b>
+            {irmas.length > 1 ? (
+              <select
+                aria-label="Trecho"
+                value={plantaId}
+                onChange={(ev) => ir({ nome: 'planta', plantaId: (ev.target as HTMLSelectElement).value })}
+              >
+                {irmas.map((p) => (
+                  <option value={p.id} key={p.id}>
+                    {p.trecho}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span>{planta.trecho}</span>
+            )}
+          </div>
+        </div>
+        {escolha === 'tipos' && (
+          <div class="fv-seg" role="group" aria-label="Tipo de peça" ref={filaDeAbas}>
+            {tipos.map((t) => (
+              <button type="button" key={t} class={tipo === t ? 'on' : ''} onClick={() => setTipo(t)}>
+                {PLURAL_TIPO[t] ?? t}
+              </button>
+            ))}
+          </div>
+        )}
+        {escolha === 'fichas' && (
+          // planta de ambientes: a cor de cada ambiente é a situação dele na ficha (serviço) escolhida aqui
+          <select
+            class="fv-servico"
+            aria-label="Ficha"
+            data-testid="fvs-servico"
+            value={fichaTipo?.codigo}
+            onChange={(ev) => setCodigoFicha({ ...codigoFicha, [tipo]: (ev.target as HTMLSelectElement).value })}
+          >
+            {fichasTipo.map((f) => (
+              <option value={f.codigo} key={f.codigo}>
+                {f.titulo}
+              </option>
+            ))}
+          </select>
+        )}
+        {tipo === 'B' && camada ? (
+          <select class="fv-etapa fv-camada" aria-label="Camada" data-testid="fvs-camada" value={camada} onChange={(ev) => setCamada((ev.target as HTMLSelectElement).value as CamadaDeBarras)}>
+            {camadasDasBarras.map((k) => (
+              <option value={k} key={k}>
+                {NOME_DA_CAMADA[k]}
+              </option>
+            ))}
+          </select>
+        ) : (
+        <select class="fv-etapa" aria-label="Etapa" value={etapaAtiva} onChange={(ev) => setEtapa((ev.target as HTMLSelectElement).value)}>
+          {/* "Todas as etapas" saía cortado no celular ("Todas as eta…"; demonstração, 09/11) e "Etapa: todas" no GitHub, de fonte mais larga */}
+          <option value="">Etapas</option>
+          {etapas.map((e) => (
+            <option value={e} key={e}>
+              {e.charAt(0) + e.slice(1).toLowerCase()}
+            </option>
+          ))}
+        </select>
+        )}
+        <input
+          class="fv-busca"
+          list="fv-lista"
+          placeholder="Buscar"
+          autocomplete="off"
+          aria-label={tipo === 'A' ? 'Buscar ambiente ou apartamento' : 'Buscar peça'}
+          onChange={(ev) => {
+            const i = ev.target as HTMLInputElement
+            buscar(i.value)
+            i.value = ''
+            i.blur()
+          }}
+        />
+        {listaDaBusca}
+        {resumoDaCamada ? (
+          <span class="fv-prog" data-testid="fvs-progresso" title={resumoDaCamada.texto}>
+            {resumoDaCamada.ok}/{resumoDaCamada.total} OK
+            {resumoDaCamada.erradas > 0 && ` · ${resumoDaCamada.erradas} errada${resumoDaCamada.erradas > 1 ? 's' : ''}`}
+          </span>
+        ) : (
+        <span class="fv-prog" data-testid="fvs-progresso" title={`${liberadas} de ${doTipo.length} ${(PLURAL_TIPO[tipo] ?? 'peças').toLowerCase()} ${palavraDoProgresso}`}>
+          {/* "1/24 pilares" era lido como "pilar 1 de 24" (demonstração, 09/11): o tipo já está na aba */}
+          {liberadas}/{doTipo.length} {palavraDoProgresso}
+          {paraConcretar > 0 && (
+            <span class="fv-txt-concretar" data-testid="fvs-para-concretar">
+              <span class="fv-sep">{' · '}</span>
+              {paraConcretar} p/ concretar
+            </span>
+          )}
+          {comR > 0 && (
+            <>
+              {' · '}
+              <button
+                type="button"
+                class="fv-link-r"
+                data-testid="fvs-ver-reprovacoes"
+                title="Ver as reprovações abertas deste trecho"
+                onClick={() => {
+                  // folha única: o pavimento inteiro está nesta planta, e o histórico fala em "Trecho 2"
+                  filtrarListaAoAbrir(obra.id, filtrosDoTrecho(planta.pavimento_id, planta.trecho === TRECHO_FOLHA_UNICA ? '' : planta.trecho))
+                  ir({ nome: 'reprovacoes' })
+                }}
+              >
+                {comR} com NC
+              </button>
+            </>
+          )}
+          {avisoCurto && (
+            <span class="fv-pend" title={aviso}>
+              <br />
+              {avisoCurto}
+            </span>
+          )}
+        </span>
+        )}
+        {pode &&
+          tipo !== 'B' &&
+          (tipo === 'L' && aceitaAreas ? (
+            <button
+              type="button"
+              class={`fv-bpincel${desenho ? ' on' : ''}`}
+              data-testid="fvs-nova-area"
+              onClick={() => (desenho ? cancelarDesenho() : comecarDesenho())}
+            >
+              + Área
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                class={`fv-bpincel${pincel ? ' on' : ''}`}
+                onClick={() => {
+                  setPincel(pincel ? null : { etapa: etapaAtiva, resultado: 'C' })
+                  setPorItem(null)
+                  fecharPainel()
+                }}
+              >
+                Pincel
+              </button>
+              {itensDoTipo.length > 0 && (
+                <button
+                  type="button"
+                  class={`fv-bitem${porItemAtivo ? ' on' : ''}`}
+                  data-testid="fvs-bt-por-item"
+                  title="Escolher um item da ficha e marcar pilar a pilar"
+                  onClick={() => (porItemAtivo ? setPorItem(null) : entrarPorItem())}
+                >
+                  Por item
+                </button>
+              )}
+            </>
+          ))}
+      </header>
+
+      {manifest!.planta_id !== plantaId && (
+        <div class="fv-rev-antiga" role="status" data-testid="fvs-revisao-antiga">
+          <span>{erroBaixar || `Planta na revisão ${manifest!.revisao}. Já saiu a ${planta.revisao}.`}</span>
+          <button type="button" data-testid="fvs-baixar-revisao" disabled={!online || baixando !== null} onClick={baixarEsta}>
+            {baixando !== null ? `Baixando ${baixando}%` : !online ? 'Baixe com internet' : `Baixar ${planta.revisao}${tamanhoDaPlanta ? ` (${mb(tamanhoDaPlanta)})` : ''}`}
+          </button>
+        </div>
+      )}
+
+      <button type="button" class="fv-bt-legenda" data-testid="fvs-bt-legenda" aria-expanded={verLegenda} onClick={() => setVerLegenda(!verLegenda)}>
+        Legenda
+      </button>
+
+      <div class="fv-mapa" ref={divMapa}>
+        {tipo === 'L' && aceitaAreas && areasDaPlanta.length === 0 && !desenho && !caixaNova && (
+          <p class="fv-dica-area" data-testid="fvs-dica-area">
+            {pode ? 'Nenhuma área de laje nesta planta. Toque em “+ Área” e marque os cantos da parte da laje.' : 'Nenhuma área de laje nesta planta.'}
+          </p>
+        )}
+        <div class={`fv-legenda${verLegenda && !pecaSel ? ' aberta' : ''}`} data-testid="fvs-legenda">
+          {tipo === 'B' &&
+            (['nada', 'liberado', 'reprovado'] as const).map((s) => (
+              <span key={`b:${s}`}>
+                <i style={{ borderColor: COR_BARRA[s], background: COR_BARRA[s] }} />
+                {s === 'nada' ? 'Barra sem conferir' : s === 'liberado' ? 'Barra OK' : 'Barra errada'}
+              </span>
+            ))}
+          {porItemAtivo &&
+            ([['nada', COR.nada[0], 'Item sem conferir'], ['C', COR.liberado[0], 'Item OK'], ['NA', COR_NA, 'Item NA'], ['NC', COR.reprovado[0], 'Item errado']] as const).map(([k, cor, texto]) => (
+              <span key={`i:${k}`}>
+                <i style={{ borderColor: cor, background: cor + '55' }} />
+                {texto}
+              </span>
+            ))}
+          {tipo !== 'B' && !porItemAtivo && (['nada', 'andamento', 'concretagem', 'liberado', 'reprovado'] as Situacao[]).filter((s) => s !== 'concretagem' || tipo !== 'A').map((s) => (
+            <span key={s}>
+              <i style={{ borderColor: COR[s][0], background: COR[s][0] + '55' }} />
+              {ROTULO_SITUACAO[s]}
+            </span>
+          ))}
+          {temDuplicada && (
+            <span>
+              <i style={{ borderColor: COR_DUPLICADA, borderWidth: '3px' }} />
+              Ficha duplicada
+            </span>
+          )}
+        </div>
+      </div>
+
+      {msg && (
+        <p class={`fv-toast${msg.desfazer ? ' com-acao' : ''}`} role="status">
+          <span title={msg.texto}>{msg.texto}</span>
+          {msg.desfazer && (
+            <button type="button" data-testid="fvs-desfazer" onClick={msg.desfazer}>
+              Desfazer
+            </button>
+          )}
+        </p>
+      )}
+
+      {pincel && (
+        <div class="fv-barpincel" data-testid="fvs-pincel">
+          <b>
+            Pincel: toque {tipo === 'A' ? 'nos ambientes' : 'nas peças'} para marcar os itens ainda vazios
+            {fichaTipo && tipo === 'A' ? ` de ${fichaTipo.titulo}` : ''}
+          </b>
+          <select
+            aria-label="Etapa do pincel"
+            value={etapas.includes(pincel.etapa) ? pincel.etapa : ''}
+            onChange={(ev) => setPincel({ ...pincel, etapa: (ev.target as HTMLSelectElement).value })}
+          >
+            <option value="">Ficha inteira</option>
+            {etapas.map((e) => (
+              <option value={e} key={e}>
+                {e.charAt(0) + e.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </select>
+          {(['C', 'NA'] as const).map((r) => (
+            <button type="button" key={r} title={NOME_DO_RESULTADO[r]} class={pincel.resultado === r ? 'on' : ''} onClick={() => setPincel({ ...pincel, resultado: r })}>
+              {r}
+            </button>
+          ))}
+          <button type="button" onClick={() => setPincel(null)}>
+            Sair
+          </button>
+        </div>
+      )}
+
+      {porItemAtivo && (
+        <div class="fv-barpincel fv-bar-item" data-testid="fvs-por-item">
+          <select
+            aria-label="Item da ficha"
+            data-testid="fvs-por-item-escolha"
+            value={String(porItemAtivo.n)}
+            onChange={(ev) => {
+              const it = itensDoTipo.find((i) => String(i.n) === (ev.target as HTMLSelectElement).value)
+              if (it) escolherItem(it)
+            }}
+          >
+            {/* o item guardado pode ter saído da ficha vigente: continua escolhido até trocar */}
+            {!itensDoTipo.some((i) => i.n === porItemAtivo.n) && <option value={String(porItemAtivo.n)}>{nomeDoItem(porItemAtivo)}</option>}
+            {etapasDa({ ...fichaTipo!, itens: itensDoTipo }).map((et) => (
+              <optgroup key={et} label={et.charAt(0) + et.slice(1).toLowerCase()}>
+                {itensDoTipo
+                  .filter((i) => i.etapa === et)
+                  .map((i) => (
+                    <option key={i.n} value={String(i.n)}>
+                      {nomeDoItem(i)}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+          <span class="fv-conta-item" data-testid="fvs-por-item-conta">
+            {
+              resumoDoItem(
+                doTipo.flatMap(([id, e]) => {
+                  if (e.so_detalhe) return []
+                  const r = resultadoPorItem(id, porItemAtivo)
+                  return r === 'fora' ? [] : [r]
+                }),
+              ).texto
+            }
+          </span>
+          <span class="fv-modo-item" role="group" aria-label="O toque marca">
+            {(['C', 'NA'] as const).map((r) => (
+              <button type="button" key={r} data-testid={`fvs-por-item-${r}`} title={r === 'C' ? 'O toque marca OK (e, de novo, errado)' : 'O toque marca NA (não se aplica)'} class={modoItem === r ? 'on' : ''} aria-pressed={modoItem === r} onClick={() => setModoItem(r)}>
+                {r === 'C' ? 'OK' : 'NA'}
+              </button>
+            ))}
+          </span>
+          <button type="button" data-testid="fvs-por-item-sair" onClick={() => setPorItem(null)}>
+            Sair
+          </button>
+        </div>
+      )}
+
+      {ncDoItem && porItem && (
+        <form
+          class="fv-caixa-form"
+          data-testid="fvs-nc-item"
+          onSubmit={(ev) => {
+            ev.preventDefault()
+            confirmarNcDoItem()
+          }}
+        >
+          <b>
+            {elementoDe(ncDoItem.id)?.nome}: {nomeDoItem(porItem)} errado
+          </b>
+          <p class="discreto">O NC só é gravado depois de Confirmar.</p>
+          <label>
+            O que está errado?
+            <textarea
+              data-testid="fvs-nc-item-texto"
+              required
+              maxLength={500}
+              rows={3}
+              value={ncDoItem.texto}
+              onInput={(ev) => setNcDoItem({ ...ncDoItem, texto: (ev.target as HTMLTextAreaElement).value })}
+            />
+          </label>
+          <div class="fv-caixa-acoes">
+            <button type="submit" class="on" data-testid="fvs-nc-item-confirmar" disabled={!ncDoItem.texto.trim()}>
+              Confirmar
+            </button>
+            <button
+              type="button"
+              data-testid="fvs-nc-item-cancelar"
+              onClick={() => {
+                setNcDoItem(null)
+                fecharSobre()
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {desenho && (
+        <div class="fv-barpincel" data-testid="fvs-desenho">
+          <b>
+            {desenho.areaId ? `Novo contorno de ${dados.areaPorId.get(desenho.areaId)?.nome ?? 'área'}` : 'Nova área de laje'}: toque nos cantos da área ({desenho.pontos.length}{' '}
+            {desenho.pontos.length === 1 ? 'canto' : 'cantos'}). Arrastar move a planta.
+          </b>
+          <button type="button" data-testid="fvs-desfazer-ponto" disabled={!desenho.pontos.length} onClick={() => setDesenho({ ...desenho, pontos: desenho.pontos.slice(0, -1) })}>
+            Desfazer ponto
+          </button>
+          <button type="button" class="on" data-testid="fvs-concluir-area" disabled={desenho.pontos.length < 3} onClick={() => concluirDesenho(desenho.pontos)}>
+            Concluir
+          </button>
+          <button type="button" onClick={cancelarDesenho}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {mesmoDesenhoAberto && (
+        <div class="fv-escolha" role="dialog" aria-label="Escolha a peça" data-testid="fvs-escolha-peca">
+          <b>Este desenho é de {mesmoDesenhoAberto.length} peças. Qual você quer abrir?</b>
+          <div class="fv-escolha-pecas">
+            {mesmoDesenhoAberto.map((id) => {
+              const e = elementoDe(id)
+              // a mesma cor e o mesmo nome da legenda: a pessoa escolhe sem adivinhar
+              const s = e ? situacao(id, e) : 'nada'
+              return (
+                <button type="button" key={id} data-situacao={s} onClick={() => escolherPeca(id)}>
+                  <i style={{ borderColor: COR[s][0], background: COR[s][0] + '55' }} />
+                  <b>{e?.nome ?? id}</b>
+                  <span>{ROTULO_SITUACAO[s]}</span>
+                </button>
+              )
+            })}
+          </div>
+          <button type="button" class="fv-escolha-cancelar" onClick={() => escolherPeca(null)}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {ncDaBarra && barras?.[ncDaBarra.id] && (
+        <form
+          class="fv-caixa-form"
+          data-testid="fvs-nc-barra"
+          onSubmit={(ev) => {
+            ev.preventDefault()
+            confirmarNcDaBarra()
+          }}
+        >
+          <b>Barra errada: {barras[ncDaBarra.id].texto ?? nomeDaBarra(barras[ncDaBarra.id])}</b>
+          <p class="discreto">{NOME_DA_CAMADA[barras[ncDaBarra.id].camada]}. O NC só é gravado depois de Confirmar.</p>
+          <label>
+            O que está errado?
+            <textarea
+              data-testid="fvs-nc-barra-texto"
+              required
+              maxLength={500}
+              rows={3}
+              value={ncDaBarra.texto}
+              onInput={(ev) => setNcDaBarra({ ...ncDaBarra, texto: (ev.target as HTMLTextAreaElement).value })}
+            />
+          </label>
+          <div class="fv-caixa-acoes">
+            <button type="submit" class="on" data-testid="fvs-nc-barra-confirmar" disabled={!ncDaBarra.texto.trim()}>
+              Confirmar
+            </button>
+            <button
+              type="button"
+              data-testid="fvs-nc-barra-cancelar"
+              onClick={() => {
+                setNcDaBarra(null)
+                fecharSobre()
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {caixaNova && (
+        <form
+          class="fv-caixa-form"
+          data-testid="fvs-caixa-nova"
+          onSubmit={(ev) => {
+            ev.preventDefault()
+            criarDaCaixa()
+          }}
+        >
+          <b>Nova área de laje</b>
+          <label>
+            Nome
+            <input
+              data-testid="fvs-caixa-nome"
+              required
+              maxLength={60}
+              value={caixaNova.nome}
+              onInput={(ev) => setCaixaNova({ ...caixaNova, nome: (ev.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label>
+            Ficha
+            <select data-testid="fvs-caixa-ficha" required value={caixaNova.fichaId} onChange={(ev) => setCaixaNova({ ...caixaNova, fichaId: (ev.target as HTMLSelectElement).value })}>
+              {fichasDaCaixa(dados.fichas).map((f) => (
+                <option value={f.id} key={f.id}>
+                  {f.codigo} {f.titulo}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sistema && (
+            <label>
+              Código da ficha no {sistema.nome} (se já abriu)
+              <input data-testid="fvs-caixa-codigo" maxLength={60} value={caixaNova.codigo} onInput={(ev) => setCaixaNova({ ...caixaNova, codigo: (ev.target as HTMLInputElement).value })} />
+            </label>
+          )}
+          {!fichasDaCaixa(dados.fichas).length && <p class="aviso">Esta obra ainda não tem fichas cadastradas.</p>}
+          <div class="fv-caixa-acoes">
+            <button type="submit" class="on" data-testid="fvs-caixa-criar" disabled={!caixaNova.nome.trim() || !caixaNova.fichaId}>
+              Criar área
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDesenho({ pontos: caixaNova.contorno })
+                setCaixaNova(null)
+              }}
+            >
+              Voltar ao desenho
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCaixaNova(null)
+                fecharSobre()
+              }}
+            >
+              Descartar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {pecaSel && sel && (
+        <Painel
+          key={`${sel}|${parteAberta ?? ''}`}
+          id={sel}
+          partes={partesDe(sel)}
+          parteAberta={parteAberta}
+          situacaoDaParte={(parte) => situacaoDaParte(sel, parte)}
+          travas={areaSel ? travasDe(sel) : []}
+          aoIrParte={(id, parte) => tocarParteRef.current(id, parte)}
+          peca={pecaSel}
+          ctx={ctx}
+          c={c}
+          pacote={pacote}
+          ficha={pecaSel.tipo === 'F' ? fichaDoFuro(sel) : fichaDoLocal(sel, pecaSel.tipo)}
+          // a área tem a ficha dela: escolhida na caixa, não muda depois
+          fichas={areaSel ? (fichaPorId(areaSel.ficha_id) ? [fichaPorId(areaSel.ficha_id)!] : []) : pecaSel.tipo === 'F' ? [] : fichasPara(pecaSel.tipo, dados.fichas)}
+          aoGravar={pecaSel.tipo === 'F' && pecaSel.viga ? () => acertarViga(pecaSel.viga!) : undefined}
+          area={areaSel}
+          aoRedesenhar={areaSel ? () => comecarDesenho(areaSel.id) : undefined}
+          aoApagarArea={areaSel ? () => apagarArea(areaSel) : undefined}
+          abertas={abertasDe(sel)}
+          abertaInicial={sel === pecaInicial ? (fichaCampoInicial ?? (itemInicial ? SO_NO_APP : undefined)) : undefined}
+          itemInicial={sel === pecaInicial ? itemInicial : undefined}
+          aoTrocarFicha={(cod) => setCodigoFicha({ ...codigoFicha, [pecaSel.tipo]: cod })}
+          etapa={etapaAtiva}
+          irmaos={irmaos.length <= MAX_ATALHOS ? irmaos : []}
+          furos={pecaSel.tipo === 'V' ? furosDe(sel) : []}
+          barras={barrasDoPainel}
+          viga={pecaSel.tipo === 'F' && pecaSel.viga && manifest?.elementos[pecaSel.viga] ? { id: pecaSel.viga, nome: manifest.elementos[pecaSel.viga].nome } : undefined}
+          aoIr={abrirPainel}
+          aoIrComTipo={(id) => {
+            const t = elementoDe(id)?.tipo
+            if (t) setTipo(t)
+            setParteAberta(null)
+            abrirPainel(id)
+          }}
+          eventos={eventosDe(sel)}
+          pode={pode}
+          executar={executar}
+          aoFechar={fecharPainel}
+          aoZoom={abrirZoom}
+          avisar={avisar}
+          avisarLote={avisarLote}
+        />
+      )}
+
+      {zoom && (
+        // o toque em qualquer lugar fecha, inclusive no botão
+        <div class="fv-zoom" onClick={fecharZoom} role="dialog" aria-label="Detalhe ampliado">
+          <button type="button" class="fv-zoom-fechar">
+            Fechar
+          </button>
+          <img src={zoom} alt="" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------- painel da peça
+
+interface PropsPainel {
+  id: string
+  /** consolo e capitel do pilar nesta planta */
+  partes: readonly string[]
+  /** tocou no consolo ou no capitel: a seção dele vem aberta */
+  parteAberta: string | null
+  situacaoDaParte: (parte: string) => Situacao | undefined
+  /** área de laje: consolo e capitel pendentes dentro dela */
+  travas: readonly TravaDaArea[]
+  aoIrParte: (id: string, parte: string) => void
+  peca: ElementoPacote
+  ctx: ContextoFvs
+  c: Contexto
+  pacote: PacoteAberto
+  ficha: Ficha | undefined
+  fichas: Ficha[]
+  /** é uma área de laje desenhada: mostra a caixa dela no lugar do detalhe */
+  area?: AreaDeLaje
+  aoRedesenhar?: () => void
+  aoApagarArea?: () => void
+  /** fichas abertas desta peça no sistema oficial (mais de uma = duplicada) */
+  abertas: FichaCampo[]
+  /** vindo da lista de reprovações: a ficha e o item que o painel mostra primeiro */
+  abertaInicial?: string
+  itemInicial?: number
+  aoTrocarFicha: (codigo: string) => void
+  etapa: string
+  /** ambientes do mesmo apartamento (vazio para pilar e viga) */
+  irmaos: Array<{ id: string; nome: string; comodo?: string; sit: Situacao }>
+  /** só viga: os furos dela, com a situação de cada um */
+  furos: Array<{ id: string; nome: string; sit: Situacao }>
+  /** só área de laje com barras do pacote: o item de armadura fica com elas */
+  barras?: { resumo: string; camada: string; semConferir: number; naCamada: number; aoTudoOk: () => void; aoVer: () => void }
+  /** só furo: a viga em que ele fica */
+  viga?: { id: string; nome: string }
+  aoIr: (id: string) => void
+  /** abre outra peça trocando a aba (da viga para o furo e de volta) */
+  aoIrComTipo: (id: string) => void
+  /** depois de gravar algo nesta peça (furo: levar o resultado ao item de furação da viga) */
+  aoGravar?: () => void
+  eventos: EventoFvs[]
+  pode: boolean
+  executar: (passo: (eventosDe: (id: string) => EventoFvs[]) => Promise<Linha | Linha[] | void>) => Promise<unknown>
+  aoFechar: () => void
+  aoZoom: (src: string) => void
+  avisar: (t: string) => void
+  avisarLote: (t: string, gravados: readonly Linha[]) => void
+}
+
+function Painel(p: PropsPainel) {
+  const { peca, pacote, ctx } = p
+  const fichaPorId = (id: string) => ctx.dados.fichaPorId.get(id)
+  // Peça com ficha aberta: o painel mostra uma de cada vez, começando pela que pede atenção.
+  // Marcação feita só no app antes de a ficha do sistema oficial chegar aparece como mais uma.
+  const temDoApp = p.abertas.length > 0 && !!p.ficha && p.eventos.some((e) => !e.ficha_campo_id)
+  const todas = temDoApp ? [...p.abertas, fichaSoNoApp(p.ficha!)] : p.abertas
+  // a ordem é decidida ao abrir o painel: não pode mudar sob o dedo enquanto a pessoa marca
+  const [ordem] = useState(() => ordenarFichasAbertas(todas, fichaPorId, p.eventos).map((a) => a.id))
+  const abertas = [...todas].sort((a, b) => ordem.indexOf(a.id) - ordem.indexOf(b.id))
+  const [idAberta, setIdAberta] = useState<string | null>(p.abertaInicial ?? abertas[0]?.id ?? null)
+  const aberta = abertas.find((a) => a.id === idAberta) ?? abertas[0]
+  const ficha = aberta ? fichaNaPeca(aberta.ficha_id ? fichaPorId(aberta.ficha_id) : undefined, p.partes) : p.ficha
+  const vigente = p.fichas.find((f) => f.codigo === ficha?.codigo)
+  const trilha = aberta && aberta.id !== SO_NO_APP ? aberta.id : null
+  const eventos = daFichaAberta(p.eventos, trilha)
+  const c: Contexto = { ...p.c, fichaCampoId: trilha }
+  const det = peca.detalhe ? pacote.manifest.detalhes[peca.detalhe] : undefined
+  const imgDet = peca.detalhe ? pacote.url(`d:${peca.detalhe}`) : undefined
+  const imgAco = peca.detalhe && det?.aco ? pacote.url(`a:${peca.detalhe}`) : undefined
+  // arranque do pilar de cima (pipeline/fvs/lances.py): só o detalhe, sem ficha
+  const soDetalhe = !!peca.so_detalhe
+  const corrigidoEm = dataCurta(peca.detalhe_corrigido_em)
+  const corpo = useRef<HTMLDivElement>(null)
+  const daFicha = ficha ? eventos.filter((e) => e.ficha_id === ficha.id) : []
+  const ult = ultimosPorItem(daFicha)
+  const pct = ficha ? percentualConforme(ficha, eventos) : null
+  const sit = p.travas.length ? 'reprovado' : ficha ? situacaoDaPeca(ficha, eventos) : 'nada'
+  const furo = peca.tipo === 'F' ? peca.furo : undefined
+
+  // grava na fila da tela, com os registros mais novos desta peça
+  const gravar = (op: (evs: EventoFvs[]) => Promise<Linha | Linha[] | void>) => {
+    const feito = p.executar((eventosDe) => op(daFichaAberta(eventosDe(p.id), trilha)))
+    if (p.aoGravar) p.aoGravar()
+    return feito
+  }
+
+  const nomeDe = (e: EventoFvs) => quemMarcou(e, ctx.dados, ctx.props.usuario.id)
+
+  // Vindo da lista de reprovações: leva o painel até o item. De novo quando as imagens do detalhe
+  // carregam, porque elas empurram o item para baixo. Se a pessoa mexeu no painel, não rola mais.
+  const mexeuNoPainel = useRef(false)
+  const rolarAoItem = () => {
+    if (mexeuNoPainel.current) return
+    // tocou no consolo ou no capitel: o painel vai direto à seção dele
+    const alvo = p.itemInicial ? `[data-item="${p.itemInicial}"]` : p.parteAberta ? `[data-testid="fvs-parte-${p.parteAberta}"]` : null
+    if (alvo) corpo.current?.querySelector(alvo)?.scrollIntoView({ block: 'start' })
+  }
+  useEffect(() => {
+    rolarAoItem()
+    const t = window.setTimeout(rolarAoItem, 400)
+    return () => window.clearTimeout(t)
+  }, [])
+
+  // Itens comuns primeiro; os de consolo e capitel em seções à parte, fechadas, a não ser que a pessoa
+  // tenha tocado na parte (ou venha da lista para um item dela). Item de parte que o pilar não tem só
+  // aparece se já foi marcado (não some o que alguém marcou).
+  const partesDaFicha: string[] = []
+  for (const it of ficha?.itens ?? []) {
+    if (it.parte && !partesDaFicha.includes(it.parte) && (p.partes.includes(it.parte) || ult.get(it.n)?.resultado)) partesDaFicha.push(it.parte)
+  }
+  const montar = (itens: readonly ItemFicha[]) => {
+  let etapaAtual: string | null = null
+  const linhas = []
+  if (ficha) {
+    for (const it of itens) {
+      if (it.etapa !== etapaAtual) {
+        etapaAtual = it.etapa
+        const et = it.etapa
+        // o item das barras (e o dos furos) não entra no "Etapa C": quem marca é a planta
+        const automatico = (x: ItemFicha) => (!!x.barras && !!p.barras) || (!!x.furos && p.furos.length > 0)
+        const vazios = itens.filter((x) => x.etapa === et && !ult.get(x.n)?.resultado && !automatico(x)).length
+        linhas.push(
+          <h3 class={`fv-etapa-tit${p.etapa && p.etapa !== et ? ' apagada' : ''}`} key={`e:${et}`}>
+            <span>{et || 'Itens'}</span>
+            {p.pode && vazios > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const toque: Toque = { tipo: 'lote', id: crypto.randomUUID(), obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: c.fichaCampoId ?? null, pecas: [{ id: p.id, fichaId: ficha.id, fichaCampoId: c.fichaCampoId ?? null }], etapa: et, resultado: 'C' }
+                  anotarToque(toque)
+                  gravar(async (evs) => {
+                    const fichaDoLote = { ...ficha, itens: ficha.itens.filter((x) => !automatico(x)) }
+                    const gravados = await marcarLote(c, [{ id: p.id, ficha: fichaDoLote, eventos: evs }], et, 'C', toque.id).finally(() => esquecerToque(toque.obraId, toque.id))
+                    const n = gravados.length
+                    // toque duplo: o segundo não acha nada vazio e não pode tirar o "Desfazer" da tela
+                    if (n) p.avisarLote(`${peca.nome}: ${n} ${n === 1 ? 'item' : 'itens'} C${et ? ` em ${et.toLowerCase()}` : ''}`, gravados)
+                    return gravados
+                  })
+                }}
+                title="Marca C (conforme) nos itens ainda vazios desta etapa (fica registrado como lote)"
+              >
+                Etapa C ({vazios})
+              </button>
+            )}
+          </h3>,
+        )
+      }
+      const v = ult.get(it.n)
+      const hist = historico(daFicha, it.n)
+      const reprovado = v?.resultado === 'NC'
+      const fotosDe = (evs: readonly EventoFvs[]) => evs.flatMap((e) => ctx.dados.fotosDe.get(e.id) ?? [])
+      const reprovacoes = reprovacoesDoItem(hist)
+      // o R que está valendo aparece aberto, logo abaixo; as outras rodadas ficam no histórico
+      const passadas = reprovacoes.filter((x) => !reprovado || x.rodada !== v?.rodada)
+      const fotos = reprovado ? fotosDe(reprovacoes.find((x) => x.rodada === v?.rodada)?.eventos ?? []) : []
+      // viga com furos no modelo: o item de furação é dos furos (aba Furos), não da mão (decisão de 18/11)
+      const pelosFuros = !!it.furos && p.furos.length > 0
+      // área com barras no pacote: o item de armadura é das barras (aba Barras), não da mão (plano A, 18/11)
+      const pelasBarras = !!it.barras && !!p.barras
+      const automatico = pelosFuros || pelasBarras
+      linhas.push(
+        <div class={`fv-item${p.etapa && p.etapa !== it.etapa ? ' apagada' : ''}${p.itemInicial === it.n ? ' destaque' : ''}`} key={it.n} data-item={it.n}>
+          <div class="fv-num">{it.n}</div>
+          <div class="fv-tx">
+            <div class="fv-tt">{it.titulo}</div>
+            {it.descricao && <div class="fv-ds">{it.descricao}</div>}
+            {(it.dispositivo || it.tolerancia) && (
+              <div class="fv-mt">
+                {it.dispositivo && `Dispositivo: ${it.dispositivo}`}
+                {it.dispositivo && it.tolerancia && ' · '}
+                {it.tolerancia && `Tolerância: ${it.tolerancia}`}
+              </div>
+            )}
+            {v?.resultado && (
+              <div class={`fv-hr r-${v.resultado}`}>
+                {v.resultado} {quando(v.criado_em_dispositivo)} · {rotuloRodada(v.rodada)} · {nomeDe(v)}
+                {v.lote_id && ' · em lote'}
+              </div>
+            )}
+            {passadas.length > 0 && (
+              <details class="fv-hist" data-testid="fvs-hist">
+                <summary>Reprovado antes: {passadas.map((x) => `${rotuloRodada(x.rodada)} ${dia(x.evento.criado_em_dispositivo)}`).join(', ')}</summary>
+                {passadas.map((x) => (
+                  <div class="fv-hist-r" key={x.rodada}>
+                    <div>
+                      {rotuloRodada(x.rodada)}: NC {quando(x.evento.criado_em_dispositivo)} · {nomeDe(x.evento)}
+                    </div>
+                    {x.observacao && <div class="fv-hist-obs">{x.observacao}</div>}
+                    <FotosDoItem ids={fotosDe(x.eventos)} ctx={ctx} aoZoom={p.aoZoom} />
+                  </div>
+                ))}
+              </details>
+            )}
+            {reprovado && v && (
+              <div class="fv-nc">
+                <CampoNc
+                  inicial={v.observacao ?? ''}
+                  pode={p.pode}
+                  salvar={(t) =>
+                    gravar(async (evs) => {
+                      // grava sobre o registro mais novo do item (pode ter mudado na fila)
+                      const atual = ultimosPorItem(evs.filter((e) => e.ficha_id === ficha.id)).get(it.n)
+                      if (atual?.resultado === 'NC' && (atual.observacao ?? '') !== t.trim()) return observar(c, atual, t)
+                      return []
+                    })
+                  }
+                />
+                <FotosDoItem ids={fotos} ctx={ctx} aoZoom={p.aoZoom} />
+                {p.pode && (
+                  <div class="fv-nc-acoes">
+                    <label class="fv-foto">
+                      {fotos.length > 0 ? 'Outra foto' : 'Tirar foto'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(ev) => {
+                          const i = ev.target as HTMLInputElement
+                          const arq = i.files?.[0]
+                          i.value = ''
+                          if (arq) gravar(async () => {
+                            await anexarFoto(c, v.id, await reduzirFoto(arq))
+                            p.avisar(p.ctx.local ? 'Foto guardada no aparelho.' : 'Foto guardada. Vai para o servidor quando houver internet.')
+                          })
+                        }}
+                      />
+                    </label>
+                    {!automatico && <button type="button" class="fv-link" onClick={() => {
+                        const id = crypto.randomUUID()
+                        const toque: Toque = { tipo: 'desmarcar', id, obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: c.fichaCampoId ?? null, pecaId: p.id, fichaId: ficha.id, item: it.n }
+                        anotarToque(toque)
+                        gravar((evs) => desmarcarR(c, p.id, ficha, it.n, evs, id).finally(() => esquecerToque(toque.obraId, toque.id)))
+                      }}>
+                      Desmarcar NC
+                    </button>}
+                  </div>
+                )}
+              </div>
+            )}
+            {v && horaNaFrente(v) && <AvisoHora testid="fvs-hora-na-frente" texto={avisoHoraNaFrente(nomeDe(v), v.criado_em_dispositivo)} />}
+          </div>
+          {p.pode && pelosFuros && (
+            <div class="fv-bt fv-pelos-furos" data-testid="fvs-item-pelos-furos">
+              <span class="discreto">Marcado pelos furos ({resumoDosFuros(p.furos.map((f) => f.sit)).texto.replace('Furos: ', '')})</span>
+            </div>
+          )}
+          {pelasBarras && (
+            <div class="fv-bt fv-pelos-furos" data-testid="fvs-item-pelas-barras">
+              <span class="discreto">Marcado pelas barras ({p.barras!.resumo.replace('Barras: ', '')})</span>
+            </div>
+          )}
+          {p.pode && !automatico && (
+            <div class="fv-bt">
+              {reprovado && v && <div class="fv-reinsp">Para reinspecionar ({rotuloRodada(v.rodada + 1)}), toque C, NC ou NA:</div>}
+              {(['C', 'NC', 'NA'] as const).map((r) => (
+                <button
+                  type="button"
+                  key={r}
+                  data-r={r}
+                  title={NOME_DO_RESULTADO[r]}
+                  class={v?.resultado === r && !reprovado ? 'on' : reprovado && r === 'NC' ? 'on' : ''}
+                  aria-pressed={v?.resultado === r}
+                  onClick={() => {
+                    // o diário anota já, no toque; a gravação vem na fila (toques anteriores primeiro)
+                    const id = crypto.randomUUID()
+                    const toque: Toque = { tipo: 'item', id, obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: c.fichaCampoId ?? null, pecaId: p.id, fichaId: ficha.id, item: it.n, resultado: r }
+                    anotarToque(toque)
+                    gravar((evs) => tocarItem(c, p.id, ficha, it.n, r, evs, id).finally(() => esquecerToque(toque.obraId, toque.id)))
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>,
+      )
+    }
+  }
+  return linhas
+  }
+  const linhas = montar(ficha?.itens.filter((it) => !it.parte) ?? [])
+  const secoesDasPartes = partesDaFicha.map((parte) => {
+    const itens = (ficha?.itens ?? []).filter((it) => it.parte === parte && (p.partes.includes(parte) || ult.get(it.n)?.resultado))
+    const sp = p.situacaoDaParte(parte) ?? 'nada'
+    const desenho = peca.partes?.find((pt) => pt.tipo === parte)
+    const chaveDet = desenho?.detalhe
+    const img = chaveDet ? pacote.url(`d:${chaveDet}`) : undefined
+    const detParte = chaveDet ? pacote.manifest.detalhes[chaveDet] : undefined
+    const abrir = p.parteAberta === parte || itens.some((it) => it.n === p.itemInicial)
+    return (
+      <details class="fv-parte" key={`parte:${parte}`} open={abrir} data-testid={`fvs-parte-${parte}`}>
+        <summary>
+          <b>{NOME_DA_PARTE[parte] ?? parte}</b> <span class={`fv-sit s-${sp}`}>{ROTULO_SITUACAO[sp]}</span>
+          {!p.partes.includes(parte) && <span class="discreto"> · sem {(NOME_DA_PARTE[parte] ?? parte).toLowerCase()} nesta planta</span>}
+        </summary>
+        {img ? (
+          <div class="fv-det">
+            <img src={img} alt={`${NOME_DA_PARTE[parte] ?? parte} ${peca.nome}`} onClick={() => p.aoZoom(img)} onLoad={rolarAoItem} />
+            <p class="fv-dica">
+              {detParte?.titulo} · {detParte?.prancha} · toque na imagem para ampliar
+            </p>
+          </div>
+        ) : (
+          p.partes.includes(parte) && <p class="fv-dica">Sem detalhe desta parte no pacote.</p>
+        )}
+        {montar(itens)}
+      </details>
+    )
+  })
+
+  return (
+    <aside class="fv-painel" aria-live="polite" data-testid="fvs-painel">
+      <div class="fv-cab">
+        <div class="fv-nm" data-testid="fvs-painel-nome">{peca.comodo ?? peca.nome}</div>
+        <div class="fv-inf">
+          {NOME_TIPO[peca.tipo] ?? peca.tipo}
+          {peca.comodo && <> <span class="fv-sem-quebra">{peca.nome}</span></>}
+          {peca.grupo && (
+            <>
+              {' '}
+              · <b>{peca.grupo}</b>
+            </>
+          )}
+          {peca.secao && (
+            <>
+              {' '}
+              · {peca.tipo === 'A' || peca.tipo === 'F' || p.area ? '' : 'seção '}
+              <b>{peca.secao}</b>
+            </>
+          )}
+          <br />
+          <span class={`fv-sit s-${sit}`}>{ROTULO_SITUACAO[sit]}</span>
+          {pct !== null && ` · ${pct}% conforme`}
+        </div>
+        <button type="button" onClick={p.aoFechar}>
+          Fechar
+        </button>
+      </div>
+      <div
+        class="fv-corpo"
+        ref={corpo}
+        onPointerDown={() => {
+          mexeuNoPainel.current = true
+        }}
+        onWheel={() => {
+          mexeuNoPainel.current = true
+        }}
+      >
+        {p.furos.length > 0 && (
+          <div class="fv-sec fv-irmaos" data-testid="fvs-furos-da-viga">
+            <h3>
+              <span>{resumoDosFuros(p.furos.map((f) => f.sit)).texto}</span>
+            </h3>
+            <div class="fv-chips">
+              {p.furos.map((f) => (
+                <button type="button" key={f.id} class={`fv-chip s-${f.sit}`} aria-label={`${f.nome}: ${ROTULO_SITUACAO[f.sit]}`} onClick={() => p.aoIrComTipo(f.id)}>
+                  {f.nome.slice(f.nome.lastIndexOf('-') + 1)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {peca.tipo === 'F' && (
+          <div class="fv-sec" data-testid="fvs-furo-info">
+            <p>
+              {furo?.forma === 'retangular' ? 'Furo retangular' : 'Furo circular'}
+              {furo?.fundo !== undefined && ` · ${furo.fundo} cm do fundo`}
+            </p>
+            {!!furo?.disciplinas?.length && <p class="discreto">{furo.disciplinas.map((d) => NOME_DA_DISCIPLINA[d] ?? d).join(', ')}</p>}
+            {!ficha && <p class="aviso">A ficha de viga não tem item de furação: o furo fica só para ver.</p>}
+            {p.viga && (
+              <button type="button" class="fv-link" data-testid="fvs-ir-viga" onClick={() => p.aoIrComTipo(p.viga!.id)}>
+                Ver a viga {p.viga.nome}
+              </button>
+            )}
+          </div>
+        )}
+        {abertas.length > 0 && (
+          <div class="fv-sec fv-abertas" data-testid="fvs-fichas-abertas">
+            {p.abertas.length > 1 && (
+              <h3 class="fv-dup">
+                <span>Ficha duplicada: {p.abertas.length} fichas nesta peça</span>
+              </h3>
+            )}
+            {abertas.map((a) => {
+              const sa = situacaoDaFichaAberta(a, fichaPorId, p.eventos)
+              const conteudo = (
+                <>
+                  <b>{a.codigo}</b>
+                  <span>
+                    {a.status} · <span class={`fv-sit s-${sa}`}>{ROTULO_SITUACAO[sa]}</span>
+                    {a.inspetor && ` · ${a.inspetor}`}
+                    {a.atualizada_em && ` · ${quando(a.atualizada_em)}`}
+                  </span>
+                  {a.ficha_codigo && a.ficha_codigo !== ficha?.codigo && <span>{a.ficha_codigo}</span>}
+                </>
+              )
+              return abertas.length > 1 ? (
+                <button type="button" key={a.id} class={`fv-aberta${a.id === aberta?.id ? ' on' : ''}`} aria-pressed={a.id === aberta?.id} onClick={() => setIdAberta(a.id)}>
+                  {conteudo}
+                </button>
+              ) : (
+                <div key={a.id} class="fv-aberta">
+                  {conteudo}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {imgDet ? (
+          <div class="fv-sec fv-det">
+            <h3>
+              <span>Detalhe{det && det.titulo !== peca.nome ? ` (${det.titulo})` : ''}</span>
+            </h3>
+            <img src={imgDet} alt={`Detalhe ${peca.nome}`} onClick={() => p.aoZoom(imgDet)} onLoad={rolarAoItem} />
+            {imgAco && (
+              <>
+                <h3>
+                  <span>Tabela de aço</span>
+                </h3>
+                <img src={imgAco} alt={`Tabela de aço ${peca.nome}`} onClick={() => p.aoZoom(imgAco)} onLoad={rolarAoItem} />
+              </>
+            )}
+            <p class="fv-dica">
+              {det?.prancha} · toque na imagem para ampliar
+            </p>
+            {corrigidoEm && (
+              <p class="fv-dica" data-testid="fvs-detalhe-corrigido">
+                Detalhe corrigido em {corrigidoEm}
+              </p>
+            )}
+          </div>
+        ) : p.area ? (
+          <div class="fv-sec fv-area" data-testid="fvs-area-info">
+            <h3>
+              <span>Área de laje</span>
+            </h3>
+            <p class="discreto">
+              Criada {quando(p.area.criada_em)}
+              {ctx.sistema && (p.area.codigo_ficha ? ` · ficha no ${ctx.sistema.nome}: ${p.area.codigo_ficha}` : ` · sem código da ficha no ${ctx.sistema.nome}`)}
+            </p>
+            {p.travas.length > 0 && (
+              <div class="aviso" data-testid="fvs-area-travada">
+                <b>Travada:</b> consolo ou capitel dentro desta área ainda sem liberar. Confira antes de concretar:
+                <ul>
+                  {p.travas.map((t) => (
+                    <li key={`${t.elementoId}|${t.tipo}`}>
+                      <button type="button" class="fv-link" onClick={() => p.aoIrParte(t.elementoId, t.tipo)}>
+                        {NOME_DA_PARTE[t.tipo] ?? t.tipo} do {t.nome}
+                      </button>{' '}
+                      · {ROTULO_SITUACAO[t.situacao]}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {p.barras && (
+              <div class="fv-barras-area" data-testid="fvs-barras-da-area">
+                <p>
+                  <b>{p.barras.resumo}</b>
+                </p>
+                {p.pode && p.barras.naCamada > 0 && (
+                  <button type="button" class="on" data-testid="fvs-tudo-ok-camada" disabled={!p.barras.semConferir} onClick={p.barras.aoTudoOk}>
+                    Tudo OK nesta camada ({p.barras.semConferir})
+                  </button>
+                )}
+                <p class="discreto">
+                  {p.barras.naCamada > 0 ? `Camada: ${p.barras.camada.toLowerCase()}. ` : ''}
+                  <button type="button" class="fv-link" data-testid="fvs-ver-barras" onClick={p.barras.aoVer}>
+                    Ver as barras
+                  </button>
+                </p>
+              </div>
+            )}
+            {p.pode && (
+              <div class="fv-nc-acoes">
+                <button type="button" data-testid="fvs-redesenhar-area" onClick={p.aoRedesenhar}>
+                  Redesenhar contorno
+                </button>
+                <button type="button" class="fv-link" data-testid="fvs-apagar-area" onClick={p.aoApagarArea}>
+                  Apagar área
+                </button>
+              </div>
+            )}
+          </div>
+        ) : peca.tipo === 'F' ? null : peca.tipo === 'A' ? (
+          p.irmaos.length > 1 && (
+            <div class="fv-sec fv-irmaos" data-testid="fvs-irmaos">
+              <h3>
+                <span>
+                  {peca.grupo} · {p.irmaos.length} ambientes
+                </span>
+              </h3>
+              <div class="fv-chips">
+                {p.irmaos.map((i) => (
+                  <button
+                    type="button"
+                    key={i.id}
+                    class={`fv-chip s-${i.sit}${i.id === p.id ? ' on' : ''}`}
+                    aria-label={`${i.nome}${i.comodo ? ` ${i.comodo}` : ''}: ${ROTULO_SITUACAO[i.sit]}`}
+                    aria-current={i.id === p.id}
+                    onClick={() => p.aoIr(i.id)}
+                  >
+                    {i.nome.slice(i.nome.lastIndexOf('-') + 1)}
+                    {i.comodo && <span class="fv-chip-nm"> {i.comodo}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        ) : (
+          <div class="fv-sec">
+            <p class="aviso">O detalhe desta peça não está nas pranchas carregadas.</p>
+          </div>
+        )}
+        <div class="fv-sec">
+          {soDetalhe && (
+            <p class="aviso" data-testid="fvs-so-detalhe">
+              Arranque: {peca.nome} está na planta só para conferir o detalhe. O pilar deste pavimento é o de baixo; a ficha deste é no pavimento de cima.
+            </p>
+          )}
+          {!soDetalhe && !aberta && p.fichas.length > 1 && (
+            <select aria-label="Ficha" value={ficha?.codigo} onChange={(ev) => p.aoTrocarFicha((ev.target as HTMLSelectElement).value)}>
+              {p.fichas.map((f) => (
+                <option value={f.codigo} key={f.codigo}>
+                  {f.codigo} {f.titulo}
+                </option>
+              ))}
+            </select>
+          )}
+          {soDetalhe ? null : ficha ? (
+            <p class="fv-ficha" data-testid="fvs-ficha-do-painel">
+              {ficha.codigo} · {ficha.titulo} · rev. {ficha.revisao}
+              {vigente && vigente.id !== ficha.id && ` (a vigente é a rev. ${vigente.revisao}; esta peça foi marcada nesta)`}
+            </p>
+          ) : (
+            <p class="aviso">Não há ficha (PVS) para {NOME_TIPO[peca.tipo] ?? peca.tipo} nesta obra.</p>
+          )}
+          {!soDetalhe && !p.pode && <p class="discreto">Seu acesso nesta obra é só de leitura.</p>}
+          {!soDetalhe && linhas}
+          {!soDetalhe && secoesDasPartes}
+          {daFicha.length > 0 && (
+            <details class="fv-hist-peca" data-testid="fvs-hist-peca">
+              <summary>Todos os registros desta ficha ({daFicha.length})</summary>
+              <ul>
+                {corrigidoEm && (
+                  <li data-testid="fvs-hist-detalhe-corrigido">
+                    <b>Detalhe corrigido em {corrigidoEm}</b> · a imagem do detalhe mudou; nada foi reaberto
+                  </li>
+                )}
+                {[...daFicha]
+                  .sort((a, b) => (maisNovo(a, b) ? -1 : 1))
+                  .map((e) => (
+                    <li key={e.id}>
+                      <b class={e.resultado ? `r-${e.resultado}` : ''}>{e.resultado ?? 'Desmarcado'}</b> item {e.item} · {rotuloRodada(e.rodada)} · {quando(e.criado_em_dispositivo)} · {nomeDe(e)}
+                      {e.lote_id && ' · em lote'}
+                      {e.observacao && <span class="fv-hist-obs"> · {e.observacao}</span>}
+                    </li>
+                  ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+/**
+ * "O que fazer?" de um item reprovado. Grava um segundo depois de parar de digitar e ao sair do
+ * campo (o que vier primeiro); a gravação confere o texto contra o registro mais novo, então
+ * repetir não duplica.
+ */
+function CampoNc({ inicial, pode, salvar }: { inicial: string; pode: boolean; salvar: (t: string) => unknown }) {
+  const [texto, setTexto] = useState(inicial)
+  const espera = useRef<number | undefined>(undefined)
+  const ultimo = useRef(texto)
+  ultimo.current = texto
+  const agora = () => {
+    window.clearTimeout(espera.current)
+    espera.current = undefined
+    salvar(ultimo.current)
+  }
+  // saiu da tela (fechou o painel, trocou de peça) com texto ainda não gravado
+  useEffect(() => () => {
+    if (espera.current !== undefined) agora()
+  }, [])
+  // foi para outro app: o Android pode fechar este sem avisar, então grava logo
+  useEffect(() => {
+    const aoEsconder = () => {
+      if (document.visibilityState === 'hidden' && espera.current !== undefined) agora()
+    }
+    document.addEventListener('visibilitychange', aoEsconder)
+    return () => document.removeEventListener('visibilitychange', aoEsconder)
+  }, [])
+  return (
+    <label>
+      O que fazer?
+      <textarea
+        rows={2}
+        disabled={!pode}
+        value={texto}
+        placeholder="Descreva a não conformidade e o que precisa ser corrigido"
+        onFocus={(ev) => {
+          // no celular, o teclado sobe por cima da parte de baixo do painel: o campo vai para o alto dele
+          const campo = ev.target as HTMLTextAreaElement
+          window.setTimeout(() => campo.scrollIntoView({ block: 'start' }), 300)
+        }}
+        onInput={(ev) => {
+          setTexto((ev.target as HTMLTextAreaElement).value)
+          window.clearTimeout(espera.current)
+          espera.current = window.setTimeout(agora, 1000)
+        }}
+        onBlur={() => {
+          if (espera.current !== undefined) agora()
+        }}
+      />
+    </label>
+  )
+}
+
+/** Fotos de uma reprovação: toque amplia. Do aparelho ou, com internet, do armazenamento. */
+function FotosDoItem({ ids, ctx, aoZoom }: { ids: string[]; ctx: ContextoFvs; aoZoom: (src: string) => void }) {
+  if (!ids.length) return null
+  return (
+    <div class="fv-fotos">
+      {ids.map((id) => (
+        <FotoDoItem key={id} id={id} ctx={ctx} aoZoom={aoZoom} />
+      ))}
+    </div>
+  )
+}
+
+function FotoDoItem({ id, ctx, aoZoom }: { id: string; ctx: ContextoFvs; aoZoom: (src: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let vivo = true
+    urlDaFoto(id, ctx.dados.arquivoPorId.get(id))
+      .then((u) => vivo && setUrl(u))
+      .catch((e) => console.warn('FVS: foto não carregou', e))
+    return () => {
+      vivo = false
+    }
+  }, [id])
+  return url ? (
+    <button type="button" class="fv-foto-mini" aria-label="Ampliar a foto" onClick={() => aoZoom(url)}>
+      <img src={url} alt="Foto da reprovação" />
+    </button>
+  ) : (
+    // já enviada e sem internet agora: mostra que a foto existe
+    <span class="fv-foto-mini">Foto</span>
+  )
+}

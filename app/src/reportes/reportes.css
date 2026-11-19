@@ -1,0 +1,178 @@
+/* Reportar problema. Celular e tablet primeiro: alvos de 48 px. */
+.rp-botao {
+  position: fixed;
+  left: max(0.75rem, env(safe-area-inset-left, 0px));
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 900;
+  min-height: 48px;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: var(--superficie);
+  border: 2px solid var(--borda);
+  color: var(--texto);
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  opacity: 0.92;
+}
+.rp-botao span:first-child {
+  display: inline-grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--atencao-fundo);
+  border: 2px solid var(--atencao-borda);
+  font-weight: 800;
+  margin-right: 0.25rem;
+}
+/* o botão não cobre o fim da página: sobra espaço embaixo */
+body:has(.rp-botao:not(.rp-no-mapa)) .tela {
+  padding-bottom: 5rem;
+}
+/* no mapa: na beira esquerda, no meio da altura (embaixo fica o painel; à direita, o zoom) */
+.rp-botao.rp-no-mapa {
+  bottom: auto;
+  top: 45%;
+  width: 48px;
+  padding: 0;
+  opacity: 0.8;
+}
+/* no mapa só o "!": cobre menos da planta (o nome vai no aria-label) */
+.rp-botao.rp-no-mapa .rp-texto {
+  display: none;
+}
+.rp-botao.rp-no-mapa span:first-child {
+  margin: 0;
+}
+
+.rp-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+.rp-janela {
+  width: 100%;
+  max-width: 36rem;
+  background: var(--superficie);
+  color: var(--texto);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 1rem;
+  outline: none;
+}
+.rp-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.rp-cabeca h2 {
+  margin: 0;
+}
+.rp-campo {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.75rem 0;
+}
+.rp-campo > span {
+  font-weight: 600;
+}
+.rp-campo input[type='file'] {
+  max-width: 100%;
+}
+.rp-gravidade {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.rp-gravidade button {
+  flex: 1 1 12rem;
+  min-height: 48px;
+}
+.rp-gravidade button.on {
+  background: var(--primaria);
+  color: var(--primaria-texto);
+}
+.rp-minis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.rp-mini {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: center;
+}
+.rp-mini img {
+  width: 6rem;
+  height: 6rem;
+  object-fit: cover;
+  border-radius: var(--raio);
+  border: 1px solid var(--borda);
+}
+.rp-junto,
+.rp-largo {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+.rp-dados {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.9rem;
+}
+.rp-dados dt {
+  color: var(--discreto);
+}
+.rp-dados dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rp-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.rp-acoes button {
+  flex: 1 1 12rem;
+  min-height: 48px;
+}
+.rp-lista {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.rp-lista li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 0.5rem 0.75rem;
+}
+.rp-lista li > span:first-child {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: grid;
+  overflow-wrap: anywhere;
+}
+.rp-lista-acoes {
+  display: flex;
+  gap: 0.5rem;
+}
+@media print {
+  .rp-botao {
+    display: none !important;
+  }
+}

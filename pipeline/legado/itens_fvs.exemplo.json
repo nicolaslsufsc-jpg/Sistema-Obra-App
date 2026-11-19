@@ -1,0 +1,72 @@
+{
+ "P": {
+  "codigo": "EXE-PVS-001",
+  "titulo": "Exemplo - Pilares",
+  "nome": "Ficha de exemplo de pilares",
+  "itens": [
+   {
+    "n": 1,
+    "etapa": "INÍCIO",
+    "titulo": "Projeto na mão",
+    "desc": "Conferir se a prancha usada é a revisão vigente.",
+    "disp": "Visual",
+    "tol": "NA"
+   },
+   {
+    "n": 2,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Prumo",
+    "desc": "Conferir o prumo da forma nas duas direções.",
+    "disp": "Prumo",
+    "tol": "5 mm"
+   },
+   {
+    "n": 3,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Cobrimento",
+    "desc": "Conferir os espaçadores da armadura.",
+    "disp": "Trena",
+    "tol": "conforme projeto"
+   },
+   {
+    "n": 4,
+    "etapa": "FIM",
+    "titulo": "Limpeza",
+    "desc": "Conferir se a forma está limpa antes de concretar.",
+    "disp": "Visual",
+    "tol": "NA"
+   }
+  ]
+ },
+ "V": {
+  "codigo": "EXE-PVS-002",
+  "titulo": "Exemplo - Vigas",
+  "nome": "Ficha de exemplo de vigas",
+  "itens": [
+   {
+    "n": 1,
+    "etapa": "INÍCIO",
+    "titulo": "Projeto na mão",
+    "desc": "Conferir se a prancha usada é a revisão vigente.",
+    "disp": "Visual",
+    "tol": "NA"
+   },
+   {
+    "n": 2,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Nível do fundo",
+    "desc": "Conferir o nível do fundo da forma.",
+    "disp": "Nível",
+    "tol": "5 mm"
+   },
+   {
+    "n": 3,
+    "etapa": "FIM",
+    "titulo": "Limpeza",
+    "desc": "Conferir se a forma está limpa antes de concretar.",
+    "disp": "Visual",
+    "tol": "NA"
+   }
+  ]
+ }
+}

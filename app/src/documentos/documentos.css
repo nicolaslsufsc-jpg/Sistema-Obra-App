@@ -1,0 +1,219 @@
+/* Módulo Documentos (usa também as classes rl-* de relatorios.css) */
+.doc-avisos {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--erro-claro);
+  border-radius: var(--raio);
+  background: var(--erro-fundo);
+  color: var(--erro-claro);
+}
+.doc-filtros {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.doc-filtros input,
+.doc-filtros select {
+  width: 100%;
+  min-height: 2.75rem;
+}
+.doc-grupo h2 {
+  font-size: 1rem;
+  margin: 1rem 0 0.4rem;
+}
+.doc-codigo {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.92em;
+}
+.rl-selo.doc-vence {
+  background: var(--fundo-fff4d6);
+  border-color: var(--borda-c98a00);
+  color: var(--texto-7a5200);
+}
+.doc-rodape {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+}
+.doc-titulo {
+  margin: 0.25rem 0;
+}
+.doc-selos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.doc-dados {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 0.9rem;
+  margin: 0 0 1rem;
+}
+.doc-dados dt {
+  font-weight: 600;
+}
+.doc-dados dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.doc-arquivo {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+  margin: 0.5rem 0;
+}
+a.botao {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--primaria-claro);
+  border-radius: var(--raio);
+  color: var(--primaria-claro);
+  font-weight: 700;
+  text-decoration: none;
+}
+.doc-foto {
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: var(--raio);
+  border: 1px solid var(--borda);
+}
+.doc-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.doc-revisoes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.doc-revisao {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+}
+.doc-duas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.doc-folha header h1 {
+  font-size: 1.2rem;
+  margin: 0.5rem 0 0.2rem;
+}
+/* A folha cabe na tela: no tablet a tabela quebra as linhas (sem largura mínima); no celular cada
+   linha vira um cartão com o nome da coluna ao lado (Testador, demo de 14/11: cortava o "Status"). */
+.doc-folha,
+.doc-tabela-rolagem {
+  min-width: 0;
+  max-width: 100%;
+}
+.doc-tabela {
+  font-size: 0.85rem;
+  width: 100%;
+}
+.doc-tabela th,
+.doc-tabela td {
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.doc-tabela th,
+.doc-tabela .doc-curta {
+  white-space: nowrap;
+}
+.doc-marca-exemplo {
+  letter-spacing: 0.04em;
+}
+@media screen and (max-width: 699px) {
+  .doc-tabela thead {
+    display: none;
+  }
+  .doc-tabela,
+  .doc-tabela tbody,
+  .doc-tabela tr,
+  .doc-tabela td {
+    display: block;
+    width: auto;
+  }
+  .doc-tabela tr {
+    border: 1px solid var(--borda);
+    border-radius: var(--raio);
+    margin-bottom: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    background: var(--superficie);
+  }
+  .doc-tabela td {
+    border: 0;
+    padding: 0.1rem 0;
+    white-space: normal;
+  }
+  .doc-tabela td[data-rot]::before {
+    content: attr(data-rot) ': ';
+    font-weight: 700;
+  }
+}
+.doc-nota {
+  font-size: 0.85rem;
+}
+@media (min-width: 900px) {
+  .doc-filtros {
+    grid-template-columns: 1fr 1fr auto;
+    align-items: center;
+  }
+}
+@media print {
+  .doc-tabela {
+    font-size: 9pt;
+  }
+  .doc-tabela-rolagem {
+    overflow: visible;
+  }
+}
+.doc-registros {
+  margin-top: 1.5rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid var(--borda);
+}
+.doc-registros h2 {
+  font-size: 1.1rem;
+  margin: 0.5rem 0 0.2rem;
+}
+.doc-registros h3 {
+  font-size: 1rem;
+  margin: 1rem 0 0.4rem;
+}
+.doc-registro {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  overflow-wrap: anywhere;
+}
+.doc-onde {
+  margin: 0.4rem 0 0;
+}
+.doc-folha-sub {
+  font-size: 1rem;
+  margin: 1rem 0 0.4rem;
+}
+.rl-selo.doc-exemplo {
+  background: var(--fundo-eef0ff);
+  border-color: var(--borda-5561c4);
+  color: var(--texto-2f3a99);
+  letter-spacing: 0.04em;
+}
+.doc-exemplos {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+}

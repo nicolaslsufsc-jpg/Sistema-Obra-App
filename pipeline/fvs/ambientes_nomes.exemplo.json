@@ -1,0 +1,11 @@
+{
+  "_leia": "Nomes dos cômodos da Obra Exemplo (EXE), fictícios. O arquivo de verdade fica fora do repositório, junto do pavimento.json (chave \"nomes\" em \"ambientes\"). O número é o do ambiente na planta: \"301-02\" -> \"02\". Sala e cozinha sem parede entre elas são um ambiente só.",
+  "tipos": {
+    "A": {"01": "Living / Cozinha", "02": "Suíte 01", "03": "Banho 01", "04": "Lavanderia"},
+    "B": {"01": "Living / Cozinha", "02": "Suíte 01"}
+  },
+  "aptos": {
+    "302": {"02": "Dormitório 01"}
+  },
+  "area_comum": {"01": "Hall", "02": "Depósito"}
+}

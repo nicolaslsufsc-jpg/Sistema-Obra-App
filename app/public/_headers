@@ -1,0 +1,19 @@
+# Cabeçalhos do Cloudflare Pages (entrega 7). A lista de permissões (CSP) vai no index.html
+# (vite.config.ts); aqui fica o que só funciona como cabeçalho.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(self), geolocation=(), microphone=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000
+
+# Service worker e página inicial sempre conferidos: versão nova chega no próximo acesso.
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+
+# Arquivos com o código no nome nunca mudam: podem ficar guardados um ano.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

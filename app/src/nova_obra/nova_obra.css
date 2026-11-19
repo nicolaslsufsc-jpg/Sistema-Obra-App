@@ -1,0 +1,49 @@
+/* Nova obra: só o que o style.css do app não tem. Prefixo no- (nova obra). */
+.no-tela h2 { margin-top: 0; }
+.no-passos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin: 1rem 0; }
+.no-passos button { padding: 0.4rem 0.2rem; font-size: 0.95rem; }
+.no-lista { list-style: none; padding: 0; margin: 0.75rem 0; display: grid; gap: 0.6rem; }
+.no-pav { display: grid; grid-template-columns: 1fr 3rem 3rem 3rem; gap: 0.4rem; align-items: center; }
+.no-pav button { padding: 0; min-width: 3rem; }
+.no-linha { display: flex; flex-wrap: wrap; gap: 0 0.75rem; }
+.no-linha > label { flex: 1 1 12rem; }
+.no-linha > label.no-curto, .no-linha > .no-curto { flex: 0 1 8rem; }
+/* caixa de marcar: o alvo do toque é a etiqueta inteira, com borda e pelo menos 44 x 44 px (achado do Testador) */
+.no-marcar { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 400; margin: 0.4rem 0.5rem 0.4rem 0; min-height: 2.75rem; min-width: 2.75rem; padding: 0 0.85rem 0 0.6rem; border: 2px solid var(--borda); border-radius: var(--raio); background: var(--superficie); cursor: pointer; box-sizing: border-box; }
+.no-marcar:has(input:checked) { border-color: var(--primaria-claro); }
+.no-marcar input { width: 1.6rem; min-height: 1.6rem; height: 1.6rem; margin: 0; cursor: pointer; }
+.no-aplica { border: 1px solid var(--borda); border-radius: var(--raio); margin: 1rem 0; padding: 0.25rem 0.75rem; }
+.no-aplica legend { font-weight: 600; padding: 0 0.25rem; }
+.no-ficha { width: 100%; text-align: left; display: grid; gap: 0.15rem; }
+.no-ficha .discreto { font-weight: 400; }
+.no-item { border: 1px solid var(--borda); border-radius: var(--raio); padding: 0 0.75rem 0.75rem; }
+.no-item > button { margin-top: 0.75rem; }
+.no-colar { margin: 0.5rem 0; }
+.no-colar summary { cursor: pointer; font-weight: 600; min-height: 2.75rem; display: flex; align-items: center; color: var(--primaria-claro); }
+.no-colar textarea, .no-tela select { width: 100%; font: inherit; font-size: 1rem; padding: 0.5rem 0.75rem; border: 2px solid var(--borda); border-radius: var(--raio); background: var(--superficie); color: var(--texto); }
+.no-tela select { min-height: 3rem; }
+.no-colar button { margin-top: 0.5rem; }
+.no-atalho { border: 1px dashed var(--borda); border-radius: var(--raio); padding: 0.25rem 0.75rem 0.75rem; }
+.no-resumo { padding-left: 1.2rem; }
+.no-ok { color: var(--ok-borda-claro); font-weight: 600; }
+.no-tela .barra ul { margin: 0.25rem 0; padding-left: 1.2rem; }
+/* etapa 2: plantas */
+.no-passos { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 640px) { .no-passos { grid-template-columns: repeat(3, 1fr); } }
+.no-folha { position: relative; border: 1px solid var(--borda); margin: 0.5rem 0; touch-action: none; user-select: none; background: var(--fundo-ffffff); min-height: 6rem; }
+.no-janela { position: absolute; border: 3px solid var(--borda-b3261e); background: rgba(179, 38, 30, 0.08); pointer-events: none; box-sizing: border-box; }
+.no-barra { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
+.no-barra button { flex: 1 1 6rem; }
+.no-dica { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.5rem 0 0; }
+.no-dica p { margin: 0; flex: 1 1 14rem; color: var(--atencao-texto); }
+.no-mapa { height: 60vh; min-height: 18rem; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--fundo-ffffff); margin: 0.5rem 0; }
+.no-peca { border: 2px solid var(--primaria-claro); border-radius: var(--raio); padding: 0 0.75rem 0.75rem; }
+.no-rotulo { font-weight: 700; padding: 0 3px; }
+.no-item h3 { margin: 0.75rem 0 0.25rem; }
+.no-item > .no-ficha { margin-bottom: 0.5rem; }
+/* etapa 3: leitura automática e conferência */
+.no-leitura { border: 1px solid var(--borda); border-radius: var(--raio); padding: 0 0.75rem 0.25rem; margin: 0.5rem 0; }
+.no-ensino { border-left: 4px solid var(--primaria-claro); padding: 0.25rem 0.5rem; }
+.no-conferir h4 { margin: 0.75rem 0 0.25rem; }
+.no-conferir ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.no-conferir li button { min-width: 3rem; }

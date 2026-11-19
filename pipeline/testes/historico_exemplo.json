@@ -1,0 +1,124 @@
+{
+ "obra": "EXE",
+ "fichas_campo": [
+  {
+   "id": "0bed2805-8272-5b1b-9dd3-cc83fbb7dd73",
+   "codigo": "FVS-1",
+   "construpoint_id": 1,
+   "local_construpoint": "Pilotis \\ Trecho 1 \\ Pilares \\ P27",
+   "ficha_codigo": "EXE-PVS-001",
+   "ficha_titulo": "Modelo",
+   "status": "Em Andamento",
+   "inspetor": "Pessoa Um",
+   "parceiro": "Parceiro",
+   "agendada_em": "2026-08-26T03:00:00.000Z",
+   "atualizada_em": "2026-10-21T11:20:48.000Z",
+   "pavimento": "Pilotis",
+   "tipo": "P",
+   "nome": "P27",
+   "elemento_id": "id-p27",
+   "qtd_a": 0,
+   "qtd_r": 1,
+   "qtd_na": 0
+  },
+  {
+   "id": "fb29bc6f-af79-55dd-ac0c-66312f6a252e",
+   "codigo": "FVS-2",
+   "construpoint_id": 2,
+   "local_construpoint": "Pilotis \\ Trecho 1 \\ Pilares \\ P90",
+   "ficha_codigo": "EXE-PVS-001",
+   "ficha_titulo": "Modelo",
+   "status": "Em Andamento",
+   "inspetor": "Pessoa Um",
+   "parceiro": "Parceiro",
+   "agendada_em": "2026-08-26T03:00:00.000Z",
+   "atualizada_em": "2026-10-21T11:20:48.000Z",
+   "pavimento": "Pilotis",
+   "tipo": "P",
+   "nome": "P90",
+   "elemento_id": "id-p90",
+   "qtd_a": 1,
+   "qtd_r": 0,
+   "qtd_na": 0
+  },
+  {
+   "id": "ce235a69-7950-53c9-8c87-bd964261a5ab",
+   "codigo": "FVS-3",
+   "construpoint_id": 3,
+   "local_construpoint": "Infra estrutura \\ Setor 1",
+   "ficha_codigo": "EXE-PVS-000",
+   "ficha_titulo": "Modelo",
+   "status": "Em Andamento",
+   "inspetor": "Pessoa Um",
+   "parceiro": "Parceiro",
+   "agendada_em": "2026-08-26T03:00:00.000Z",
+   "atualizada_em": "2026-10-21T11:20:48.000Z",
+   "pavimento": null,
+   "tipo": null,
+   "nome": null,
+   "elemento_id": null,
+   "qtd_a": 0,
+   "qtd_r": 0,
+   "qtd_na": 0
+  }
+ ],
+ "eventos": [
+  {
+   "id": "2d3671c2-3aae-5f03-bbc3-414904286247",
+   "ficha_campo_id": "0bed2805-8272-5b1b-9dd3-cc83fbb7dd73",
+   "elemento_id": "id-p27",
+   "ficha_codigo": "EXE-PVS-001",
+   "item": 2,
+   "resultado": "NC",
+   "rodada": 1,
+   "observacao": "Falha",
+   "verificado_por": "Pessoa Dois",
+   "criado_em": "2026-10-08T12:33:51.000Z",
+   "origem_id": "500"
+  },
+  {
+   "id": "af4a3925-4a32-5219-9029-88fe0965d4a0",
+   "ficha_campo_id": "fb29bc6f-af79-55dd-ac0c-66312f6a252e",
+   "elemento_id": "id-p90",
+   "ficha_codigo": "EXE-PVS-001",
+   "item": 1,
+   "resultado": "C",
+   "rodada": 1,
+   "observacao": null,
+   "verificado_por": "Pessoa Um",
+   "criado_em": "2026-10-08T12:33:52.000Z",
+   "origem_id": "501"
+  }
+ ],
+ "pendencias": [
+  {
+   "motivo": "ficha ainda sem peça no app (laje, bloco, cortina...)",
+   "local": "Infra estrutura \\ Setor 1",
+   "ficha": "EXE-PVS-000",
+   "codigo": "FVS-3",
+   "status": "Em Andamento"
+  }
+ ],
+ "resumo": {
+  "fichas": 3,
+  "fichas_com_peca": 2,
+  "verificacoes_lidas": 2,
+  "eventos_na_planta": 2,
+  "pecas_com_ficha_duplicada": 0,
+  "pendencias": {
+   "ficha ainda sem peça no app (laje, bloco, cortina...)": 1
+  },
+  "descartados": {},
+  "por_pessoa": {
+   "Pessoa Dois": 1,
+   "Pessoa Um": 1
+  },
+  "por_resultado": {
+   "NC": 1,
+   "C": 1
+  },
+  "status": {
+   "Em Andamento": 3
+  }
+ }
+}

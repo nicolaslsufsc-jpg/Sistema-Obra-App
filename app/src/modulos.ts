@@ -1,0 +1,72 @@
+// Módulos que aparecem no menu da obra. Cada sessão de módulo mexe só na própria linha:
+// quando a tela do módulo existir, preencha `Tela` (o botão do menu fica ativo sozinho).
+// A casca (app.tsx e Menu.tsx) é do núcleo e não precisa ser alterada pelos módulos.
+//
+// Contrato da tela do módulo (detalhes em docs/02_CONTRATO_NUCLEO.md, "Casca do app"):
+// - Ao abrir o módulo, a casca empilha no histórico `{ tela: id }` (ex.: `{ tela: 'concreto' }`).
+// - Telas internas do módulo empilham estados com o mesmo `tela: id` e o que mais quiserem.
+// - Quando o "voltar" do Android sai de um estado com `tela: id`, a casca volta ao menu.
+// - `aoSair()` volta ao menu; `aoPerderObra()` é para passar ao `usarSincronizacao`.
+import type { ComponentType } from 'preact'
+import type { ObraLocal, UsuarioLocal } from './nucleo/conta'
+import { ConcretoSobDemanda } from './concreto/telas/SobDemanda'
+import { FvsSobDemanda } from './fvs/telas/SobDemanda'
+import { IfcSobDemanda } from './ifc/telas/SobDemanda'
+import { RelatoriosSobDemanda } from './relatorios/telas/SobDemanda'
+import { DocumentosSobDemanda } from './documentos/telas/SobDemanda'
+import { sobDemanda } from './telas/SobDemanda'
+
+const ProjetosSobDemanda = sobDemanda('Projetos', () =>
+  import('./projetos/telas/ModuloProjetos').then((m) => m.ModuloProjetos),
+)
+
+export type IdModulo = 'fvs' | 'projetos' | 'concreto' | 'documentos' | 'relatorios' | 'ifc'
+
+export interface PropsModulo {
+  usuario: UsuarioLocal
+  obra: ObraLocal
+  aoSair: () => void
+  aoPerderObra: () => void
+}
+
+export interface Modulo {
+  id: IdModulo
+  nome: string
+  descricao: string
+  /** Sem tela, o botão aparece desativado como "em construção". */
+  Tela?: ComponentType<PropsModulo>
+  /** Fica fora do menu e não abre; o código continua no repositório. */
+  foraDoMenu?: true
+  /** Mostra o selo "beta" no cartão do menu: funciona, mas ainda está em teste. */
+  beta?: true
+}
+
+// Desde 08/11/2026 o foco é a FVS e o Concreto: os betas (Projetos, IFC) ficam fora do menu, com o
+// código guardado. Desde 09/11/2026 os Relatórios (Diário) voltaram e o Documentos entrou.
+// Desde 13/11/2026 o IFC voltou, com o selo "beta" (ainda sem teste em Android de verdade).
+// Desde 14/11/2026 o Projetos voltou, com o selo "beta" (sem conta ainda não importa a lista de pranchas).
+// Desde 18/11/2026 (pedido do Professor, pela regra do CLAUDE.md) Projetos, IFC e Relatórios (Diário) saem
+// de novo do menu, com o código guardado. O teste de sincronização com dois aparelhos chega ao Diário pelo
+// build de teste (VITE_TESTE_MODULOS_FORA_DO_MENU, do núcleo).
+// Para um deles voltar ao menu, apague o `foraDoMenu` da linha dele (e ligue `BETAS_NO_MENU` em testes/local.e2e.test.ts).
+const REGISTRO: readonly Modulo[] = [
+  { id: 'fvs', nome: 'FVS', descricao: 'Pilares e vigas', Tela: FvsSobDemanda },
+  { id: 'projetos', nome: 'Projetos', descricao: 'Revisões e cópias', Tela: ProjetosSobDemanda, beta: true, foraDoMenu: true },
+  { id: 'concreto', nome: 'Concreto', descricao: 'Caminhões, peças e corpos de prova', Tela: ConcretoSobDemanda },
+  { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra da qualidade (PBQP-H)', Tela: DocumentosSobDemanda },
+  { id: 'relatorios', nome: 'Relatórios', descricao: 'Diário de obra, problemas, limpeza', Tela: RelatoriosSobDemanda, foraDoMenu: true },
+  { id: 'ifc', nome: 'IFC', descricao: 'Importe seu IFC: modelo 3D, busca e cortes', Tela: IfcSobDemanda, beta: true, foraDoMenu: true },
+]
+
+// Só nos testes de tela: o build de teste liga VITE_TESTE_MODULOS_FORA_DO_MENU=1 para abrir também os
+// módulos fora do menu (os testes de sincronização com dois aparelhos usam o Diário, que grava pelo
+// núcleo sem precisar de planta). O build de produção (Cloudflare) não liga: o valor vira `false` na
+// compilação e os módulos fora do menu continuam sem abrir.
+const TESTE_COM_TODOS = import.meta.env.VITE_TESTE_MODULOS_FORA_DO_MENU === '1'
+
+/** Os módulos do menu: só estes a casca deixa abrir. */
+export const MODULOS: readonly Modulo[] = REGISTRO.filter((m) => TESTE_COM_TODOS || !m.foraDoMenu)
+
+export function moduloPorId(id: string): Modulo | undefined {
+  return MODULOS.find((m) => m.id === id)
+}

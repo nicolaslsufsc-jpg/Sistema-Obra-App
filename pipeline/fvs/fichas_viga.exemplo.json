@@ -1,0 +1,46 @@
+[
+ {
+  "codigo": "EXE-PVS-002",
+  "titulo": "Exemplo - Vigas (com o item de furação)",
+  "revisao": "0",
+  "tipo_modelo": "ESTRUTURA",
+  "aplica_a": [
+   "V"
+  ],
+  "itens": [
+   {
+    "n": 1,
+    "etapa": "INÍCIO",
+    "titulo": "Projeto na mão",
+    "descricao": "Conferir se a prancha usada é a revisão vigente.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA"
+   },
+   {
+    "n": 2,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Fundo e laterais da fôrma",
+    "descricao": "Conferir as dimensões da fôrma.",
+    "dispositivo": "Trena",
+    "tolerancia": "5 mm"
+   },
+   {
+    "n": 3,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Passagens em vigas",
+    "descricao": "Conferir posição e dimensões dos furos para as instalações e os reforços da armação. Marcado pelos furos da viga na planta (aba Furos).",
+    "dispositivo": "Trena",
+    "tolerancia": "conforme projeto",
+    "furos": true
+   },
+   {
+    "n": 4,
+    "etapa": "CONCRETAGEM",
+    "titulo": "Adensamento",
+    "descricao": "Conferir o adensamento do concreto.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA"
+   }
+  ]
+ }
+]

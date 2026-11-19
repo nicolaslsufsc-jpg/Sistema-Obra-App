@@ -1,0 +1,46 @@
+[
+ {
+  "codigo": "EXE-PVS-010",
+  "titulo": "Exemplo - Laje (com o item de armadura marcado pelas barras)",
+  "revisao": "0",
+  "tipo_modelo": "ESTRUTURA",
+  "aplica_a": [
+   "L"
+  ],
+  "itens": [
+   {
+    "n": 1,
+    "etapa": "INÍCIO",
+    "titulo": "Projeto na mão",
+    "descricao": "Conferir se as pranchas de forma e de armação são as revisões vigentes.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA"
+   },
+   {
+    "n": 2,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Fôrma e escoramento",
+    "descricao": "Conferir o nível e o escoramento da fôrma.",
+    "dispositivo": "Nível",
+    "tolerancia": "5 mm"
+   },
+   {
+    "n": 3,
+    "etapa": "EXECUÇÃO",
+    "titulo": "Armadura da laje",
+    "descricao": "Conferir posição, bitola e quantidade das barras de todas as camadas da armação.",
+    "dispositivo": "Trena",
+    "tolerancia": "1 cm",
+    "barras": true
+   },
+   {
+    "n": 4,
+    "etapa": "CONCRETAGEM",
+    "titulo": "Liberação para concretar",
+    "descricao": "Laje limpa e liberada pela engenharia.",
+    "dispositivo": "Visual",
+    "tolerancia": "NA"
+   }
+  ]
+ }
+]

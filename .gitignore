@@ -1,0 +1,44 @@
+# segredos
+.env
+.env.*
+!.env.example
+
+# dependências e builds
+node_modules/
+dist/
+dist-teste/
+.venv/
+__pycache__/
+*.pyc
+
+# dados de obra nunca entram no repositório
+dados/
+*_export-*/
+*_export-*.zip
+*.pdf
+*.dwg
+*.dxf
+
+# sistema
+.DS_Store
+Thumbs.db
+
+# cópias de trabalho das sessões (git worktree)
+.claude/worktrees/
+
+# lista de nomes de empresas e obras (fica só no PC)
+nomes_proibidos.txt
+
+# pacotes e dados de obra
+dados_obra/
+*.obra
+*.zip
+*.xlsx
+*.ifc
+fora_do_repo/
+
+# Exportações e fotos de obra (Revisor, 09/11). Arquivo de teste fictício já rastreado continua; um novo entra com git add -f.
+*.csv
+*.jpg
+*.jpeg
+*.heic

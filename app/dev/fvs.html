@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- Bancada do módulo FVS: no servidor de desenvolvimento (npm run dev) e no pacote do PC da empresa
+     (pipeline/fvs/montar_entrega.py), nunca no app publicado.
+     Abre o módulo com dados de teste no banco do navegador, sem login e sem servidor.
+     Uso: cd app && npm run dev  →  http://localhost:5173/dev/fvs.html (abre a planta de forma de teste)
+       ?abrir=ambientes abre a planta de ambientes de teste; ?abrir=0 abre o início do módulo
+     Obra inteira com pacotes de verdade gerados no PC (publicar_planta.py --so-gerar):
+       py pipeline/fvs/bancada.py PASTA_DOS_PACOTES   →  http://localhost:5173/dev/fvs.html?pasta=http://127.0.0.1:8766/
+     (os pacotes e as fichas da obra nunca entram no repositório) -->
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Bancada FVS</title>
+  </head>
+  <body>
+    <!-- fica atrás do topo fixo da planta: só aparece no início e nas listas -->
+    <p style="margin: 0; padding: 6px 12px; background: #fff4e0; color: #7a4500; font: 13px/1.3 system-ui, sans-serif">
+      Bancada: o que você marca aqui fica só neste navegador, não vai para o servidor.
+    </p>
+    <div id="app"></div>
+    <script type="module" src="./fvs.tsx"></script>
+  </body>
+</html>

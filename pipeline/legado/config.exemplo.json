@@ -1,0 +1,25 @@
+{
+ "obra": "EXE",
+ "nome_obra": "Obra Exemplo",
+ "pavimento": "Pavimento tipo",
+ "chave": "EXE-PAVTIP",
+ "formas": [
+  {
+   "trecho": "Trecho 1",
+   "pdf": "in/forma/001.pdf",
+   "nome": "EXE.ES.LO.001.FORPAVTIP-R00.pdf",
+   "arquivo": "fvs-EXE-pavtip-trecho1.html"
+  }
+ ],
+ "det_pilares": [
+  "in/pil/010.pdf"
+ ],
+ "det_vigas": [
+  "in/vig/020.pdf"
+ ],
+ "itens": "itens_fvs.exemplo.json",
+ "modelo": "modelo_app.html",
+ "saida": "saida",
+ "prefixo_prancha": "EXE.ES.LO.",
+ "nota_pranchas": "pranchas EXE.ES.LO.001 (forma), 010 (pilares) e 020 (vigas)"
+}

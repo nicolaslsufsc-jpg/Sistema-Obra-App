@@ -2,6 +2,7 @@
 // estrutura (planta de forma: pilares e vigas), depois a planta de ambientes (fichas por
 // ambiente: alvenaria, reboco, pintura...). Cada planta mostra se já está no aparelho (abre sem
 // internet) e o andamento das fichas.
+import { resumoDasRegras } from '../regras_tela'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { resumoDasAreas } from '../areas'
 import { baixarPlanta, ehDeAmbientes, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
@@ -231,6 +232,12 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             {duplicadas} {duplicadas === 1 ? 'peça' : 'peças'} com ficha duplicada no {sistema.nome}
           </b>
           <span>Ver as duas situações de cada uma ›</span>
+        </button>
+      )}
+      {(dados.regras.prazos.length > 0 || dados.regras.ligacoes.length > 0 || !!dados.regras.fora) && (
+        <button type="button" class="fv-entra-rep" data-testid="fvs-entra-regras" onClick={() => ir({ nome: 'regras' })}>
+          <b>Regras da obra: {resumoDasRegras(dados.regras)}</b>
+          <span>Ver os prazos e as ligações entre itens ›</span>
         </button>
       )}
       {dados.fichas.length === 0 && (

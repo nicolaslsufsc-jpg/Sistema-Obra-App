@@ -200,13 +200,17 @@ suite('sincronização sólida (riscos do plano de 18/11)', () => {
 
     const clienteB = clienteComLogin()
     await entrar(new Conta(clienteB, banco), leitura)
-    await new Sincronizador({ banco, cliente: clienteB, tabelas: TABELAS }).sincronizar(OBRA1, leitura.id)
+    const sB = new Sincronizador({ banco, cliente: clienteB, tabelas: TABELAS })
+    await sB.sincronizar(OBRA1, leitura.id)
+    // C5: a tela de B mostra que há itens de outra pessoa esperando
+    expect(await sB.contarDeOutros(leitura.id)).toBe(5)
 
     const clienteA2 = clienteComLogin()
     await entrar(new Conta(clienteA2, banco), campo)
     const r = await new Sincronizador({ banco, cliente: clienteA2, tabelas: TABELAS }).sincronizar(OBRA1, campo.id)
     expect(r.envio).toEqual({ enviados: 5, comErro: 0 })
     expect(await contar('teste_eventos', 'id = any($1::uuid[])', [ids])).toBe(5)
+    expect(await sB.contarDeOutros(leitura.id)).toBe(0)
   })
 
   // ---------------------------------------------------------------------------------------------

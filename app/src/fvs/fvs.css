@@ -679,6 +679,18 @@
   font-size: 13px;
   color: var(--texto-5b5d61);
 }
+/* prazo das regras da obra (escoramento, reescoramento): o item espera, mas o C continua possível */
+.fv-prazo {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--texto-7a4500);
+  background: var(--fundo-fff4e0);
+  border: 1px solid var(--borda-c27800);
+}
 .fv-mt,
 .fv-hist {
   font-size: 12px;

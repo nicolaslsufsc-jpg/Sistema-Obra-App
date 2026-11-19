@@ -544,6 +544,19 @@ async function semearAmbientes(base: Record<string, unknown>) {
   await gravarCadastro(linhas)
 }
 
+/**
+ * ?regras=1: regras da obra de teste (como viriam do config_fvs.json): a desforma do pilar (item 7)
+ * espera 3 dias da concretagem (item 6), e o item 4 (armadura) marca C no item 5 (prumo) pela ligação.
+ */
+async function semearRegras() {
+  const regras = {
+    prazos: [{ id: 'desforma', ficha: 'TESTE-PVS-P', item: 7, dias: 3, depois_de: { tipo: 'concretagem' }, texto: 'Desforma' }],
+    ligacoes: [{ id: 'armadura-prumo', de: { ficha: 'TESTE-PVS-P', item: 4 }, para: { ficha: 'TESTE-PVS-P', item: 5 } }],
+  }
+  const linha = { id: 'c0000000-0000-0000-0000-0000000000a1', obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: '2026-11-19T00:00:00.000Z', apagado: false, regras }
+  await banco.registros.put({ tabela: 'fvs_regras', id: linha.id, obra_id: OBRA, linha: linha as never, pendente: 0 as const })
+}
+
 async function semear() {
   const agora = new Date().toISOString()
   const base = { obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: agora, apagado: false }
@@ -773,6 +786,7 @@ if (pasta) {
 } else
   semear().then(async () => {
   if (params.get('revisao')) await semearRevisaoNova()
+  if (params.get('regras')) await semearRegras()
   const abrir = params.get('abrir')
   const plantaId = abrir === 'ambientes' ? PLANTA_AMB : PLANTA
   history.replaceState(abrir === '0' ? { tela: 'fvs' } : { tela: 'fvs', fvs: { nome: 'planta', plantaId } }, '')

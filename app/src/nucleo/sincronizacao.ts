@@ -450,6 +450,15 @@ export class Sincronizador {
     return { pendentes, comErro }
   }
 
+  /**
+   * Itens da fila de outras pessoas neste aparelho (risco R5, correção C5): só sobem quando a pessoa
+   * dona deles entrar aqui de novo. Lê só as chaves do índice, sem ler os itens.
+   */
+  async contarDeOutros(usuarioId: string): Promise<number> {
+    const chaves = await this.banco.fila.orderBy('[usuario_id+estado+seq]').keys()
+    return chaves.filter((k) => (k as unknown as [string, string, number])[0] !== usuarioId).length
+  }
+
   itensComErro(usuarioId: string): Promise<ItemFila[]> {
     return this.itensDaFila(usuarioId, 'erro')
   }

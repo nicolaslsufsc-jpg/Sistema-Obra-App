@@ -374,7 +374,7 @@ describe('regras da obra na gravação (prazo e ligação, 19/11)', () => {
     const origem = await tocarItem(c, 'p3', ficha, 1, 'C', [])
     const ligados = await ligarDepoisDe(c, regras, 'p3', ficha, [1], paraEventos([origem]).get('p3') ?? [])
     expect(ligados.map((l) => [l.item, l.resultado])).toEqual([[2, 'C'], [3, 'C']])
-    expect(String(ligados[0].observacao)).toMatch(/^Pela ligação: .* item 1/)
+    expect(String(ligados[0].observacao)).toMatch(/^Pela ligação: item 1/)
     expect(ligados.every((l) => l.lote_id)).toBe(true)
     const eventos = paraEventos([origem, ...ligados])
     const desfeitos = await desfazerLote(c, ligados, (id) => eventos.get(id) ?? [])

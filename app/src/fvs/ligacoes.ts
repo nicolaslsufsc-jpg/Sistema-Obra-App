@@ -55,10 +55,11 @@ export function alvosDaLigacao(
   return alvos
 }
 
-/** A observação do registro marcado pela ligação: diz de onde veio. */
+/** A observação do registro marcado pela ligação: diz de onde veio (o código da ficha só quando é outra). */
 export function observacaoDaLigacao(a: AlvoDaLigacao): string {
   const it = a.origem.ficha.itens.find((i) => i.n === a.origem.item)
-  return `Pela ligação: ${a.origem.ficha.codigo} item ${a.origem.item}${it ? ` (${it.titulo})` : ''}`
+  const ficha = a.origem.ficha.codigo === a.ficha.codigo ? '' : `${a.origem.ficha.codigo} `
+  return `Pela ligação: ${ficha}item ${a.origem.item}${it ? ` (${it.titulo})` : ''}`
 }
 
 /** Registro marcado pela ligação (lido da observação). */

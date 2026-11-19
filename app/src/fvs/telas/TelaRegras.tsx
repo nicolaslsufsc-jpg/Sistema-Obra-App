@@ -29,7 +29,7 @@ export function TelaRegras({ ctx }: { ctx: ContextoFvs }) {
           <p class="discreto">Prazos e ligações entre os itens das fichas. Só leitura.</p>
         </div>
       </header>
-      <p class="discreto">Vêm da configuração da obra (config_fvs.json). Para mudar, quem cuida do cadastro troca o arquivo e publica de novo.</p>
+      <p class="discreto">Vêm da configuração da obra. Para mudar, fale com quem cuida do cadastro.</p>
       {r.fora > 0 && (
         <p class="aviso" data-testid="fvs-regras-fora">
           {r.fora === 1 ? '1 regra do arquivo ficou de fora' : `${r.fora} regras do arquivo ficaram de fora`} por formato errado.

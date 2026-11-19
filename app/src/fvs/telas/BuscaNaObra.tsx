@@ -4,11 +4,11 @@ import { nomeDaPeca } from '../comodos'
 import { useMemo, useState } from 'preact/hooks'
 import { buscarPecas } from '../busca'
 import { fichaDoLocalNaObra, partesDoPilar, travasDaAreaNaObra, type Peca } from '../dados'
-import { fichaDaPeca, fichasPara, ROTULO_SITUACAO as ROTULO, situacaoDoFuroNaObra, situacaoDoLocal, type Situacao } from '../situacao'
+import { fichaDaPeca, fichasPara, ROTULO_SITUACAO as ROTULO, situacaoDaEsquadriaNaObra, situacaoDoFuroNaObra, situacaoDoLocal, type Situacao } from '../situacao'
 import { usarIrAtePeca } from './IrAtePeca'
 import type { ContextoFvs } from './ModuloFvs'
 
-const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo' }
+const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo', E: 'Esquadria' }
 
 // ao voltar da planta, a busca continua como estava (a pessoa costuma olhar uma peça depois da outra)
 let memoria: { obraId: string; texto: string } | null = null
@@ -52,6 +52,8 @@ function Resultados({ texto, ctx }: { texto: string; ctx: ContextoFvs }) {
     const fichaPorId = (id: string) => dados.fichaPorId.get(id)
     // furo: o registro dele é no item de furação da ficha de viga (o mesmo que a planta mostra)
     if (p.tipo === 'F') return situacaoDoFuroNaObra(fichasPara('V', dados.fichas)[0], eventos, fichaPorId)
+    // esquadria: o registro dela é nos itens de esquadria das fichas de ambiente (qualquer serviço)
+    if (p.tipo === 'E') return situacaoDaEsquadriaNaObra(fichasPara('A', dados.fichas), eventos)
     const area = dados.areaPorId.get(p.id)
     if (area && travasDaAreaNaObra(dados, area).length) return 'reprovado'
     return situacaoDoLocal(fichaDaPeca(fichaDoLocalNaObra(dados, p), eventos, fichaPorId), dados.fichasCampoDe.get(p.id) ?? [], fichaPorId, eventos, undefined, partesDoPilar(p.id))

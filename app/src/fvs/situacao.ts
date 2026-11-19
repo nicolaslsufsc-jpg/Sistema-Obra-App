@@ -70,6 +70,12 @@ export interface ItemFicha {
    * (aba Barras, plano A de 18/11/2026). Todas as barras da área OK: C; alguma errada: NC. Vem da ficha.
    */
   barras?: boolean
+  /**
+   * Item de vão ou esquadria da ficha de ambiente ("eixos e vãos", "requadros", "recorte na porta"): quem
+   * marca são as esquadrias do ambiente na planta (aba Esquadrias, 19/11/2026), uma a uma, como os furos.
+   * Pode haver mais de um na ficha; a pessoa escolhe qual no topo da aba. Vem da ficha, como dado.
+   */
+  esquadrias?: boolean
 }
 
 export interface Ficha {
@@ -378,6 +384,27 @@ export function situacaoDoFuroNaObra(fichaDeViga: Ficha | undefined, eventos: re
   return ficha && item !== undefined ? situacaoDoFuro(ficha.id, item, eventos) : 'nada'
 }
 
+/** Os itens de vão ou esquadria da ficha de ambiente (marcados com `"esquadrias": true`), na ordem da ficha. */
+export function itensDasEsquadrias(ficha: Ficha | undefined): ItemFicha[] {
+  return ficha?.itens.filter((i) => i.esquadrias) ?? []
+}
+
+/**
+ * Situação da esquadria fora da planta (busca da obra): pelo pior dos itens de esquadria das fichas de
+ * ambiente (qualquer serviço). Algum errado: reprovado; algum OK e nenhum errado: liberado; nada: pendente.
+ */
+export function situacaoDaEsquadriaNaObra(fichasDeAmbiente: readonly Ficha[], eventos: readonly EventoFvs[]): Situacao {
+  const sits = fichasDeAmbiente.flatMap((f) => itensDasEsquadrias(f).map((i) => situacaoDoFuro(f.id, i.n, eventos)))
+  if (sits.includes('reprovado')) return 'reprovado'
+  return sits.includes('liberado') ? 'liberado' : 'nada'
+}
+
+/** "Esquadrias: 3 de 5 OK, 1 errada" (o mesmo resumo dos furos, no feminino). */
+export function resumoDasEsquadrias(esqs: readonly Situacao[]): { total: number; ok: number; errados: number; texto: string } {
+  const r = resumoDosFuros(esqs)
+  return { ...r, texto: `Esquadrias: ${r.ok} de ${r.total} OK${r.errados ? `, ${r.errados} errada${r.errados > 1 ? 's' : ''}` : ''}` }
+}
+
 /** O resultado que os furos dão ao item de furação da viga: algum errado NC; todos OK C; senão pendente. */
 export function resultadoPelosFuros(furos: readonly Situacao[]): Resultado | null {
   if (!furos.length) return null
@@ -529,8 +556,8 @@ export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readon
   let comR = 0
   let duplicadas = 0
   for (const l of locais) {
-    // furo de viga conta dentro da viga (pelo item de furação da ficha), e não como peça
-    if (l.tipo === 'A' || l.tipo === 'F') continue
+    // furo de viga conta dentro da viga (pelo item de furação da ficha), e não como peça; a esquadria, no ambiente
+    if (l.tipo === 'A' || l.tipo === 'F' || l.tipo === 'E') continue
     total++
     if (!fichaDoTipo.has(l.tipo)) fichaDoTipo.set(l.tipo, fichasPara(l.tipo, fichas)[0])
     const abertas = campo?.fichasDe(l.id) ?? []

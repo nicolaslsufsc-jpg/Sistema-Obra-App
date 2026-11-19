@@ -21,6 +21,8 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                (pilar com consolo ou capitel: "partes": [{"tipo": "consolo", "polys": [[[x, y], ...]], "detalhe": "C_CONSOLO_P32"}])
                (furo de viga: "tipo": "F", "nome": "V12-F1", "viga": "<id da viga>", "furo": {"forma": "circular", "diametro": 10,
                 "topo": 25, "fundo": 273, "disciplinas": ["Hidráulica"]}, sem detalhe; pipeline/fvs/furos.py)
+               (esquadria do ambiente: "tipo": "E", "nome": "303-05-PM80", "secao": "PM80", "ambiente": "<id do ambiente>",
+                "esquadria": {"codigo": "PM80", "classe": "porta", "outro_lado": "303-04"}, sem detalhe; pipeline/fvs/esquadrias.py)
   "detalhes": {"P_P32": {"titulo": "P32", "prancha": "EXE.ES.LO.285.PIL3PAVTIP-R00", "aco": true}},
   "barras": {"<id da barra>": {"camada": "longitudinal_inferior", "posicao": "N25", "texto": "N25 1ø10 C=850",
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
@@ -38,11 +40,14 @@ import json
 import re
 
 FORMATO = 1
-# P pilar, V viga, L laje, A ambiente (planta de arquitetura; pipeline/fvs/ambientes.py)
-TIPOS = ("P", "V", "L", "A", "F")
+# P pilar, V viga, L laje, A ambiente (planta de arquitetura; pipeline/fvs/ambientes.py), F furo de viga
+# (furos.py), E esquadria do ambiente (esquadrias.py)
+TIPOS = ("P", "V", "L", "A", "F", "E")
 # Partes do pilar concretadas com a laje (pipeline/fvs/partes.py): itens na ficha do pilar, toque próprio na planta.
 TIPOS_DE_PARTE = ("consolo", "capitel")
 CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "disciplinas", "modelo_id")
+CAMPOS_DA_ESQUADRIA = ("codigo", "classe", "modelo", "outro_lado")
+CLASSES_DE_ESQUADRIA = ("porta", "janela")
 # Barras de aço da laje (pipeline/fvs/barras_laje.py): as quatro camadas das pranchas de armação.
 CAMADAS_DE_BARRAS = ("transversal_superior", "transversal_inferior", "longitudinal_superior", "longitudinal_inferior")
 CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "espacamento", "prancha")
@@ -145,6 +150,18 @@ def montar(
             reg["furo"] = {k: v for k, v in e["furo"].items() if k in CAMPOS_DO_FURO}
         elif e.get("viga") or e.get("furo"):
             raise ErroPacote(f"{e.get('nome')}: só furo tem viga e medidas de furo")
+        if e["tipo"] == "E":
+            esq = e.get("esquadria")
+            if not e.get("ambiente") or not isinstance(esq, dict) or not esq.get("codigo"):
+                raise ErroPacote(f"{e.get('nome')}: esquadria sem o ambiente ou sem o código")
+            if e["ambiente"] not in elementos or elementos[e["ambiente"]].get("tipo") != "A":
+                raise ErroPacote(f"{e.get('nome')}: o ambiente da esquadria não está no pacote")
+            if esq.get("classe") not in CLASSES_DE_ESQUADRIA:
+                raise ErroPacote(f"{e.get('nome')}: classe da esquadria tem que ser porta ou janela")
+            reg["ambiente"] = e["ambiente"]
+            reg["esquadria"] = {k: str(v) for k, v in esq.items() if k in CAMPOS_DA_ESQUADRIA and v not in (None, "")}
+        elif e.get("ambiente") or e.get("esquadria"):
+            raise ErroPacote(f"{e.get('nome')}: só esquadria tem ambiente e código de esquadria")
         if e.get("partes"):
             if e["tipo"] != "P":
                 raise ErroPacote(f"{e.get('nome')}: só pilar tem consolo ou capitel")

@@ -19,9 +19,9 @@ export interface ItemEscolhido {
   titulo: string
 }
 
-/** Os itens que dá para marcar por item: tira os automáticos (furos, barras), que outra coisa marca. */
+/** Os itens que dá para marcar por item: tira os automáticos (furos, barras, esquadrias), que outra coisa marca. */
 export function itensParaEscolher(ficha: Ficha | undefined): ItemFicha[] {
-  return (ficha?.itens ?? []).filter((it) => !it.furos && !it.barras)
+  return (ficha?.itens ?? []).filter((it) => !it.furos && !it.barras && !it.esquadrias)
 }
 
 const mesmoTitulo = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
@@ -37,7 +37,7 @@ export function itemNaPeca(
 ): { item: ItemFicha } | { falta: 'ficha' | 'item' | 'parte'; parte?: string } {
   if (!ficha) return { falta: 'ficha' }
   const it = ficha.itens.find((i) => i.n === escolhido.n)
-  if (!it || !mesmoTitulo(it.titulo, escolhido.titulo) || it.furos || it.barras) return { falta: 'item' }
+  if (!it || !mesmoTitulo(it.titulo, escolhido.titulo) || it.furos || it.barras || it.esquadrias) return { falta: 'item' }
   if (it.parte && !ficha.partesDaPeca?.includes(it.parte)) return { falta: 'parte', parte: it.parte }
   return { item: it }
 }

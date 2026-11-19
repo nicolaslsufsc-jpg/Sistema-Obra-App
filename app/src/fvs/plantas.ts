@@ -52,8 +52,8 @@ export function plantaDeDesenho(pacote: PacoteAberto, idEstavel: string, titulo:
     largura: m.largura,
     altura: m.altura,
     fundo: { tile: m.tile, niveis: m.niveis, url: (z, x, y) => pacote.tile(z, x, y) ?? TILE_VAZIO },
-    // só peças de estrutura: ambiente (planta de arquitetura) e furo de viga não interessam a quem desenha concretagem
-    elementos: Object.entries(m.elementos).flatMap(([id, e]) => (e.tipo === 'A' || e.tipo === 'F' ? [] : [{ id, tipo: e.tipo, nome: e.nome, rotulo: e.rotulo, polys: e.polys }])),
+    // só peças de estrutura: ambiente (planta de arquitetura), furo de viga e esquadria não interessam a quem desenha concretagem
+    elementos: Object.entries(m.elementos).flatMap(([id, e]) => (e.tipo === 'A' || e.tipo === 'F' || e.tipo === 'E' ? [] : [{ id, tipo: e.tipo, nome: e.nome, rotulo: e.rotulo, polys: e.polys }])),
   }
 }
 

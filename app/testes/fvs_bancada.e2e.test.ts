@@ -309,6 +309,43 @@ suite('FVS na bancada (Chrome)', () => {
     }, 120_000)
   }
 
+  // Rastreio do concreto (19/11): o item da ficha fica C pelo caminhão, só calculado (nada gravado na FVS)
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: o item do rastreio fica C pelo caminhão do Concreto, sem gravar nada`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&rastreio=1&regras=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, 'P6')
+      await nomeNoPainel(p, 'P6')
+      await p.locator('.fv-item[data-item="6"] button[data-r="C"].on').waitFor()
+      const obs = await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-obs-c').innerText()
+      expect(obs).toMatch(/Pelo Concreto: caminhão 2 · NF 4321 · \d\d\/\d\d/)
+      expect(await p.locator('.fv-item[data-item="6"] .fv-hr').innerText()).toMatch(/^C · V01 · Pelo Concreto/)
+      // o prazo da desforma conta da concretagem de hoje: faltam 3 dias
+      expect(await p.locator('.fv-item[data-item="7"]').getByTestId('fvs-prazo').innerText()).toContain('faltam 3 dias')
+      // nada foi gravado na FVS
+      expect(await registros(p)).toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.locator('.fv-item[data-item="6"]').screenshot({ path: path.join(PRINTS, `fvs_rastreio_${largura}.png`) })
+      // peça sem caminhão: o item fica vazio
+      await buscar(p, 'P7')
+      await nomeNoPainel(p, 'P7')
+      expect(await p.locator('.fv-item[data-item="6"] button.on').count()).toBe(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
   for (const [nome, largura, altura] of [
     ['tablet', 1280, 800],
     ['celular', 375, 812],

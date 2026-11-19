@@ -47,7 +47,7 @@ import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { buscarPecas } from './busca'
-import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, desfazerLote, horaNaFrente, horaNormal, ligarDepoisDe, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
+import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, horaNaFrente, horaNormal, ligarDepoisDe, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
 import { sincronizador } from '../nucleo/servicos'
 import { hojeNoAparelho } from './formato'
 import { DadosDaTela } from './leitura'
@@ -564,6 +564,8 @@ describe('registros novos nos dados da tela', () => {
     servidorMaisNovo: null,
     regras: SEM_REGRAS,
   } as DadosFvs
+  const paraEventoDeTeste = (id: string, elemento: string) =>
+    ({ id, elemento_id: elemento, ficha_id: 'f1', item: 1, resultado: 'C', rodada: 1, observacao: null, lote_id: null, planta_id: null, usuario_id: '', criado_em_dispositivo: '2026-11-05T03:00:00.000Z' }) as const
   const linha = (id: string, elemento: string) =>
     ({ id, elemento_id: elemento, ficha_id: 'f1', item: 1, resultado: 'C', rodada: 1, usuario_id: 'u1', criado_em_dispositivo: '2026-11-06T10:00:00.000Z' }) as unknown as Linha
 
@@ -572,6 +574,15 @@ describe('registros novos nos dados da tela', () => {
     expect(d.eventosDe.get('p1')?.map((e) => e.id)).toEqual(['a', 'b'])
     expect(d.eventosDe.get('p2')?.map((e) => e.id)).toEqual(['c'])
     expect(vazio.eventosDe.size).toBe(0)
+  })
+
+  it('o item calculado pelo Concreto não entra na lista do que lançar; a marcação à mão entra', () => {
+    const pecas = new Map([['p1', { id: 'p1', pavimento_id: 'pv', tipo: 'P', nome: 'P1', secao: null }]])
+    const calculado = { ...paraEventoDeTeste('concreto:p1:1', 'p1'), origem_id: 'concreto', verificado_por: 'Concreto' }
+    const d = { ...vazio, pecaPorId: pecas, fichas: [ficha], fichaPorId: new Map([[ficha.id, ficha]]), eventosDe: new Map([['p1', [calculado]]]) } as DadosFvs
+    expect(paraLancarDaObra(d)).toEqual([])
+    const comToque = comRegistros(d, [{ ...linha('t', 'p1'), item: 2 } as unknown as Linha])
+    expect(paraLancarDaObra(comToque).map((l) => l.item)).toEqual([2])
   })
 
   it('o que a leitura do aparelho já trouxe não entra duas vezes', () => {

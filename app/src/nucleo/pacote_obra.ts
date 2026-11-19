@@ -391,7 +391,8 @@ export async function prepararObraLocal(
     aoProgresso?.({ etapa: 'cadastro', feitas: 0, total: plantas.length })
     const fichas = (await lerJson<FichaDoPacote[]>(fonte, 'fichas.json')) ?? []
     const textoFichas = JSON.stringify(fichas)
-    const configFvs = await lerJson<unknown>(fonte, 'config_fvs.json')
+    // Sem o arquivo, o servidor do site devolve o index.html (SPA): trata como 'sem regra', não quebra.
+    const configFvs = await lerJson<unknown>(fonte, 'config_fvs.json').catch(() => null)
     // Sem config_fvs.json a assinatura fica a de antes: pacote antigo não regrava o cadastro à toa.
     const assinaturaNova = await assinatura([pacote.textoIndice, textoFichas, ...(configFvs === null ? [] : [JSON.stringify(configFvs)])])
     const anterior = await banco.lerMeta<{ assinatura: string }>(chaveDoPacote(obra.id))

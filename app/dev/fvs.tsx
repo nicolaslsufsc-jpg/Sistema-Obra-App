@@ -431,6 +431,30 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
 
   const { pedacos, guardar, fechar } = novoBinario()
   await cortarTiles(base, escala, guardar)
+  const detalhes: Manifest['detalhes'] = {}
+  if (params.get('modulacao')) {
+    // ?modulacao=1: o recorte da 1ª fiada do apto 101, como o pipeline faz (pipeline/fvs/modulacao.py):
+    // uma imagem só, apontada pelos três cômodos do apartamento
+    const t = document.createElement('canvas')
+    t.width = 640
+    t.height = 520
+    const tg = t.getContext('2d')!
+    tg.fillStyle = '#fff'
+    tg.fillRect(0, 0, 640, 520)
+    tg.strokeStyle = '#333'
+    tg.lineWidth = 6
+    tg.strokeRect(40, 60, 270, 220)
+    tg.strokeRect(330, 60, 270, 220)
+    tg.strokeRect(40, 300, 560, 180)
+    tg.lineWidth = 1
+    for (let x = 40; x < 600; x += 20) tg.strokeRect(x, 54, 20, 6)
+    tg.fillStyle = '#111'
+    tg.font = 'bold 24px sans-serif'
+    tg.fillText('MODULAÇÃO 1ª FIADA · APTO 101 (teste)', 40, 36)
+    guardar('d:M_Apto_101', await blobDaTela(t))
+    detalhes['M_Apto_101'] = { titulo: 'Modulação · Apto 101', prancha: 'TESTE.VD.EX.024.TIPA-R00', aco: false }
+    for (const e of Object.values(elementos)) if (e.tipo === 'A' && e.grupo === 'Apto 101') e.detalhe = 'M_Apto_101'
+  }
   const manifest: Manifest = {
     formato: 1,
     planta_id: PLANTA_AMB,
@@ -444,7 +468,7 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
     tile: 512,
     niveis: NIVEIS,
     elementos,
-    detalhes: {},
+    detalhes,
     pedacos,
   }
   return { manifest, bin: fechar() }

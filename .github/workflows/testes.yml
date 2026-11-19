@@ -60,7 +60,9 @@ jobs:
         # Mesma versão do ambiente das sessões do Claude. --no-save: não entra no package.json.
         run: |
           npm install --no-save playwright@1.63.0
-          npx playwright install --with-deps chromium
+          # O runner já traz as bibliotecas do Chromium; o --with-deps só baixa fontes extras do
+          # servidor do Ubuntu. Se ele estiver fora do ar, segue só com o Chromium (não trava o PR).
+          timeout 240 npx playwright install --with-deps chromium || npx playwright install chromium
 
       - name: App contra PostgREST de verdade, exportação e telas
         run: E2E=1 bash supabase/testes/rodar_integracao.sh

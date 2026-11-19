@@ -256,6 +256,12 @@ export function itensAntesDaConcretagem(ficha: Ficha): readonly ItemFicha[] {
   return lista
 }
 
+/** Os itens da etapa da concretagem em si (marcados à mão com `concretagem: true`, ou pelo nome da etapa). */
+export function itensDaConcretagem(ficha: Pick<Ficha, 'itens'>): ItemFicha[] {
+  const marcada = ficha.itens.some((it) => typeof it.concretagem === 'boolean')
+  return ficha.itens.filter((it) => (marcada ? it.concretagem === true : ehEtapaDeConcretar(it.etapa)))
+}
+
 /** Situação da peça na ficha (só nos itens da etapa, se escolhida). */
 export function situacaoDaPeca(ficha: Ficha, eventos: readonly EventoFvs[], etapa?: string): Situacao {
   const itens = ficha.itens.filter((i) => !etapa || i.etapa === etapa)

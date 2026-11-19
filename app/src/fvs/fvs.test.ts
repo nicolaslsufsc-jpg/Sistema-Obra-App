@@ -43,10 +43,11 @@ import {
 } from './pacote'
 import { cadeiaDeRevisoes, pacoteDaPlanta, pacotesAManter } from './revisoes'
 import { ehPlantaDeEstrutura, plantaDeDesenho, plantasVigentes } from './plantas'
+import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { buscarPecas } from './busca'
-import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, desfazerLote, horaNaFrente, horaNormal, marcarLote, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
+import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, desfazerLote, horaNaFrente, horaNormal, ligarDepoisDe, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
 import { sincronizador } from '../nucleo/servicos'
 import { hojeNoAparelho } from './formato'
 import { DadosDaTela } from './leitura'
@@ -351,6 +352,43 @@ describe('marcação em lote no aparelho', () => {
   })
 })
 
+describe('regras da obra na gravação (prazo e ligação, 19/11)', () => {
+  const OBRA = 'b0000000-0000-0000-0000-00000000bbbb'
+  const c = { obraId: OBRA, usuarioId: '00000000-0000-0000-0000-0000000000a1', plantaId: null }
+  const paraEventos = (linhas: Linha[]) => comRegistros({ eventosDe: new Map() } as unknown as DadosFvs, linhas).eventosDe
+  const regras = { prazos: [], ligacoes: [{ id: 'l1', de: { ficha: ficha.codigo, item: 1 }, para: { ficha: ficha.codigo, item: 2 } }, { id: 'l2', de: { ficha: ficha.codigo, item: 2 }, para: { ficha: ficha.codigo, item: 3 } }] }
+
+  it('C com a observação do prazo fica gravado; NA não leva observação', async () => {
+    const r = await tocarItem(c, 'p1', ficha, 1, 'C', [], undefined, 'Marcado antes do prazo (libera em 22/11)')
+    expect([r.resultado, r.observacao]).toEqual(['C', 'Marcado antes do prazo (libera em 22/11)'])
+    const na = await tocarItem(c, 'p1', ficha, 2, 'NA', [], undefined, 'qualquer')
+    expect(na.observacao).toBeNull()
+  })
+
+  it('lote: a observação do prazo vai só nos itens dela', async () => {
+    const lote = await marcarLote(c, [{ id: 'p2', ficha, eventos: [] }], null, 'C', undefined, new Map([['p2#2', 'Marcado antes do prazo (libera em 22/11)']]))
+    expect(lote.map((l) => [l.item, l.observacao])).toEqual([[1, null], [2, 'Marcado antes do prazo (libera em 22/11)'], [3, null]])
+  })
+
+  it('ligação: o C marca os itens ligados vazios, com a origem; o desfazer os limpa', async () => {
+    const origem = await tocarItem(c, 'p3', ficha, 1, 'C', [])
+    const ligados = await ligarDepoisDe(c, regras, 'p3', ficha, [1], paraEventos([origem]).get('p3') ?? [])
+    expect(ligados.map((l) => [l.item, l.resultado])).toEqual([[2, 'C'], [3, 'C']])
+    expect(String(ligados[0].observacao)).toMatch(/^Pela ligação: .* item 1/)
+    expect(ligados.every((l) => l.lote_id)).toBe(true)
+    const eventos = paraEventos([origem, ...ligados])
+    const desfeitos = await desfazerLote(c, ligados, (id) => eventos.get(id) ?? [])
+    expect(desfeitos.map((l) => [l.item, l.resultado])).toEqual([[2, null], [3, null]])
+  })
+
+  it('ligação não mexe no item já marcado à mão, e sem regras não grava nada', async () => {
+    const na = await tocarItem(c, 'p4', ficha, 2, 'NA', [])
+    const evs = paraEventos([na]).get('p4') ?? []
+    expect(await ligarDepoisDe(c, regras, 'p4', ficha, [1], evs)).toEqual([])
+    expect(await ligarDepoisDe(c, SEM_REGRAS, 'p4', ficha, [1], [])).toEqual([])
+  })
+})
+
 describe('hora vinda do servidor', () => {
   it('fica no formato único do app, qualquer que seja o fuso do banco', () => {
     expect(horaNormal('2026-11-05T12:00:00.123Z')).toBe('2026-11-05T12:00:00.123Z')
@@ -524,6 +562,7 @@ describe('registros novos nos dados da tela', () => {
     nomePorUsuario: new Map(),
     lancados: new Set<string>(),
     servidorMaisNovo: null,
+    regras: SEM_REGRAS,
   } as DadosFvs
   const linha = (id: string, elemento: string) =>
     ({ id, elemento_id: elemento, ficha_id: 'f1', item: 1, resultado: 'C', rodada: 1, usuario_id: 'u1', criado_em_dispositivo: '2026-11-06T10:00:00.000Z' }) as unknown as Linha

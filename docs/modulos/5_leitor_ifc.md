@@ -2,7 +2,7 @@
 
 Dono do pedido: Nicolas, 06/11/2026. Branch: `modulo/ifc`.
 
-**Status: em teste, ainda não ligado ao app.** O Nicolas pediu para ligar ao programa só se der certo. O código já está no repositório, mas não aparece no menu e não entra no pacote do app publicado. Abre só pela bancada.
+**Status (20/11/2026): reativado pelo Nicolas e pronto para sair do beta.** O módulo não tem aviso de beta próprio; o selo e o `foraDoMenu` ficam em `app/src/modulos.ts`, e quem tira os dois é a frente 06 · FRONT (num PR só com os outros módulos que voltam ao menu). Histórico abaixo, por data.
 
 ## O que ele faz
 
@@ -115,3 +115,36 @@ Com o `Building-Architecture.ifc` público da buildingSMART, o botão de enquadr
 
 ## 16/11/2026: tela inicial do IFC ilegível no tema escuro (Professor, branch demo/rede-17-11)
 Com o tema escuro (#59), o título e o texto de "Importe aqui seu IFC" ficavam claros sobre o fundo cinza claro do 3D. A tela vazia (`.ifc-vazio`) agora tem fundo próprio do tema (`--ifc-superficie-2`). Ela só aparece sem modelo aberto, então o 3D não muda. Conferido a 375 px.
+
+## 20/11/2026: mais leve para IFC grande (branch `ifc/otimizar`)
+O Nicolas reativou o módulo e pediu para tirar do beta e otimizar ("arquivos grandes ele fica meio lento").
+
+**O que pesava:** em cada quadro o 3D era desenhado duas vezes por inteiro: uma passada para as peças opacas e outra, do bloco inteiro de novo, para o vidro e as peças transparentes. Na torre da obra piloto eram 8,4 milhões de triângulos por quadro para um modelo de 4,7 milhões.
+
+**O que mudou (`app/src/ifc/`):**
+- `motor/visor.ts`: a passada transparente desenha só os triângulos que podem sair transparentes: o vidro do próprio IFC e, nos modos de cor que deixam a categoria "vidro" transparente, as peças dessa categoria. Os vértices são os mesmos do bloco (nada é copiado); muda só a lista de triângulos. Com o modelo a menos de 100% de opacidade, continua desenhando tudo, como antes.
+- `motor/geometria.ts`: duas contas novas para montar essa lista (`triangulosComAlfa`, `indiceSoDoVidro`) e a busca de arestas deixou de zerar uma tabela grande a cada peça pequena.
+- `sessao.ts`: passa ao visor a lista de peças da categoria vidro (antes era só "este bloco tem vidro").
+
+**Medido no PC do Nicolas** (Chrome, tela de tablet 1280 x 800 com densidade 2, o tamanho do SM-P620), antes = `main` 806adec, depois = esta branch, mesma vista:
+
+| Modelo | Triângulos por quadro, antes | depois | Tempo da placa por quadro, antes | depois |
+|---|---|---|---|---|
+| torre da obra piloto (298 MB, 42.476 peças) | 8,4 mi | 4,8 mi (−43%) | 6,8 a 8,8 ms | 4,6 a 6,2 ms |
+| um pavimento da obra piloto | 919 mil | 511 mil (−44%) | 1,5 a 1,8 ms | 1,1 a 1,4 ms |
+| torre a 50% de opacidade | 9,4 mi | 9,4 mi (igual, de propósito) | | |
+
+- **A imagem não mudou:** prints de antes e depois comparados pixel a pixel nos modos por categoria, cores do arquivo e a 50% de opacidade, nos dois modelos: 0 pixels diferentes.
+- **Ler o IFC pela primeira vez continua igual** (torre: 26 a 44 s no PC; um pavimento: 3,4 a 4,5 s). Quase todo o tempo é do `web-ifc` montando a geometria; a nossa parte é cerca de 6 s de 30. Reabrir o modelo guardado: torre 0,6 a 1,3 s, pavimento 0,1 a 0,2 s.
+- **Memória:** pico de cerca de +1,1 a 1,3 GB no Chrome lendo a torre. Não mudou.
+- **Sem número de quadros por segundo no SM-P620 e no S23:** não há aparelho ligado ao PC. A placa do tablet é bem mais fraca que a do PC; o ganho esperado é proporcional (cerca de 40% menos trabalho por quadro ao girar). O visor já baixa a resolução e esconde as arestas quando um quadro passa de 45 ms.
+
+**Testes:** `testes/ifc_vidro.test.ts` (novo), todos os testes do app, build, `ifc_bancada.e2e` (375 px e tablet) e `local.e2e`.
+
+**Ideias para a leitura ficar mais rápida (não feitas, precisam de decisão):**
+1. Converter no PC e levar o `.obra3d` para o tablet (já existe "Levar para outro aparelho"): é o caminho mais rápido hoje para a torre.
+2. No tablet, usar os IFCs por pavimento em vez da torre inteira.
+3. `web-ifc` com várias threads: exige os cabeçalhos COOP/COEP no site (mexe na hospedagem e no núcleo).
+4. Ler o arquivo em mais de um worker, dividindo as peças.
+
+**Próximo passo:** a 06 · FRONT tira o `beta` e o `foraDoMenu` do IFC em `modulos.ts`; depois, abrir a torre guardada no SM-P620 de verdade.

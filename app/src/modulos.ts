@@ -50,6 +50,8 @@ export interface Modulo {
 // Desde 18/11/2026 (pedido do Professor, pela regra do CLAUDE.md) Projetos, IFC e Relatórios (Diário) saem
 // de novo do menu, com o código guardado. O teste de sincronização com dois aparelhos chega ao Diário pelo
 // build de teste (VITE_TESTE_MODULOS_FORA_DO_MENU, do núcleo).
+// Desde 20/11/2026 (o Nicolas: "pode religar e tirar do beta") o IFC volta ao menu sem o selo "beta", com
+// e sem conta; o Documentos continua no menu sem conta (com conta ainda não há tabela no servidor).
 // Para um deles voltar ao menu, apague o `foraDoMenu` da linha dele (e ligue `BETAS_NO_MENU` em testes/local.e2e.test.ts).
 const REGISTRO: readonly Modulo[] = [
   { id: 'fvs', nome: 'FVS', descricao: 'Pilares e vigas', Tela: FvsSobDemanda },
@@ -57,7 +59,7 @@ const REGISTRO: readonly Modulo[] = [
   { id: 'concreto', nome: 'Concreto', descricao: 'Caminhões, peças e corpos de prova', Tela: ConcretoSobDemanda },
   { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra da qualidade (PBQP-H)', Tela: DocumentosSobDemanda, soSemConta: true },
   { id: 'relatorios', nome: 'Relatórios', descricao: 'Diário de obra, problemas, limpeza', Tela: RelatoriosSobDemanda, foraDoMenu: true },
-  { id: 'ifc', nome: 'IFC', descricao: 'Importe seu IFC: modelo 3D, busca e cortes', Tela: IfcSobDemanda, beta: true, foraDoMenu: true },
+  { id: 'ifc', nome: 'IFC', descricao: 'Importe seu IFC: modelo 3D, busca e cortes', Tela: IfcSobDemanda },
 ]
 
 // Só nos testes de tela: o build de teste liga VITE_TESTE_MODULOS_FORA_DO_MENU=1 para abrir também os

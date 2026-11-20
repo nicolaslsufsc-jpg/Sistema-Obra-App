@@ -28,7 +28,8 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SAIDA = mkdtempSync(path.join(os.tmpdir(), 'sistema-obra-local-'))
 const PRINTS = process.env.SO_PRINTS
 const NO_BRASIL = { timezoneId: 'America/Sao_Paulo', locale: 'pt-BR' }
-// Projetos, IFC e Relatórios fora do menu desde 18/11/2026 (código guardado): os testes deles ficam parados até voltarem.
+// Projetos e Relatórios fora do menu desde 18/11/2026 (código guardado): os testes deles ficam parados até voltarem.
+// O IFC voltou em 20/11/2026, sem o selo "beta", e o teste dele roda sempre.
 const BETAS_NO_MENU = false
 const itBeta = BETAS_NO_MENU ? it : it.skip
 
@@ -229,9 +230,10 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor() // a troca de obra sem conta é pelo pacote, à vista
       expect(await p.getByRole('button', { name: 'Nova obra' }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Usar neste aparelho, sem conta' }).count()).toBe(0)
-      for (const m of ['FVS', 'Concreto', 'Documentos']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(1)
-      // Projetos, IFC e Relatórios fora do menu desde 18/11/2026
-      for (const m of ['Projetos', 'IFC', 'Relatórios']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(BETAS_NO_MENU ? 1 : 0)
+      for (const m of ['FVS', 'Concreto', 'Documentos', 'IFC']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(1)
+      // Projetos e Relatórios fora do menu desde 18/11/2026; nenhum módulo do menu com o selo "beta" (20/11/2026)
+      expect(await p.locator('.selo-beta').count()).toBe(0)
+      for (const m of ['Projetos', 'Relatórios']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(BETAS_NO_MENU ? 1 : 0)
       await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
 
       // FVS: o pavimento da pasta, com a planta já guardada no aparelho (botão Abrir, não Baixar)
@@ -436,7 +438,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     ['celular', 375, 812],
     ['tablet', 768, 1024],
   ] as const) {
-    itBeta(`${nome} ${largura}x${altura}: menu mostra IFC beta e abre o visor`, async () => {
+    it(`${nome} ${largura}x${altura}: menu mostra o IFC (sem selo beta) e abre o visor`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       const erros: string[] = []
@@ -452,8 +454,8 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
 
       const ifc = p.getByRole('button', { name: /^IFC/ })
-      expect(await ifc.locator('.selo-beta').innerText()).toMatch(/beta/i)
-      expect(await p.getByRole('button', { name: /^IFC beta/i }).count()).toBe(1)
+      expect(await ifc.locator('.selo-beta').count()).toBe(0)
+      expect(await p.getByRole('button', { name: /^IFC beta/i }).count()).toBe(0)
       await ifc.click()
       await p.getByRole('heading', { name: 'Importe aqui seu IFC' }).waitFor({ timeout: 30_000 })
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-ifc-1-vazio.png`) })

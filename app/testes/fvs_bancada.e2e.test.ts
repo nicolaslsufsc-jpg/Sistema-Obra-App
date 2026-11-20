@@ -1633,10 +1633,12 @@ suite('FVS na bancada (Chrome)', () => {
           const u = l.at(-1)
           return u ? { r: u.resultado, obs: u.observacao } : null
         })()`)
+      // furo de laje só aparece de perto (zoom 1,5 ou mais, 20/11): o toque é no zoom 2, com o furo no meio
       const furo = async (x: number, y: number) => {
-        await enquadrar(p, [-600, 600], 0)
+        await enquadrar(p, [-y, x], 2)
         await tocarNaPlanta(p, x, y)
       }
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
 
       // celular: Pincel e Por item com 14 px; as quatro abas não cabem, e a borda do lado em que a fila
       // continua esmaece (revisão da 06, 20/11: "Pilares" aparecia como "ares", sem sinal de mais abas)
@@ -1649,7 +1651,19 @@ suite('FVS na bancada (Chrome)', () => {
       // antes da área: o furo fica fora de área de laje, não marca nada e diz por quê
       await aba('Furos')
       if (!noInicio.cabe) await expect.poll(fila).toEqual({ esq: true, dir: false, cabe: false })
-      await furo(600, 400)
+      // fora de área nenhum furo de laje conta (FL6, de Geral, nunca conta)
+      expect(await progresso()).toBe('0/0 OK')
+      // FL4 e FL5 a 8 pontos um do outro (32 px no zoom 2): o toque entre os dois pega os dois alvos e
+      // pergunta qual (20/11)
+      await furo(604, 400)
+      const qual = p.getByTestId('fvs-escolha-furo')
+      await qual.waitFor()
+      expect(await qual.locator('.fv-escolha-pecas button b').allTextContents()).toEqual(['FL4', 'FL5'])
+      expect(await qual.locator('.fv-escolha-pecas button').evaluateAll((l: Element[]) => l.every((b) => b.getBoundingClientRect().height >= 44))).toBe(true)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_qual_furo.png` })
+      await qual.locator('.fv-escolha-pecas button', { hasText: 'FL4' }).click()
+      await qual.waitFor({ state: 'detached' })
       await aviso('fora de área de laje')
       // o aviso quebra linha em vez de cortar o fim, e cabe na tela
       const avisoCabe = await p.locator('.fv-toast').evaluate((t: HTMLElement) => {
@@ -1682,6 +1696,21 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_area.png` })
       await fechar()
+
+      // longe (zoom 0): no lugar dos furos, o número da área (FL1, FL2 e FL3; FL6 de Geral fica de fora);
+      // a conta da aba é dos 3 conferíveis; o toque no número aproxima até os furos aparecerem
+      await aba('Furos')
+      await enquadrar(p, [-600, 600], 0)
+      const numero = p.getByTestId('fvs-numero-furos')
+      await numero.waitFor()
+      expect(await numero.allTextContents()).toEqual(['3 furos'])
+      expect(await progresso()).toBe('0/3 OK')
+      const caixaDoNumero = await numero.boundingBox()
+      expect(caixaDoNumero!.height).toBeGreaterThanOrEqual(44)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_numero.png` })
+      await numero.click()
+      await numero.waitFor({ state: 'detached' })
+      expect(await p.evaluate(() => (window as any).__fvMapa.getZoom())).toBeGreaterThanOrEqual(1.5)
 
       // FL1 (esgoto) OK: o item 6 da área fica C
       await aba('Furos')

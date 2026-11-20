@@ -209,12 +209,16 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     })
   }
   if (params.get('furoslaje')) {
-    // furos de laje (sem viga): três no vão de P8, P9, P14 e P15 (x e y de 450 a 750) e um fora dele
+    // furos de laje (sem viga): três no vão de P8, P9, P14 e P15 (x e y de 450 a 750) e um fora dele;
+    // FL5, colado no FL4 (8 pontos: no zoom 2, os alvos de 44 px se cruzam), para o "Qual furo?"; FL6,
+    // de Geral, dentro do vão: fica escondido e fora da conta (20/11)
     const furosDeLaje: Array<[number, number, string]> = [
       [520, 520, 'Sanitário / drenagem'],
       [600, 640, 'Hidráulica'],
       [680, 560, 'Elétrica / telecom'],
       [600, 400, 'Sanitário / drenagem'],
+      [608, 400, 'Sanitário / drenagem'],
+      [560, 680, 'Geral'],
     ]
     furosDeLaje.forEach(([x, y, d], i) => {
       const r = 3

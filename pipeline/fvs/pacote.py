@@ -236,6 +236,14 @@ def montar(
     }
     if barras_manifest:
         manifest["barras"] = barras_manifest
+    if cabecalho.get("camadas_separadas"):
+        # forma de pavimento com a armadura de laje em plantas próprias (pipeline/fvs/armadura_laje.py): as
+        # barras ficam aqui para o item da área de laje, mas o app não mostra a aba Barras nesta planta
+        manifest["camadas_separadas"] = True
+    if cabecalho.get("camada"):
+        # planta de armadura de uma direção: leva todas as barras do pavimento (o item da área de laje é
+        # calculado pelas quatro direções), mas o app só mostra e deixa tocar as desta camada
+        manifest["camada"] = cabecalho["camada"]
     texto = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return texto, b"".join(partes)
 

@@ -43,6 +43,12 @@ export interface BarraPacote {
 
 type Pt = readonly [number, number]
 
+/** "Armadura transversal superior" -> transversal_superior (o nome do setor vem de pipeline/fvs/armadura_laje.py). */
+export function camadaDoTrecho(trecho: string): CamadaDeBarras | undefined {
+  const t = trecho.toLowerCase()
+  return CAMADAS.find((c) => t.includes(NOME_DA_CAMADA[c].toLowerCase()))
+}
+
 /** As camadas que o pacote tem, na ordem do app. */
 export function camadasDoPacote(barras: Record<string, BarraPacote> | undefined): CamadaDeBarras[] {
   const tem = new Set(Object.values(barras ?? {}).map((b) => b.camada))

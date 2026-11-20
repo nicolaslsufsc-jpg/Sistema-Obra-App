@@ -1,6 +1,7 @@
 // Barras de aço da laje (plano A do Nicolas, 18/11/2026). Ficha e barras fictícias da obra EXE.
 import { describe, expect, it } from 'vitest'
 import {
+  camadaDoTrecho,
   barraNaArea,
   barrasDaArea,
   barraTocada,
@@ -130,5 +131,13 @@ describe('item de armadura da laje', () => {
       'Barras erradas: barra sem posição (long. inf.); N3 (transv. sup.)',
     )
     expect(observacaoDasErradas([])).toBeNull()
+  })
+})
+
+describe('planta de armadura (20/11)', () => {
+  it('acha a direção pelo nome do setor', () => {
+    expect(camadaDoTrecho('Armadura longitudinal inferior')).toBe('longitudinal_inferior')
+    expect(camadaDoTrecho('Armadura transversal superior')).toBe('transversal_superior')
+    expect(camadaDoTrecho('Trecho 1')).toBeUndefined()
   })
 })

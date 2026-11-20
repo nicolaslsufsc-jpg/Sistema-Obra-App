@@ -4,7 +4,7 @@
 
 import { lembrarComodo } from './comodos'
 import Dexie, { type Table } from 'dexie'
-import type { BarraPacote } from './barras'
+import type { BarraPacote, CamadaDeBarras } from './barras'
 
 /** Tipos de parte do pilar que o pacote pode trazer (pipeline/fvs/pacote.py, TIPOS_DE_PARTE). */
 export type TipoDeParte = 'consolo' | 'capitel'
@@ -168,6 +168,11 @@ export interface Manifest {
   detalhes: Record<string, DetalhePacote>
   /** barras de laje das pranchas de armação, já alinhadas na folha (pipeline/fvs/barras_laje.py); chave = id da barra */
   barras?: Record<string, BarraPacote>
+  /** forma cuja armadura de laje foi para plantas próprias (uma por direção): sem a aba Barras aqui */
+  camadas_separadas?: boolean
+  /** planta de armadura de uma direção: leva todas as barras do pavimento (o item da laje conta as quatro),
+   *  mas só esta camada aparece e se toca */
+  camada?: CamadaDeBarras
   /** nome do pedaço → [início, tamanho] dentro do pacote.bin */
   pedacos: Record<string, [number, number]>
 }

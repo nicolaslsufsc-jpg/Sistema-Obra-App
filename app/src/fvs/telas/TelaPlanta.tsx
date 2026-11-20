@@ -21,7 +21,7 @@ import {
   type Ponto,
   type TravaDaArea,
 } from '../areas'
-import { anexarFoto, ligarEntrePecas, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { anexarFoto, ligarEntrePecas, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDasLigacoes } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
@@ -278,7 +278,13 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const manifest = pacote?.manifest
   // áreas de laje desenhadas nesta planta (as coordenadas só valem no trecho em que foram desenhadas)
   const areasDoPavimento = dados.areasDe.get(planta.pavimento_id)
-  const areasDaPlanta = useMemo(() => (areasDoPavimento ?? []).filter((a) => a.setor_id === planta.setor_id), [areasDoPavimento, planta.setor_id])
+  // planta de armadura de laje (uma por direção, 20/11/2026): tem as coordenadas da forma do pavimento, então
+  // as áreas de laje desenhadas na forma valem aqui (para o item de armadura de cada área)
+  const deArmadura = ehDeArmadura(planta)
+  const setorDasAreas = deArmadura
+    ? (dados.plantasDe.get(planta.pavimento_id) ?? []).find((p) => !ehDeAmbientes(p) && !ehDeArmadura(p))?.setor_id ?? planta.setor_id
+    : planta.setor_id
+  const areasDaPlanta = useMemo(() => (areasDoPavimento ?? []).filter((a) => a.setor_id === setorDasAreas), [areasDoPavimento, setorDasAreas])
   const chaveDasAreas = areasDaPlanta.map((a) => a.versao).join()
   const elementosDasAreas = useMemo(() => new Map(areasDaPlanta.map((a) => [a.id, areaComoElemento(a, manifest?.escala)])), [chaveDasAreas, manifest?.escala])
   /** Peça do pacote ou área de laje. */
@@ -294,17 +300,25 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Zoom (em meios) para o tamanho do quadrado dos furos de viga longe e para juntar números que se tocam. */
   const [zoomDosNumeros, setZoomDosNumeros] = useState(0)
   // tipos de local que esta planta tem (forma: pilares, vigas e as lajes desenhadas; arquitetura: ambientes)
-  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && (pode || areasDaPlanta.length > 0)
+  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !deArmadura && (pode || areasDaPlanta.length > 0)
   // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
   const barras = manifest?.barras
-  const camadasDasBarras = useMemo(() => camadasDoPacote(barras), [barras])
+  // na planta de armadura, só a direção dela; na forma com a armadura em plantas próprias, nenhuma (sem aba Barras)
+  const camadasDasBarras = useMemo(() => {
+    const todas = camadasDoPacote(barras)
+    if (manifest?.camada) return todas.filter((k) => k === manifest.camada)
+    return manifest?.camadas_separadas ? [] : todas
+  }, [barras, manifest])
   const [camadaEscolhida, setCamada] = useState<CamadaDeBarras | null>(null)
   const camada: CamadaDeBarras | undefined = camadaEscolhida && camadasDasBarras.includes(camadaEscolhida) ? camadaEscolhida : camadasDasBarras[0]
   /** Barra marcada como errada esperando a observação e o Confirmar (sem confirmar, não grava NC). */
   const [ncDaBarra, setNcDaBarra] = useState<{ id: string; texto: string } | null>(null)
   const tipos = useMemo(
-    () => ORDEM_TIPOS.filter((t) => (t === 'L' && aceitaAreas) || (t === 'B' && camadasDasBarras.length > 0) || elementos.some(([, e]) => e.tipo === t)),
-    [elementos, aceitaAreas, camadasDasBarras],
+    () =>
+      deArmadura
+        ? (['B'] as const).filter(() => camadasDasBarras.length > 0)
+        : ORDEM_TIPOS.filter((t) => (t === 'L' && aceitaAreas) || (t === 'B' && camadasDasBarras.length > 0) || elementos.some(([, e]) => e.tipo === t)),
+    [elementos, aceitaAreas, camadasDasBarras, deArmadura],
   )
   const tipo = tipos.includes(tipoEscolhido) ? tipoEscolhido : (tipos[0] ?? 'P')
   // o modo "Por item" só vale na aba em que o item foi escolhido e fora do desenho de área
@@ -1734,10 +1748,13 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             semConferir: daCamada.filter((id) => situacaoDaBarra(eventosDe(id)) === 'nada').length,
             naCamada: daCamada.length,
             aoTudoOk: () => tudoOkNaCamada(areaSel!.id),
-            aoVer: () => {
-              fecharPainel()
-              setTipo('B')
-            },
+            // forma com a armadura em plantas próprias: a barra se confere lá (menu do pavimento)
+            aoVer: tipos.includes('B')
+              ? () => {
+                  fecharPainel()
+                  setTipo('B')
+                }
+              : undefined,
           }
         })()
       : undefined
@@ -2404,7 +2421,7 @@ interface PropsPainel {
   /** só ambiente: o item de esquadria escolhido na aba Esquadrias (o que os botões mostram) */
   itemDosFilhos?: string
   /** só área de laje com barras do pacote: o item de armadura fica com elas */
-  barras?: { resumo: string; camada: string; semConferir: number; naCamada: number; aoTudoOk: () => void; aoVer: () => void }
+  barras?: { resumo: string; camada: string; semConferir: number; naCamada: number; aoTudoOk: () => void; aoVer?: () => void }
   /** só furo (e esquadria): a viga em que ele fica (o ambiente em que ela fica) */
   viga?: { id: string; nome: string }
   /** só área de laje com furos de laje: a situação dos furos de cada instalação (item 4, 19/11) */
@@ -2993,12 +3010,16 @@ function Painel(p: PropsPainel) {
                     Tudo OK nesta camada ({p.barras.semConferir})
                   </button>
                 )}
-                <p class="discreto">
-                  {p.barras.naCamada > 0 ? `Camada: ${p.barras.camada.toLowerCase()}. ` : ''}
-                  <button type="button" class="fv-link" data-testid="fvs-ver-barras" onClick={p.barras.aoVer}>
-                    Ver as barras
-                  </button>
-                </p>
+                {p.barras.aoVer ? (
+                  <p class="discreto">
+                    {p.barras.naCamada > 0 ? `Camada: ${p.barras.camada.toLowerCase()}. ` : ''}
+                    <button type="button" class="fv-link" data-testid="fvs-ver-barras" onClick={p.barras.aoVer}>
+                      Ver as barras
+                    </button>
+                  </p>
+                ) : (
+                  <p class="discreto">As barras se conferem na armadura de laje, no menu do pavimento.</p>
+                )}
               </div>
             )}
             {p.pode && (

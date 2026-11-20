@@ -5,11 +5,12 @@
 import { resumoDasRegras } from '../regras_tela'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { resumoDasAreas } from '../areas'
-import { baixarPlanta, ehDeAmbientes, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
+import { baixarPlanta, ehDeAmbientes, ehDeArmadura, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
+import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
 import { resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
@@ -134,6 +135,40 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
           )}
         </div>
       </li>
+    )
+  }
+
+  /** Botão grande de uma direção da armadura de laje (planta própria, 20/11/2026): abre se está no aparelho,
+   *  senão baixa. A direção sai do nome do trecho ("Armadura longitudinal inferior"). */
+  const botaoDaArmadura = (p: Planta) => {
+    const guardado = noAparelho?.get(p.id)
+    const antiga = !guardado && noAparelho ? dados.anterioresDe.get(p.id)?.find((a) => noAparelho.has(a.id)) : undefined
+    const camada = camadaDoTrecho(p.trecho)
+    const nome = camada ? NOME_DA_CAMADA[camada] : p.trecho
+    const abre = !!guardado || !!antiga
+    const tamanho = tamanhoDe(p)
+    const acao = noAparelho === null ? '…' : abre ? (antiga ? `Abrir ${antiga.revisao}` : 'Abrir') : baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `Baixar ${tamanho ? mb(tamanho) : ''}`
+    return (
+      <button
+        type="button"
+        key={p.id}
+        class="fv-bt-armadura"
+        data-testid="fvs-armadura"
+        data-camada={camada ?? ''}
+        disabled={noAparelho === null || (!abre && (semRede || baixando !== null))}
+        onClick={() => (abre ? ir({ nome: 'planta', plantaId: p.id }) : baixar([p]))}
+        title={!abre && semRede ? 'Precisa de internet para baixar' : ''}
+      >
+        <IconeDaCamada camada={camada} />
+        <span class="fv-bt-texto">
+          <b>{nome}</b>
+          <small>
+            {p.elementos} {p.elementos === 1 ? 'barra' : 'barras'} · {p.prancha}
+          </small>
+          {antiga && <small class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</small>}
+        </span>
+        <span class={abre ? 'fv-bt-acao' : 'fv-bt-acao fv-bt-baixar'}>{acao}</span>
+      </button>
     )
   }
 
@@ -263,7 +298,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
 
       {comPlanta.map((pv) => {
         const plantas = dados.plantasDe.get(pv.id)!
-        const estrutura = plantas.filter((p) => !ehDeAmbientes(p))
+        const estrutura = plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p))
+        // só as direções que o pavimento tem publicadas, na ordem do app
+        const armadura = plantas.filter(ehDeArmadura).sort((a, b) => ordemDaCamada(a.trecho) - ordemDaCamada(b.trecho))
         const ambientes = plantas.filter(ehDeAmbientes)
         const { r, ra: resumoAmb, lajes } = resumos.get(pv.id)!
         const ra = ambientes.length ? resumoAmb : null
@@ -319,9 +356,17 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             )}
             {estrutura.length > 0 && (
               <>
-                {ambientes.length > 0 && <h3 class="fv-disciplina">Estrutura</h3>}
+                {(ambientes.length > 0 || armadura.length > 0) && (
+                  <h3 class="fv-disciplina">{armadura.length > 0 ? 'Forma: pilares, vigas e lajes' : 'Estrutura'}</h3>
+                )}
                 <ul class="lista fv-trechos">{estrutura.map(linhaDaPlanta)}</ul>
               </>
+            )}
+            {armadura.length > 0 && (
+              <div data-testid="fvs-grupo-armadura">
+                <h3 class="fv-disciplina">Armadura de laje</h3>
+                <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
+              </div>
             )}
             {ra && (
               <div data-testid="fvs-ambientes">
@@ -424,5 +469,27 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
         </section>
       )}
     </main>
+  )
+}
+
+/** Ordem da montagem na obra: a malha de baixo primeiro, depois a de cima. */
+const MONTAGEM: readonly CamadaDeBarras[] = ['longitudinal_inferior', 'transversal_inferior', 'longitudinal_superior', 'transversal_superior']
+const ordemDaCamada = (trecho: string) => {
+  const c = camadaDoTrecho(trecho)
+  return c ? MONTAGEM.indexOf(c) : MONTAGEM.length
+}
+
+/** Desenho simples da direção: traços deitados (longitudinal) ou em pé (transversal), embaixo ou em cima. */
+function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
+  const transv = camada?.startsWith('transversal')
+  const sup = camada?.endsWith('superior')
+  const tracos = transv ? 'M12 6v28M24 6v28M36 6v28' : sup ? 'M6 8h36M6 18h36M6 28h36' : 'M6 14h36M6 24h36M6 34h36'
+  return (
+    <svg class="fv-bt-icone" viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3">
+      <path d={tracos} />
+      <text x="24" y="46" font-size="9" fill="currentColor" stroke="none" text-anchor="middle">
+        {camada ? (sup ? 'SUP' : 'INF') : ''}
+      </text>
+    </svg>
   )
 }

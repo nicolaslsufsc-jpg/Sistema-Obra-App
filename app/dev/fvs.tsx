@@ -12,7 +12,7 @@ import { ModuloFvs } from '../src/fvs/telas/ModuloFvs'
 import { guardarPacote, lerComProgresso, type Manifest } from '../src/fvs/pacote'
 import { usarFonteDeArquivos } from '../src/fvs/dados'
 import type { ItemFicha } from '../src/fvs/situacao'
-import type { CamadaDeBarras } from '../src/fvs/barras'
+import { camadasDoPacote, NOME_DA_CAMADA, type CamadaDeBarras } from '../src/fvs/barras'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
 
@@ -320,6 +320,8 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     detalhes,
     pedacos,
     ...(params.get('barras') ? { barras: barrasDeTeste() } : {}),
+    // ?armadura=1: a armadura de laje vai para plantas próprias, uma por direção (20/11)
+    ...(params.get('barras') && params.get('armadura') ? { camadas_separadas: true } : {}),
   }
   return { manifest, bin: fechar() }
 }
@@ -768,6 +770,23 @@ async function semear() {
       linha: { ...base, id: uuid('f0000000', 9), codigo: 'TESTE-PVS-LAJE', titulo: 'Laje (ficha de teste)', revisao: '0', aplica_a: ['L'], itens: FICHA_LAJE_TESTE },
     },
   ]
+  await gravarCadastro(linhas)
+  if (manifest.camadas_separadas) await semearArmadura(base, manifest, bin)
+}
+
+/**
+ * ?barras=1&armadura=1: uma planta de armadura por direção que as barras de teste têm (setor "Armadura ...",
+ * disciplina "armadura"), com todas as barras e o fundo da própria forma (na obra, o fundo é a prancha de armação).
+ */
+async function semearArmadura(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
+  const linhas: LinhaDeCadastro[] = []
+  for (const [i, camada] of camadasDoPacote(forma.barras).entries()) {
+    const manifest: Manifest = { ...forma, planta_id: uuid('a2000000', 0xa0 + i), trecho: `Armadura ${NOME_DA_CAMADA[camada].toLowerCase()}`, elementos: {}, detalhes: {}, camada, camadas_separadas: undefined }
+    await guardarPacote(JSON.stringify(manifest), bin)
+    const cad = cadastroDaPlanta(base, manifest, bin, uuid('a1000000', 0xa0 + i), 'armadura', 20 + 2 * i)
+    for (const l of cad) if (l.tabela === 'plantas') l.linha.elementos = Object.values(forma.barras ?? {}).filter((b) => b.camada === camada).length
+    linhas.push(...cad)
+  }
   await gravarCadastro(linhas)
 }
 

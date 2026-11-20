@@ -289,11 +289,11 @@ export function furosConferiveisPorArea(
     })
 }
 
-/** Texto do número da área: "23 furos", "1 furo"; com marcação, "5 de 23 furos OK". */
-export function textoDoNumeroDaArea(sits: readonly Situacao[]): string {
+/** Texto do número da área: "23 furos", "1 furo"; com marcação, "5 de 23 furos OK" (ou "esquadrias"). */
+export function textoDoNumeroDaArea(sits: readonly Situacao[], um = 'furo', varios = 'furos'): string {
   const n = sits.length
   const ok = sits.filter((s) => s === 'liberado').length
-  const furos = n === 1 ? 'furo' : 'furos'
+  const furos = n === 1 ? um : varios
   return ok ? `${ok} de ${n} ${furos} OK` : `${n} ${furos}`
 }
 

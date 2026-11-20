@@ -1,7 +1,8 @@
 // Partes comuns das telas da base importada (Painel, Pranchas, Entregas, prancha): carregar a base com as
 // correções por cima, o cabeçalho e as abas.
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { lerBaseOuDoPacote, type BaseProjetos } from '../base'
+import { aEntregar, gravarDestinatarios, lerDestinatarios, regrasAtuais, type DadosDestinatario, type Destinatario } from '../distribuicao'
 import { aplicarEdicoes, gravarEdicao, lerEdicoes, resumirEscritorio, type Edicao, type NovaEdicao } from '../edicoes'
 import { cruzar, resumir, type CopiaCruzada } from '../painel'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
@@ -12,14 +13,16 @@ export function usarBase(ctx: Contexto) {
   const { obra, dados, usuario } = ctx
   const [base, setBase] = useState<BaseProjetos | null | undefined>(undefined)
   const [edicoes, setEdicoes] = useState<Edicao[]>([])
+  const [destinatarios, setDestinatarios] = useState<Destinatario[]>([])
 
   // A base é de uma obra só: ao trocar de obra, some a anterior e uma leitura atrasada não entra.
   useEffect(() => {
     let valendo = true
     setBase(undefined)
-    Promise.all([lerBaseOuDoPacote(obra.id), lerEdicoes(obra.id)]).then(([b, e]) => {
+    Promise.all([lerBaseOuDoPacote(obra.id), lerEdicoes(obra.id), lerDestinatarios(obra.id)]).then(([b, e, d]) => {
       if (!valendo) return
       setEdicoes(e)
+      setDestinatarios(d)
       setBase(b)
     })
     return () => {
@@ -35,24 +38,36 @@ export function usarBase(ctx: Contexto) {
   const resumo = useMemo(() => (cruzadas ? resumir(cruzadas) : null), [cruzadas])
   const escritorio = useMemo(() => (corrigida ? resumirEscritorio(corrigida.vigentes, corrigida.escritorio, dados.hoje) : null), [corrigida, dados.hoje])
 
+  const regras = useMemo(() => regrasAtuais(destinatarios), [destinatarios])
+  const pendentes = useMemo(() => (corrigida && cruzadas ? aEntregar(corrigida.vigentes, cruzadas, regras) : null), [corrigida, cruzadas, regras])
+
   // sem conta não há nome de usuário: o histórico diz "neste aparelho"
   const autor = ctx.semConta ? 'neste aparelho' : usuario.email || usuario.id
   const salvar = async (nova: NovaEdicao) => setEdicoes(await gravarEdicao(obra.id, nova, autor))
+  const salvarRegras = async (novas: (DadosDestinatario & { substitui_id?: string | null })[]) => setDestinatarios(await gravarDestinatarios(obra.id, novas, autor))
 
-  return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar }
+  return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras }
 }
 
-export type AbaBase = 'painel' | 'pranchas' | 'entregas' | 'importar'
+export type AbaBase = 'painel' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
 
 const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos }[] = [
   { aba: 'painel', rotulo: 'Painel', tela: { nome: 'painel' } },
   { aba: 'pranchas', rotulo: 'Pranchas', tela: { nome: 'pranchas-base' } },
   { aba: 'entregas', rotulo: 'Entregas', tela: { nome: 'entregas-base' } },
+  { aba: 'a-entregar', rotulo: 'A entregar', tela: { nome: 'a-entregar' } },
+  { aba: 'distribuicao', rotulo: 'Distribuição', tela: { nome: 'distribuicao' } },
 ]
 
 /** Cabeçalho das abas da base: título, datas da base e as abas. As abas trocam a tela sem empilhar. */
 export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: Contexto; aba: AbaBase; aoSair: () => void; base: BaseProjetos | null; temCruzamento: boolean }) {
   const { obra, ir, trocar } = ctx
+  // no celular as abas não cabem: a ativa rola para dentro da tela
+  const abas = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const ativa = abas.current?.querySelector<HTMLElement>('.ativa')
+    if (ativa && abas.current) abas.current.scrollLeft = Math.max(0, ativa.offsetLeft - abas.current.offsetLeft - 16)
+  }, [aba])
   return (
     <>
       <header class="pj-topo">
@@ -74,7 +89,7 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
         </p>
       )}
 
-      <nav class="pj-abas" aria-label="Partes do módulo">
+      <nav class="pj-abas" aria-label="Partes do módulo" ref={abas}>
         {ABAS.map((a) => (
           <button key={a.aba} type="button" class={aba === a.aba ? 'ativa' : ''} aria-current={aba === a.aba ? 'page' : undefined} disabled={!temCruzamento} onClick={() => trocar(a.tela)}>
             {a.rotulo}

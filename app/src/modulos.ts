@@ -50,10 +50,12 @@ export interface Modulo {
 // Desde 18/11/2026 (pedido do Professor, pela regra do CLAUDE.md) Projetos, IFC e Relatórios (Diário) saem
 // de novo do menu, com o código guardado. O teste de sincronização com dois aparelhos chega ao Diário pelo
 // build de teste (VITE_TESTE_MODULOS_FORA_DO_MENU, do núcleo).
+// Desde 20/11/2026 o Projetos volta ao menu, com o selo "beta" (prioridade do Nicolas: lista de distribuição e
+// "a entregar"), só sem conta como o Documentos: a base e a lista ainda ficam no aparelho. IFC e Relatórios continuam fora.
 // Para um deles voltar ao menu, apague o `foraDoMenu` da linha dele (e ligue `BETAS_NO_MENU` em testes/local.e2e.test.ts).
 const REGISTRO: readonly Modulo[] = [
   { id: 'fvs', nome: 'FVS', descricao: 'Pilares e vigas', Tela: FvsSobDemanda },
-  { id: 'projetos', nome: 'Projetos', descricao: 'Revisões e cópias', Tela: ProjetosSobDemanda, beta: true, foraDoMenu: true },
+  { id: 'projetos', nome: 'Projetos', descricao: 'Revisões e cópias', Tela: ProjetosSobDemanda, beta: true, soSemConta: true },
   { id: 'concreto', nome: 'Concreto', descricao: 'Caminhões, peças e corpos de prova', Tela: ConcretoSobDemanda },
   { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra da qualidade (PBQP-H)', Tela: DocumentosSobDemanda, soSemConta: true },
   { id: 'relatorios', nome: 'Relatórios', descricao: 'Diário de obra, problemas, limpeza', Tela: RelatoriosSobDemanda, foraDoMenu: true },

@@ -105,6 +105,37 @@ Item "Projetos" no menu da obra. Celular e tablet primeiro, depois o PC.
 ## Depende de
 Núcleo (banco, sincronização, `arquivos` para as fotos).
 
+## Status (20/11/2026): lista de distribuição e "A entregar" (branch `projetos/distribuicao`)
+Proposta aprovada pelo Nicolas em 20/11 (pelo Professor). O Projetos volta ao menu, com o selo "beta", só no app sem conta (como o Documentos): a base e a lista ainda ficam no aparelho.
+- **Decisões (dos dados da planilha real, analisada fora do repositório):**
+  - A lista vai por **pasta do Autodoc**, e não só por disciplina. A disciplina Estrutural se divide em Formas, Pilares, Vigas, Laje etc., e quem recebe muda de uma pasta para outra. Não existe pasta "Armação". Uma regra vale para a disciplina inteira ou para uma pasta dela; **a da pasta vale mais**.
+  - **Disparo da verificação do Autodoc:** um atalho na área de trabalho. Nada é registrado no Windows.
+  - **Equipe:** o destinatário é um nome (empresa + colaborador), **sem conta**. O gestor vê o que entregar e continua entregando no papel. Uma conta de leitura para a equipe fica para depois.
+- **Aba Distribuição** (só o gestor muda; os outros só leem):
+  - adicionar quem recebe: disciplina, pasta (ou "disciplina inteira"), empresa, colaborador (vazio = qualquer pessoa da empresa) e cópias;
+  - importar a lista (`disciplina;pasta;empresa;colaborador;copias;ativo`);
+  - desativar ou reativar uma regra.
+  - **Nada se apaga:** cada mudança é uma linha nova com `substitui_id` (`projetos/distribuicao.ts`), gravada em `meta` com a chave `projetos_destinatarios:<obra>`.
+- **Aba A entregar e cartão no painel:** a lista é agrupada por pessoa. Para cada folha vigente e cada regra que vale para ela:
+  - se a pessoa já tem a vigente em campo, não aparece nada;
+  - se tem só uma cópia desatualizada, aparece **trocar** (entregar a nova e recolher a linha antiga);
+  - se não tem nenhuma cópia e a revisão saiu depois que a regra passou a valer (`desde`), aparece **nova**.
+- **Conversor da planilha, fora do repositório** (`fora_do_repo/pipeline/projetos/converter_planilha_distribuicao.py`):
+  - lê a planilha de distribuição da empresa;
+  - corrige o nome da prancha pela lista do Autodoc (LO > EX; chave = código sem etapa nem revisão);
+  - gera, no pacote da obra: `distribuicao.csv` no formato do app, `destinatarios_sugeridos.csv` (quem recebeu cada pasta nos últimos 90 dias), `apelidos_sugeridos.csv` (grafias diferentes da mesma pessoa, para o Nicolas confirmar) e `pontos_a_conferir.csv`.
+- **Migração `20261120130000_projetos_destinatarios.sql`** (tabela `distribuicao_destinatarios`, só inclusão, gestor inclui, mais a view `destinatarios_vigentes`) e o teste dela, `supabase/testes/testes_x_projetos_destinatarios.sql`.
+  - **Não foi aplicada no servidor:** o Professor fala com o Nicolas antes.
+  - O app ainda grava a lista no navegador. Ligar o app à tabela (sincronização) é do NUC-SINC.
+- **Testes:**
+  - 10 de unidade em `distribuicao.test.ts`;
+  - um teste de tela em 375 e 768, nos dois temas: formulário, regra repetida recusada, importar, a entregar, desativar, persistência e contraste;
+  - os testes de tela antigos do Projetos voltaram a rodar (`itProjetos`).
+- **Próximo:**
+  - o Nicolas confere a lista sugerida e os apelidos;
+  - o agente "Verificar pranchas" (fora do repositório, por atalho): exporta só o CSV da página Relatórios, nunca baixa prancha, e o login é feito pelo próprio Nicolas;
+  - a sincronização da lista e das correções (NUC-SINC).
+
 ## Status (14/11/2026, etapa 3): painel de cópias desatualizadas
 Branch `projetos/painel`, por cima da `projetos/menu-beta` (PR 1). Protótipo aprovado pelo Nicolas em 14/11.
 - O módulo abre no **Painel**. Abas: Painel, Importar base, Empresas e entregas (as telas antigas).

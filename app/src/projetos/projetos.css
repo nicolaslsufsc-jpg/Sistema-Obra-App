@@ -654,3 +654,12 @@ button.pj-pequeno {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- A entregar e Distribuição (20/11) ---------- */
+.pj-cartoes li.largo {
+  grid-column: 1 / -1;
+}
+.pj-linha-painel > button {
+  flex: none;
+  align-self: center;
+}

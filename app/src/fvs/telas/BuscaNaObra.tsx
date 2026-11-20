@@ -4,6 +4,7 @@ import { nomeDaPeca } from '../comodos'
 import { useMemo, useState } from 'preact/hooks'
 import { buscarPecas } from '../busca'
 import { fichaDoLocalNaObra, partesDoPilar, travasDaAreaNaObra, type Peca } from '../dados'
+import { situacaoDoFuroDeLajeNaObra } from '../furos_laje'
 import { fichaDaPeca, fichasPara, ROTULO_SITUACAO as ROTULO, situacaoDaEsquadriaNaObra, situacaoDoFuroNaObra, situacaoDoLocal, type Situacao } from '../situacao'
 import { usarIrAtePeca } from './IrAtePeca'
 import type { ContextoFvs } from './ModuloFvs'
@@ -51,7 +52,11 @@ function Resultados({ texto, ctx }: { texto: string; ctx: ContextoFvs }) {
     const eventos = dados.eventosDe.get(p.id) ?? []
     const fichaPorId = (id: string) => dados.fichaPorId.get(id)
     // furo: o registro dele é no item de furação da ficha de viga (o mesmo que a planta mostra)
-    if (p.tipo === 'F') return situacaoDoFuroNaObra(fichasPara('V', dados.fichas)[0], eventos, fichaPorId)
+    // furo de laje (item 4, 19/11): o registro fica no item da instalação, na ficha da área de laje
+    if (p.tipo === 'F') {
+      const s = situacaoDoFuroNaObra(fichasPara('V', dados.fichas)[0], eventos, fichaPorId)
+      return s === 'nada' ? situacaoDoFuroDeLajeNaObra(eventos, fichaPorId) : s
+    }
     // esquadria: o registro dela é nos itens de esquadria das fichas de ambiente (qualquer serviço)
     if (p.tipo === 'E') return situacaoDaEsquadriaNaObra(fichasPara('A', dados.fichas), eventos)
     const area = dados.areaPorId.get(p.id)

@@ -71,6 +71,11 @@ export interface ItemFicha {
    */
   barras?: boolean
   /**
+   * Item dos pontos de instalação na ficha de laje (item 4, 19/11/2026): esgoto e água são marcados pelos
+   * furos de laje SAN e HID da área (furos_laje.ts); a elétrica fica à mão. Vem da ficha.
+   */
+  instalacao?: 'esgoto' | 'agua' | 'eletrica'
+  /**
    * Item de vão ou esquadria da ficha de ambiente ("eixos e vãos", "requadros", "recorte na porta"): quem
    * marca são as esquadrias do ambiente na planta (aba Esquadrias, 19/11/2026), uma a uma, como os furos.
    * Pode haver mais de um na ficha; a pessoa escolhe qual no topo da aba. Vem da ficha, como dado.

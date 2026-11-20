@@ -5,7 +5,9 @@ planta de forma, ligado à viga onde está. Na obra, a pessoa toca no furo: OK, 
 
 De onde vêm: do modelo de furação em IFC (o "modelo geral" da pasta de modelagem da furação, exportado do
 Revit). Nele, cada furo é um IfcBuildingElementProxy com:
-- a família: "... circular viga ..." ou "... retangular viga ..." (os de laje ficam de fora nesta fatia);
+- a família: "... circular viga ..." ou "... retangular viga ..."; os de laje ("... circular laje ...", "... retangular
+  laje ...", item 4 da frente FVS estrutura, 19/11/2026) entram também, sem viga: no app cada um é ligado à
+  área de laje desenhada onde cai (decisão do Nicolas de 19/11);
 - as cotas (conjunto "Dimensions"): FURO.DIAMETRO ou FURO.LARGURA e FURO.ALTURA, DIST.TOPO.VIGA (hT),
   DIST.FUNDO.VIGA (hB), LARGURA.VIGA e ALTURA.VIGA, em cm;
 - a disciplina (caixas "p.FURO.SAN", "p.FURO.HID", "p.FURO.ELT/TEL"...);
@@ -75,11 +77,14 @@ def _num(v) -> float | None:
 
 
 def furo_das_propriedades(nome_familia: str, psets: dict, x_cm: float, y_cm: float, ident: str = "") -> dict | None:
-    """Um furo de viga a partir das propriedades do IFC. Furo de laje ou outro objeto: None.
+    """Um furo de viga ou de laje a partir das propriedades do IFC. Outro objeto: None.
 
     Devolve {id, x, y (cm, coordenadas do modelo), forma, diametro?, largura?, altura?, topo?, fundo?,
-    largura_viga?, disciplinas, nivel}."""
+    largura_viga?, disciplinas, nivel}; o de laje tem "laje": true e "espessura" (a da laje) no lugar de
+    topo, fundo e largura da viga."""
     familia = (nome_familia or "").lower()
+    if "laje" in familia and "viga" not in familia:
+        return _furo_de_laje(familia, psets, x_cm, y_cm, ident)
     if "viga" not in familia:
         return None
     forma = "retangular" if "retangular" in familia else "circular" if "circular" in familia else None
@@ -103,6 +108,26 @@ def furo_das_propriedades(nome_familia: str, psets: dict, x_cm: float, y_cm: flo
         v = _num(dim.get(chave))
         if v is not None:
             furo[campo] = round(v, 1)
+    return furo
+
+
+def _furo_de_laje(familia: str, psets: dict, x_cm: float, y_cm: float, ident: str) -> dict | None:
+    forma = "retangular" if "retangular" in familia else "circular" if "circular" in familia else None
+    if forma is None:
+        return None
+    dim = psets.get("Dimensions") or {}
+    outros = psets.get("Other") or {}
+    furo = {"id": str(ident), "x": float(x_cm), "y": float(y_cm), "forma": forma, "laje": True,
+            "nivel": (psets.get("Constraints") or {}).get("Level") or "",
+            "disciplinas": disciplinas_de(psets.get("Materials and Finishes") or {})}
+    campos = (("diametro", "FURO.DIAMETRO"),) if forma == "circular" else (("largura", "FURO.LARGURA"), ("altura", "FURO.ALTURA"))
+    for campo, chave in campos:
+        v = _num(dim.get(chave)) or _num(outros.get(chave))
+        if v:
+            furo[campo] = round(v, 1)
+    e = _num(dim.get("ALTURA.LAJE"))
+    if e:
+        furo["espessura"] = round(e, 1)
     return furo
 
 
@@ -273,6 +298,7 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
 
     pecas: as peças da forma (só as vigas contam). Devolve (locais novos, relatório). O nome do furo é o da
     viga com o número do furo ao longo dela ("V12-F1", "V12-F2"); a viga que tem só um furo também ganha F1."""
+    furos = [f for f in furos if not f.get("laje")]  # os de laje: furos_de_laje
     folga = folga_cm * float(enc["fator"])  # cm de obra -> pontos da folha
     vigas = [p for p in pecas if p.get("tipo") == "V" and p.get("polys")]
     por_viga: dict[str, list[tuple[float, dict, tuple[float, float]]]] = {}
@@ -318,6 +344,33 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
     return locais, rel
 
 
+def furos_de_laje(furos: list[dict], enc: dict) -> list[dict]:
+    """Os furos de laje viram locais "F" sem viga ("laje": true no furo), com o mesmo encaixe dos furos de
+    viga. O nome segue a folha, de cima para baixo e da esquerda para a direita (faixas de 1 m de obra):
+    "FL1", "FL2"... A área de laje de cada um é achada no app (ela é desenhada lá, depois do pacote)."""
+    raio = max(2.0, 5.0 * float(enc["fator"]))
+    faixa = 100.0 * float(enc["fator"])  # 1 m de obra, em pontos da folha
+    pontos = []
+    for f in furos:
+        if not f.get("laje"):
+            continue
+        x, y = transformar(enc, f["x"], f["y"])
+        pontos.append((round(y / faixa), x, f.get("id") or "", x, y, f))
+    locais = []
+    for k, (_, _, _, x, y, f) in enumerate(sorted(pontos, key=lambda t: t[:3]), 1):
+        info = {c: f[c] for c in ("forma", "diametro", "largura", "altura", "espessura", "disciplinas") if f.get(c) not in (None, [], "")}
+        info["laje"] = True
+        if f.get("id"):
+            info["modelo_id"] = f["id"]
+        locais.append({
+            "tipo": "F", "nome": f"FL{k}", "secao": secao_do_furo(f),
+            "rotulo": [round(x - raio, 1), round(y - raio, 1), round(x + raio, 1), round(y + raio, 1)],
+            "polys": [contorno_do_furo(x, y, raio)],
+            "furo": info,
+        })
+    return locais
+
+
 def encaixe_duvidoso(enc: dict) -> bool:
     """O encaixe automático não convence: menos da metade dos furos caiu em viga, ou outra orientação
     chegou perto (até 30% a menos). Aí vale conferir na tela ou passar "encaixe" à mão no pavimento.json."""
@@ -338,13 +391,24 @@ def juntar_furos(forma: dict, furos: list[dict], escala_prancha: float = 50.0, e
     for p in [p for p in forma["pecas"] if p.get("tipo") == "F"]:
         forma["pecas"].remove(p)
     if not furos:
-        return {"furos": 0, "em_viga": 0, "vigas_com_furo": 0, "sem_viga": []}
+        return {"furos": 0, "em_viga": 0, "vigas_com_furo": 0, "sem_viga": [], "em_laje": 0}
+    de_viga = [f for f in furos if not f.get("laje")]
     vigas = [(p["nome"], p["polys"]) for p in forma["pecas"] if p.get("tipo") == "V" and p.get("polys")]
-    enc = encaixe or encaixar([(f["x"], f["y"]) for f in furos], vigas, escala_prancha)
+    # o encaixe é votado pelos furos de viga (caem dentro das vigas da forma); o de laje vai junto
+    enc = encaixe or (encaixar([(f["x"], f["y"]) for f in de_viga], vigas, escala_prancha) if de_viga else None)
     if enc is None:
-        raise ErroFuros("a forma não tem vigas com contorno para encaixar os furos")
-    locais, rel = distribuir_furos(furos, forma["pecas"], enc)
-    forma["pecas"].extend(locais)
+        raise ErroFuros("a forma não tem vigas com contorno para encaixar os furos" if de_viga
+                        else "só há furos de laje: sem furo de viga não dá para encaixar; passe \"encaixe\" no pavimento.json")
+    locais, rel = distribuir_furos(de_viga, forma["pecas"], enc)
+    de_laje = furos_de_laje(furos, enc)
+    forma["pecas"].extend(locais + de_laje)
+    # rel["furos"] segue sendo o número de furos de viga ("X de Y em vigas")
+    rel["em_laje"] = len(de_laje)
+    por_disc: dict[str, int] = {}
+    for p in de_laje:
+        for d in p["furo"].get("disciplinas") or ["sem disciplina"]:
+            por_disc[d] = por_disc.get(d, 0) + 1
+    rel["laje_por_disciplina"] = por_disc
     return rel
 
 
@@ -353,7 +417,7 @@ def juntar_furos(forma: dict, furos: list[dict], escala_prancha: float = 50.0, e
 # ---------------------------------------------------------------------------
 
 def ler_ifc(caminho: str, niveis: list[str]) -> list[dict]:
-    """Furos de viga do modelo de furação, nos níveis pedidos (os nomes de "Level" do modelo)."""
+    """Furos de viga e de laje do modelo de furação, nos níveis pedidos (os nomes de "Level" do modelo)."""
     try:
         import ifcopenshell
         import ifcopenshell.util.element as ue
@@ -366,7 +430,7 @@ def ler_ifc(caminho: str, niveis: list[str]) -> list[dict]:
     saida = []
     for p in f.by_type("IfcBuildingElementProxy"):
         nome = p.Name or ""
-        if "viga" not in nome.lower():
+        if "viga" not in nome.lower() and "laje" not in nome.lower():
             continue
         psets = ue.get_psets(p)
         nivel = (psets.get("Constraints") or {}).get("Level") or ""

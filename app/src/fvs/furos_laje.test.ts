@@ -5,7 +5,11 @@ import {
   areaDoFuro,
   avisoDoCEletrico,
   ehFuroDeLaje,
+  furoConferivel,
+  furoDeLajeEscondido,
+  furosConferiveisPorArea,
   furosDeLajeNasAreas,
+  furosNoToque,
   instalacaoDaDisciplina,
   instalacoesDoFuro,
   itemDaInstalacao,
@@ -13,6 +17,8 @@ import {
   observacaoDosFuros,
   resultadoDaInstalacao,
   situacaoDoFuroDeLajeNaObra,
+  situacaoDoNumeroDaArea,
+  textoDoNumeroDaArea,
 } from './furos_laje'
 import type { ElementoPacote } from './pacote'
 import type { EventoFvs, Ficha } from './situacao'
@@ -151,5 +157,62 @@ describe('furo de laje na busca da obra', () => {
     expect(situacaoDoFuroDeLajeNaObra([], porId)).toBe('nada')
     // registro numa ficha que não é de laje não conta
     expect(situacaoDoFuroDeLajeNaObra([e('C', '1')], () => ({ ...LAJE, aplica_a: ['V'] }))).toBe('nada')
+  })
+})
+
+describe('densidade na planta (20/11): escondidos, conferíveis, número por área e "Qual furo?"', () => {
+  const l1 = area('L1', quad(0, 0, 100, 100))
+  const l2 = area('L2', quad(200, 0, 300, 100))
+  const els: Record<string, ElementoPacote> = {
+    a: furo('FL1', 10, 10, ['Sanitário / drenagem']),
+    b: furo('FL2', 30, 50, ['Hidráulica']),
+    c: furo('FL3', 20, 20, ['Geral']),
+    d: furo('FL4', 250, 50, ['Elétrica / telecom']),
+    e: furo('FL5', 500, 500, ['Sanitário / drenagem']),
+    v: { ...furo('V1-F1', 150, 50, ['Geral'], false), viga: 'v1' },
+  }
+  const nasAreas = furosDeLajeNasAreas(els, [l1, l2])
+  it('Geral, Climatização e Incêndio ficam escondidos só no furo de laje', () => {
+    expect(furoDeLajeEscondido(els.c)).toBe(true)
+    expect(furoDeLajeEscondido(furo('FL9', 0, 0, ['Climatização']))).toBe(true)
+    expect(furoDeLajeEscondido(furo('FL9', 0, 0, ['Incêndio / gás']))).toBe(true)
+    expect(furoDeLajeEscondido(els.a)).toBe(false)
+    expect(furoDeLajeEscondido(els.v)).toBe(false)
+    expect(furoDeLajeEscondido(undefined)).toBe(false)
+  })
+  it('conferível: furo de viga sempre; de laje só dentro de área e de esgoto, água ou elétrica', () => {
+    expect(furoConferivel(els.v, undefined)).toBe(true)
+    expect(furoConferivel(els.a, nasAreas.get('a'))).toBe(true)
+    expect(furoConferivel(els.c, nasAreas.get('c'))).toBe(false)
+    expect(furoConferivel(els.e, nasAreas.get('e'))).toBe(false)
+  })
+  it('um grupo por área, só com os conferíveis, com o centro e a caixa deles', () => {
+    const grupos = furosConferiveisPorArea(els, nasAreas)
+    expect(grupos.map((g) => [g.areaId, g.ids])).toEqual([
+      ['L1', ['a', 'b']],
+      ['L2', ['d']],
+    ])
+    expect(grupos[0].centro).toEqual([20, 30])
+    expect(grupos[0].caixa).toEqual([10, 10, 30, 50])
+    expect(grupos[0].perto).toEqual([10, 10]) // centro (20, 30): FL1 e FL2 a 22,4 pontos; o empate fica com o primeiro
+  })
+  it('texto e cor do número da área', () => {
+    expect(textoDoNumeroDaArea(['nada', 'nada'])).toBe('2 furos')
+    expect(textoDoNumeroDaArea(['nada'])).toBe('1 furo')
+    expect(textoDoNumeroDaArea(['liberado', 'nada', 'nada'])).toBe('1 de 3 furos OK')
+    expect(situacaoDoNumeroDaArea(['nada', 'nada'])).toBe('nada')
+    expect(situacaoDoNumeroDaArea(['liberado', 'nada'])).toBe('andamento')
+    expect(situacaoDoNumeroDaArea(['liberado', 'liberado'])).toBe('liberado')
+    expect(situacaoDoNumeroDaArea(['liberado', 'reprovado'])).toBe('reprovado')
+  })
+  it('"Qual furo?": os alvos que contêm o toque, do mais perto ao mais longe', () => {
+    const pts = [
+      { id: 'x', x: 100, y: 100 },
+      { id: 'y', x: 110, y: 100 },
+      { id: 'z', x: 160, y: 100 },
+    ]
+    expect(furosNoToque(pts, 108, 100, 22)).toEqual(['y', 'x'])
+    expect(furosNoToque(pts, 160, 100, 22)).toEqual(['z'])
+    expect(furosNoToque(pts, 400, 400, 22)).toEqual([])
   })
 })

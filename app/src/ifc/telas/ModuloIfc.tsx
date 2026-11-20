@@ -110,7 +110,7 @@ export function ModuloIfc({ aoSair }: PropsModuloIfc) {
         {aoSair && (
           <button type="button" class="ifc-aba ifc-aba-voltar" onClick={aoSair} aria-label="Voltar ao menu">
             <IcVoltar />
-            <span>Voltar</span>
+            <span>Menu</span>
           </button>
         )}
         {ABAS.map(({ id, nome, Icone }) => (

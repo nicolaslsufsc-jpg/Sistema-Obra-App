@@ -17,6 +17,7 @@ import { modulosDoMenu, type IdModulo } from '../modulos'
 import { BarraLocal } from './BarraLocal'
 import { AbrirPacote } from './AbrirPacote'
 import { BotaoTema } from './BotaoTema'
+import { IconeInstalar, IconeModulo } from './icones'
 import { PlantasSemInternet } from './PlantasSemInternet'
 import type { PacoteLocalizado } from '../nucleo/pacote_obra'
 
@@ -45,25 +46,89 @@ export function Menu({
   aoAbrirModulo?: (id: IdModulo) => void
 }) {
   const { estado, sincronizarAgora, recontar, marcarDadosNovos } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
-  const [pavimentos, setPavimentos] = useState<Linha[]>([])
+  const [menuObra, setMenuObra] = useState(false)
 
+  // O menu da obra fecha no Esc e ao tocar fora dele (controle do usuário, 20/11/2026). Os ouvintes ficam
+  // ligados desde que a tela abre: ligar só depois de abrir perdia o Esc apertado logo em seguida.
   useEffect(() => {
-    sincronizador.linhas('pavimentos', obra.id).then((l) => setPavimentos(l.sort((a, b) => Number(a.ordem) - Number(b.ordem))))
-  }, [obra.id, estado.versaoDados])
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setMenuObra(false)
+    const toque = (e: PointerEvent) => {
+      const alvo = e.target as Element | null
+      if (!alvo?.closest('#painel-obra, [data-testid="menu-obra"]')) setMenuObra(false)
+    }
+    document.addEventListener('keydown', tecla)
+    document.addEventListener('pointerdown', toque)
+    return () => {
+      document.removeEventListener('keydown', tecla)
+      document.removeEventListener('pointerdown', toque)
+    }
+  }, [])
 
   return (
     <main class="tela">
-      <header class="cabecalho cabecalho-obra">
-        <div>
-          <h1>
-            {obra.codigo} <span class="nome-obra">{obra.nome}</span>
-          </h1>
-          <p class="discreto">
-            {estado.local ? 'Sem conta' : usuario.email} · <span data-testid="papel">{PAPEL[obra.papel]}</span>
-          </p>
+      {/* Barra do topo (heurísticas de Nielsen, 20/11/2026): à esquerda a obra, que abre o menu da obra
+          (trocar de obra, pacote, pessoas, sair); à direita instalar e o tema. */}
+      <header class="cabecalho cabecalho-obra barra-app">
+        {/* O nome da obra continua sendo o título da tela (leitor de tela e testes acham a obra por ele) */}
+        <h1 class="menu-obra-titulo">
+          <button
+            type="button"
+            class="menu-obra"
+            data-testid="menu-obra"
+            aria-expanded={menuObra}
+            aria-controls="painel-obra"
+            onClick={() => setMenuObra(!menuObra)}
+          >
+            <span class="menu-obra-nome">
+              <strong>{obra.codigo}</strong> <span class="nome-obra">{obra.nome}</span>
+              <span class="menu-obra-seta" aria-hidden="true">
+                ▾
+              </span>
+            </span>
+            <span class="menu-obra-quem">
+              {estado.local ? 'Sem conta' : usuario.email} · <span data-testid="papel">{PAPEL[obra.papel]}</span>
+            </span>
+          </button>
+        </h1>
+        <div class="barra-app-acoes">
+          <InstalarApp />
+          <BotaoTema />
         </div>
-        <BotaoTema />
       </header>
+      {/* Menu da obra: fora do cabeçalho (a faixa colorida corta o que passa dela); fecha no Esc ou ao tocar fora */}
+      {menuObra && (
+        <div class="menu-obra-ancora">
+          <div class="menu-obra-painel" id="painel-obra" role="group" aria-label="Menu da obra" data-testid="painel-obra">
+            {aoTrocarObra && (
+              <button type="button" onClick={aoTrocarObra}>
+                Trocar de obra
+              </button>
+            )}
+            {estado.local && aoAbrirPacote && (
+              <AbrirPacote
+                aoAbrir={(pacote) => {
+                  setMenuObra(false) // escolhido o pacote, o menu fecha (a tela troca ou pergunta antes)
+                  aoAbrirPacote(pacote)
+                }}
+                rotulo="Trocar de obra / abrir pacote (.zip)"
+              />
+            )}
+            {aoAbrirPessoas && !estado.local && (
+              <button type="button" onClick={aoAbrirPessoas}>
+                Pessoas da obra
+              </button>
+            )}
+            {aoSair && !estado.local && (
+              <button type="button" onClick={aoSair}>
+                Sair
+              </button>
+            )}
+            <button type="button" class="menu-obra-fechar" onClick={() => setMenuObra(false)}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Os módulos vêm logo abaixo do cabeçalho: no celular é a primeira coisa que se vê (acabamento, 09/11) */}
       <section class="menu-modulos">
@@ -78,6 +143,7 @@ export function Menu({
                 onClick={() => aoAbrirModulo?.(m.id)}
               >
                 <strong>
+                  <IconeModulo id={m.id} />
                   {m.nome}
                   {m.beta && (
                     <>
@@ -86,7 +152,7 @@ export function Menu({
                     </>
                   )}
                 </strong>
-                <span>{m.descricao}</span>
+                <span class="modulo-descricao">{m.descricao}</span>
                 {m.Tela && aoAbrirModulo && (
                   <span class="modulo-abrir" aria-hidden="true">
                     Abrir ›
@@ -99,29 +165,9 @@ export function Menu({
         </ul>
       </section>
 
-      {/* Pavimentos da obra em etiquetas: mais fácil de ler que uma frase corrida (front end, 19/11/2026) */}
-      <section data-testid="pavimentos-obra">
-        <h2>
-          Pavimentos{pavimentos.length > 0 && <span class="discreto"> ({pavimentos.length})</span>}
-        </h2>
-        {pavimentos.length === 0 ? (
-          <p class="discreto">Nenhum pavimento baixado ainda.</p>
-        ) : (
-          <ul class="lista-pavimentos">
-            {pavimentos.map((p) => (
-              <li key={String(p.id)}>{String(p.nome)}</li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Fora do bloco recolhido: sem proteção, o navegador pode apagar o que ainda não foi enviado (C4) */}
-      <AvisoDadosDesprotegidos />
-
       {/* Salvamento e detalhes técnicos do aparelho num bloco recolhido (demonstração, 14/11/2026) */}
       {estado.local ? (
         <>
-          {aoAbrirPacote && <AbrirPacote aoAbrir={aoAbrirPacote} rotulo="Trocar de obra / abrir pacote (.zip)" />}
           <BarraLocal
             usuario={usuario}
             obra={obra}
@@ -131,7 +177,7 @@ export function Menu({
               marcarDadosNovos()
             }}
           >
-            <Aparelho />
+            <Aparelho obraId={obra.id} versaoDados={estado.versaoDados} />
           </BarraLocal>
         </>
       ) : (
@@ -152,29 +198,14 @@ export function Menu({
             <summary>
               <strong>Este aparelho</strong>
             </summary>
-            <Aparelho />
+            <Aparelho obraId={obra.id} versaoDados={estado.versaoDados} />
           </details>
         </>
       )}
-      <InstalarApp />
 
-      <div class="acoes">
-        {aoAbrirPessoas && !estado.local && (
-          <button type="button" onClick={aoAbrirPessoas}>
-            Pessoas da obra
-          </button>
-        )}
-        {aoTrocarObra && (
-          <button type="button" onClick={aoTrocarObra}>
-            Trocar de obra
-          </button>
-        )}
-        {aoSair && !estado.local && (
-          <button type="button" onClick={aoSair}>
-            Sair
-          </button>
-        )}
-      </div>
+      {/* Avisos abaixo da sincronização (20/11/2026): primeiro o estado dos dados, depois o que pede atenção.
+          Fora do bloco recolhido: sem proteção, o navegador pode apagar o que ainda não foi enviado (C4). */}
+      <AvisoDadosDesprotegidos />
     </main>
   )
 }
@@ -280,8 +311,9 @@ function ItensComErro({
   )
 }
 
-function Aparelho() {
+function Aparelho({ obraId, versaoDados }: { obraId: string; versaoDados: number }) {
   const [persistente, setPersistente] = useState<boolean | null>(null)
+  const [pavimentos, setPavimentos] = useState<Linha[]>([])
   const [espaco, setEspaco] = useState<{ usado: number; total: number } | null>(null)
   const [dispositivo, setDispositivo] = useState('')
 
@@ -290,6 +322,12 @@ function Aparelho() {
     espacoUsado().then(setEspaco)
     banco.dispositivoId().then(setDispositivo)
   }, [])
+
+  // Os pavimentos saíram da tela do menu (20/11/2026: "não serve de nada" para quem usa). Ficam aqui, nos
+  // detalhes para o suporte, para conferir o que o aparelho baixou da obra.
+  useEffect(() => {
+    sincronizador.linhas('pavimentos', obraId).then((l) => setPavimentos(l.sort((a, b) => Number(a.ordem) - Number(b.ordem))))
+  }, [obraId, versaoDados])
 
   return (
     <section>
@@ -312,6 +350,18 @@ function Aparelho() {
           <li>Código do aparelho: {dispositivo.slice(0, 8)}</li>
           <li>Proteção contra limpeza automática do navegador: {persistente === null ? '…' : persistente ? 'ligada' : 'desligada'}</li>
         </ul>
+        <section data-testid="pavimentos-obra">
+          <h3>Pavimentos baixados ({pavimentos.length})</h3>
+          {pavimentos.length === 0 ? (
+            <p class="discreto">Nenhum pavimento baixado ainda.</p>
+          ) : (
+            <ul class="lista-pavimentos">
+              {pavimentos.map((p) => (
+                <li key={String(p.id)}>{String(p.nome)}</li>
+              ))}
+            </ul>
+          )}
+        </section>
       </details>
     </section>
   )
@@ -342,14 +392,15 @@ function AvisoDadosDesprotegidos() {
   )
 }
 
-/** "Instalar o app": fica à vista, fora do bloco recolhido (só aparece quando o navegador deixa instalar). */
+/** "Instalar o app": no canto de cima à direita (20/11/2026); só aparece quando o navegador deixa instalar. */
 function InstalarApp() {
   const [instalavel, setInstalavel] = useState(podeInstalar())
   useEffect(() => aoMudarInstalacao(() => setInstalavel(podeInstalar())), [])
   if (!instalavel) return null
   return (
-    <button type="button" class="principal" onClick={() => instalar()}>
-      Instalar o app neste aparelho
+    <button type="button" class="principal botao-instalar" data-testid="instalar-app" aria-label="Instalar o app" onClick={() => instalar()}>
+      <IconeInstalar />
+      Instalar
     </button>
   )
 }

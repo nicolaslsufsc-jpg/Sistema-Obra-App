@@ -116,7 +116,8 @@ async function garantirLogin(ap: Aparelho, email: string) {
   }
 }
 
-const menu = (p: Page) => p.getByRole('button', { name: 'Trocar de obra' })
+// o menu da obra fica no topo desde 20/11/2026 (Trocar de obra e Sair dentro dele)
+const menu = (p: Page) => p.getByTestId('menu-obra')
 
 /** Código de teste na tela de login; depois escolhe a OBRA1 se o app perguntar. */
 async function entrar(p: Page, email: string) {

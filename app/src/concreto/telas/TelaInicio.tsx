@@ -23,7 +23,7 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
 
   return (
     <main class="tela">
-      <Topo titulo="Concreto" sub={`${obra.codigo} · rastreabilidade por peça`} aoVoltar={aoSair} />
+      <Topo titulo="Concreto" sub={`${obra.codigo} · rastreabilidade por peça`} aoVoltar={aoSair} paraMenu />
 
       {alertas.length > 0 && (
         <section class="cartao cc-alertas" data-testid="alertas">

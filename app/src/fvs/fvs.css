@@ -152,6 +152,16 @@
 .fv-busca {
   width: 100px;
 }
+/* tela larga com quatro abas, fonte larga (lote de 20/11): a busca encolhia até "Busc" e a caixa do
+   trecho cortava o número. As duas não encolhem abaixo do texto; quem cede é o nome do pavimento */
+@media (min-width: 901px) {
+  .fv-topo.muitas-abas .fv-busca {
+    flex-shrink: 0;
+  }
+  .fv-topo.muitas-abas .fv-nomes {
+    min-width: 96px;
+  }
+}
 /* número do ambiente escrito por cima da planta (não recebe toque: quem recebe é o contorno) */
 .fv-rot {
   pointer-events: none;
@@ -1474,6 +1484,50 @@
     flex: none;
     width: 84px;
   }
+  /* quatro abas (Furos): numa linha só não cabiam; "Etapas" saía cortado e o contador ia a 4 linhas
+     (rodada com a obra piloto, 20/11). Em cima título, contador e botões; embaixo abas, etapa e busca */
+  .fv-planta.muitas-abas {
+    --fv-hdr: 110px;
+  }
+  .fv-planta.muitas-abas.com-trecho {
+    --fv-hdr: 124px;
+  }
+  .fv-topo.muitas-abas {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'tit tit prog pincel item'
+      'seg seg etapa busca busca';
+    align-content: center;
+    gap: 6px 8px;
+  }
+  .fv-topo.muitas-abas > .fv-tit {
+    grid-area: tit;
+  }
+  .fv-topo.muitas-abas > .fv-seg {
+    grid-area: seg;
+  }
+  .fv-topo.muitas-abas > .fv-etapa,
+  .fv-topo.muitas-abas > .fv-sem-item-esq {
+    grid-area: etapa;
+    max-width: none;
+    width: 100%;
+  }
+  .fv-topo.muitas-abas > .fv-busca {
+    grid-area: busca;
+    width: 100%;
+  }
+  .fv-topo.muitas-abas > .fv-prog {
+    grid-area: prog;
+    justify-self: end;
+    text-align: right;
+  }
+  .fv-topo.muitas-abas > .fv-bpincel {
+    grid-area: pincel;
+  }
+  .fv-topo.muitas-abas > .fv-bitem {
+    grid-area: item;
+  }
 }
 /* planta de ambientes com esquadrias, de 701 a 1199 px (tablet em pé e deitado estreito): abas, serviço,
    item, busca, progresso e botões não cabem numa linha só (em 768 px o topo passava da tela e em 800 os
@@ -1705,6 +1759,46 @@
     grid-column: 10 / 13;
     grid-row: 2;
     width: 100%;
+  }
+  /* quatro abas (Furos): em 384 px "Furos" saía cortado ("Fu"; rodada com a obra piloto, 20/11). As abas
+     ficam com a segunda linha inteira; etapa e busca descem para a terceira (como com-servico) */
+  .fv-planta.muitas-abas {
+    --fv-hdr: 158px;
+  }
+  .fv-planta.muitas-abas.com-trecho {
+    --fv-hdr: 172px;
+  }
+  .fv-topo.muitas-abas .fv-seg {
+    grid-column: 1 / 13;
+    grid-row: 2;
+  }
+  /* em 375 px, com a fonte do Linux (CI), "0/385 liberados" ia a 3 linhas: na linha 1 o contador ficava
+     com 3 colunas entre a caixa do trecho e os botões (lote de 20/11). A caixa do trecho não pode ceder
+     (precisa de 5 colunas para "Trecho 1"), então o contador desce para a linha 3, entre a etapa e a
+     busca, com 4 colunas cada um (com 3, "Etapas" e "Buscar" saíam cortados na fonte larga); o título
+     fica com o resto da linha 1 */
+  .fv-topo.muitas-abas .fv-tit,
+  .fv-topo.muitas-abas.com-trecho .fv-tit {
+    grid-column: 1 / 10;
+  }
+  .fv-topo.muitas-abas.com-item .fv-tit,
+  .fv-topo.muitas-abas.com-item.com-trecho .fv-tit {
+    grid-column: 1 / 9;
+  }
+  .fv-topo.muitas-abas .fv-etapa,
+  .fv-topo.muitas-abas .fv-sem-item-esq {
+    grid-column: 1 / 5;
+    grid-row: 3;
+  }
+  .fv-topo.muitas-abas .fv-prog,
+  .fv-topo.muitas-abas.com-item .fv-prog,
+  .fv-topo.muitas-abas.com-item.com-trecho .fv-prog {
+    grid-column: 5 / 9;
+    grid-row: 3;
+  }
+  .fv-topo.muitas-abas .fv-busca {
+    grid-column: 9 / 13;
+    grid-row: 3;
   }
   /* no celular a legenda fica recolhida: cobriria a planta */
   .fv-legenda {

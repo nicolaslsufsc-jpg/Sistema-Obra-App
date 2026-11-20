@@ -111,6 +111,9 @@ def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None,
         raise ErroCompactar("indice.json sem obra ou sem pavimentos")
     if saida.suffix.lower() != ".zip":
         raise ErroCompactar("a saída tem que terminar em .zip")
+    # testador (08/11, T4): pasta de saída que não existe dava FileNotFoundError em inglês
+    if not saida.parent.is_dir():
+        raise ErroCompactar(f"a pasta da saída não existe: {saida.parent} (crie a pasta ou escolha outra)")
     if dentro_de_repositorio(saida.parent):
         raise ErroCompactar("a saída está dentro de um repositório git: dado de obra não entra no repositório")
     if saida.is_relative_to(pasta):
@@ -179,6 +182,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--documentos", type=pathlib.Path, help="pasta com documentos.json e os arquivos dos documentos da empresa (opcional)")
     ap.add_argument("--sistema-oficial", help="id do sistema oficial da obra (um galho de app/src/integracoes/)")
     args = ap.parse_args(argv)
+    # testador (08/11, Z4): no terminal do Windows os acentos saíam quebrados ("sa�da")
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     try:
         r = compactar(args.pasta, args.saida, args.nome, args.sistema_oficial, args.documentos)
     except ErroCompactar as e:

@@ -137,11 +137,10 @@ try {
       if (-not $SemAbrir) { Start-Process "http://localhost:$Porta$caminhoInicial" }
       exit 0
     }
-    # a porta está com outro programa
-    foreach ($p in ($Porta + 10), ($Porta + 20), ($Porta + 30)) {
-      try { $listener = Abrir-Listener $p; $Porta = $p; break } catch { }
-    }
-    if (-not $listener) { throw }
+    # a porta está com outro programa. Não abre em outra porta: o que se marca fica guardado no navegador
+    # pelo endereço, e no endereço novo o app aparecia sem nada marcado (testador, 08/11). Igual ao
+    # servidor_python.py: avisa e para.
+    throw "a porta $Porta já está com outro programa. Feche o outro programa (ou reinicie o PC) e abra de novo. Não abro em outra porta porque o que você marcou fica guardado no endereço http://localhost:$Porta."
   }
 
   $url = "http://localhost:$Porta$caminhoInicial"

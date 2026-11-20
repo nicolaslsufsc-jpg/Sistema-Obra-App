@@ -193,7 +193,7 @@ describe('peças do caminhão', () => {
 describe('relatório', () => {
   it('por caminhão, por peça e CSV para o Excel', () => {
     const caminhoes = [
-      { raiz: 'c2', sequencia: 2, nota_fiscal: '900002', volume_m3: 8.5 },
+      { raiz: 'c2', sequencia: 2, nota_fiscal: '\t900002', volume_m3: 8.5 },
       { raiz: 'c1', sequencia: 1, nota_fiscal: '=900001', volume_m3: 8.5 },
     ]
     const estados = new Map([
@@ -216,6 +216,8 @@ describe('relatório', () => {
     expect(linhas[0]).toBe('Data;Local;Nº da ficha;Caminhão;NF;Volume (m³);Peça;Tipo;Dentro da área;Parcial;Origem')
     expect(linhas[1]).toBe(`29/10/2026;"Pilotis; Trecho 1";;1;'=900001;8,5;P1;P;100%;não;desenho`)
     expect(linhas[2]).toContain(';V1;V;50%;sim;desenho')
+    // tabulação no começo também vira fórmula no Excel: sai com o apóstrofo
+    expect(linhas.find((l) => l.includes('900002'))).toContain(";'\t900002;")
 
     // obra sem sistema oficial: o CSV não tem a coluna da ficha de lá
     const sem = csvPorCaminhao({ data: '2026-10-29', local_descricao: 'Pilotis; Trecho 1', codigo_construpoint: null }, r).replace('﻿', '').trim().split('\r\n')

@@ -135,6 +135,12 @@ describe('ficha de concreto usinado do dia', () => {
     expect(linhas[linhas.length - 1]).toBe('03/11/2026;40;;1;1001;8,5;;12,5;4;07:10;07:40;07:50;08:20;Pilotis · Trecho 2 · Vigas · FIC-0215')
   })
 
+  it('CSV: célula que começa com = + - @ ou tabulação não vira fórmula no Excel', () => {
+    const f = fichaDoDia({ obra, data: '2026-11-03', concretagens: [conc({})], caminhoesDe: new Map([['c1', [cam({ nota_fiscal: '\t=1+1' })]]]), pavimentos })
+    const linhas = csvDoDia(f).replace('﻿', '').trimEnd().split('\r\n')
+    expect(linhas[linhas.length - 1]).toContain(";'\t=1+1;")
+  })
+
   it('concretagem de exemplo: toda linha dela sai com EXEMPLO e a ficha avisa', () => {
     const f = fichaDoDia({
       obra,

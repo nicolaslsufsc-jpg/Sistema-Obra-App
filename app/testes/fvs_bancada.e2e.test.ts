@@ -677,6 +677,39 @@ suite('FVS na bancada (Chrome)', () => {
     }, 120_000)
   }
 
+  for (const [largura, altura] of [
+    [375, 812],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: planta de ambientes aberta pelo menu do pavimento, já no serviço e na aba escolhidos`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const abaAtiva = () => p.locator('.fv-seg button.on').textContent()
+      // opção "Reboco" (opcoes_ambientes.ts: abre { servico, aba: 'ambientes' })
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-servico').inputValue()).toBe('TESTE-PVS-REB')
+      expect(await abaAtiva()).toBe('Ambientes')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // opção "Esquadrias": a aba Esquadrias, com o item de esquadria da ficha escolhida
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&servico=TESTE-PVS-REB&aba=esquadrias`)
+      await p.getByTestId('fvs-item-esquadria').waitFor()
+      expect(await p.getByTestId('fvs-servico').inputValue()).toBe('TESTE-PVS-REB')
+      expect(await abaAtiva()).toBe('Esquadrias')
+      expect(await p.getByTestId('fvs-item-esquadria').locator('option').allTextContents()).toEqual(['5. Requadros dos vãos'])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_menu_${largura}_esquadrias.png`) })
+      // ficha que não existe: abre na primeira, sem erro
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&servico=NAO-EXISTE&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-servico').inputValue()).toBe('TESTE-PVS-ALV')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
   for (const [nome, largura, altura] of [
     ['tablet', 1280, 800],
     ['celular', 375, 812],

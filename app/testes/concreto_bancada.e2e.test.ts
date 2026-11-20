@@ -435,6 +435,99 @@ suite('Concreto na bancada (Chrome)', () => {
     await contexto.close()
   }, 90_000)
 
+  it('laje da FVS: a área de laje desenhada na FVS aparece no relatório do caminhão que desenhou em cima (celular e tablet)', async () => {
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    p.on('dialog', (d: any) => d.accept())
+    await p.goto(url)
+    await clicar(p, /Pavimento em 2 trechos/)
+    await clicar(p, '+ Nova concretagem')
+    await p.getByLabel('Local').fill('Trecho 1 · Laje da FVS')
+    await p.getByLabel('fck (MPa)').fill('35')
+    await clicar(p, 'Salvar concretagem')
+    await clicar(p, '+ Caminhão')
+    await p.getByLabel('Nota fiscal').fill('700077')
+    await clicar(p, /^Salvar$/)
+    await clicar(p, 'Desenhar onde foi')
+    await p.getByTestId('laje').waitFor()
+    await p.getByTestId('caneta-vigas_laje').click()
+    const cdp = await contexto.newCDPSession(p)
+    await tracarComCaneta(p, cdp, [[130, 95], [430, 95], [430, 145], [130, 145], [130, 95]])
+    await p.getByTestId('toast').filter({ hasText: 'também entrou' }).waitFor()
+
+    // A FVS desenhou duas áreas de laje na mesma planta: uma debaixo da área do caminhão (metade
+    // coberta) e outra longe. Entram direto no banco do aparelho, como se a FVS tivesse gravado.
+    await p.evaluate(
+      () =>
+        new Promise<void>((ok, falha) => {
+          const r = indexedDB.open('sistema-obra')
+          r.onerror = () => falha(r.error)
+          r.onsuccess = () => {
+            const loja = r.result.transaction('registros', 'readwrite').objectStore('registros')
+            const q = loja.getAll()
+            q.onsuccess = () => {
+              const area = q.result.filter((x: { tabela: string }) => x.tabela === 'caminhao_areas').pop()
+              const ref = String(area.linha.planta_ref)
+              const setor = ref.includes('@') ? ref.slice(0, ref.lastIndexOf('@')) : ref
+              const nova = (id: string, nome: string, contorno: number[][]) => ({
+                tabela: 'fvs_areas',
+                id,
+                obra_id: area.obra_id,
+                pendente: 0,
+                linha: {
+                  id,
+                  area_id: id,
+                  obra_id: area.obra_id,
+                  pavimento_id: null,
+                  setor_id: setor,
+                  planta_id: null,
+                  nome,
+                  ficha_id: 'f0000000-0000-0000-0000-0000000000b1',
+                  codigo_ficha: null,
+                  contorno,
+                  cancelada: false,
+                  usuario_id: area.linha.usuario_id,
+                  dispositivo_id: area.linha.dispositivo_id,
+                  criado_em_dispositivo: '2026-11-20T08:00:00.000Z',
+                  apagado: false,
+                },
+              })
+              // metade dentro da área do caminhão (x de 130 a 430): de 280 a 580 ficam 150 de 300 (o traço da caneta não é exato)
+              loja.put(nova('e0000000-0000-0000-0000-0000000000b1', 'Laje A da FVS', [[280, 100], [580, 100], [580, 140], [280, 140]]))
+              loja.put(nova('e0000000-0000-0000-0000-0000000000b2', 'Laje B da FVS', [[900, 600], [1000, 600], [1000, 700], [900, 700]]))
+              loja.transaction.oncomplete = () => {
+                r.result.close()
+                ok()
+              }
+            }
+          }
+        }),
+    )
+    await p.reload()
+    await clicar(p, /Pavimento em 2 trechos/)
+    await clicar(p, /Trecho 1 · Laje da FVS/)
+    await clicar(p, 'Relatório de peças')
+    const rel = await p.getByTestId('relatorio-caminhao').innerText()
+    expect(rel).toContain('V1')
+    expect(rel).toMatch(/Laje A da FVS \((4[5-9]|5[0-5])%\)/)
+    expect(rel).not.toContain('Laje B da FVS')
+    await capturar(p, 'tablet_relatorio_laje_fvs')
+    await p.getByRole('tab', { name: 'Por peça' }).click()
+    expect(await p.getByTestId('relatorio-peca').innerText()).toMatch(/Laje A da FVS\s+1 \(NF 700077, (4[5-9]|5[0-5])%\)/)
+
+    // celular em pé: a tabela não rola de lado
+    await p.setViewportSize({ width: 375, height: 740 })
+    await p.getByRole('tab', { name: 'Por caminhão' }).click()
+    await p.getByTestId('relatorio-caminhao').waitFor()
+    expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+    expect(await p.getByTestId('relatorio-caminhao').innerText()).toContain('Laje A da FVS')
+    await capturar(p, 'celular_relatorio_laje_fvs')
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 90_000)
+
   it('obra de verdade: o mapa abre a prancha que a FVS guardou no aparelho', async () => {
     const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true })
     const p = await contexto.newPage()

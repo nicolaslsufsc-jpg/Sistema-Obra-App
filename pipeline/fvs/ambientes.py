@@ -170,6 +170,73 @@ def ler_tabela_de_nomes(caminho: str) -> dict:
     return t
 
 
+# ---------------------------------------------------------------------------
+# Que ficha vale em que cômodo (tabela ficha x tipo de cômodo; dado da obra, fora do repositório)
+# ---------------------------------------------------------------------------
+RESPOSTAS_FICHA = ("sim", "nao", "talvez")
+
+
+def classe_do_comodo(comodo: str | None) -> str | None:
+    """Tipo do cômodo = o nome sem os números: "Suíte 01" -> "Suíte", "Suíte 01 / Banho 02" -> "Suíte / Banho".
+    Cômodo sem nome (área comum ainda sem tabela, por exemplo) -> None."""
+    if not comodo:
+        return None
+    return re.sub(r"\s+", " ", re.sub(r" \d+", "", comodo)).strip() or None
+
+
+def ler_fichas_por_comodo(caminho: str, aceita_talvez: bool = False) -> dict:
+    """Tabela ficha x tipo de cômodo (exemplo em fichas_por_comodo.exemplo.json). Serve o arquivo que a página
+    de conferência gera (respostas_fichas_por_comodo.json) e também a proposta, antes da conferência:
+
+    {"fichas": {"EXE-001": "Pintura interna", ...},                 # opcional; sem ela, valem os códigos das classes
+     "classes": {"Banho": {"EXE-001": "sim", "EXE-002": "nao"}, ...}}  # "sim" | "nao" | "talvez" (= falta conferir)
+
+    Devolve {"fichas": {código: título}, "classes": {tipo: frozenset(códigos "sim")}, "talvez": [(tipo, código)]}.
+    Com "talvez" na tabela dá erro (falta conferir), a não ser com aceita_talvez=True: aí o "talvez" conta como
+    "sim", para a ficha continuar aparecendo no cômodo como hoje.
+    """
+    try:
+        t = json.loads(pathlib.Path(caminho).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ErroAmbientes(f"tabela de fichas por cômodo ilegível ({caminho}): {e}") from e
+    if not isinstance(t, dict) or not isinstance(t.get("classes"), dict) or not t["classes"]:
+        raise ErroAmbientes("tabela de fichas por cômodo: tem que ter \"classes\": {\"Banho\": {\"código\": \"sim\"}, ...}")
+    fichas = t.get("fichas")
+    if fichas is not None and not (isinstance(fichas, dict) and all(isinstance(v, str) for v in fichas.values())):
+        raise ErroAmbientes("tabela de fichas por cômodo: \"fichas\" tem que ser {\"código\": \"título\", ...}")
+    classes, talvez, vistos = {}, [], {}
+    for classe, linha in t["classes"].items():
+        if not isinstance(linha, dict):
+            raise ErroAmbientes(f"tabela de fichas por cômodo: \"{classe}\" tem que ser {{\"código\": \"sim\" | \"nao\"}}")
+        if classe_do_comodo(classe) != classe:
+            raise ErroAmbientes(f"tabela de fichas por cômodo: \"{classe}\" tem que ser o tipo, sem número (\"{classe_do_comodo(classe)}\")")
+        sim = set()
+        for cod, v in linha.items():
+            if v not in RESPOSTAS_FICHA:
+                raise ErroAmbientes(f"tabela de fichas por cômodo: {classe} > {cod} = {v!r}; só vale \"sim\", \"nao\" ou \"talvez\"")
+            if fichas is not None and cod not in fichas:
+                raise ErroAmbientes(f"tabela de fichas por cômodo: {classe} > {cod}: ficha fora da lista \"fichas\"")
+            vistos.setdefault(cod, cod)
+            if v == "talvez":
+                talvez.append((classe, cod))
+            if v == "sim" or (v == "talvez" and aceita_talvez):
+                sim.add(cod)
+        classes[classe] = frozenset(sim)
+    if talvez and not aceita_talvez:
+        lista = "; ".join(f"{c} > {f}" for c, f in talvez[:5]) + (f" e mais {len(talvez) - 5}" if len(talvez) > 5 else "")
+        raise ErroAmbientes(f"tabela de fichas por cômodo: faltam conferir {len(talvez)} casas ({lista})")
+    return {"fichas": dict(fichas) if fichas is not None else vistos, "classes": classes, "talvez": talvez}
+
+
+def ficha_vale_no_comodo(codigo: str, comodo: str | None, tabela: dict) -> bool:
+    """A ficha aparece neste cômodo? Sem regra (ficha fora da tabela, cômodo sem nome ou de um tipo que a
+    tabela não tem) a resposta é sim: a ficha continua aparecendo, como antes da tabela."""
+    classe = classe_do_comodo(comodo)
+    if codigo not in tabela["fichas"] or classe not in tabela["classes"]:
+        return True
+    return codigo in tabela["classes"][classe]
+
+
 def _girar(x: float, y: float, k: int) -> tuple[float, float]:
     for _ in range(k):
         x, y = -y, x
@@ -316,6 +383,11 @@ def modelo_da_tabela(nomeados: list[dict], aptos: dict[str, dict], ambientes, ta
                      "acham o nome. Vazio = fica só o número. \"aptos\" corrige um apartamento que difere do tipo.",
             "tipos": tipos, "aptos": tabela.get("aptos") or {},
             "area_comum": {n: ja_ac.get(n, "") for n in comum}}
+
+
+def area_comum(pecas: list[dict]) -> int:
+    """Quantos ambientes de área comum. Só os ambientes contam: as esquadrias (tipo "E") não têm grupo."""
+    return sum(1 for p in pecas if p.get("tipo") == "A" and p.get("grupo") == "Área comum")
 
 
 def area_br(m2: float) -> str:
@@ -573,7 +645,7 @@ def ler_planta(cfg: dict) -> dict:
         "pecas": pecas,
         "detalhes_a": dets_a,
         "resumo": {"ambientes": len(ambientes), "apartamentos": {n: len(a["ambientes"]) for n, a in sorted(aptos.items())},
-                   "area_comum": sum(1 for p in pecas if p["grupo"] == "Área comum"), "coincidencia": round(t["coincidencia"], 2),
+                   "area_comum": area_comum(pecas), "coincidencia": round(t["coincidencia"], 2),
                    "tipos": {n: a["tipo"] for n, a in sorted(aptos.items())},
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
                    **({"nomes": resumo_nomes} if resumo_nomes else {}),

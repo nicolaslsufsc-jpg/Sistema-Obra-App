@@ -41,10 +41,23 @@ function compararPecas(a: PecaRelatorio, b: PecaRelatorio): number {
   return (ORDEM_TIPO[a.tipo] ?? 9) - (ORDEM_TIPO[b.tipo] ?? 9) || ordemNatural.compare(a.nome, b.nome)
 }
 
+/** Área de laje da FVS coberta pelo caminhão (dados.ts, `lajesFvsDe`). */
+export interface LajeFvsRelatorio {
+  area_id: string
+  nome: string
+  fracao: number
+  parcial: boolean
+}
+
+/**
+ * `lajesFvs`: as áreas de laje desenhadas na FVS que cada caminhão cobriu (por raiz do caminhão).
+ * Entram como peça do tipo L, de origem "desenho", junto com as peças do caminhão.
+ */
 export function relatorioPorCaminhao(
   caminhoes: readonly CaminhaoRelatorio[],
   estados: ReadonlyMap<string, ReadonlyMap<string, EstadoPeca>>,
   pecas: ReadonlyMap<string, PecaRelatorio>,
+  lajesFvs?: ReadonlyMap<string, readonly LajeFvsRelatorio[]>,
 ): LinhaPorCaminhao[] {
   return [...caminhoes]
     .sort((a, b) => a.sequencia - b.sequencia)
@@ -54,6 +67,9 @@ export function relatorioPorCaminhao(
         if (!e.incluido) continue
         const peca = pecas.get(e.elemento_id) ?? { id: e.elemento_id, nome: '(peça fora da planta)', tipo: '?' }
         itens.push({ peca, fracao: e.fracao, parcial: e.parcial, origem: e.origem })
+      }
+      for (const l of lajesFvs?.get(c.raiz) ?? []) {
+        itens.push({ peca: { id: l.area_id, nome: l.nome, tipo: 'L' }, fracao: l.fracao, parcial: l.parcial, origem: 'desenho' })
       }
       itens.sort((a, b) => compararPecas(a.peca, b.peca))
       return { caminhao: c, pecas: itens }

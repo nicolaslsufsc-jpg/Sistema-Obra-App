@@ -21,9 +21,9 @@ import {
   type Ponto,
   type TravaDaArea,
 } from '../areas'
-import { anexarFoto, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { anexarFoto, ligarEntrePecas, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
-import { ehDaLigacao, maisLigados, textoDosLigados } from '../ligacoes'
+import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDasLigacoes } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
 import { dia, mb, quando } from '../formato'
 import { casaComodo, textoDoComodo } from '../busca'
@@ -331,6 +331,39 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
    * 19/11): a área é desenhada no app, então a ligação é calculada aqui e refeita quando uma área muda.
    */
   const furosDeLaje = useMemo(() => furosDeLajeNasAreas(manifest?.elementos, areasDaPlanta), [manifest, chaveDasAreas])
+  /**
+   * Pilares e vigas de cada área de laje, para a ligação entre peças (regras com `entre: 'area'`,
+   * 20/11): a peça é da área que contém o centro dela. Sem regra dessas na obra, a conta nem é feita.
+   */
+  const ligaPecas = temLigacaoEntrePecas(dados.regras)
+  const pecasPorArea = useMemo(() => (ligaPecas ? pecasNasAreas(manifest?.elementos, areasDaPlanta) : new Map<string, string[]>()), [ligaPecas, manifest, chaveDasAreas])
+  /**
+   * As peças de dentro da área como a ligação grava nelas, com os registros mais novos: a ficha de
+   * cada uma (a aberta em uso, se houver) sem o item que os furos ou as esquadrias marcam sozinhos.
+   * Peça com duas fichas abertas fica de fora: quem decide em qual marcar é a pessoa, pelo painel.
+   */
+  const pecasParaLigar = (areaId: string): PecaParaLigar[] =>
+    (pecasPorArea.get(areaId) ?? []).flatMap((id) => {
+      const e = manifest?.elementos[id]
+      const abertas = atuais.current.fichasCampoDe.get(id) ?? SEM_FICHAS
+      if (!e || abertas.length > 1) return []
+      const aberta = abertas[0]
+      const evs = atuais.current.eventosDe.get(id) ?? SEM_EVENTOS
+      const ficha = aberta ? fichaNaPeca(aberta.ficha_id ? fichaPorId(aberta.ficha_id) : undefined, partesDe(id)) : fichaNaPeca(fichaDaPeca(fichaDe(e.tipo), evs, fichaPorId), partesDe(id))
+      if (!ficha) return []
+      const semFilhos = filhosPorPai.has(id) ? { ...ficha, itens: ficha.itens.filter((i) => !i.furos && !i.esquadrias) } : ficha
+      return [{ id, nome: e.nome, fichas: [semFilhos], eventos: daFichaAberta(evs, aberta?.id ?? null), fichaCampoId: aberta?.id ?? null }]
+    })
+  /**
+   * As ligações depois de um ou mais C num local: os itens ligados do próprio local e, na área de
+   * laje, os das peças de dentro dela (os itens que a própria área ganhou pela ligação também puxam).
+   */
+  const ligar = async (cx: Contexto, id: string, ficha: Ficha, itens: readonly number[], eventos: readonly EventoFvs[]): Promise<Linha[]> => {
+    const daqui = await ligarDepoisDe(cx, dados.regras, id, ficha, itens, eventos)
+    if (!ligaPecas || !elementosDasAreas.has(id)) return daqui
+    const nasPecas = await ligarEntrePecas(cx, dados.regras, elementoDe(id)?.nome ?? 'Laje', ficha, [...itens, ...daqui.map((l) => Number(l.item))], pecasParaLigar(id))
+    return [...daqui, ...nasPecas]
+  }
   /** Furos de laje de cada área (id da área → ids dos furos, na ordem do nome). */
   const furosPorArea = useMemo(() => {
     const m = new Map<string, string[]>()
@@ -774,6 +807,25 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const b = on.getBoundingClientRect()
     if (b.left < f.left || b.right > f.right) fila.scrollLeft += b.left - f.left - (f.width - b.width) / 2
   }, [tipo, tipos.length])
+  // ... e a borda do lado em que a fila continua esmaece (fvs.css: mais-esq, mais-dir), para quem está
+  // no celular saber que há mais abas (revisão da frente 06, 20/11: "Pilares" aparecia como "ares")
+  useEffect(() => {
+    const fila = filaDeAbas.current
+    if (!fila) return
+    const marcar = () => {
+      fila.classList.toggle('mais-esq', fila.scrollLeft > 1)
+      fila.classList.toggle('mais-dir', fila.scrollLeft + fila.clientWidth < fila.scrollWidth - 1)
+    }
+    marcar()
+    fila.addEventListener('scroll', marcar, { passive: true })
+    // a largura da fila muda com a tela e com o topo (com ou sem serviço, trecho)
+    const tamanho = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(marcar)
+    tamanho?.observe(fila)
+    return () => {
+      fila.removeEventListener('scroll', marcar)
+      tamanho?.disconnect()
+    }
+  }, [tipo, tipos.length])
 
   // peça do tipo escolhido fica por cima (recebe o toque primeiro)
   useEffect(() => {
@@ -1055,7 +1107,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       executar(async (evs) => {
         const evsDaPeca = daFichaAberta(evs(id), cDoPincel.fichaCampoId)
         const gravados = await marcarLote(cDoPincel, [{ id, ficha: fichaDoPincel, eventos: evsDaPeca }], et || null, resultado, toque.id, noPrazo).finally(() => esquecerToque(toque.obraId, toque.id))
-        const ligados = resultado === 'C' ? await ligarDepoisDe(cDoPincel, dados.regras, id, daPeca, gravados.map((g) => Number(g.item)), [...evsDaPeca, ...(gravados as unknown as EventoFvs[])]) : []
+        const ligados = resultado === 'C' ? await ligar(cDoPincel, id, daPeca, gravados.map((g) => Number(g.item)), [...evsDaPeca, ...(gravados as unknown as EventoFvs[])]) : []
         const n = gravados.length
         // segundo toque na mesma peça (toque duplo): não tira o "Desfazer" da tela
         if (n || ultimaDoPincel.current !== id) {
@@ -1124,15 +1176,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         esquecerToque(toque.obraId, toque.id),
       )
       // ligação entre fichas: o C marca os itens ligados da peça (o "Desfazer" volta os dois)
-      const ligados = gravado.resultado === 'C' ? await ligarDepoisDe(cx, dados.regras, id, ficha, [item.n], [...eventos, gravado as unknown as EventoFvs]) : []
-      const depois = [...eventos, gravado as unknown as EventoFvs, ...(ligados as unknown as EventoFvs[])]
+      const ligados = gravado.resultado === 'C' ? await ligar(cx, id, ficha, [item.n], [...eventos, gravado as unknown as EventoFvs]) : []
+      // os ligados do próprio local contam para "ficha completa"; os das peças de dentro da área, não
+      const depois = [...eventos, gravado as unknown as EventoFvs, ...(ligados.filter((l) => String(l.elemento_id ?? l.area_id) === id) as unknown as EventoFvs[])]
       // o toque que fecha a ficha inteira da peça avisa
       const fechou = situacaoDaPeca(ficha, eventos) !== 'liberado' && situacaoDaPeca(ficha, depois) === 'liberado'
       const reinspecao = esperado === 'NC' ? ` (reinspeção ${rotuloRodada(Number(gravado.rodada))})` : ''
       avisar(`${nome} · ${item.titulo}: ${textoDoResultado(resultado)}${reinspecao}${maisLigados(ligados)}${fechou ? ' · ficha completa' : ''}`, () => {
         setMsg(null)
         executar(async (evs2) => {
-          const desfeitos = ligados.length ? await desfazerLote(cx, ligados, (x) => daFichaAberta(evs2(x), fichaCampoId)) : []
+          const desfeitos = ligados.length ? await desfazerLote(cx, ligados, evs2) : []
           const volta = await voltarItem(cx, gravado, anterior, daFichaAberta(evs2(id), fichaCampoId))
           avisar(volta ? `Desfeito: ${nome} · ${item.titulo}` : 'Nada a desfazer: o item já mudou.')
           return volta ? [...desfeitos, volta] : desfeitos
@@ -2147,6 +2200,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           aoZoom={abrirZoom}
           avisar={avisar}
           avisarLote={avisarLote}
+          ligar={(cx, ficha, itens, evs) => ligar(cx, sel, ficha, itens, evs)}
+          nomeDe={(id) => elementoDe(id)?.nome}
         />
       )}
 
@@ -2220,6 +2275,9 @@ interface PropsPainel {
   aoZoom: (src: string) => void
   avisar: (t: string) => void
   avisarLote: (t: string, gravados: readonly Linha[]) => void
+  /** as ligações depois de um C neste local (na área de laje, também nas peças de dentro dela) */
+  ligar: (cx: Contexto, ficha: Ficha, itens: readonly number[], eventos: readonly EventoFvs[]) => Promise<Linha[]>
+  nomeDe: (id: string) => string | undefined
 }
 
 function Painel(p: PropsPainel) {
@@ -2346,7 +2404,7 @@ function Painel(p: PropsPainel) {
                   gravar(async (evs) => {
                     const fichaDoLote = { ...ficha, itens: ficha.itens.filter((x) => !automatico(x) && !(semEletrica && x === el) && (comPrazo || !noPrazo.has(`${p.id}#${x.n}`))) }
                     const gravados = await marcarLote(c, [{ id: p.id, ficha: fichaDoLote, eventos: evs }], et, 'C', toque.id, noPrazo).finally(() => esquecerToque(toque.obraId, toque.id))
-                    const ligados = await ligarDepoisDe(c, ctx.dados.regras, p.id, ficha, gravados.map((g) => Number(g.item)), [...evs, ...(gravados as unknown as EventoFvs[])])
+                    const ligados = await p.ligar(c, ficha, gravados.map((g) => Number(g.item)), [...evs, ...(gravados as unknown as EventoFvs[])])
                     const n = gravados.length
                     // toque duplo: o segundo não acha nada vazio e não pode tirar o "Desfazer" da tela
                     if (n) p.avisarLote(`${peca.nome}: ${n} ${n === 1 ? 'item' : 'itens'} C${et ? ` em ${et.toLowerCase()}` : ''}${maisLigados(ligados)}`, [...gravados, ...ligados])
@@ -2528,8 +2586,8 @@ function Painel(p: PropsPainel) {
                       const gravado = await tocarItem(c, p.id, ficha, it.n, r, evs, id, obs).finally(() => esquecerToque(toque.obraId, toque.id))
                       if (gravado.resultado !== 'C') return gravado
                       // ligação entre fichas: o C marca os itens ligados da peça; o aviso traz "Desfazer" deles
-                      const ligados = await ligarDepoisDe(c, ctx.dados.regras, p.id, ficha, [it.n], [...evs, gravado as unknown as EventoFvs])
-                      if (ligados.length) p.avisarLote(textoDosLigados(peca.nome, ficha, ligados), ligados)
+                      const ligados = await p.ligar(c, ficha, [it.n], [...evs, gravado as unknown as EventoFvs])
+                      if (ligados.length) p.avisarLote(textoDasLigacoes(peca.nome, ficha, p.id, ligados, p.nomeDe), ligados)
                       return [gravado, ...ligados]
                     })
                   }}

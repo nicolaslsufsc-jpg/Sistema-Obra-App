@@ -6,6 +6,8 @@ import { sincronizador } from '../nucleo/servicos'
 import { dataLocal, piorSituacao, situacaoDasIdades, type IdadeCP, type ResultadoCP, type SituacaoCP } from './cps'
 import { idDaLaje, lajeDoTrecho, nomeNaTela, nomeNoBanco } from './lajes'
 import { estadoDasPecas, type EstadoPeca, type MudancaPeca } from './pecas'
+import { montarRastreioDasLajes } from './rastreio'
+import { areasVigentes, type LinhaDeArea } from '../fvs/areas'
 import { camposDeCorrecao, vigentes, type Corrigivel, type Vigente } from './vigentes'
 
 import { idsDasConcretagensDeExemplo } from './exemplo'
@@ -85,6 +87,15 @@ export interface Pavimento {
   ordem: number
 }
 
+/** Área de laje da FVS (fvs_areas) que o caminhão cobriu: calculado pela sobreposição dos desenhos, nada gravado. */
+export interface LajeFvsDoCaminhao {
+  area_id: string
+  nome: string
+  /** fração da área da FVS dentro das áreas do caminhão */
+  fracao: number
+  parcial: boolean
+}
+
 export interface DadosConcreto {
   pavimentos: Pavimento[]
   concretagens: Concretagem[]
@@ -99,6 +110,8 @@ export interface DadosConcreto {
   /** peças (elementos) por pavimento */
   pecasDoPavimento: Map<string, Peca[]>
   pecaPorId: Map<string, Peca>
+  /** áreas de laje da FVS por raiz do caminhão (rastreio.ts); vazio quando a FVS não desenhou laje */
+  lajesFvsDe: Map<string, LajeFvsDoCaminhao[]>
 }
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
@@ -116,7 +129,7 @@ function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T
 
 /** Lê tudo do Concreto da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosConcreto> {
-  const [pav, conc, cam, areas, regsPecas, res, elem] = await Promise.all([
+  const [pav, conc, cam, areas, regsPecas, res, elem, areasFvs] = await Promise.all([
     sincronizador.linhas('pavimentos', obraId),
     sincronizador.linhas('concretagens', obraId),
     sincronizador.linhas('caminhoes', obraId),
@@ -124,6 +137,7 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
     sincronizador.linhas('caminhao_elementos', obraId),
     sincronizador.linhas('cp_resultados', obraId),
     sincronizador.linhas('elementos', obraId),
+    sincronizador.linhas('fvs_areas', obraId),
   ])
   const idsExemplo = await idsDasConcretagensDeExemplo(obraId)
   const pavimentos = pav
@@ -173,6 +187,20 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
   const pecasDe = new Map<string, Map<string, EstadoPeca>>()
   for (const [k, regs] of registrosPecasDe) pecasDe.set(k, estadoDasPecas(regs))
 
+  // laje da obra = área desenhada na FVS: que caminhões cobriram cada uma (só cálculo).
+  // Aqui o exemplo entra (o relatório é da própria concretagem); quem tira o exemplo é o rastreio da FVS.
+  const lajes = areasVigentes(areasFvs as unknown as LinhaDeArea[])
+  const nomeDaArea = new Map(lajes.map((a) => [a.id, a.nome]))
+  const lajesFvsDe = new Map<string, LajeFvsDoCaminhao[]>()
+  for (const [areaId, r] of montarRastreioDasLajes({ concretagens: conc, caminhoes: cam, caminhao_areas: areas, exemplos: new Set() }, lajes)) {
+    for (const c of r.caminhoes) {
+      const item = { area_id: areaId, nome: nomeDaArea.get(areaId) || 'Área de laje', fracao: c.fracao ?? 1, parcial: c.parcial }
+      const lista = lajesFvsDe.get(c.caminhao_raiz)
+      if (lista) lista.push(item)
+      else lajesFvsDe.set(c.caminhao_raiz, [item])
+    }
+  }
+
   return {
     pavimentos,
     concretagens: concretagens.sort((a, b) => (a.data === b.data ? a.criado_em_dispositivo.localeCompare(b.criado_em_dispositivo) : a.data < b.data ? 1 : -1)),
@@ -184,6 +212,7 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
     resultadosDe: agrupar(resultados, (r) => r.caminhao_id),
     pecasDoPavimento: agrupar(pecas, (p) => p.pavimento_id),
     pecaPorId: new Map(pecas.map((p) => [p.id, p])),
+    lajesFvsDe,
   }
 }
 

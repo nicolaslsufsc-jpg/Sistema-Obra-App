@@ -974,6 +974,9 @@ if (pasta) {
   if (params.get('rastreio')) await semearRastreio()
   const abrir = params.get('abrir')
   const plantaId = abrir === 'ambientes' ? PLANTA_AMB : PLANTA
-  history.replaceState(abrir === '0' ? { tela: 'fvs' } : { tela: 'fvs', fvs: { nome: 'planta', plantaId } }, '')
+  // ?servico=CÓDIGO&aba=esquadrias: a planta de ambientes como o menu do pavimento abre (opcoes_ambientes.ts)
+  const servico = params.get('servico') ?? undefined
+  const aba = params.get('aba') === 'esquadrias' ? 'esquadrias' : params.get('aba') === 'ambientes' ? 'ambientes' : undefined
+  history.replaceState(abrir === '0' ? { tela: 'fvs' } : { tela: 'fvs', fvs: { nome: 'planta', plantaId, servico, aba } }, '')
   render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
 })

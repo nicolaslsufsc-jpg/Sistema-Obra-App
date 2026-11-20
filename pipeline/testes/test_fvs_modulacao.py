@@ -240,6 +240,93 @@ class TestNotaLocal(unittest.TestCase):
         self.assertAlmostEqual(modulacao.nota_local(img, 1.0, t, box(-4, 1, -2, 9)), 0.0, places=1)
         self.assertIsNone(modulacao.nota_local(img, 1.0, t, box(1, 1, 3, 9).intersection(box(5, 5, 6, 6))))
 
+    def test_com_para_pt_girado(self):
+        import numpy as np
+        from shapely.geometry import box
+
+        # o mesmo, com o modelo girado 90° na prancha: o eixo x do modelo vira o y da folha
+        img = np.zeros((100, 100), dtype=np.float32)
+        img[:50, :] = 1  # desenho só na metade de cima
+        para_pt = lambda x, y: (y * 10.0, x * 10.0)  # noqa: E731
+        self.assertAlmostEqual(modulacao.nota_local(img, 1.0, None, box(1, 1, 3, 9), para_pt=para_pt), 1.0, places=1)
+        self.assertAlmostEqual(modulacao.nota_local(img, 1.0, None, box(7, 1, 9, 9), para_pt=para_pt), 0.0, places=1)
+
+
+class TestAptosPorPrancha(unittest.TestCase):
+    def test_unidade(self):
+        self.assertEqual(modulacao._unidade("Apto 602"), "602")
+        self.assertEqual(modulacao._unidade("602"), "602")
+        self.assertEqual(modulacao._unidade(" apto 1203 "), "1203")
+        self.assertEqual(modulacao._unidade("AC-03"), "AC-03")
+
+    def test_formato_conferido(self):
+        self.assertEqual(modulacao.aptos_por_prancha({}), {})
+        ok = {".053.": ["602", "603"]}
+        self.assertEqual(modulacao.aptos_por_prancha({"aptos_por_prancha": ok}), ok)
+        for errado in (["602"], {".053.": []}, {".053.": "602"}, {".053.": [""]}, {"": ["602"]}):
+            with self.assertRaises(modulacao.ErroModulacao):
+                modulacao.aptos_por_prancha({"aptos_por_prancha": errado})
+
+
+class TestGiro(unittest.TestCase):
+    def test_de_volta_do_giro_igual_ao_rot90(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("sem numpy")
+        orig = np.arange(12).reshape(3, 4)  # 3 linhas, 4 colunas
+        for giro in (0, 90, 180, 270):
+            girada = np.rot90(orig, giro // 90)
+            for yr in range(girada.shape[0]):
+                for xr in range(girada.shape[1]):
+                    # centro do pixel girado -> centro do pixel original
+                    x, y = modulacao._de_volta_do_giro(xr + 0.5, yr + 0.5, giro, 4.0, 3.0)
+                    self.assertEqual(girada[yr, xr], orig[int(y), int(x)], (giro, xr, yr))
+
+
+class TestEncaixeEntrePranchas(unittest.TestCase):
+    """Planta "de arquitetura" em 1:200 e a "paginação" em 1:50, girada de 90°, desenhadas com pymupdf."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+            import pymupdf  # noqa: F401
+        except ImportError:
+            self.skipTest("sem numpy ou pymupdf")
+
+    def test_acha_escala_giro_e_lugar(self):
+        import random
+
+        import pymupdf as fitz
+
+        rnd = random.Random(7)
+        retangulos = []
+        for _ in range(40):
+            x, y = rnd.uniform(60, 500), rnd.uniform(60, 300)
+            retangulos.append((x, y, x + rnd.uniform(6, 40), y + rnd.uniform(6, 40)))
+        doc = fitz.open()
+        base = doc.new_page(width=600, height=400)
+        for r in retangulos:
+            base.draw_rect(fitz.Rect(*r), color=(0, 0, 0), fill=(0, 0, 0))
+
+        # na outra: 4 vezes maior, girada (x' = 4y + 100, y' = 2400 - 4x + 50) e com um carimbo à parte
+        def outra_pt(x, y):
+            return 4 * y + 100, 2400 - 4 * x + 50
+
+        outra = doc.new_page(width=1900, height=2600)
+        for x0, y0, x1, y1 in retangulos:
+            a, b = outra_pt(x0, y0), outra_pt(x1, y1)
+            outra.draw_rect(fitz.Rect(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])),
+                            color=(0, 0, 0), fill=(0, 0, 0))
+        outra.draw_rect(fitz.Rect(1500, 2200, 1850, 2550), color=(0, 0, 0), width=6)
+        enc = modulacao.encaixe_entre_pranchas(doc[0], 200, doc[1], 50, giros=(0, 90, 180, 270))
+        self.assertGreater(enc["destaque"], modulacao.DESTAQUE_MINIMO)
+        for x, y in ((100, 100), (450, 300), (300, 80)):
+            ex, ey = outra_pt(x, y)
+            gx, gy = enc["para_outra"](x, y)
+            self.assertLess(abs(gx - ex), 24, (x, y, gx, ex))  # 24 pt na 1:50 = 0,4 m
+            self.assertLess(abs(gy - ey), 24, (x, y, gy, ey))
+
 
 if __name__ == "__main__":
     unittest.main()

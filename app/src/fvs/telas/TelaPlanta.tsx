@@ -108,6 +108,7 @@ import type { ContextoFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { recortesDoAmbiente } from '../projetos_ambiente'
 import { usarCamadas } from './usarCamadas'
+import type { AbaDosAmbientes } from '../opcoes_ambientes'
 
 const COR: Record<Situacao, [string, number]> = {
   nada: ['#6b7075', 0.12],
@@ -168,10 +169,14 @@ interface Props {
   pecaInicial?: string
   fichaCampoInicial?: string
   itemInicial?: number
+  /** planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts): o serviço (código da ficha) */
+  servicoInicial?: string
+  /** e a aba: "ambientes" ou "esquadrias" */
+  abaInicial?: AbaDosAmbientes
   aviso: string
 }
 
-export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, aviso }: Props) {
+export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, servicoInicial, abaInicial, aviso }: Props) {
   const { dados, props, online, ir, voltar, recarregar, registrados, sistema } = ctx
   const { usuario, obra } = props
   const planta = dados.plantaPorId.get(plantaId)!
@@ -187,7 +192,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [erroBaixar, setErroBaixar] = useState('')
   // o registro guarda a revisão que estava na tela, que pode ser a anterior (ver revisoes.ts)
   const c: Contexto = { obraId: obra.id, usuarioId: usuario.id, plantaId: pacote?.manifest.planta_id ?? plantaId, areas: dados.areaPorId }
-  const [tipoEscolhido, setTipo] = useState('P')
+  const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : 'P')
   /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
   const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string } | null>(null)
   /** A caixa que liga o polígono desenhado a uma ficha. */
@@ -196,7 +201,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const { sel, abrirPainel, fecharPainel, zoom, abrirZoom, fecharZoom, abrirSobre, fecharSobre, sair } = usarCamadas(pecaInicial)
   // a peça do painel fica guardada: reabrir o Chrome volta nela (onde_estava.ts)
   useEffect(() => lembrarPainel(obra.id, sel), [obra.id, sel])
-  const [codigoFicha, setCodigoFicha] = useState<Record<string, string>>({})
+  const [codigoFicha, setCodigoFicha] = useState<Record<string, string>>((): Record<string, string> => (servicoInicial ? { A: servicoInicial } : {}))
   /** Aba Esquadrias: o item de vão ou esquadria da ficha do serviço que as esquadrias marcam. */
   const [itemDaEsquadria, setItemDaEsquadria] = useState<{ n: number; titulo: string } | null>(null)
   const [pincel, setPincel] = useState<{ etapa: string; resultado: 'C' | 'NA' } | null>(null)

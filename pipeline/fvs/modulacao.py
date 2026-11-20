@@ -18,7 +18,9 @@ Como a prancha é posta em cima do modelo:
 - pela arquitetura ("pela_arquitetura": true): para a prancha que desenha por cima da planta de arquitetura
   do pavimento, com as paredes só em traço (a impermeabilização). A prancha é casada com a planta de
   arquitetura pela imagem inteira (deslocamento_entre_pranchas) e herda dela o casamento com o modelo.
-  As duas precisam estar na mesma escala.
+  Na mesma escala, só o deslocamento (deslocamento_entre_pranchas). Em outra escala (a paginação em 1:50 sobre a
+  arquitetura em 1:200) ou com "giros": encaixe_entre_pranchas acha escala, giro e lugar, e cada apartamento é
+  conferido na tinta da prancha (nota_local com para_pt), como no casamento pelas paredes.
 
 Recorte por apartamento: os ambientes do mesmo apartamento ganham a mesma imagem (o apartamento inteiro
 com folga), que é como a prancha se lê na obra, e o pacote fica com um recorte por apartamento, não um
@@ -37,11 +39,14 @@ No pavimento.json, dentro de "ambientes":
   arquitetura), "nota_minima" (0,50: parte das paredes do apartamento que precisa bater na prancha),
   "sigla" (nome curto do recorte no pacote; padrão: as iniciais do título), "px_por_m" (resolução do recorte
   colorido dos projetos, 80 pixels por metro de obra), "giros" (pelas paredes, os giros do modelo tentados em cada
-  prancha: [0, 90, 180, 270]; a prancha de setor pode desenhar uma ala da torre girada).
+  prancha: [0, 90, 180, 270]; a prancha de setor pode desenhar uma ala da torre girada), "destaque_minimo" (1,3:
+  pela arquitetura em outra escala, o melhor ponto sobre o segundo), "aptos_por_prancha" ({"trecho do nome do
+  arquivo": ["602", "603"]}: a prancha só vale para esses apartamentos; a do 2º ao 5º usada no 6º).
 """
 
 from __future__ import annotations
 
+import pathlib
 import re
 import unicodedata
 
@@ -49,6 +54,9 @@ MARGEM_M = 0.30
 COINCIDENCIA_MINIMA = 0.08
 COINCIDENCIA_MINIMA_ARQ = 0.30  # pela imagem inteira, contra a planta de arquitetura (conferido nos 5 andares da obra piloto)
 NOTA_MINIMA = 0.50
+COINCIDENCIA_MINIMA_ESCALA = 0.05  # pela arquitetura em outra escala: a prancha de setor cobre só parte do andar
+DESTAQUE_MINIMO = 1.30  # e o ponto achado tem que ser 1,3 vez melhor que o segundo (fora disso é chute)
+NOTA_MINIMA_TINTA = 0.50  # parte das paredes do apartamento em cima de desenho da prancha
 ESCALA_IMG = 2.4  # a mesma do detalhe do pilar (gerador_fvs.DET_ESCALA)
 PX_POR_M = 80.0  # recorte colorido dos projetos: 80 pixels por metro de obra (1:200 → 5,6 px/pt; 1:50 → 1,4 px/pt)
 FOLGA_PAREDE_M = 0.20  # a nota de um apartamento olha as paredes até 0,20 m fora dele
@@ -100,6 +108,21 @@ def recorte(caixa, largura: float, altura: float, margem_pt: float) -> tuple[flo
     """A caixa com folga, sem sair da folha."""
     x0, y0, x1, y1 = caixa
     return (max(0.0, x0 - margem_pt), max(0.0, y0 - margem_pt), min(largura, x1 + margem_pt), min(altura, y1 + margem_pt))
+
+
+def _unidade(nome: str) -> str:
+    """"602" ou "Apto 602" -> "602" (para "aptos_por_prancha")."""
+    nome = str(nome).strip()
+    return nome[5:].strip() if nome.lower().startswith("apto ") else nome
+
+
+def aptos_por_prancha(cfg: dict) -> dict[str, list[str]]:
+    """"aptos_por_prancha" do projeto, conferido: {"trecho do nome da prancha": ["602", "603"]}."""
+    so = cfg.get("aptos_por_prancha") or {}
+    if not isinstance(so, dict) or not all(isinstance(k, str) and k and isinstance(v, list) and v
+                                           and all(isinstance(u, str) and u.strip() for u in v) for k, v in so.items()):
+        raise ErroModulacao("\"aptos_por_prancha\" tem que ser {\"trecho do nome da prancha\": [\"602\", \"603\"]}")
+    return so
 
 
 def chave_da_modulacao(unidade: str, sigla: str = "M") -> str:
@@ -207,11 +230,12 @@ def detalhes_dos_ambientes(recortes: dict[str, dict], de_cada: dict[str, str], i
 # Conferência por pedaço e casamento entre pranchas (numpy e pillow)
 # ---------------------------------------------------------------------------
 
-def nota_local(imagem, k: float, t: dict, paredes_perto) -> float | None:
+def nota_local(imagem, k: float, t: dict | None, paredes_perto, para_pt=None) -> float | None:
     """Parte das paredes do modelo (paredes_perto, em metros) que cai em cima da hachura da prancha.
 
     imagem e k: a prancha desenhada pelo casamento (ambientes.casar_com_a_prancha com com_imagem=True);
-    t: o casamento. None se não há parede para conferir."""
+    t: o casamento. Ou para_pt: função (x, y) do modelo -> (x, y) em pontos da prancha (no lugar de t), com
+    imagem e k da tinta da prancha (tinta_da_prancha). None se não há parede para conferir."""
     import numpy as np
     from PIL import Image, ImageDraw
 
@@ -219,14 +243,18 @@ def nota_local(imagem, k: float, t: dict, paredes_perto) -> float | None:
     if not polys:
         return None
 
+    if para_pt is None:
+        def para_pt(x, y):
+            return ((x - t["x0"]) * t["pt_por_m"] + t["dx_pt"], (t["y1"] - y) * t["pt_por_m"] + t["dy_pt"])
+
     def px(x, y):
-        return (((x - t["x0"]) * t["pt_por_m"] + t["dx_pt"]) * k, ((t["y1"] - y) * t["pt_por_m"] + t["dy_pt"]) * k)
+        X, Y = para_pt(x, y)
+        return (X * k, Y * k)
 
     x0, y0, x1, y1 = paredes_perto.bounds
-    c0, l1 = px(x0, y0)
-    c1, l0 = px(x1, y1)
-    c0, l0 = int(c0) - 1, int(l0) - 1
-    c1, l1 = int(c1) + 2, int(l1) + 2
+    cantos = [px(x0, y0), px(x1, y0), px(x0, y1), px(x1, y1)]
+    c0, l0 = int(min(c for c, _ in cantos)) - 1, int(min(l for _, l in cantos)) - 1
+    c1, l1 = int(max(c for c, _ in cantos)) + 2, int(max(l for _, l in cantos)) + 2
     larg, alt = c1 - c0, l1 - l0
     if larg <= 0 or alt <= 0:
         return None
@@ -246,6 +274,77 @@ def nota_local(imagem, k: float, t: dict, paredes_perto) -> float | None:
     if a1 > a0 and b1 > b0:
         janela[a0 - l0:a1 - l0, b0 - c0:b1 - c0] = imagem[a0:a1, b0:b1]
     return float((janela * m).sum() / m.sum())
+
+
+def _de_volta_do_giro(xr: float, yr: float, giro: int, largura: float, altura: float) -> tuple[float, float]:
+    """Ponto na imagem girada (np.rot90 de giro/90 quartos de volta, anti-horário) -> ponto na imagem original
+    (largura x altura, em pixels)."""
+    return {0: (xr, yr), 90: (largura - yr, xr), 180: (largura - xr, altura - yr), 270: (yr, altura - xr)}[giro % 360]
+
+
+def encaixe_entre_pranchas(page_base, escala_base: float, page, escala: float, giros=(0,),
+                           zoom: float = 0.5) -> dict:
+    """Onde a prancha base (a planta de arquitetura) cai na outra prancha, com escala e giro diferentes.
+
+    A outra prancha é desenhada na mesma escala da base (metro por pixel igual) e girada de 90 em 90 graus;
+    vale o giro de maior correlação da tinta. Devolve {"giro", "coincidencia" (correlação normalizada no melhor
+    ponto), "destaque" (melhor ponto / segundo melhor ponto do mesmo giro, longe dele), "para_outra": função
+    (x, y) em pontos da base -> (x, y) em pontos da outra}. Na mesma escala e sem giro, é o mesmo que
+    deslocamento_entre_pranchas."""
+    import numpy as np
+    import pymupdf as fitz
+
+    zb = zoom
+    zo = zoom * float(escala) / float(escala_base)  # 1:50 contra 1:200: a outra em 1/4 do zoom
+
+    def tinta(pg, z):
+        pm = pg.get_pixmap(matrix=fitz.Matrix(z, z), colorspace=fitz.csGRAY, annots=False)
+        a = 1 - np.frombuffer(pm.samples, dtype=np.uint8).reshape(pm.height, pm.width).astype(np.float32) / 255
+        return a - a.mean()
+
+    base, outra0 = tinta(page_base, zb), tinta(page, zo)
+    m_por_px = 0.0254 / 72 * float(escala_base) / zb
+    raio = max(8, int(2.0 / m_por_px))  # o segundo pico é procurado a mais de 2 m do primeiro
+    melhor = None
+    for giro in giros:
+        outra = np.rot90(outra0, (int(giro) % 360) // 90)
+        forma = (base.shape[0] + outra.shape[0], base.shape[1] + outra.shape[1])
+        c = np.fft.irfft2(np.fft.rfft2(outra, forma) * np.fft.rfft2(base[::-1, ::-1], forma), forma)
+        iy, ix = np.unravel_index(np.argmax(c), c.shape)
+        norma = float(np.sqrt((base * base).sum() * (outra * outra).sum())) or 1.0
+        valor = float(c[iy, ix])
+        c[max(0, iy - raio):iy + raio + 1, max(0, ix - raio):ix + raio + 1] = -np.inf
+        segundo = float(c.max())
+        if melhor is None or valor / norma > melhor["coincidencia"]:
+            melhor = {"giro": int(giro) % 360, "ox": ix - (base.shape[1] - 1), "oy": iy - (base.shape[0] - 1),
+                      "coincidencia": valor / norma,
+                      "destaque": valor / segundo if segundo > 0 else float("inf")}
+    g, ox, oy = melhor["giro"], melhor["ox"], melhor["oy"]
+    larg_px, alt_px = float(outra0.shape[1]), float(outra0.shape[0])
+
+    def para_outra(x: float, y: float) -> tuple[float, float]:
+        xo, yo = _de_volta_do_giro(x * zb + ox, y * zb + oy, g, larg_px, alt_px)
+        return xo / zo, yo / zo
+
+    return {"giro": g, "coincidencia": melhor["coincidencia"], "destaque": melhor["destaque"], "para_outra": para_outra}
+
+
+def tinta_da_prancha(page, pt_por_m: float, resolucao_m: float = 0.05):
+    """(imagem 0/1 de onde há desenho na prancha, k em pixel por ponto), para nota_local com para_pt.
+
+    Um pixel a mais em volta de cada traço (o traço da parede da prancha de projeto pode ser fino)."""
+    import numpy as np
+    import pymupdf as fitz
+
+    k = 1 / (pt_por_m * resolucao_m)
+    pm = page.get_pixmap(matrix=fitz.Matrix(k, k), colorspace=fitz.csGRAY, annots=False)
+    a = np.frombuffer(pm.samples, dtype=np.uint8).reshape(pm.height, pm.width) < 200
+    b = a.copy()
+    b[1:, :] |= a[:-1, :]
+    b[:-1, :] |= a[1:, :]
+    b[:, 1:] |= a[:, :-1]
+    b[:, :-1] |= a[:, 1:]
+    return b.astype(np.float32), k
 
 
 def deslocamento_entre_pranchas(page_base, page, zoom: float = 0.5) -> tuple[float, float, float]:
@@ -326,22 +425,60 @@ def ler_projeto(cfg: dict, paredes, geometrias: dict[str, object], grupos: dict[
         raise ErroModulacao("\"fichas\" tem que ser uma lista de códigos de ficha")
     escala = float(cfg.get("escala") or 50)
     pela_arq = bool(cfg.get("pela_arquitetura"))
-    if pela_arq:
-        if not base:
-            raise ErroModulacao("\"pela_arquitetura\" precisa da planta de arquitetura do pavimento")
-        if abs(float(base["escala"]) - escala) > 1e-6:
-            raise ErroModulacao(f"\"pela_arquitetura\" só com a mesma escala da arquitetura (1:{base['escala']:.0f}, o projeto está em 1:{escala:.0f})")
-    minima = float(cfg.get("coincidencia_minima") or (COINCIDENCIA_MINIMA_ARQ if pela_arq else COINCIDENCIA_MINIMA))
-    nota_minima = float(cfg.get("nota_minima") if cfg.get("nota_minima") is not None else NOTA_MINIMA)
+    if pela_arq and not base:
+        raise ErroModulacao("\"pela_arquitetura\" precisa da planta de arquitetura do pavimento")
+    # pela arquitetura com escala diferente ou com giro (a paginação de piso em 1:50 sobre a arquitetura em
+    # 1:200): encaixe_entre_pranchas, e cada apartamento conferido na tinta da prancha
+    encaixe = pela_arq and (abs(float(base["escala"]) - escala) > 1e-6 or bool(cfg.get("giros")))
+    if encaixe:
+        minima = float(cfg.get("coincidencia_minima") or COINCIDENCIA_MINIMA_ESCALA)
+    else:
+        minima = float(cfg.get("coincidencia_minima") or (COINCIDENCIA_MINIMA_ARQ if pela_arq else COINCIDENCIA_MINIMA))
+    destaque_minimo = float(cfg.get("destaque_minimo") or DESTAQUE_MINIMO)
+    nota_minima = float(cfg.get("nota_minima") if cfg.get("nota_minima") is not None
+                        else (NOTA_MINIMA_TINTA if encaixe else NOTA_MINIMA))
     margem_m = float(cfg.get("margem_m") or MARGEM_M)
+    so_aptos = aptos_por_prancha(cfg)
     folhas, pt_por_m, paginas, nao_casaram, coincidencias, casamentos, giros = {}, {}, {}, [], {}, {}, {}
+    mapas, tintas, destaques = {}, {}, {}
     caixas: dict[str, dict[str, tuple]] = {n: {} for n in geometrias}
     # a prancha de setor pode desenhar a ala do prédio girada (a torre em L numa folha deitada): pelas paredes,
     # o modelo é girado de 90 em 90 graus e vale o giro que casa melhor ("giros": [0] para só o direto)
-    angulos = [0] if pela_arq else [int(a) % 360 for a in (cfg.get("giros") or (0, 90, 180, 270))]
-    girados = {a: (paredes if a == 0 else rotate(paredes, a, origin=(0, 0))) for a in angulos}
+    if pela_arq and not encaixe:
+        angulos = [0]
+    else:
+        angulos = [int(a) % 360 for a in (cfg.get("giros") or (0, 90, 180, 270))]
+    girados = {a: (paredes if a == 0 else rotate(paredes, a, origin=(0, 0))) for a in angulos} if not pela_arq else {}
     for pdf in pranchas:
         page = fitz.open(pdf)[0]
+        # "aptos_por_prancha": esta prancha só vale para estes apartamentos (a do 2º ao 5º usada no 6º)
+        chaves = [k for k in so_aptos if k in pathlib.Path(pdf).name]
+        so = {_unidade(u) for k in chaves for u in so_aptos[k]} if chaves else None
+        if encaixe:
+            enc = encaixe_entre_pranchas(base["page"], base["escala"], page, escala, angulos)
+            coincidencias[pdf] = round(enc["coincidencia"], 3)
+            destaques[pdf] = round(min(enc["destaque"], 99.0), 2)
+            if enc["coincidencia"] < minima or enc["destaque"] < destaque_minimo:
+                nao_casaram.append(nome_da_prancha(pdf))
+                continue
+            tb = base["t"]
+
+            def mapa(x, y, para=enc["para_outra"], tb=tb):
+                return para((x - tb["x0"]) * tb["pt_por_m"] + tb["dx_pt"], (tb["y1"] - y) * tb["pt_por_m"] + tb["dy_pt"])
+
+            folhas[pdf] = (page.rect.width, page.rect.height)
+            pt_por_m[pdf] = 1000.0 / escala * 72 / 25.4
+            paginas[pdf] = page
+            mapas[pdf] = mapa
+            tintas[pdf] = tinta_da_prancha(page, pt_por_m[pdf])
+            giros[pdf] = enc["giro"]
+            for nome, g in geometrias.items():
+                if so is not None and _unidade(grupos.get(nome) or "") not in so:
+                    continue
+                x0, y0, x1, y1 = g.bounds
+                cantos = [mapa(x0, y0), mapa(x1, y0), mapa(x0, y1), mapa(x1, y1)]
+                caixas[nome][pdf] = caixa_dos_pontos(cantos)
+            continue
         if pela_arq:
             dx, dy, coinc = deslocamento_entre_pranchas(base["page"], page)
             t = dict(base["t"])
@@ -364,12 +501,25 @@ def ler_projeto(cfg: dict, paredes, geometrias: dict[str, object], grupos: dict[
         casamentos[pdf] = t
         giros[pdf] = ang
         for nome, g in geometrias.items():
+            if so is not None and _unidade(grupos.get(nome) or "") not in so:
+                continue
             x0, y0, x1, y1 = (g if ang == 0 else rotate(g, ang, origin=(0, 0))).bounds
             caixas[nome][pdf] = ((x0 - t["x0"]) * t["pt_por_m"] + t["dx_pt"], (t["y1"] - y1) * t["pt_por_m"] + t["dy_pt"],
                                  (x1 - t["x0"]) * t["pt_por_m"] + t["dx_pt"], (t["y1"] - y0) * t["pt_por_m"] + t["dy_pt"])
 
     nota = None
-    if not pela_arq:
+    if encaixe:
+        # cada apartamento conferido sozinho: as paredes dele (até 0,20 m fora) têm que cair em cima de desenho
+        # da prancha (a prancha de setor tem legenda, carimbo e partes em branco onde o encaixe também põe gente)
+        def nota(prancha, nomes):
+            gs = [geometrias[n] for n in nomes]
+            x0, y0 = min(g.bounds[0] for g in gs), min(g.bounds[1] for g in gs)
+            x1, y1 = max(g.bounds[2] for g in gs), max(g.bounds[3] for g in gs)
+            perto = paredes.intersection(box(x0 - FOLGA_PAREDE_M, y0 - FOLGA_PAREDE_M, x1 + FOLGA_PAREDE_M, y1 + FOLGA_PAREDE_M))
+            img, k = tintas[prancha]
+            n = nota_local(img, k, None, perto, para_pt=mapas[prancha])
+            return 0.0 if n is None else n
+    elif not pela_arq:
         # cada apartamento conferido sozinho: as paredes dele (até 0,20 m fora) têm que bater na prancha
         def nota(prancha, nomes):
             ang = giros[prancha]
@@ -396,6 +546,8 @@ def ler_projeto(cfg: dict, paredes, geometrias: dict[str, object], grupos: dict[
         rel["fichas"] = list(fichas)
     rel["nao_casaram"] = nao_casaram
     rel["coincidencia"] = {nome_da_prancha(p): c for p, c in coincidencias.items()}
+    if destaques:
+        rel["destaque"] = {nome_da_prancha(p): d for p, d in destaques.items()}
     if any(giros.values()):
         rel["giro"] = {nome_da_prancha(p): g for p, g in giros.items() if g}
     rel["por_prancha"] = {nome_da_prancha(p): n for p, n in rel["por_prancha"].items()}

@@ -17,7 +17,7 @@ import { cadeiaDeRevisoes, type RevisaoAnterior } from './revisoes'
 import { TABELAS_FVS } from './tabelas'
 import { refazerToques } from './toques'
 import { regrasVigentes, type RegrasFvs } from './regras'
-import { alvosDaLigacao, observacaoDaLigacao } from './ligacoes'
+import { alvosDaLigacao, alvosEntrePecas, observacaoDaLigacao, observacaoEntrePecas, temLigacaoEntrePecas, type PecaDaArea } from './ligacoes'
 import { observacaoDoPrazo, prazoPendente, type PrazoDoItem } from './prazos'
 
 export { TABELAS_FVS }
@@ -633,6 +633,52 @@ export async function ligarDepoisDe(
     evs = [...evs, ...g.map(paraEvento)]
   }
   return todos
+}
+
+/** Uma peça de dentro da área de laje, para a ligação gravar nela: mais a ficha aberta em uso na peça. */
+export interface PecaParaLigar extends PecaDaArea {
+  fichaCampoId: string | null
+}
+
+/**
+ * Ligação entre peças (regras com `entre: 'area'`, 20/11/2026): depois do C nos `itens` da ficha da
+ * área de laje, marca C nos itens ligados, ainda vazios, de cada pilar e viga de dentro dela, com a
+ * área na observação. Todos com o mesmo lote_id: o "Desfazer" do toque os desfaz juntos
+ * (desfazerLote). Devolve os registros gravados (vazio sem ligação entre peças).
+ */
+export async function ligarEntrePecas(
+  c: Contexto,
+  regras: RegrasFvs,
+  nomeDaArea: string,
+  ficha: Ficha,
+  itens: readonly number[],
+  pecas: readonly PecaParaLigar[],
+): Promise<Linha[]> {
+  if (!itens.length || !pecas.length || !temLigacaoEntrePecas(regras)) return []
+  // cada item vê o que o anterior marcou
+  const vivas = new Map(pecas.map((p) => [p.id, { ...p, eventos: [...p.eventos] }]))
+  const lote = crypto.randomUUID()
+  const gravados: Linha[] = []
+  for (const item of itens) {
+    for (const a of alvosEntrePecas(regras, { ficha, item }, [...vivas.values()])) {
+      const p = vivas.get(a.peca.id)!
+      const atual = ultimosPorItem(p.eventos.filter((e) => e.ficha_id === a.ficha.id)).get(a.item)
+      const g = await sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
+        elemento_id: p.id,
+        ficha_id: a.ficha.id,
+        item: a.item,
+        resultado: 'C',
+        rodada: atual?.rodada ?? 1,
+        observacao: observacaoEntrePecas(nomeDaArea, a),
+        planta_id: c.plantaId,
+        lote_id: lote,
+        ...(p.fichaCampoId ? { ficha_campo_id: p.fichaCampoId } : {}),
+      })
+      gravados.push(g)
+      p.eventos.push(paraEvento(g))
+    }
+  }
+  return gravados
 }
 
 /** O prazo das regras da obra que ainda segura este item da peça (null = nenhum). */

@@ -47,7 +47,7 @@ import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { buscarPecas } from './busca'
-import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, horaNaFrente, horaNormal, ligarDepoisDe, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
+import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, horaNaFrente, horaNormal, ligarDepoisDe, ligarEntrePecas, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
 import { sincronizador } from '../nucleo/servicos'
 import { hojeNoAparelho } from './formato'
 import { DadosDaTela } from './leitura'
@@ -386,6 +386,44 @@ describe('regras da obra na gravação (prazo e ligação, 19/11)', () => {
     const evs = paraEventos([na]).get('p4') ?? []
     expect(await ligarDepoisDe(c, regras, 'p4', ficha, [1], evs)).toEqual([])
     expect(await ligarDepoisDe(c, SEM_REGRAS, 'p4', ficha, [1], [])).toEqual([])
+  })
+
+  it('ligação entre peças: o C na área marca as peças de dentro dela, cada uma na ficha aberta dela; o desfazer limpa', async () => {
+    const LAJE: Ficha = { ...ficha, id: 'f-laje', codigo: 'TESTE-PVS-LAJE', aplica_a: ['L'] }
+    // a regra entre peças (área item 1 → peça item 2) e as da mesma peça (1 → 2 → 3)
+    const entre = { prazos: [], ligacoes: [{ id: 'e1', entre: 'area' as const, de: { ficha: LAJE.codigo, item: 1 }, para: { ficha: ficha.codigo, item: 2 } }, ...regras.ligacoes] }
+    const pecas = [
+      { id: 'v1', nome: 'V1', fichas: [ficha], eventos: [], fichaCampoId: null },
+      { id: 'v2', nome: 'V2', fichas: [ficha], eventos: [], fichaCampoId: 'fc9' },
+      { id: 'v3', nome: 'V3', fichas: [ficha], eventos: [ev(2, 'NA', 1, { elemento_id: 'v3' })], fichaCampoId: null },
+    ]
+    const ligados = await ligarEntrePecas(c, entre, 'Laje 3', LAJE, [1], pecas)
+    // v1 e v2: o item 2 (da área) e o 3 (corrente da própria peça); a v3 já tinha o item 2 marcado à mão
+    expect(ligados.map((l) => [l.elemento_id, l.item, l.resultado, l.ficha_campo_id ?? null])).toEqual([
+      ['v1', 2, 'C', null],
+      ['v1', 3, 'C', null],
+      ['v2', 2, 'C', 'fc9'],
+      ['v2', 3, 'C', 'fc9'],
+    ])
+    expect(ligados[0].observacao).toBe(`Pela ligação: Laje 3 · item 1 (${ficha.itens[0].titulo})`)
+    expect(ligados[1].observacao).toBe(`Pela ligação: item 2 (${ficha.itens[1].titulo})`)
+    expect(new Set(ligados.map((l) => l.lote_id)).size).toBe(1)
+    expect(ligados.every((l) => l.lote_id && !l.area_id)).toBe(true)
+    // de novo, com o que já foi gravado: nada vazio, nada a gravar
+    const eventos = paraEventos(ligados)
+    const depois = pecas.map((p) => ({ ...p, eventos: [...p.eventos, ...(eventos.get(p.id) ?? [])] }))
+    expect(await ligarEntrePecas(c, entre, 'Laje 3', LAJE, [1], depois)).toEqual([])
+    // o "Desfazer" do aviso limpa os quatro, cada um na ficha aberta do próprio registro
+    const desfeitos = await desfazerLote(c, ligados, (id) => eventos.get(id) ?? [])
+    expect(desfeitos.map((l) => [l.elemento_id, l.item, l.resultado, l.ficha_campo_id ?? null])).toEqual([
+      ['v1', 2, null, null],
+      ['v1', 3, null, null],
+      ['v2', 2, null, 'fc9'],
+      ['v2', 3, null, 'fc9'],
+    ])
+    // sem regra entre peças, ou outro item da área: nada
+    expect(await ligarEntrePecas(c, regras, 'Laje 3', LAJE, [1], pecas)).toEqual([])
+    expect(await ligarEntrePecas(c, entre, 'Laje 3', LAJE, [3], pecas)).toEqual([])
   })
 })
 

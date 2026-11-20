@@ -15,7 +15,7 @@
 // O registro do furo fica no próprio furo, no item do tema dele na ficha da área.
 
 import type { AreaDeLaje } from './areas'
-import { areaDoContorno, dentro } from './areas'
+import { areaDoPonto } from './areas'
 import type { ElementoPacote } from './pacote'
 import { maisNovo, situacaoDoFuro, type EventoFvs, type Ficha, type ItemFicha, type Resultado, type Situacao } from './situacao'
 
@@ -65,17 +65,7 @@ export function centroDoFuro(e: ElementoPacote): [number, number] {
 
 /** A área de laje do furo: a vigente que contém o centro dele; com duas, a menor. Fora de todas: undefined. */
 export function areaDoFuro(ponto: readonly [number, number], areas: readonly AreaDeLaje[]): AreaDeLaje | undefined {
-  let melhor: AreaDeLaje | undefined
-  let menor = Infinity
-  for (const a of areas) {
-    if (a.contorno.length < 3 || !dentro(ponto, a.contorno)) continue
-    const m = Math.abs(areaDoContorno(a.contorno))
-    if (m < menor) {
-      menor = m
-      melhor = a
-    }
-  }
-  return melhor
+  return areaDoPonto(ponto, areas)
 }
 
 /** Furos de laje do manifest, cada um com a área em que cai (undefined: fora de área de laje). */

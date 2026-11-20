@@ -147,11 +147,11 @@ const topoCabe = (p: Page): Promise<boolean> =>
   })
 
 /** Alvos de toque visíveis com menos de 44 px de altura (topo da planta e painel da peça).
- *  Fica de fora o seletor de trecho no título (30 px): só aparece com mais de uma planta no pavimento. */
+ *  A caixa de trecho do título também conta (tinha 30 px até o teste com cabo de 20/11). */
 const alvosPequenos = (p: Page): Promise<string[]> =>
   p.evaluate(() =>
     [...document.querySelectorAll('.fv-topo button, .fv-topo select, .fv-topo input, .fv-bt-legenda, .fv-painel button, .fv-painel select, .fv-painel summary, .fv-painel label.fv-foto')]
-      .filter((e) => !e.closest('.fv-nomes') && !e.closest('.fv-zoom'))
+      .filter((e) => !e.closest('.fv-zoom'))
       .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' })
       .filter((e) => e.getBoundingClientRect().height < 43.5)
       .map((e) => `${(e.textContent || e.getAttribute('aria-label') || e.tagName).trim().replace(/\s+/g, ' ').slice(0, 24)} (${Math.round(e.getBoundingClientRect().height)} px)`),
@@ -275,6 +275,50 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await topoCabe(p)).toBe(true)
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_cabecalho_${largura}.png`) })
+      await contexto.close()
+    })
+  }
+
+  // Teste com cabo (20/11): no S23 (384 px) a caixa de trecho mostrava só "Trecho" (sem o número) e
+  // "Lajes" saía cortado; no tablet (800 px) a caixa tinha 30 px de altura.
+  for (const [largura, altura] of [
+    [384, 832],
+    [375, 812],
+    [800, 1280],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: caixa de trecho com o número e 44 px; abas inteiras`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      await p.goto(url)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const m = await p.evaluate(() => {
+        const sel = document.querySelector('.fv-nomes select') as HTMLSelectElement
+        // largura do texto escolhido com a fonte da caixa, mais o espaço da seta
+        const cs = getComputedStyle(sel)
+        const cv = document.createElement('canvas').getContext('2d')!
+        cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+        const texto = sel.options[sel.selectedIndex].text
+        const seg = document.querySelector('.fv-seg') as HTMLElement
+        const s = seg.getBoundingClientRect()
+        return {
+          texto,
+          precisa: cv.measureText(texto).width + 24,
+          tem: sel.clientWidth,
+          altura: sel.getBoundingClientRect().height,
+          abasRolam: seg.scrollWidth > seg.clientWidth + 1,
+          abasFora: [...seg.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().right > s.right + 0.5).map((b) => b.textContent),
+        }
+      })
+      expect(m.texto).toMatch(/\d/)
+      expect(m.tem, `"${m.texto}" cabe na caixa`).toBeGreaterThanOrEqual(m.precisa)
+      expect(m.altura).toBeGreaterThanOrEqual(43.5)
+      expect(m.abasRolam, 'Pilares, Vigas e Lajes cabem sem rolar').toBe(false)
+      expect(m.abasFora).toEqual([])
+      expect(await topoCabe(p)).toBe(true)
+      expect(await alvosPequenos(p)).toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_trecho_${largura}.png`) })
       await contexto.close()
     })
   }

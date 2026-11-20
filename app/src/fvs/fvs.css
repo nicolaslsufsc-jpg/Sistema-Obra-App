@@ -86,11 +86,16 @@
   text-overflow: ellipsis;
 }
 .fv-nomes select {
-  height: 30px !important;
-  font-size: 13px;
+  /* 44 px como os outros alvos (teste com cabo 20/11: tinha 30 px); o topo cresce (com-trecho) */
+  height: 44px !important;
+  font-size: 14px;
   margin-top: 2px;
   max-width: 150px;
   padding: 0 4px;
+}
+/* pavimento com mais de um trecho: nome do pavimento em cima e a caixa do trecho (44 px) embaixo */
+.fv-planta.com-trecho {
+  --fv-hdr: 70px;
 }
 .fv-seg {
   display: flex;
@@ -1458,6 +1463,20 @@
   .fv-topo.com-item .fv-prog {
     grid-column: 5 / 9;
   }
+  /* com a caixa de trecho, o título não cede ao progresso: em 384 px a caixa mostrava só "Trecho",
+     sem o número (teste com cabo 20/11). O progresso quebra em mais linhas (a linha 1 é mais alta) */
+  .fv-planta.com-trecho {
+    --fv-hdr: 118px;
+  }
+  .fv-planta.com-servico.com-trecho {
+    --fv-hdr: 172px;
+  }
+  .fv-topo.com-item.com-trecho .fv-tit {
+    grid-column: 1 / 6;
+  }
+  .fv-topo.com-item.com-trecho .fv-prog {
+    grid-column: 6 / 9;
+  }
   .fv-topo.com-item .fv-bpincel,
   .fv-topo.com-item .fv-bitem {
     grid-row: 1;
@@ -1474,6 +1493,10 @@
   .fv-servico {
     grid-column: 1 / 6;
     grid-row: 2;
+  }
+  /* abas um pouco mais largas: em 384 px "Lajes" saía cortado (teste com cabo 20/11) */
+  .fv-seg {
+    grid-column: 1 / 7;
   }
   .fv-servico {
     max-width: none;
@@ -1496,6 +1519,9 @@
     grid-row: 2;
     max-width: none;
     width: 100%;
+  }
+  .fv-seg ~ .fv-etapa {
+    grid-column: 7 / 10;
   }
   /* planta com um tipo de local e uma ficha só: a etapa ocupa o lugar da escolha */
   .fv-topo.sem-seg .fv-etapa {

@@ -1501,6 +1501,27 @@
   .fv-topo.sem-seg .fv-etapa {
     grid-column: 1 / 10;
   }
+  /* planta de ambientes com esquadrias (19/11): abas e serviço na segunda linha; etapa (ou o item das
+     esquadrias) e busca na terceira. Na segunda linha não cabem os quatro sem cortar as abas */
+  .fv-planta.com-servico {
+    --fv-hdr: 158px;
+  }
+  .fv-topo.com-servico .fv-seg {
+    grid-column: 1 / 8;
+    grid-row: 2;
+  }
+  .fv-topo.com-servico .fv-servico {
+    grid-column: 8 / 13;
+    grid-row: 2;
+  }
+  .fv-topo.com-servico .fv-etapa,
+  .fv-topo.com-servico .fv-sem-item-esq {
+    grid-column: 1 / 10;
+    grid-row: 3;
+  }
+  .fv-topo.com-servico .fv-busca {
+    grid-row: 3;
+  }
   .fv-busca {
     grid-column: 10 / 13;
     grid-row: 2;
@@ -1622,4 +1643,10 @@
 .fv-regra-seta {
   font-size: 14px;
   color: var(--texto-5b5d61);
+}
+/* código da esquadria (PM80, JA120B) ao lado da bolinha, menor que o número do ambiente */
+.fv-rot-esq span {
+  font-size: 9px;
+  font-weight: 500;
+  transform: translate(8px, -50%);
 }

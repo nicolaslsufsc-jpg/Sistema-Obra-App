@@ -18,8 +18,10 @@ Aceita três formatos de arquivo:
      adivinha pelo nome da etapa).
      "rastreio_concreto": true (opcional, só em ficha de pilar ou de viga, um por ficha): o item que o
      módulo Concreto marca quando a peça tem caminhão lançado.
+     "esquadrias": true (opcional, só em ficha de ambiente, um ou mais por ficha): item de vão ou esquadria
+     ("eixos e vãos", "requadros", "recorte na porta"), que as esquadrias do ambiente marcam, uma a uma.
   2. o do HTML legado (exemplo: pipeline/legado/itens_fvs.exemplo.json): {"P": {"codigo", "titulo", "itens": [...]}, "V": {...}}
-     (as marcas "parte", "furos", "barras", "concretagem" e "rastreio_concreto" passam como no formato 1)
+     (as marcas "parte", "furos", "barras", "concretagem", "rastreio_concreto" e "esquadrias" passam como no formato 1)
   3. o de um sistema oficial, quando o galho dele está em pipeline/integracoes/ (docs/modulos/integracoes.md):
      o galho reconhece o arquivo e converte para o formato 1.
 
@@ -77,7 +79,8 @@ def de_legado(dados: dict) -> list[dict]:
                   **({"furos": i["furos"]} if i.get("furos") is not None else {}),
                   **({"barras": i["barras"]} if i.get("barras") is not None else {}),
                   **({"concretagem": i["concretagem"]} if i.get("concretagem") is not None else {}),
-                  **({"rastreio_concreto": i["rastreio_concreto"]} if i.get("rastreio_concreto") is not None else {})}
+                  **({"rastreio_concreto": i["rastreio_concreto"]} if i.get("rastreio_concreto") is not None else {}),
+                  **({"esquadrias": i["esquadrias"]} if i.get("esquadrias") is not None else {})}
                  for i in dados[tipo]["itens"]]
         fichas.append({"codigo": codigo, "titulo": titulo, "revisao": "0", "tipo_modelo": "ESTRUTURA",
                        "aplica_a": [tipo], "itens": itens, "origem": "legado"})
@@ -137,6 +140,15 @@ def normalizar(dados, aplica_a_padrao: list[str] | None = None) -> list[dict]:
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: o item do rastreio não pode ser também de furos, de barras ou de parte')
         if len(rastreio) > 1:
             raise ErroFichas(f'{f["codigo"]}: só um item do rastreio do concreto ("rastreio_concreto": true) por ficha')
+        for i in f["itens"]:
+            if i.get("esquadrias") is None:
+                continue
+            if i["esquadrias"] is not True:
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "esquadrias" só aceita true (item que as esquadrias do ambiente marcam)')
+            if f["aplica_a"] != ["A"]:
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: item pelas esquadrias só em ficha de ambiente ("aplica_a": ["A"])')
+            if i.get("furos") or i.get("barras") or i.get("parte"):
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: o item das esquadrias não pode ser também de furos, barras ou parte')
         for i in f["itens"]:
             if i.get("parte") is None:
                 continue

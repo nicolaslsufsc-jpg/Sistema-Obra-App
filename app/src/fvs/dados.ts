@@ -294,11 +294,17 @@ export function horaNormal(iso: string): string {
   return Number.isNaN(t) ? iso : new Date(t).toISOString()
 }
 
+/**
+ * O local de um registro: a peça (elemento_id), a área de laje (area_id) ou a barra de laje (barra_id,
+ * desde 20/11/2026; antes a barra ia em elemento_id, e esses registros continuam valendo).
+ */
+export const localDoRegistro = (l: Readonly<Record<string, unknown>>): string => String(l.elemento_id ?? l.area_id ?? l.barra_id)
+
 function paraEvento(l: Linha): EventoFvs {
   return {
     id: l.id,
-    // para a tela, a área de laje é um local como a peça: os registros dela ficam na mesma lista
-    elemento_id: String(l.elemento_id ?? l.area_id),
+    // para a tela, a área de laje e a barra são locais como a peça: os registros delas ficam na mesma lista
+    elemento_id: localDoRegistro(l),
     ficha_id: String(l.ficha_id),
     item: Number(l.item),
     resultado: normalizarResultado(l.resultado),
@@ -476,6 +482,11 @@ export interface Contexto {
   fichaCampoId?: string | null
   /** ids das áreas de laje: o registro delas vai em area_id, e não em elemento_id */
   areas?: { has(id: string): boolean }
+  /**
+   * ids das barras de laje do pacote da planta: o registro delas vai em barra_id (a barra não está em
+   * elementos; migração 20261120140000_fvs_eventos_barra.sql), sempre com planta_id
+   */
+  barras?: { has(id: string): boolean }
 }
 
 /**
@@ -495,8 +506,8 @@ export function textoDoErroDeGravacao(e: unknown): string {
 /** Só leva a coluna quando há ficha aberta. */
 const daFichaAbertaDe = (c: Contexto) => (c.fichaCampoId ? { ficha_campo_id: c.fichaCampoId } : {})
 
-/** A coluna que diz onde foi marcado: a peça ou a área de laje. */
-const doLocal = (c: Contexto, id: string) => (c.areas?.has(id) ? { area_id: id } : { elemento_id: id })
+/** A coluna que diz onde foi marcado: a peça, a área de laje ou a barra de laje. */
+const doLocal = (c: Contexto, id: string) => (c.areas?.has(id) ? { area_id: id } : c.barras?.has(id) ? { barra_id: id } : { elemento_id: id })
 
 /**
  * Toque num botão C / NC / NA de um item. Devolve o registro gravado. `observacao`: o NC do modo "Por
@@ -545,7 +556,7 @@ export async function voltarItem(c: Contexto, gravado: Linha, anterior: EventoFv
   const doItem = daFichaAberta(eventos, (gravado.ficha_campo_id as string | null) ?? null).filter((e) => e.ficha_id === gravado.ficha_id)
   if (ultimosPorItem(doItem).get(Number(gravado.item))?.id !== gravado.id) return undefined
   return sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
-    ...doLocal(c, String(gravado.elemento_id)),
+    ...doLocal(c, localDoRegistro(gravado)),
     ficha_id: gravado.ficha_id,
     item: gravado.item,
     resultado: anterior?.resultado ?? null,
@@ -786,11 +797,11 @@ export async function marcarLote(
 export async function desfazerLote(c: Contexto, lote: readonly Linha[], eventosDe: (id: string) => readonly EventoFvs[]): Promise<Linha[]> {
   const gravados: Linha[] = []
   for (const l of lote) {
-    const doItem = daFichaAberta(eventosDe(String(l.elemento_id ?? l.area_id)), (l.ficha_campo_id as string | null) ?? null).filter((e) => e.ficha_id === l.ficha_id)
+    const doItem = daFichaAberta(eventosDe(localDoRegistro(l)), (l.ficha_campo_id as string | null) ?? null).filter((e) => e.ficha_id === l.ficha_id)
     if (ultimosPorItem(doItem).get(Number(l.item))?.id !== l.id) continue
     gravados.push(
       await sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
-        ...(l.area_id ? { area_id: l.area_id } : { elemento_id: l.elemento_id }),
+        ...(l.area_id ? { area_id: l.area_id } : l.barra_id ? { barra_id: l.barra_id } : { elemento_id: l.elemento_id }),
         ficha_id: l.ficha_id,
         item: l.item,
         resultado: null,

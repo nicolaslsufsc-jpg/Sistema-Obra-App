@@ -39,6 +39,12 @@ class TestPortas(unittest.TestCase):
     def test_area(self):
         self.assertEqual(ambientes.area_br(12.06), "12,1 m²")
 
+    def test_area_comum_com_esquadrias(self):
+        # 20/11: com "esquadrias": true, os locais "E" (sem grupo) entram nas peças; o resumo não pode quebrar
+        pecas = [{"tipo": "A", "nome": "101-01", "grupo": "Apto 101"}, {"tipo": "A", "nome": "AC-01", "grupo": "Área comum"},
+                 {"tipo": "E", "nome": "AC-01-PM90", "ambiente": "AC-01"}]
+        self.assertEqual(ambientes.area_comum(pecas), 1)
+
 
 @unittest.skipIf(box is None, "precisa de shapely")
 class TestApartamentos(unittest.TestCase):

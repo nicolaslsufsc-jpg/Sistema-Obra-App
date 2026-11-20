@@ -2,8 +2,14 @@
 // Uma regra vale para uma disciplina inteira ou para uma pasta do Autodoc dentro dela (ESTRUTURAL/LO/Vigas);
 // a regra da pasta vale mais que a da disciplina. O destinatário é um nome (empresa + colaborador), sem conta.
 // Nada se apaga: mudar ou desativar uma regra grava uma linha nova com `substitui_id` (como edicoes.ts).
-// Fica no banco do navegador (meta `projetos_destinatarios:<obra>`), como a base, até a migração do núcleo.
-import { banco } from '../nucleo/servicos'
+// Desde 20/11/2026 fica na tabela sincronizada `distribuicao_destinatarios` (migração
+// 20261120130000_projetos_destinatarios.sql): com conta, sobe ao servidor e desce para os outros aparelhos
+// da obra; só o gestor inclui (regra do servidor; a tela também esconde). Antes ficava no banco do
+// navegador (meta `projetos_destinatarios:<obra>`): a lista antiga passa para a tabela uma vez, com os
+// mesmos ids, na primeira leitura.
+import { banco, sincronizador } from '../nucleo/servicos'
+import type { Linha } from '../nucleo/banco_local'
+import { TABELA_DESTINATARIOS } from './tabelas'
 import { chaveFolha } from './edicoes'
 import { lerCsv, melhor, normalizar, ErroDeArquivo, type CopiaCruzada, type Vigente } from './painel'
 
@@ -29,24 +35,87 @@ export interface Destinatario extends DadosDestinatario {
   usuario: string
 }
 
-const chave = (obraId: string) => `projetos_destinatarios:${obraId}`
+/** A lista antiga, do banco do navegador (até 20/11/2026). */
+export const chaveAntiga = (obraId: string) => `projetos_destinatarios:${obraId}`
 
-export async function lerDestinatarios(obraId: string): Promise<Destinatario[]> {
-  return (await banco.lerMeta<Destinatario[]>(chave(obraId))) ?? []
+/** Quem gravou, para o histórico ("mudada em ... por ..."): o app dá o nome de cada usuario_id. */
+export type NomeDe = (usuarioId: string) => string
+
+const NESTE_APARELHO: NomeDe = () => 'neste aparelho'
+
+/** As colunas da regra na tabela (as do núcleo, id e hora, vêm do sincronizador). */
+const colunas = (n: DadosDestinatario & { substitui_id?: string | null }) => ({
+  disciplina: n.disciplina,
+  pasta: n.pasta,
+  empresa: n.empresa,
+  colaborador: n.colaborador,
+  copias: n.copias,
+  ativo: n.ativo,
+  desde: n.desde,
+  substitui_id: n.substitui_id ?? null,
+})
+
+function daLinha(l: Linha, nomeDe: NomeDe): Destinatario {
+  return {
+    id: l.id,
+    disciplina: String(l.disciplina ?? ''),
+    pasta: String(l.pasta ?? ''),
+    empresa: String(l.empresa ?? ''),
+    colaborador: String(l.colaborador ?? ''),
+    copias: Number(l.copias ?? 1),
+    ativo: l.ativo !== false,
+    desde: String(l.desde ?? ''),
+    substitui_id: (l.substitui_id as string | null) ?? null,
+    em: String(l.criado_em_dispositivo),
+    usuario: nomeDe(String(l.usuario_id)),
+  }
+}
+
+/** Uma passagem por obra de cada vez: duas leituras juntas não passam a lista antiga duas vezes. */
+const passando = new Map<string, Promise<void>>()
+
+/**
+ * A lista antiga (meta do navegador) vai para a tabela, na ordem em que foi gravada (a regra antes da
+ * versão que a substitui) e com os mesmos ids; depois a meta sai. A hora de cada linha passa a ser a
+ * da passagem (o núcleo carimba), e quem gravou passa a ser quem está no aparelho.
+ */
+function passarListaAntiga(obraId: string, usuarioId: string): Promise<void> {
+  const ja = passando.get(obraId)
+  if (ja) return ja
+  const p = (async () => {
+    const antiga = await banco.lerMeta<Destinatario[]>(chaveAntiga(obraId))
+    if (!antiga?.length) return
+    const naTabela = new Set((await sincronizador.linhas(TABELA_DESTINATARIOS, obraId, { incluirApagadas: true })).map((l) => l.id))
+    for (const d of antiga) {
+      if (!naTabela.has(d.id)) await sincronizador.registrar(TABELA_DESTINATARIOS, obraId, usuarioId, { id: d.id, ...colunas(d) })
+    }
+    await banco.meta.delete(chaveAntiga(obraId))
+  })().finally(() => passando.delete(obraId))
+  passando.set(obraId, p)
+  return p
+}
+
+/** Todas as linhas da lista da obra (regras e versões), da mais antiga para a mais nova. */
+export async function lerDestinatarios(obraId: string, usuarioId = '', nomeDe: NomeDe = NESTE_APARELHO): Promise<Destinatario[]> {
+  if (usuarioId) await passarListaAntiga(obraId, usuarioId)
+  const linhas = await sincronizador.linhas(TABELA_DESTINATARIOS, obraId)
+  // pela hora; na mesma hora (o relógio repete o milissegundo), a regra antes da versão que a substitui
+  return linhas
+    .map((l) => daLinha(l, nomeDe))
+    .sort((a, b) => (a.em < b.em ? -1 : a.em > b.em ? 1 : b.substitui_id === a.id ? -1 : a.substitui_id === b.id ? 1 : 0))
 }
 
 /** Grava regras novas ou versões novas de regras (com `substitui_id`). Nada é apagado. */
 export async function gravarDestinatarios(
   obraId: string,
   novas: (DadosDestinatario & { substitui_id?: string | null })[],
-  usuario: string,
-  agora = new Date(),
+  usuarioId: string,
+  nomeDe: NomeDe = NESTE_APARELHO,
 ): Promise<Destinatario[]> {
-  const todas = await lerDestinatarios(obraId)
-  const linhas = novas.map((n) => ({ ...n, substitui_id: n.substitui_id ?? null, id: crypto.randomUUID(), em: agora.toISOString(), usuario }))
-  const lista = [...todas, ...linhas]
-  await banco.gravarMeta(chave(obraId), lista)
-  return lista
+  await passarListaAntiga(obraId, usuarioId)
+  // uma de cada vez, na ordem: a regra chega ao servidor antes da versão que a substitui
+  for (const n of novas) await sincronizador.registrar(TABELA_DESTINATARIOS, obraId, usuarioId, colunas(n))
+  return lerDestinatarios(obraId, usuarioId, nomeDe)
 }
 
 /** A versão que vale de cada regra (a que nenhuma outra substitui), ativas e inativas. */

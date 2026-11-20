@@ -629,6 +629,12 @@
   background: var(--fundo-ffffff);
   cursor: zoom-in;
 }
+.fv-det-amb img {
+  /* projeto do ambiente em pé (impermeabilização, testador 20/11): no painel, no máximo 60% da altura da
+     tela, inteiro e centrado; o toque amplia */
+  max-height: 60vh;
+  object-fit: contain;
+}
 /* fichas do sistema oficial na peça; duplicada = duas, uma de cada vez no painel */
 .fv-aberta {
   display: flex;

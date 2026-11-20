@@ -14,6 +14,7 @@ import { TelaPlanta } from './TelaPlanta'
 import { TelaRegras } from './TelaRegras'
 import { TelaReprovacoes } from './TelaReprovacoes'
 import '../fvs.css'
+import type { AbaDosAmbientes } from '../opcoes_ambientes'
 
 export type TelaFvs =
   | { nome: 'inicio' }
@@ -21,8 +22,9 @@ export type TelaFvs =
   | { nome: 'lancamento' }
   | { nome: 'duplicadas' }
   | { nome: 'regras' }
-  /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item */
-  | { nome: 'planta'; plantaId: string; pecaId?: string; fichaCampoId?: string | null; item?: number }
+  /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item;
+   *  servico e aba: planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts, campo `abre`) */
+  | { nome: 'planta'; plantaId: string; pecaId?: string; fichaCampoId?: string | null; item?: number; servico?: string; aba?: AbaDosAmbientes }
 
 /** Com a planta aberta e conta, a sincronização roda a cada minuto (o núcleo já usa 1 min quando há fila). */
 const MINUTO_NA_PLANTA = 60_000
@@ -143,12 +145,14 @@ export function ModuloFvs(props: PropsModulo) {
   if (tela.nome === 'planta' && dados.plantaPorId.has(plantaDaTela)) {
     return (
       <TelaPlanta
-        key={`${tela.plantaId}|${tela.pecaId ?? ''}|${tela.fichaCampoId ?? ''}|${tela.item ?? ''}`}
+        key={`${tela.plantaId}|${tela.pecaId ?? ''}|${tela.fichaCampoId ?? ''}|${tela.item ?? ''}|${tela.servico ?? ''}|${tela.aba ?? ''}`}
         ctx={ctx}
         plantaId={plantaDaTela}
         pecaInicial={tela.pecaId}
         fichaCampoInicial={tela.fichaCampoId ?? undefined}
         itemInicial={tela.item}
+        servicoInicial={tela.servico}
+        abaInicial={tela.aba}
         aviso={aviso}
       />
     )

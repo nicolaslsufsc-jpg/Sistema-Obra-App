@@ -1418,6 +1418,21 @@
     padding: 0 9px !important;
   }
 }
+/* tablet em pé (768 e 800 px): o "Buscar" saía cortado ("Busc", reteste com cabo 20/11). A busca
+   não encolhe abaixo do texto; o título cede um pouco (ainda cabe "Trecho 1" na caixa) */
+@media (min-width: 701px) and (max-width: 900px) {
+  .fv-tit {
+    max-width: 142px;
+  }
+  /* a fonte do Linux (CI do GitHub) é mais larga: em 14 px "Trecho 1" ficava 1 px maior que a caixa */
+  .fv-nomes select {
+    font-size: 13px;
+  }
+  .fv-planta .fv-busca {
+    flex: none;
+    width: 84px;
+  }
+}
 @media (max-width: 700px) {
   .fv-planta {
     --fv-hdr: 104px;

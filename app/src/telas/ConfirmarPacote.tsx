@@ -15,7 +15,8 @@ const descrever = (o: ObraDoPacoteResumo) => `${o.codigo}${o.nome && o.nome !== 
 export function ConfirmarPacote({ comparacao: c, aoConfirmar, aoCancelar }: { comparacao: ComparacaoDoPacote; aoConfirmar: () => void; aoCancelar: () => void }) {
   return (
     <main class="tela tela-estreita">
-      <h1>{c.outraObra ? 'Trocar de obra?' : 'Abrir um pacote mais antigo?'}</h1>
+      {/* pacote sem data: o título dizia "mais antigo" e o texto "não tem data" (testador, 08/11, T3) */}
+      <h1>{c.outraObra ? 'Trocar de obra?' : c.maisAntigo ? 'Abrir um pacote mais antigo?' : 'Abrir um pacote sem data?'}</h1>
       <dl class="comparacao-pacote" data-testid="comparacao-pacote">
         <dt>Pacote escolhido</dt>
         <dd>

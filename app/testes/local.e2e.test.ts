@@ -1038,6 +1038,10 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       const outra = zipDaPasta((i) => ({ ...i, obra: 'OUTRA2', nome: 'Outra Obra', gerado_em: '2026-11-09T11:30:00Z' }), 'OUTRA2.zip', pasta)
       const antigo = zipDaPasta((i) => ({ ...i, gerado_em: '2026-11-01T13:00:00Z' }), 'EXE_antigo.zip', pasta)
       const novo = zipDaPasta((i) => ({ ...i, gerado_em: '2026-11-10T13:00:00Z' }), 'EXE_novo.zip', pasta)
+      const semData = zipDaPasta((i) => {
+        const { gerado_em: _, ...sem } = i as typeof i & { gerado_em?: string }
+        return sem as typeof i
+      }, 'EXE_sem_data.zip', pasta)
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       await contexto.route('**/dados_obra/**', (r: any) => r.fulfill({ status: 404, body: '' }))
       const p: Page = await contexto.newPage()
@@ -1082,6 +1086,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(antigo)
         await p.getByRole('heading', { name: 'Abrir um pacote mais antigo?' }).waitFor()
         expect(await p.getByTestId('comparacao-pacote').innerText()).toContain('gerado em 01/11/2026 às 10:00')
+        await p.getByRole('button', { name: 'Cancelar' }).click()
+        await naLac()
+        expect(await banco()).toBe(antes)
+
+        // .zip sem data: o título diz "sem data", não "mais antigo" (testador, 08/11, T3)
+        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(semData)
+        await p.getByRole('heading', { name: 'Abrir um pacote sem data?' }).waitFor()
+        expect(await p.getByRole('alert').innerText()).toContain('não tem data')
         await p.getByRole('button', { name: 'Cancelar' }).click()
         await naLac()
         expect(await banco()).toBe(antes)

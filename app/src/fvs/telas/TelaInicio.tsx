@@ -101,7 +101,8 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
           <span>
             <strong>{p.trecho}</strong>
             <span class="discreto">
-              {p.prancha} · {p.elementos} {ehDeAmbientes(p) ? 'ambientes' : 'peças'}
+              {/* planta de ambientes: o número de ambientes já está no resumo acima (o da folha soma as esquadrias) */}
+              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} peças`}
             </span>
             {antiga && <span class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</span>}
           </span>

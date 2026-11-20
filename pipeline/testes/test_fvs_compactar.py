@@ -61,6 +61,11 @@ class TestCompactar(unittest.TestCase):
         self.assertFalse((self.base / "x.zip").exists())
 
 
+    def test_pasta_da_saida_que_nao_existe_da_erro_em_portugues(self):
+        with self.assertRaisesRegex(cp.ErroCompactar, "pasta da saída não existe"):
+            cp.compactar(self.pasta, self.base / "nao_existe" / "x.zip")
+        self.assertEqual(cp.main([str(self.pasta), "--saida", str(self.base / "nao_existe" / "x.zip")]), 1)
+
     def test_so_o_que_o_indice_cita_sem_atalho_nem_arquivo_solto(self):
         (self.pasta / "notas.txt").write_text("rascunho", encoding="utf-8")
         (self.pasta / "pav" / "velha").mkdir()

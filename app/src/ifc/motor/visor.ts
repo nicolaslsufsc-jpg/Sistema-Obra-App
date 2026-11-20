@@ -10,6 +10,7 @@ import type { BlocoGeometria, Caixa, ModeloIfc, Vec3 } from './tipos'
 import { criarMateriais, criarMaterialTampa, novosComuns, type MateriaisModelo } from './materiais'
 import type { PlanoCorte } from './corte'
 import { caixaSemIsolados } from './enquadramento'
+import { indiceSoDoVidro, triangulosComAlfa } from './geometria'
 
 // As cores do projeto já estão em sRGB e saem assim na tela, sem conversão para espaço linear.
 THREE.ColorManagement.enabled = false
@@ -31,10 +32,35 @@ export interface InstanciaVisor {
   materiais: MateriaisModelo
   texEstado: THREE.DataTexture
   texCor: THREE.DataTexture
-  desenhos: Array<{ opaco: THREE.Mesh; transparente: THREE.Mesh; fantasma: THREE.Mesh; linhas: THREE.LineSegments; alfaProprio: boolean }>
+  desenhos: Desenho[]
   visivel: boolean
   /** Alguma peça transparente além das do próprio IFC (fantasma, opacidade, vidro por cor). */
   transparenciaGeral: boolean
+  /** Peças da categoria vidro, quando o modo de cor as deixa transparentes (null: só o vidro do IFC). */
+  elementosVidro: Uint8Array | null
+  /** Faixas do índice das peças de `faixasDe`, por bloco (pares início, quantidade). */
+  faixasVidro: number[][]
+  faixasDe: Uint8Array | null
+}
+
+/** O que a tela desenha de um bloco de geometria. */
+interface Desenho {
+  opaco: THREE.Mesh
+  transparente: THREE.Mesh
+  fantasma: THREE.Mesh
+  linhas: THREE.LineSegments
+  /** Geometria inteira do bloco. */
+  geo: THREE.BufferGeometry
+  /**
+   * Só os triângulos de vidro, com os mesmos vértices de `geo`. A passada transparente desenha isto:
+   * desenhar o bloco inteiro de novo custava quase o dobro na placa de vídeo (22 de 30 blocos de
+   * uma torre de arquitetura têm algum vidro). Null se o bloco não tem vidro.
+   */
+  geoVidroArquivo: THREE.BufferGeometry | null
+  /** Idem, mais as peças da categoria vidro (cores por categoria, por modelo e por pavimento). Undefined: ainda não montado. */
+  geoVidroCategoria: THREE.BufferGeometry | null | undefined
+  /** Triângulos com transparência no próprio IFC. */
+  trisVidro: Uint32Array
 }
 
 export interface Toque {
@@ -394,7 +420,7 @@ export class Visor {
     grupo.matrixWorldNeedsUpdate = true
     this.cena.add(grupo)
 
-    const inst: InstanciaVisor = { chave, modelo, grupo, materiais, texEstado, texCor, desenhos: [], visivel: true, transparenciaGeral: false }
+    const inst: InstanciaVisor = { chave, modelo, grupo, materiais, texEstado, texCor, desenhos: [], visivel: true, transparenciaGeral: false, elementosVidro: null, faixasVidro: [], faixasDe: null }
     this.instancias.set(chave, inst)
     // As cores entram antes da primeira peça: o modelo nunca aparece com as cores erradas.
     aoPreparar?.()
@@ -419,13 +445,8 @@ export class Visor {
     const nor = new THREE.BufferAttribute(bloco.normais, 4, true)
     const cor = new THREE.BufferAttribute(bloco.cores, 4, true)
     const el = new THREE.BufferAttribute(bloco.elementos, 1)
-    let alfaProprio = false
-    for (let i = 3; i < bloco.cores.length; i += 4) {
-      if (bloco.cores[i] < 250) {
-        alfaProprio = true
-        break
-      }
-    }
+    // Antes de liberar as cores: quais triângulos são vidro no próprio IFC.
+    const trisVidro = triangulosComAlfa(bloco.cores, bloco.indices)
     if (liberar) {
       // Depois de enviados à placa de vídeo, estes três vetores não são mais usados no JS.
       nor.onUpload(function (this: THREE.BufferAttribute) {
@@ -462,10 +483,10 @@ export class Visor {
 
     const opaco = new THREE.Mesh(geo, inst.materiais.opaco)
     opaco.matrixAutoUpdate = false
+    const geoVidroArquivo = geoSoDoVidro(geo, indiceSoDoVidro(bloco.indices, trisVidro))
     const transparente = new THREE.Mesh(geo, inst.materiais.transparente)
     transparente.matrixAutoUpdate = false
     transparente.renderOrder = 3
-    transparente.visible = alfaProprio || inst.transparenciaGeral
     const fantasma = new THREE.Mesh(geo, inst.materiais.fantasma)
     fantasma.matrixAutoUpdate = false
     fantasma.renderOrder = -1
@@ -485,7 +506,10 @@ export class Visor {
 
     inst.grupo.add(opaco, transparente, fantasma, linhas)
     inst.grupo.updateMatrixWorld(true)
-    inst.desenhos.push({ opaco, transparente, fantasma, linhas, alfaProprio })
+    const des: Desenho = { opaco, transparente, fantasma, linhas, geo, geoVidroArquivo, geoVidroCategoria: undefined, trisVidro }
+    // As cores (e com elas o modo do vidro) chegam antes do primeiro bloco: este já entra no modo certo.
+    this.ajustarTransparente(inst, des, inst.desenhos.length)
+    inst.desenhos.push(des)
     this.pedirDesenho()
   }
 
@@ -493,8 +517,10 @@ export class Visor {
     const inst = this.instancias.get(chave)
     if (!inst) return
     for (const d of inst.desenhos) {
-      d.opaco.geometry.dispose()
+      d.geo.dispose()
       d.linhas.geometry.dispose()
+      d.geoVidroArquivo?.dispose()
+      d.geoVidroCategoria?.dispose()
     }
     inst.texEstado.dispose()
     inst.texCor.dispose()
@@ -537,7 +563,7 @@ export class Visor {
   }
 
   /** Estado por elemento: bit 1 visível, bit 2 destaque, bit 4 fantasma. */
-  aplicarEstado(chave: number, flags: Uint8Array, opcoes: { fantasmas: boolean; transparenciaGeral: boolean; blocosComVidro?: Uint8Array }): void {
+  aplicarEstado(chave: number, flags: Uint8Array, opcoes: { fantasmas: boolean; transparenciaGeral: boolean; elementosVidro?: Uint8Array }): void {
     const inst = this.instancias.get(chave)
     if (!inst) return
     const d = inst.texEstado.image.data as Uint8Array
@@ -550,12 +576,34 @@ export class Visor {
     }
     inst.texEstado.needsUpdate = true
     inst.transparenciaGeral = opcoes.transparenciaGeral
-    // Cada passada a mais custa processar todos os vértices de novo: só nos blocos que precisam.
+    // A passada transparente desenha só o vidro de cada bloco. O bloco inteiro, só com a opacidade
+    // do modelo abaixo de 100% (aí tudo fica transparente).
+    inst.elementosVidro = opcoes.elementosVidro ?? null
     inst.desenhos.forEach((des, i) => {
-      des.transparente.visible = des.alfaProprio || opcoes.transparenciaGeral || (opcoes.blocosComVidro ? opcoes.blocosComVidro[i] === 1 : false)
+      this.ajustarTransparente(inst, des, i)
       des.fantasma.visible = opcoes.fantasmas
     })
     this.pedirDesenho()
+  }
+
+  /** O que a passada transparente de um bloco desenha, conforme a opacidade e o modo de cor. */
+  private ajustarTransparente(inst: InstanciaVisor, des: Desenho, iBloco: number): void {
+    let vidro = des.geoVidroArquivo
+    if (inst.elementosVidro) {
+      if (inst.faixasDe !== inst.elementosVidro) {
+        inst.faixasVidro = faixasDasPecas(inst.modelo, inst.elementosVidro)
+        inst.faixasDe = inst.elementosVidro
+        // As montadas para outra lista ficam para trás sem dispose(): dividem os vértices com o bloco.
+        for (const d of inst.desenhos) d.geoVidroCategoria = undefined
+      }
+      if (des.geoVidroCategoria === undefined) {
+        const indices = des.geo.index!.array as Uint32Array
+        des.geoVidroCategoria = geoSoDoVidro(des.geo, indiceSoDoVidro(indices, des.trisVidro, inst.faixasVidro[iBloco] ?? []))
+      }
+      vidro = des.geoVidroCategoria
+    }
+    des.transparente.geometry = inst.transparenciaGeral ? des.geo : (vidro ?? des.geo)
+    des.transparente.visible = inst.transparenciaGeral || vidro !== null
   }
 
   /** Cor por elemento, RGBA. Alfa 0 = usa a cor original do IFC. */
@@ -934,6 +982,28 @@ export class Visor {
     const info = this.renderer.info
     return { triangulos: info.render.triangles, chamadas: info.render.calls, memoria: info.memory.geometries }
   }
+}
+
+/** Faixas do índice (pares início, quantidade) das peças marcadas, separadas por bloco. */
+function faixasDasPecas(modelo: ModeloIfc, marcadas: Uint8Array): number[][] {
+  const { partesInicio, partes } = modelo.tabela
+  const r: number[][] = modelo.blocos.map(() => [])
+  for (let e = 0; e < marcadas.length; e++) {
+    if (!marcadas[e]) continue
+    for (let k = partesInicio[e]; k < partesInicio[e + 1]; k += 3) r[partes[k]]?.push(partes[k + 1], partes[k + 2])
+  }
+  return r
+}
+
+/** Geometria com os vértices de `geo` e só os triângulos de `indice`. Null se não sobrar nenhum. */
+function geoSoDoVidro(geo: THREE.BufferGeometry, indice: Uint32Array): THREE.BufferGeometry | null {
+  if (indice.length === 0) return null
+  const g = new THREE.BufferGeometry()
+  for (const nome of ['position', 'normal', 'aCor', 'aEl']) g.setAttribute(nome, geo.getAttribute(nome))
+  g.setIndex(new THREE.BufferAttribute(indice, 1))
+  g.boundingSphere = geo.boundingSphere
+  g.boundingBox = geo.boundingBox
+  return g
 }
 
 export function caixaDoModelo(m: ModeloIfc): Caixa {

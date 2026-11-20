@@ -28,7 +28,7 @@ export interface ModeloAberto {
   opacidade: number
   ajuste: Ajuste
   guardado: boolean
-  blocosVidro?: Uint8Array
+  elementosVidro?: Uint8Array
 }
 
 export interface Leitura {
@@ -430,22 +430,18 @@ export class Sessao {
     this.visor?.aplicarEstado(m.chave, m.flags, {
       fantasmas: fantasmas > 0,
       transparenciaGeral: m.opacidade < 0.995,
-      blocosComVidro: this.modoCor !== 'original' ? this.blocosComVidro(m) : undefined,
+      elementosVidro: this.modoCor !== 'original' ? this.elementosVidro(m) : undefined,
     })
   }
 
-  /** Blocos que têm peça da categoria "vidro" (ficam transparentes mesmo sem o IFC dizer). */
-  private blocosComVidro(m: ModeloAberto): Uint8Array {
-    if (m.blocosVidro) return m.blocosVidro
-    const b = new Uint8Array(m.modelo.blocos.length)
+  /** Peças da categoria "vidro" (ficam transparentes mesmo sem o IFC dizer). */
+  private elementosVidro(m: ModeloAberto): Uint8Array {
+    if (m.elementosVidro) return m.elementosVidro
     const iVidro = CATEGORIAS.findIndex((c) => c.id === 'vidro')
-    const { partesInicio, partes } = m.modelo.tabela
-    for (let i = 0; i < m.flags.length; i++) {
-      if (m.indice.categoria[i] !== iVidro) continue
-      for (let k = partesInicio[i]; k < partesInicio[i + 1]; k += 3) b[partes[k]] = 1
-    }
-    m.blocosVidro = b
-    return b
+    const r = new Uint8Array(m.flags.length)
+    for (let i = 0; i < r.length; i++) if (m.indice.categoria[i] === iVidro) r[i] = 1
+    m.elementosVidro = r
+    return r
   }
 
   private aplicarTudo(): void {

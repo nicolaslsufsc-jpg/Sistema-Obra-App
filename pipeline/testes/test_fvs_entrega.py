@@ -217,6 +217,16 @@ class TestPacoteSemDados(unittest.TestCase):
         self.assertEqual(montar_entrega.texto_para_windows("a\nb\n", ".bat"), b"a\r\nb\r\n")
         self.assertEqual(montar_entrega.texto_para_windows("a\n", ".txt"), b"\xef\xbb\xbfa\r\n")
         self.assertEqual(montar_entrega.texto_para_windows("a\n", ".py"), b"a\n")
+        # modelo que já tem a marca: sai com uma só
+        self.assertEqual(montar_entrega.texto_para_windows("﻿a\n", ".ps1"), b"\xef\xbb\xbfa\r\n")
+
+    def test_ps1_do_repositorio_com_marca_de_utf8(self):
+        # sem a marca (EF BB BF), o PowerShell 5.1 lê o .ps1 como ANSI e as mensagens saem quebradas
+        # ("NÃ£o consegui abrir"; testador, 20/11). Vale também para quem roda o .ps1 direto do repositório
+        ps1 = sorted(RAIZ.glob("pipeline/**/*.ps1"))
+        self.assertTrue(ps1)
+        for p in ps1:
+            self.assertEqual(p.read_bytes()[:3], b"\xef\xbb\xbf", msg=str(p.relative_to(RAIZ)))
 
 
 class TestModelos(unittest.TestCase):

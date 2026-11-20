@@ -38,6 +38,8 @@ class ErroEntrega(Exception):
 
 
 def texto_para_windows(texto: str, sufixo: str) -> bytes:
+    # o modelo pode já vir com a marca (os .ps1 do repositório têm): sem tirar, sairia duas vezes
+    texto = texto.removeprefix("\ufeff")
     if sufixo in FIM_DE_LINHA_WINDOWS:
         texto = texto.replace("\r\n", "\n").replace("\n", "\r\n")
     corpo = texto.encode("utf-8")

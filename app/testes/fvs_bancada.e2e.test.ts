@@ -357,6 +357,46 @@ suite('FVS na bancada (Chrome)', () => {
    }
   }
 
+  // Testador com a obra piloto (20/11): em 375 px o "cabeçalho" ia até ~440 de 812 px. O topo tinha 172
+  // a 222 px; o resto era mapa vazio, escuro como o topo, porque a planta abria centrada na vertical.
+  // Agora o desenho abre encostado embaixo do topo, inteiro, e a sobra fica embaixo.
+  for (const [nome, busca] of [
+    ['FVS com quatro abas', '?furos=1'],
+    ['Ambientes', '?abrir=ambientes&esquadrias=1&servico=TESTE-PVS-REB&aba=ambientes'],
+  ] as const) {
+    it(`375x812: ${nome}, o desenho começa logo embaixo do topo`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: 375, height: 812 }, hasTouch: true })
+      const p: Page = await contexto.newPage()
+      await p.goto(`${url}${busca}`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.waitForTimeout(400)
+      const m = await p.evaluate(() => {
+        const mapa = (window as unknown as { __fvMapa: any }).__fvMapa
+        let cima = Infinity
+        let baixo = -Infinity
+        mapa.eachLayer((l: any) => {
+          if (!l.getBounds || !l._latlngs) return
+          const b = l.getBounds()
+          cima = Math.min(cima, mapa.latLngToContainerPoint(b.getNorthWest()).y)
+          baixo = Math.max(baixo, mapa.latLngToContainerPoint(b.getSouthEast()).y)
+        })
+        const caixa = mapa.getContainer().getBoundingClientRect()
+        return {
+          topo: document.querySelector('.fv-topo')!.getBoundingClientRect().bottom,
+          cima: caixa.top + cima,
+          baixo: caixa.top + baixo,
+          fim: caixa.bottom,
+        }
+      })
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_desenho_no_topo_${nome.split(' ')[0]}.png`) })
+      expect(m.topo, 'o topo em si').toBeLessThanOrEqual(230)
+      expect(m.cima, 'desenho não fica embaixo do topo').toBeGreaterThanOrEqual(m.topo - 1)
+      expect(m.cima - m.topo, 'desenho encostado no topo').toBeLessThanOrEqual(40)
+      expect(m.baixo, 'desenho inteiro na tela').toBeLessThanOrEqual(m.fim + 1)
+      await contexto.close()
+    })
+  }
+
   // Rodada com a obra piloto (20/11): a aba Pilares mostrava 385 e o início contava 445 (+60 arranques do
   // pilar de cima, que estão na planta só para ver o detalhe). O arranque fica fora das contas e da planilha.
   for (const [largura, altura] of [

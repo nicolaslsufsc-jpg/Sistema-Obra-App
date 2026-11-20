@@ -274,7 +274,8 @@ suite('telas no navegador', () => {
 
     // Projetos com conta: abre a tela inicial do módulo e o voltar do Android retorna ao menu
     await projetos.click()
-    await pagina.getByRole('heading', { name: 'Projetos', exact: true }).waitFor()
+    // o título leva o selo: o nome acessível é "Projetos beta" (com exact: 'Projetos' esperava para sempre, CI 69)
+    await pagina.getByRole('heading', { name: /^Projetos/ }).waitFor()
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('projetos')
     await pagina.goBack()
     await pagina.getByTestId('menu-obra').waitFor()

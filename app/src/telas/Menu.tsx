@@ -13,7 +13,7 @@ import {
   podeInstalar,
 } from '../nucleo/aparelho'
 import { PAPEL, horaCurta } from './rotulos'
-import { MODULOS, type IdModulo } from '../modulos'
+import { modulosDoMenu, type IdModulo } from '../modulos'
 import { BarraLocal } from './BarraLocal'
 import { AbrirPacote } from './AbrirPacote'
 import { BotaoTema } from './BotaoTema'
@@ -69,7 +69,7 @@ export function Menu({
       <section class="menu-modulos">
         <h2>Módulos</h2>
         <ul class="grade">
-          {MODULOS.map((m) => (
+          {modulosDoMenu(estado.local).map((m) => (
             <li key={m.id}>
               <button
                 type="button"

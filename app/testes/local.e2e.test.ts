@@ -1329,6 +1329,53 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     }
   }, 150_000)
 
+  // Testador (08/11, Z2): no aparelho do .zip, "Tirar do aparelho" dizia "é só baixar de novo" e, sem
+  // internet, o Baixar ficava desligado ("Precisa de internet"), mesmo com a planta no pacote aberto.
+  for (const [nome, largura, altura] of [
+    ['celular', 375, 812],
+    ['tablet', 800, 1280],
+  ] as const) {
+    it(`${nome} ${largura}x${altura}: sem conta e sem internet, tirar do aparelho fala do pacote e o Baixar traz a planta do .zip`, async () => {
+      const zip = zipDaPasta()
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      await contexto.route('**/dados_obra/**', (r: any) => r.fulfill({ status: 404, body: '' }))
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      try {
+        await irAoApp(p)
+        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+        await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
+        await p.getByRole('button', { name: /^FVS/ }).click()
+        await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor()
+        await contexto.setOffline(true)
+
+        let pergunta = ''
+        p.once('dialog', (d: any) => {
+          pergunta = d.message()
+          return d.accept()
+        })
+        await p.getByTestId('fvs-mais-pavimento').first().click()
+        await p.getByTestId('fvs-tirar-pavimento').first().click()
+        const baixar = p.locator('.fv-baixar').first()
+        await baixar.waitFor()
+        expect(pergunta).toContain('pacote da obra (.zip)')
+        expect(pergunta).not.toContain('é só baixar de novo')
+        expect(pergunta).not.toContain('internet')
+        expect(await baixar.isEnabled(), 'Baixar sem internet, do pacote aberto').toBe(true)
+        expect(await p.getByText('precisa de internet uma vez').count()).toBe(0)
+        await baixar.click()
+        await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor({ timeout: 30_000 })
+        expect(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `zip-${nome}-tirar-e-baixar-sem-internet.png`), fullPage: true })
+        expect(erros).toEqual([])
+      } finally {
+        await contexto.close()
+        rmSync(path.dirname(zip), { recursive: true, force: true })
+      }
+    }, 150_000)
+  }
+
   it('o site compilado não lê ?dados= e não leva dado de obra; com dados_obra/ em public/, o build falha', async () => {
     // o build do beforeAll (o mesmo do Cloudflare): sem ?dados= e com o manifesto pedido com o cookie (Access)
     const js = readdirSync(path.join(SAIDA, 'assets')).filter((n) => n.endsWith('.js')).map((n) => readFileSync(path.join(SAIDA, 'assets', n), 'utf-8')).join('\n')

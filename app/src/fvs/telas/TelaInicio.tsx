@@ -24,6 +24,9 @@ const OBRA_INTEIRA = 'obra-inteira'
 
 export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) {
   const { dados, props, online, ir, voltar, sistema } = ctx
+  // sem conta, a planta vem do pacote da obra (.zip ou pasta), não da internet: o Baixar não espera a rede
+  // (testador, 08/11: no aparelho do .zip a pergunta dizia "é só baixar de novo" e o Baixar pedia internet)
+  const semRede = !online && !ctx.local
   const [noAparelho, setNoAparelho] = useState<Map<string, { tamanho: number }> | null>(null)
   /** download em andamento: planta atual, percentual dela e, no pavimento inteiro, quantas faltam */
   const [baixando, setBaixando] = useState<{ plantaId: string; pct: number; pavimentoId?: string; feitas: number; total: number } | null>(null)
@@ -76,7 +79,11 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
 
   /** Tira do aparelho as plantas de um pavimento, para liberar espaço. Marcações e fotos não são afetadas. */
   const tirarDoAparelho = async (nomePavimento: string, plantas: readonly Planta[], tamanho: number) => {
-    const aviso = online ? 'Depois, para abrir, é só baixar de novo.' : 'Você está sem internet: para abrir de novo, vai precisar de internet.'
+    const aviso = ctx.local
+      ? 'Para abrir de novo, toque em Baixar; se o app foi fechado, abra antes o pacote da obra (.zip) no menu.'
+      : online
+        ? 'Depois, para abrir, é só baixar de novo.'
+        : 'Você está sem internet: para abrir de novo, vai precisar de internet.'
     if (!confirm(`Tirar do aparelho as plantas de ${nomePavimento} (${mb(tamanho)})?\n\nAs marcações não são afetadas. ${aviso}`)) return
     const ids = plantas.flatMap((p) => [p.id, ...(dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)])
     await removerPacotes(ids)
@@ -117,9 +124,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
               <button
                 type="button"
                 class="fv-baixar"
-                disabled={!online || baixando !== null}
+                disabled={semRede || baixando !== null}
                 onClick={() => baixar([p])}
-                title={online ? '' : 'Precisa de internet para baixar'}
+                title={semRede ? 'Precisa de internet para baixar' : ''}
               >
                 {baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `Baixar ${antiga ? `${p.revisao} ` : ''}${tamanho ? mb(tamanho) : ''}`}
               </button>
@@ -289,9 +296,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                   type="button"
                   class="fv-baixar"
                   data-testid="fvs-baixar-pavimento"
-                  disabled={!online || baixando !== null}
+                  disabled={semRede || baixando !== null}
                   onClick={() => baixar(faltam, pv.id)}
-                  title={online ? '' : 'Precisa de internet para baixar'}
+                  title={semRede ? 'Precisa de internet para baixar' : ''}
                 >
                   {baixandoAqui
                     ? `Baixando ${baixandoAqui.feitas + 1} de ${baixandoAqui.total}…`
@@ -330,7 +337,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                 <ul class="lista fv-trechos">{ambientes.map(linhaDaPlanta)}</ul>
               </div>
             )}
-            {!online && plantas.some((p) => !noAparelho?.has(p.id)) && (
+            {semRede && plantas.some((p) => !noAparelho?.has(p.id)) && (
               <p class="discreto">Planta que ainda não foi baixada precisa de internet uma vez.</p>
             )}
             {guardadas.length > 0 && !baixando && (
@@ -360,9 +367,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             type="button"
             class="fv-baixar"
             data-testid="fvs-baixar-obra"
-            disabled={!online || baixando !== null}
+            disabled={semRede || baixando !== null}
             onClick={() => baixar(faltamNaObra, OBRA_INTEIRA)}
-            title={online ? '' : 'Precisa de internet para baixar'}
+            title={semRede ? 'Precisa de internet para baixar' : ''}
           >
             {baixandoObra
               ? `Baixando ${baixandoObra.feitas + 1} de ${baixandoObra.total}…`

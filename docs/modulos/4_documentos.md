@@ -9,6 +9,9 @@ Branch: `claude/app-documentos-112f59` (parte do PR #42).
   - Migração `20261120150000_documentos.sql`: tabela `doc_documentos` como na proposta da seção 3 (só inclusão, gestor e admin incluem, quem lê a obra lê). Os limites de texto são os da tela, e o formulário passou a conferir os mesmos (título 300, revisão 20, responsável 200). Teste do banco em `supabase/testes/testes_x_documentos.sql`.
   - App: a tabela está na lista sincronizada (`documentos/tabelas.ts` e `nucleo/tabelas.ts`, bloco à parte no fim). O módulo grava pelo `sincronizador.registrar` (o `gravar.ts` saiu) e sincroniza enquanto está aberto. O `soSemConta` saiu do `modulos.ts`.
   - Arquivo: o PDF ou a foto vão antes da linha na fila, então chegam antes ao servidor. Depois do envio o núcleo tira os bytes do aparelho. Por isso, na tela do documento, o arquivo que está só no servidor mostra **"Baixar do servidor"** (precisa de internet), para não gastar dados com todas as revisões.
+  - Dois achados baixos do revisor de segurança, corrigidos em 20/11/2026 (branch `nucleo/documentos-revisor`, PR à parte depois do merge dos itens 2 e 3):
+    - o PDF baixado do servidor só abre se o tamanho e o SHA-256 baterem com a linha de `arquivos`. Se não baterem, a tela diz que o arquivo não é o registrado e não abre;
+    - migração `20261120160000_documentos_substitui_uma_vez.sql`: a mesma linha só pode ser substituída uma vez (índice único em `substitui_id`, como na lista de distribuição). Só dois aparelhos sem internet mexendo no mesmo documento chegam a isso: o segundo envio é recusado e fica com erro na fila dele.
   - *Suposições marcadas:*
     - com conta, os exemplos da demonstração não entram. Um exemplo corrigido ou marcado "em revisão" apontaria para uma linha que o servidor não tem;
     - os documentos do pacote da obra continuam só no modo sem conta;

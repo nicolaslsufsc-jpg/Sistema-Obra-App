@@ -11,6 +11,7 @@ import type { PapelNaObra } from '../nucleo/conta'
 import { banco, cliente, sincronizador } from '../nucleo/servicos'
 import { BUCKET_OBRAS } from '../config'
 import { reduzirFoto } from '../fvs/dados'
+import { sha256Hex } from '../fvs/pacote'
 import { montarLigacoes, TABELAS_LIDAS, type Ligacoes, type LinhasLidas } from './ligacoes'
 import { idDaConcretagemDeExemplo } from '../concreto/exemplo'
 import { idsDosExemplos } from './exemplos'
@@ -23,6 +24,8 @@ export interface ArquivoDoc {
   nome_original: string
   tipo: string
   tamanho: number
+  /** SHA-256 gravado pelo núcleo no envio: o arquivo baixado do servidor tem que bater com ele. */
+  hash: string
 }
 
 export interface DadosDocumentos {
@@ -57,7 +60,7 @@ export async function carregar(obraId: string): Promise<DadosDocumentos> {
   let totalArquivos = 0
   for (const a of arquivos) {
     if (!usados.has(a.id)) continue
-    mapa.set(a.id, { id: a.id, caminho: String(a.caminho ?? ''), nome_original: nomeLimpo(String(a.nome_original ?? '')), tipo: String(a.tipo ?? ''), tamanho: Number(a.tamanho ?? 0) })
+    mapa.set(a.id, { id: a.id, caminho: String(a.caminho ?? ''), nome_original: nomeLimpo(String(a.nome_original ?? '')), tipo: String(a.tipo ?? ''), tamanho: Number(a.tamanho ?? 0), hash: String(a.hash ?? '') })
     totalArquivos += Number(a.tamanho ?? 0)
   }
   return { documentos, arquivos: mapa, totalArquivos, ligacoes: montarLigacoes(t, idDoExemplo) }
@@ -90,20 +93,33 @@ export function trocarBaixador(b: Baixador): void {
   baixar = b
 }
 
+/** O arquivo baixado do servidor não tem o tamanho ou o SHA-256 registrados: não abre (revisor, 20/11). */
+export class ArquivoNaoConfere extends Error {
+  constructor() {
+    super('O arquivo baixado do servidor não é o que foi registrado (tamanho ou conferência diferentes). Não abri.')
+    this.name = 'ArquivoNaoConfere'
+  }
+}
+
 /**
  * Endereço do arquivo (blob:) e se ele pode abrir no navegador. O tipo do blob sai dos bytes
  * (comoAbrir), nunca do tipo gravado no registro. Quem chama devolve com URL.revokeObjectURL.
  * Ainda não enviado (ou sem conta): vem do aparelho. Já enviado: o núcleo tira os bytes do aparelho
  * depois do envio, então só vem do servidor com `doServidor` (a tela pede com um toque, para não gastar
  * internet com todas as revisões) e com internet. Sem o arquivo: null.
+ * O que vem do servidor só abre se o tamanho e o SHA-256 baterem com a linha de `arquivos`
+ * (gravados pelo núcleo no envio); se não baterem, lança ArquivoNaoConfere.
  */
 export async function urlDoArquivo(
-  arquivo: Pick<ArquivoDoc, 'id'> & Partial<Pick<ArquivoDoc, 'caminho'>>,
+  arquivo: Pick<ArquivoDoc, 'id'> & Partial<Pick<ArquivoDoc, 'caminho' | 'tamanho' | 'hash'>>,
   doServidor = false,
 ): Promise<({ url: string } & ComoAbrir) | null> {
   const local = await banco.conteudos.get(arquivo.id)
   let bytes: ArrayBuffer | null = local?.bytes ?? null
-  if (!bytes && doServidor && arquivo.caminho && navigator.onLine) bytes = await baixar(arquivo.caminho).catch(() => null)
+  if (!bytes && doServidor && arquivo.caminho && navigator.onLine) {
+    bytes = await baixar(arquivo.caminho).catch(() => null)
+    if (bytes && (bytes.byteLength !== arquivo.tamanho || (await sha256Hex(bytes)) !== arquivo.hash)) throw new ArquivoNaoConfere()
+  }
   if (!bytes) return null
   const como = comoAbrir(new Uint8Array(bytes.slice(0, 16)))
   return { url: URL.createObjectURL(new Blob([bytes], { type: como.tipo })), ...como }

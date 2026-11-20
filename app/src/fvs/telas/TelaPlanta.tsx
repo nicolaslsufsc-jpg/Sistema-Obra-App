@@ -1477,9 +1477,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const escolha = tipos.length > 1 ? 'tipos' : fichasTipo.length > 1 ? 'fichas' : 'nada'
   // planta de ambientes com esquadrias: as abas e, ao lado, o serviço (no celular, o topo ganha uma linha)
   const comServico = escolha === 'tipos' && tipos.includes('A') && fichasPara('A', dados.fichas).length > 1
+  // pavimento com mais de um trecho: a caixa de escolha (44 px) deixa o topo mais alto (fvs.css)
+  const comTrecho = irmas.length > 1 ? ' com-trecho' : ''
   return (
-    <div class={`fv-planta${comServico ? ' com-servico' : ''}${pecaSel ? ' com-painel' : ''}${desenho ? ' desenhando' : ''}${porItemAtivo ? ' por-item' : ''}`}>
-      <header class={`fv-topo${comServico ? ' com-servico' : ''}${escolha === 'nada' ? ' sem-seg' : ''}${pode && itensDoTipo.length > 0 ? ' com-item' : ''}`}>
+    <div class={`fv-planta${comServico ? ' com-servico' : ''}${comTrecho}${pecaSel ? ' com-painel' : ''}${desenho ? ' desenhando' : ''}${porItemAtivo ? ' por-item' : ''}`}>
+      <header class={`fv-topo${comServico ? ' com-servico' : ''}${comTrecho}${escolha === 'nada' ? ' sem-seg' : ''}${pode && itensDoTipo.length > 0 ? ' com-item' : ''}`}>
         <div class="fv-tit">
           <button type="button" class="fv-voltar" onClick={() => sair(voltar)} aria-label="Voltar">
             ‹

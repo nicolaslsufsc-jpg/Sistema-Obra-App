@@ -39,6 +39,8 @@ export interface Modulo {
   foraDoMenu?: true
   /** Mostra o selo "beta" no cartão do menu: funciona, mas ainda está em teste. */
   beta?: true
+  /** Só aparece no modo sem conta (pacote da obra): com conta, ainda não há tabela no servidor. */
+  soSemConta?: true
 }
 
 // Desde 08/11/2026 o foco é a FVS e o Concreto: os betas (Projetos, IFC) ficam fora do menu, com o
@@ -53,7 +55,7 @@ const REGISTRO: readonly Modulo[] = [
   { id: 'fvs', nome: 'FVS', descricao: 'Pilares e vigas', Tela: FvsSobDemanda },
   { id: 'projetos', nome: 'Projetos', descricao: 'Revisões e cópias', Tela: ProjetosSobDemanda, beta: true, foraDoMenu: true },
   { id: 'concreto', nome: 'Concreto', descricao: 'Caminhões, peças e corpos de prova', Tela: ConcretoSobDemanda },
-  { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra da qualidade (PBQP-H)', Tela: DocumentosSobDemanda },
+  { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra da qualidade (PBQP-H)', Tela: DocumentosSobDemanda, soSemConta: true },
   { id: 'relatorios', nome: 'Relatórios', descricao: 'Diário de obra, problemas, limpeza', Tela: RelatoriosSobDemanda, foraDoMenu: true },
   { id: 'ifc', nome: 'IFC', descricao: 'Importe seu IFC: modelo 3D, busca e cortes', Tela: IfcSobDemanda, beta: true, foraDoMenu: true },
 ]
@@ -66,6 +68,11 @@ const TESTE_COM_TODOS = import.meta.env.VITE_TESTE_MODULOS_FORA_DO_MENU === '1'
 
 /** Os módulos do menu: só estes a casca deixa abrir. */
 export const MODULOS: readonly Modulo[] = REGISTRO.filter((m) => TESTE_COM_TODOS || !m.foraDoMenu)
+
+/** Os módulos que o menu mostra: com conta, sem os que só funcionam sem conta (teste com cabo, 20/11). */
+export function modulosDoMenu(semConta: boolean): readonly Modulo[] {
+  return MODULOS.filter((m) => semConta || !m.soSemConta)
+}
 
 export function moduloPorId(id: string): Modulo | undefined {
   return MODULOS.find((m) => m.id === id)

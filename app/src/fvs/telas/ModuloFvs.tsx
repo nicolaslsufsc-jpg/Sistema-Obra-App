@@ -24,6 +24,9 @@ export type TelaFvs =
   /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item */
   | { nome: 'planta'; plantaId: string; pecaId?: string; fichaCampoId?: string | null; item?: number }
 
+/** Com a planta aberta e conta, a sincronização roda a cada minuto (o núcleo já usa 1 min quando há fila). */
+const MINUTO_NA_PLANTA = 60_000
+
 export interface ContextoFvs {
   props: PropsModulo
   dados: DadosFvs
@@ -42,7 +45,7 @@ export interface ContextoFvs {
 
 export function ModuloFvs(props: PropsModulo) {
   const { usuario, obra, aoSair, aoPerderObra } = props
-  const { estado } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
+  const { estado, sincronizarAgora } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
   const [tela, setTela] = useState<TelaFvs>(() => {
     const h = history.state
     if (h?.fvs) return h.fvs as TelaFvs
@@ -76,6 +79,21 @@ export function ModuloFvs(props: PropsModulo) {
       if (n) setRefeitos(n)
     })
   }, [recarregar, estado.versaoDados])
+
+  // Planta aberta com conta: busca o que outro aparelho marcou a cada minuto, e não só a cada 5 min (o
+  // ritmo do núcleo sem nada esperando envio). Teste com cabo (20/11): com o painel do P1 aberto no
+  // celular, o C marcado no tablet não apareceu em 2 min. Quando chega registro novo, o núcleo muda
+  // `versaoDados` e a tela relê o aparelho (efeito acima): a planta e o painel aberto se atualizam.
+  const naPlanta = tela.nome === 'planta'
+  const sincronizar = useRef(sincronizarAgora)
+  sincronizar.current = sincronizarAgora
+  useEffect(() => {
+    if (!naPlanta || estado.local || !estado.online) return
+    const relogio = window.setInterval(() => {
+      if (document.visibilityState === 'visible') sincronizar.current()
+    }, MINUTO_NA_PLANTA)
+    return () => window.clearInterval(relogio)
+  }, [naPlanta, estado.local, estado.online])
 
   // nomes de quem marcou: atualiza quando há login válido e mostra sem esperar por eles
   // (sem conta, ou antes de a sincronização conferir a sessão, não há o que pedir ao servidor)

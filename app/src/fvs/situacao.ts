@@ -70,6 +70,11 @@ export interface ItemFicha {
    * (aba Barras, plano A de 18/11/2026). Todas as barras da área OK: C; alguma errada: NC. Vem da ficha.
    */
   barras?: boolean
+  /**
+   * Item dos pontos de instalação na ficha de laje (item 4, 19/11/2026): esgoto e água são marcados pelos
+   * furos de laje SAN e HID da área (furos_laje.ts); a elétrica fica à mão. Vem da ficha.
+   */
+  instalacao?: 'esgoto' | 'agua' | 'eletrica'
 }
 
 export interface Ficha {

@@ -20,7 +20,7 @@ pavimento.json (fica fora do repositório, junto das pranchas):
                                                     ("Em Análise"); essas peças ficam na planta, sem detalhe
   "det_consolos": "../Consolos/*CON2PAVTIP*.pdf"     opcional: pranchas "DETALHAMENTO DOS CONSOLOS" do pavimento
   "det_macicos": "../Lajes/*LAJ2PAVTOX*.pdf"         opcional: pranchas "LAJE ... - MACIÇOS" do pavimento (os capitéis)
-  "furos": {"ifc": "../Furacao/modelo.ifc",          opcional: furos de viga do modelo de furação (só com a folha única)
+  "furos": {"ifc": "../Furacao/modelo.ifc",          opcional: furos de viga e de laje do modelo de furação (só com a folha única)
             "nivel": "2º PAVIMENTO (NO)",            o "Level" dos furos deste pavimento no modelo (ou uma lista)
             "encaixe": {...}}                        opcional: o encaixe do relatorio.json, para fixar ou corrigir à mão
   "barras_laje": {"longitudinal_inferior": "../Lajes/*.46[4-8].*.pdf",   opcional: pranchas de armação da laje, por camada
@@ -37,7 +37,8 @@ da forma (camada "consolo" com o rótulo "CONSOLO Pxx"); o capitel, da lista de 
 de maciços. O detalhe de cada um vem das pranchas de "det_consolos" e "det_macicos".
 
 Furos de viga (fatia 1 da conferência por elemento, furos.py): cada furo do modelo de furação vira um
-local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga.
+local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga. Os furos
+de laje (item 4, 19/11/2026) viram locais "F" sem viga ("FL1"...); a área de laje de cada um é achada no app.
 
 Barras de laje (barras_laje.py): cada traço das pranchas de armação vira uma barra do pacote ("barras"),
 alinhada na folha pelos pilares. A prancha que não alinha com segurança fica fora e vai para
@@ -262,7 +263,8 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         if p.get("comodo"):
             reg["comodo"] = p["comodo"]
         if p["tipo"] == "F":
-            reg["viga"] = ids[("V", p["viga"])]
+            if p.get("viga"):
+                reg["viga"] = ids[("V", p["viga"])]
             reg["furo"] = p["furo"]
         if d:
             reg["detalhe"] = d["chave"]
@@ -328,7 +330,8 @@ def por_furos(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
     enc = rel.get("encaixe") or {}
     print(f"  furos: {rel['em_viga']} de {rel['furos']} em {rel['vigas_com_furo']} vigas"
           + (f" (encaixe: {enc.get('dentro')} dentro de viga; outra orientação, no máximo {enc.get('segundo')})" if enc.get("dentro") is not None else "")
-          + (f"; {len(rel['sem_viga'])} fora de viga (lista no relatorio.json)" if rel["sem_viga"] else ""))
+          + (f"; {len(rel['sem_viga'])} fora de viga (lista no relatorio.json)" if rel["sem_viga"] else "")
+          + (f"; {rel['em_laje']} furos de laje (a área de cada um é achada no app)" if rel.get("em_laje") else ""))
     if enc.get("duvidoso"):
         print("  ATENÇÃO: encaixe dos furos duvidoso. Confira na tela antes de publicar, ou passe \"encaixe\" no pavimento.json.")
     return rel
@@ -539,7 +542,8 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             detalhes["furos"] = mod_furos.ler_ifc(cfg["furos"]["ifc"], cfg["furos"]["nivel"])
         except mod_furos.ErroFuros as e:
             raise ErroPublicacao(f"furos: {e}") from e
-        print(f"  {len(detalhes['furos'])} furos de viga no nível {', '.join(cfg['furos']['nivel'])}")
+        n_laje = sum(1 for f in detalhes["furos"] if f.get("laje"))
+        print(f"  {len(detalhes['furos']) - n_laje} furos de viga e {n_laje} de laje no nível {', '.join(cfg['furos']['nivel'])}")
     if cfg.get("barras_laje"):
         import barras_laje
 

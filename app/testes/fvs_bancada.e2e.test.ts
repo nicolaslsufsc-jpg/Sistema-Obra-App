@@ -1354,6 +1354,112 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: furos de laje: ligados à área desenhada; esgoto e água marcam o item da área, elétrica só NC e pergunta no C`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const dialogos: string[] = []
+      let aceitar = false
+      p.on('dialog', (d: any) => {
+        dialogos.push(d.message())
+        void (aceitar ? d.accept() : d.dismiss())
+      })
+      await p.goto(`${url}?abrir=0&furoslaje=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
+      const painel = p.getByTestId('fvs-painel')
+      const fechar = async () => {
+        await p.locator('.fv-cab button').click()
+        await painel.waitFor({ state: 'detached' })
+      }
+      const aba = (t: string) => p.locator('.fv-seg button', { hasText: t }).click()
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      // o item da ficha de laje de teste gravado na área (6 esgoto, 7 água, 8 elétrica)
+      const itemDaArea = (n: number) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => e.area_id && e.item === ${n})
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          const u = l.at(-1)
+          return u ? { r: u.resultado, obs: u.observacao } : null
+        })()`)
+      const furo = async (x: number, y: number) => {
+        await enquadrar(p, [-600, 600], 0)
+        await tocarNaPlanta(p, x, y)
+      }
+
+      // antes da área: o furo fica fora de área de laje, não marca nada e diz por quê
+      await aba('Furos')
+      await furo(600, 400)
+      await aviso('fora de área de laje')
+      await nomeNoPainel(p, 'FL4')
+      await p.getByTestId('fvs-furo-fora-area').waitFor()
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await fechar()
+
+      // área de laje no vão de P8, P9, P14 e P15: pega FL1 (esgoto), FL2 (água) e FL3 (elétrica)
+      await aba('Lajes')
+      await enquadrar(p, [-600, 600], 0)
+      await p.getByTestId('fvs-nova-area').click()
+      await p.getByTestId('fvs-desenho').waitFor()
+      for (const [x, y] of [[470, 470], [730, 470], [730, 730], [470, 730]]) await tocarNaPlanta(p, x, y)
+      await p.getByTestId('fvs-concluir-area').click()
+      await p.getByTestId('fvs-caixa-nome').fill('Laje dos furos')
+      await p.getByTestId('fvs-caixa-criar').click()
+      await nomeNoPainel(p, 'Laje dos furos')
+      // esgoto e água: sem botões, quem marca são os furos; elétrica: botões, com o resumo das passagens
+      expect(await p.locator('.fv-item[data-item="6"] button[data-r]').count()).toBe(0)
+      expect(await p.locator('.fv-item[data-item="7"] button[data-r]').count()).toBe(0)
+      expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('0 de 1 OK')
+      expect(await p.locator('.fv-item[data-item="8"] button[data-r]').count()).toBe(3)
+      expect(await p.getByTestId('fvs-item-eletrica-furos').textContent()).toContain('0 de 1 OK')
+      expect(await p.locator('.fv-etapa-tit', { hasText: 'INSTALAÇÕES' }).getByRole('button').textContent()).toBe('Etapa C (1)')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_area.png` })
+      await fechar()
+
+      // FL1 (esgoto) OK: o item 6 da área fica C
+      await aba('Furos')
+      await furo(520, 520)
+      await aviso('FL1: OK')
+      await expect.poll(() => itemDaArea(6), { timeout: 5000 }).toEqual({ r: 'C', obs: null })
+      // FL3 (elétrica): OK e depois errado: o item 8 fica NC sozinho, com o furo na observação
+      await furo(680, 560)
+      await aviso('FL3: OK')
+      expect(await itemDaArea(8)).toBeNull() // o C da elétrica nunca é dos furos
+      await furo(680, 560)
+      await aviso('FL3: errado')
+      await nomeNoPainel(p, 'FL3')
+      expect(await p.getByTestId('fvs-ir-area').textContent()).toBe('Ver a área Laje dos furos')
+      await expect.poll(() => itemDaArea(8), { timeout: 5000 }).toEqual({ r: 'NC', obs: 'Furo errado: FL3' })
+      await fechar()
+      // FL3 de novo: sem conferir; o NC dos furos volta a pendente
+      await furo(680, 560)
+      await aviso('FL3: sem conferir')
+      await expect.poll(() => itemDaArea(8), { timeout: 5000 }).toEqual({ r: null, obs: null })
+
+      // C à mão na elétrica com passagem sem conferir: pergunta; Cancelar não grava, OK grava
+      await aba('Lajes')
+      await enquadrar(p, [-600, 600], 0)
+      await tocarNaPlanta(p, 700, 700)
+      await nomeNoPainel(p, 'Laje dos furos')
+      await p.locator('.fv-item[data-item="8"] button[data-r="C"]').click()
+      await expect.poll(() => dialogos.length).toBe(1)
+      expect(dialogos[0]).toBe('1 passagem elétrica ainda sem conferir. Marcar C mesmo assim?')
+      expect((await itemDaArea(8))?.r ?? null).toBeNull()
+      aceitar = true
+      await p.locator('.fv-item[data-item="8"] button[data-r="C"]').click()
+      await expect.poll(() => itemDaArea(8).then((x: any) => x?.r), { timeout: 5000 }).toBe('C')
+      expect(await contrasteNosDoisTemas(p), 'contraste do painel da área').toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: barras de laje: toque OK, NC só com Confirmar, Desfazer, "Tudo OK" da camada e o item de armadura da laje`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

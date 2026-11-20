@@ -31,10 +31,14 @@ export interface DadosDoFuro {
   /** SAN, HID, ELT, PCI, CLI, GERAL */
   disciplinas?: string[]
   modelo_id?: string
+  /** furo de laje (sem viga): a área de laje dele é achada no app (furos_laje.ts) */
+  laje?: boolean
+  /** só furo de laje: espessura da laje, cm */
+  espessura?: number
 }
 
 export interface ElementoPacote {
-  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo de viga */
+  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga) */
   tipo: 'P' | 'V' | 'L' | 'A' | 'F'
   nome: string
   /** seção da peça ("19x60") ou área do ambiente ("12,1 m²") */

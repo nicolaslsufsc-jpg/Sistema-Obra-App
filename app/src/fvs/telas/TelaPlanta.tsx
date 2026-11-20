@@ -27,6 +27,7 @@ import { ehDaLigacao, maisLigados, textoDosLigados } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
 import { dia, mb, quando } from '../formato'
 import { casaComodo, textoDoComodo } from '../busca'
+import { avisoDoCEletrico, ehFuroDeLaje, furosDeLajeNasAreas, instalacoesDoFuro, itemDaInstalacao, itemDoFuroDeLaje, observacaoDosFuros, resultadoDaInstalacao, type Instalacao } from '../furos_laje'
 import { abrirPacoteOuAnterior, dataCurta, furosDoManifest, NOME_DA_DISCIPLINA, NOME_DA_PARTE, partesDoManifest, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
 import { filtrosDoTrecho } from '../reprovacoes'
 import {
@@ -119,6 +120,8 @@ const TOQUE_BARRA_PX = 40
 const FOLGA_BARRA_PX = 4
 /** Furo na planta: raio da bolinha e do alvo do dedo (44 px de diâmetro), em px de tela. */
 const RAIO_FURO_PX = 7
+/** As instalações da laje, na ordem dos itens da ficha (item 4, 19/11). */
+const INSTALACOES: readonly Instalacao[] = ['esgoto', 'agua', 'eletrica']
 const ALVO_FURO_PX = 22
 /** Limites de um desenho da planta: polígono ou a bolinha do furo. */
 const limitesDaCamada = (l: L.Path): L.LatLngBounds =>
@@ -314,6 +317,42 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const situacaoGuardada = useRef(new Map<string, { eventos: EventoFvs[]; abertas: FichaCampo[]; ficha: Ficha | undefined; etapa: string | undefined; s: Situacao }>())
   /** Furos de cada viga desta planta (id da viga → ids dos furos). */
   const furosPorViga = useMemo(() => (manifest ? furosDoManifest(manifest) : new Map<string, string[]>()), [manifest])
+  /**
+   * Furos de laje desta planta, cada um com a área de laje em que cai (item 4, decisão do Nicolas de
+   * 19/11): a área é desenhada no app, então a ligação é calculada aqui e refeita quando uma área muda.
+   */
+  const furosDeLaje = useMemo(() => furosDeLajeNasAreas(manifest?.elementos, areasDaPlanta), [manifest, chaveDasAreas])
+  /** Furos de laje de cada área (id da área → ids dos furos, na ordem do nome). */
+  const furosPorArea = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const [f, a] of furosDeLaje) if (a) m.set(a.id, [...(m.get(a.id) ?? []), f])
+    return m
+  }, [furosDeLaje])
+  /** Os furos da área com a instalação `inst`, e a situação de cada um (no item do tema dele na ficha da área). */
+  const furosDaInstalacao = (areaId: string, ficha: Ficha, inst: Instalacao, evs: (id: string) => EventoFvs[] = eventosDe) =>
+    (furosPorArea.get(areaId) ?? []).flatMap((id) => {
+      const e = manifest?.elementos[id]
+      if (!e || !instalacoesDoFuro(e).includes(inst)) return []
+      const it = itemDoFuroDeLaje(e, ficha)
+      return it ? [{ id, nome: e.nome, sit: situacaoDoFuro(ficha.id, it.item, daFichaAberta(evs(id), null)) }] : []
+    })
+  /** As situações dos furos de cada instalação da área (só as que a ficha da área tem item). */
+  const instalacoesDaArea = (areaId: string): Partial<Record<Instalacao, Situacao[]>> => {
+    const area = dados.areaPorId.get(areaId)
+    const ficha = area ? fichaPorId(area.ficha_id) : undefined
+    const saida: Partial<Record<Instalacao, Situacao[]>> = {}
+    if (!ficha || !furosPorArea.has(areaId)) return saida
+    for (const inst of INSTALACOES) if (itemDaInstalacao(ficha, inst)) saida[inst] = furosDaInstalacao(areaId, ficha, inst).map((f) => f.sit)
+    return saida
+  }
+  /** Por que o furo não marca nada (fica só para ver). */
+  const furoSemItem = (id: string): string => {
+    const e = manifest?.elementos[id]
+    if (!e || !ehFuroDeLaje(e)) return 'A ficha de viga não tem item de furação: o furo fica só para ver.'
+    if (!furosDeLaje.get(id)) return `${e.nome} está fora de área de laje: desenhe a área na aba Lajes para conferir o furo.`
+    if (!instalacoesDoFuro(e).length) return `${e.nome} não é de esgoto, água nem elétrica: fica só para ver.`
+    return 'A ficha da área não tem o item desta instalação: o furo fica só para ver.'
+  }
   /** Os furos da viga com a situação de cada um (para o painel e a cor da viga). */
   const furosDe = (vigaId: string) =>
     (furosPorViga.get(vigaId) ?? []).flatMap((f) => {
@@ -324,8 +363,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
    * O item de furação da ficha da viga do furo, que os furos marcam (undefined: a ficha de viga não tem;
    * o furo fica só para ver). A ficha é a da viga: a mesma que o painel da viga mostra.
    */
-  const furacaoDe = (furoId: string): { vigaId: string; ficha: Ficha; item: number } | undefined => {
-    const vigaId = manifest?.elementos[furoId]?.viga
+  const furacaoDe = (furoId: string): { vigaId: string; ficha: Ficha; item: number; laje?: boolean } | undefined => {
+    const el = manifest?.elementos[furoId]
+    if (ehFuroDeLaje(el)) {
+      // furo de laje: o "dono" é a área em que ele cai; o item é o da instalação dele na ficha da área
+      const area = furosDeLaje.get(furoId)
+      const ficha = area ? fichaPorId(area.ficha_id) : undefined
+      const it = el && ficha ? itemDoFuroDeLaje(el, ficha) : undefined
+      return area && ficha && it ? { vigaId: area.id, ficha, item: it.item, laje: true } : undefined
+    }
+    const vigaId = el?.viga
     const ficha = vigaId ? fichaDoLocal(vigaId, 'V') : undefined
     const item = itemDosFuros(ficha)?.n
     return vigaId && ficha && item !== undefined ? { vigaId, ficha, item } : undefined
@@ -741,8 +788,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       if (e.tipo === 'F') {
         // furo pendente: miolo branco (fica visível em cima da viga); fora da aba Furos, apagado e sem toque
         const fill = s === 'nada' ? '#ffffff' : cor
-        const fo = ativo ? 0.95 : 0.25
-        const op = ativo ? 1 : 0.35
+        // furo de laje fora de área de laje: apagado, não marca nada (o toque diz por quê)
+        const vivo = ativo && !(ehFuroDeLaje(e) && !furosDeLaje.get(id))
+        const fo = vivo ? 0.95 : 0.25
+        const op = vivo ? 1 : 0.35
         const w = sel === id ? 4 : 2
         const chaveFuro = `${color}|${fill}|${fo}|${op}|${w}`
         for (const l of camadas.current.get(id) ?? []) {
@@ -952,7 +1001,15 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // viga com furos: o item de furação fica com os furos, o pincel não marca
       const semFuros = furosPorViga.has(id) ? { ...daPeca, itens: daPeca.itens.filter((i) => !i.furos) } : daPeca
       // área de laje com barras: o item de armadura fica com as barras
-      const ficha = barrasDaLaje(id).length ? { ...semFuros, itens: semFuros.itens.filter((i) => !i.barras) } : semFuros
+      const semBarras = barrasDaLaje(id).length ? { ...semFuros, itens: semFuros.itens.filter((i) => !i.barras) } : semFuros
+      // área com furos de laje: esgoto e água ficam com os furos; a elétrica pergunta se há furo errado ou sem conferir
+      const inst = instalacoesDaArea(id)
+      const avisoEl = pincel.resultado === 'C' && inst.eletrica?.length ? avisoDoCEletrico(inst.eletrica) : null
+      const semEletrica = !!avisoEl && !confirm(`${e.nome}: ${avisoEl}`)
+      const ficha = {
+        ...semBarras,
+        itens: semBarras.itens.filter((i) => !(i.instalacao && (i.instalacao === 'eletrica' ? semEletrica : inst[i.instalacao]?.length))),
+      }
       const { etapa: et, resultado } = pincel
       const cDoPincel = { ...c, fichaCampoId: aberta?.id ?? null }
       // itens dentro do prazo das regras da obra: uma pergunta só; Cancelar marca só os outros (19/11)
@@ -1068,9 +1125,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (!f) {
       setParteAberta(null)
       abrirPainel(id)
-      return avisar('A ficha de viga não tem item de furação: o furo fica só para ver.')
+      return avisar(furoSemItem(id))
     }
-    const { ficha, item, vigaId } = f
+    const { ficha, item } = f
     executar(async (evs) => {
       const eventos = daFichaAberta(evs(id), null)
       const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === ficha.id)).get(item)
@@ -1085,7 +1142,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           avisar(volta ? `Desfeito: ${e.nome}` : 'Nada a desfazer: o furo já mudou.')
           return volta
         })
-        acertarViga(vigaId)
+        acertarDono(f)
       })
       // errado: o painel abre para escrever o que fazer e tirar a foto
       if (novo === 'NC') {
@@ -1094,8 +1151,48 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       }
       return gravado
     })
-    acertarViga(vigaId)
+    acertarDono(f)
   }
+
+  /** Depois do toque num furo: leva o resultado ao item da viga ou, no furo de laje, aos itens da área. */
+  const acertarDono = (f: { vigaId: string; laje?: boolean }) => (f.laje ? acertarArea(f.vigaId) : acertarViga(f.vigaId))
+
+  /**
+   * Leva os furos de laje aos itens de instalação da área (furos_laje.ts): esgoto e água pelos furos
+   * (todos OK C, algum errado NC com os furos na observação, senão pendente); a elétrica só fica NC pelos
+   * furos errados (o C é da pessoa). Só grava o que mudou.
+   */
+  const acertarArea = (areaId: string) =>
+    executar(async (evs) => {
+      const area = dados.areaPorId.get(areaId)
+      const ficha = area ? fichaPorId(area.ficha_id) : undefined
+      if (!ficha) return
+      const daArea = daFichaAberta(evs(areaId), null)
+      const atuais = ultimosPorItem(daArea.filter((x) => x.ficha_id === ficha.id))
+      const gravados: Linha[] = []
+      for (const inst of INSTALACOES) {
+        const item = itemDaInstalacao(ficha, inst)?.n
+        if (item === undefined) continue
+        const lista = furosDaInstalacao(areaId, ficha, inst, evs)
+        const atual = atuais.get(item)
+        const resultado = resultadoDaInstalacao(inst, lista.map((x) => x.sit), atual ?? null)
+        if (resultado === undefined) continue
+        const obs = resultado === 'NC' ? observacaoDosFuros(lista.filter((x) => x.sit === 'reprovado').map((x) => x.nome)) : null
+        if ((atual?.resultado ?? null) === resultado && (resultado !== 'NC' || (atual?.observacao ?? null) === obs)) continue
+        gravados.push(await marcarPelosFuros(c, areaId, ficha, item, resultado, obs, daArea))
+      }
+      return gravados
+    })
+  // área desenhada, mudada ou apagada: a ligação furo → área muda, e os itens das áreas são recalculados
+  const primeiraLeituraDasAreas = useRef(true)
+  useEffect(() => {
+    if (primeiraLeituraDasAreas.current) {
+      primeiraLeituraDasAreas.current = false
+      return
+    }
+    if (!pode) return
+    for (const a of areasDaPlanta) if (furosPorArea.has(a.id)) acertarArea(a.id)
+  }, [furosPorArea])
 
   /**
    * Leva os furos ao item de furação da viga: algum errado NC (a observação diz quais), todos OK C,
@@ -1938,7 +2035,19 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           ficha={pecaSel.tipo === 'F' ? fichaDoFuro(sel) : fichaDoLocal(sel, pecaSel.tipo)}
           // a área tem a ficha dela: escolhida na caixa, não muda depois
           fichas={areaSel ? (fichaPorId(areaSel.ficha_id) ? [fichaPorId(areaSel.ficha_id)!] : []) : pecaSel.tipo === 'F' ? [] : fichasPara(pecaSel.tipo, dados.fichas)}
-          aoGravar={pecaSel.tipo === 'F' && pecaSel.viga ? () => acertarViga(pecaSel.viga!) : undefined}
+          aoGravar={
+            pecaSel.tipo === 'F' && pecaSel.viga
+              ? () => acertarViga(pecaSel.viga!)
+              : pecaSel.tipo === 'F' && furosDeLaje.get(sel)
+                ? () => acertarArea(furosDeLaje.get(sel)!.id)
+                : undefined
+          }
+          instalacoes={areaSel ? instalacoesDaArea(areaSel.id) : undefined}
+          furoDeLaje={
+            ehFuroDeLaje(pecaSel)
+              ? { area: furosDeLaje.get(sel) ? { id: furosDeLaje.get(sel)!.id, nome: furosDeLaje.get(sel)!.nome } : undefined, aviso: furoSemItem(sel) }
+              : undefined
+          }
           area={areaSel}
           aoRedesenhar={areaSel ? () => comecarDesenho(areaSel.id) : undefined}
           aoApagarArea={areaSel ? () => apagarArea(areaSel) : undefined}
@@ -2018,6 +2127,10 @@ interface PropsPainel {
   barras?: { resumo: string; camada: string; semConferir: number; naCamada: number; aoTudoOk: () => void; aoVer: () => void }
   /** só furo: a viga em que ele fica */
   viga?: { id: string; nome: string }
+  /** só área de laje com furos de laje: a situação dos furos de cada instalação (item 4, 19/11) */
+  instalacoes?: Partial<Record<Instalacao, Situacao[]>>
+  /** só furo de laje: a área em que ele cai (sem área: fora de área de laje) e por que não marca, se não marcar */
+  furoDeLaje?: { area?: { id: string; nome: string }; aviso: string }
   aoIr: (id: string) => void
   /** abre outra peça trocando a aba (da viga para o furo e de volta) */
   aoIrComTipo: (id: string) => void
@@ -2093,6 +2206,10 @@ function Painel(p: PropsPainel) {
   for (const it of ficha?.itens ?? []) {
     if (it.parte && !partesDaFicha.includes(it.parte) && (p.partes.includes(it.parte) || ult.get(it.n)?.resultado)) partesDaFicha.push(it.parte)
   }
+  /** Item de esgoto ou água da área com furos de laje do tema: quem marca são os furos (item 4, 19/11). */
+  const pelosFurosDeLaje = (x: ItemFicha) => !!x.instalacao && x.instalacao !== 'eletrica' && !!p.instalacoes?.[x.instalacao]?.length
+  const furosEletricos = p.instalacoes?.eletrica ?? []
+  const avisoEletrico = furosEletricos.length ? avisoDoCEletrico(furosEletricos) : null
   const montar = (itens: readonly ItemFicha[]) => {
   let etapaAtual: string | null = null
   const linhas = []
@@ -2102,7 +2219,7 @@ function Painel(p: PropsPainel) {
         etapaAtual = it.etapa
         const et = it.etapa
         // o item das barras (e o dos furos) não entra no "Etapa C": quem marca é a planta
-        const automatico = (x: ItemFicha) => (!!x.barras && !!p.barras) || (!!x.furos && p.furos.length > 0)
+        const automatico = (x: ItemFicha) => (!!x.barras && !!p.barras) || (!!x.furos && p.furos.length > 0) || pelosFurosDeLaje(x)
         const vazios = itens.filter((x) => x.etapa === et && !ult.get(x.n)?.resultado && !automatico(x)).length
         linhas.push(
           <h3 class={`fv-etapa-tit${p.etapa && p.etapa !== et ? ' apagada' : ''}`} key={`e:${et}`}>
@@ -2116,8 +2233,11 @@ function Painel(p: PropsPainel) {
                   // itens da etapa ainda dentro do prazo das regras da obra: uma pergunta só (decisão de 19/11)
                   const noPrazo = prazosDoLote(ctx.dados, [{ id: p.id, ficha, eventos }], et)
                   const comPrazo = noPrazo.size > 0 && confirm(perguntaDoLote(noPrazo.size))
+                  // elétrica da laje vazia nesta etapa, com passagem errada ou sem conferir: pergunta (19/11)
+                  const el = itens.find((x) => x.etapa === et && x.instalacao === 'eletrica' && !ult.get(x.n)?.resultado)
+                  const semEletrica = !!el && !!avisoEletrico && !confirm(avisoEletrico)
                   gravar(async (evs) => {
-                    const fichaDoLote = { ...ficha, itens: ficha.itens.filter((x) => !automatico(x) && (comPrazo || !noPrazo.has(`${p.id}#${x.n}`))) }
+                    const fichaDoLote = { ...ficha, itens: ficha.itens.filter((x) => !automatico(x) && !(semEletrica && x === el) && (comPrazo || !noPrazo.has(`${p.id}#${x.n}`))) }
                     const gravados = await marcarLote(c, [{ id: p.id, ficha: fichaDoLote, eventos: evs }], et, 'C', toque.id, noPrazo).finally(() => esquecerToque(toque.obraId, toque.id))
                     const ligados = await ligarDepoisDe(c, ctx.dados.regras, p.id, ficha, gravados.map((g) => Number(g.item)), [...evs, ...(gravados as unknown as EventoFvs[])])
                     const n = gravados.length
@@ -2146,7 +2266,11 @@ function Painel(p: PropsPainel) {
       const pelosFuros = !!it.furos && p.furos.length > 0
       // área com barras no pacote: o item de armadura é das barras (aba Barras), não da mão (plano A, 18/11)
       const pelasBarras = !!it.barras && !!p.barras
-      const automatico = pelosFuros || pelasBarras
+      // área com furos de laje: esgoto e água são dos furos (aba Furos); a elétrica é da pessoa
+      const furosDoTema = it.instalacao ? (p.instalacoes?.[it.instalacao] ?? []) : []
+      const pelosFurosDaLaje = pelosFurosDeLaje(it)
+      const eletricaComFuros = it.instalacao === 'eletrica' && furosDoTema.length > 0
+      const automatico = pelosFuros || pelasBarras || pelosFurosDaLaje
       // prazo das regras da obra (escoramento, reescoramento): só aparece enquanto o item não está C
       const prazo = v?.resultado === 'C' ? null : prazoDoItemNaPeca(ctx.dados, ficha, eventos, it.n)
       linhas.push(
@@ -2250,6 +2374,16 @@ function Painel(p: PropsPainel) {
               <span class="discreto">Marcado pelos furos ({resumoDosFuros(p.furos.map((f) => f.sit)).texto.replace('Furos: ', '')})</span>
             </div>
           )}
+          {p.pode && pelosFurosDaLaje && (
+            <div class="fv-bt fv-pelos-furos" data-testid="fvs-item-pelos-furos-laje">
+              <span class="discreto">Marcado pelos furos ({resumoDosFuros(furosDoTema).texto.replace('Furos: ', '')})</span>
+            </div>
+          )}
+          {eletricaComFuros && (
+            <div class="fv-bt fv-pelos-furos" data-testid="fvs-item-eletrica-furos">
+              <span class="discreto">Passagens no modelo: {resumoDosFuros(furosDoTema).texto.replace('Furos: ', '')}. Caixas e eletrodutos: confira à mão.</span>
+            </div>
+          )}
           {pelasBarras && (
             <div class="fv-bt fv-pelos-furos" data-testid="fvs-item-pelas-barras">
               <span class="discreto">Marcado pelas barras ({p.barras!.resumo.replace('Barras: ', '')})</span>
@@ -2270,6 +2404,8 @@ function Painel(p: PropsPainel) {
                     // C dentro do prazo das regras da obra: só avisa (pergunta) e grava "Marcado antes do prazo"
                     const viraC = r === 'C' && v?.resultado !== 'C'
                     if (viraC && prazo && !confirm(perguntaDoPrazo(prazo, peca.nome))) return
+                    // C da elétrica com passagem errada ou sem conferir: só avisa e pergunta (19/11)
+                    if (viraC && eletricaComFuros && avisoEletrico && !confirm(avisoEletrico)) return
                     const obs = viraC && prazo ? observacaoDoPrazo(prazo) : null
                     // o diário anota já, no toque; a gravação vem na fila (toques anteriores primeiro)
                     const id = crypto.randomUUID()
@@ -2382,10 +2518,22 @@ function Painel(p: PropsPainel) {
           <div class="fv-sec" data-testid="fvs-furo-info">
             <p>
               {furo?.forma === 'retangular' ? 'Furo retangular' : 'Furo circular'}
+              {furo?.laje && ' de laje'}
               {furo?.fundo !== undefined && ` · ${furo.fundo} cm do fundo`}
+              {furo?.espessura !== undefined && ` · laje de ${furo.espessura} cm`}
             </p>
             {!!furo?.disciplinas?.length && <p class="discreto">{furo.disciplinas.map((d) => NOME_DA_DISCIPLINA[d] ?? d).join(', ')}</p>}
-            {!ficha && <p class="aviso">A ficha de viga não tem item de furação: o furo fica só para ver.</p>}
+            {p.furoDeLaje && !p.furoDeLaje.area && (
+              <p class="aviso" data-testid="fvs-furo-fora-area">
+                Fora de área de laje: o furo não marca nada até a área ser desenhada na aba Lajes.
+              </p>
+            )}
+            {!ficha && !(p.furoDeLaje && !p.furoDeLaje.area) && <p class="aviso">{p.furoDeLaje ? p.furoDeLaje.aviso : 'A ficha de viga não tem item de furação: o furo fica só para ver.'}</p>}
+            {p.furoDeLaje?.area && (
+              <button type="button" class="fv-link" data-testid="fvs-ir-area" onClick={() => p.aoIrComTipo(p.furoDeLaje!.area!.id)}>
+                Ver a área {p.furoDeLaje.area.nome}
+              </button>
+            )}
             {p.viga && (
               <button type="button" class="fv-link" data-testid="fvs-ir-viga" onClick={() => p.aoIrComTipo(p.viga!.id)}>
                 Ver a viga {p.viga.nome}

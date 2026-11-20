@@ -71,6 +71,14 @@ const FICHA_LAJE_TESTE: ItemFicha[] = [
   { n: 3, etapa: 'MONTAGEM - FORMA E ARMADURA', titulo: 'Armadura e espaçadores', dispositivo: 'Visual', tolerancia: 'Conforme projeto', ...(params.get('barras') ? { barras: true } : {}) },
   { n: 4, etapa: 'CONCRETAGEM', titulo: 'Rastreabilidade do concreto', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
   { n: 5, etapa: 'CURA', titulo: 'Cura conferida', dispositivo: 'Visual', tolerancia: '7 dias' },
+  // ?furoslaje=1: os pontos de instalação na laje (item 4, 19/11): esgoto e água pelos furos, elétrica à mão
+  ...(params.get('furoslaje')
+    ? ([
+        { n: 6, etapa: 'INSTALAÇÕES', titulo: 'Pontos de esgoto', dispositivo: 'Visual', tolerancia: 'Conforme projeto', instalacao: 'esgoto' },
+        { n: 7, etapa: 'INSTALAÇÕES', titulo: 'Pontos de água fria e quente', dispositivo: 'Visual', tolerancia: 'Conforme projeto', instalacao: 'agua' },
+        { n: 8, etapa: 'INSTALAÇÕES', titulo: 'Instalações elétricas na laje', dispositivo: 'Visual', tolerancia: 'Conforme projeto', instalacao: 'eletrica' },
+      ] satisfies ItemFicha[])
+    : []),
 ]
 
 // Fichas por ambiente, de teste (textos genéricos, não são as PVS da empresa).
@@ -184,6 +192,26 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
         polys: [[[x - r, y - r], [x + r, y - r], [x + r, y + r], [x - r, y + r]]],
         viga: v1,
         furo: i === 1 ? { forma: 'retangular', largura: 20, altura: 10, topo: 15, fundo: 25, disciplinas: ['ELT'] } : { forma: 'circular', diametro: 10, topo: 20, fundo: 20, disciplinas: ['SAN'] },
+      }
+    })
+  }
+  if (params.get('furoslaje')) {
+    // furos de laje (sem viga): três no vão de P8, P9, P14 e P15 (x e y de 450 a 750) e um fora dele
+    const furosDeLaje: Array<[number, number, string]> = [
+      [520, 520, 'Sanitário / drenagem'],
+      [600, 640, 'Hidráulica'],
+      [680, 560, 'Elétrica / telecom'],
+      [600, 400, 'Sanitário / drenagem'],
+    ]
+    furosDeLaje.forEach(([x, y, d], i) => {
+      const r = 3
+      elementos[uuid('e5000000', i + 1)] = {
+        tipo: 'F',
+        nome: `FL${i + 1}`,
+        secao: 'Ø 15 cm',
+        rotulo: [x - r, y - r, x + r, y + r],
+        polys: [[[x - r, y - r], [x + r, y - r], [x + r, y + r], [x - r, y + r]]],
+        furo: { forma: 'circular', diametro: 15, espessura: 12, disciplinas: [d], laje: true },
       }
     })
   }

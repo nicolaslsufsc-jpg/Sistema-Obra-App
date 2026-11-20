@@ -27,10 +27,15 @@ values ('f7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-1111111
              "depois_de": {"tipo": "item", "ficha": "EXE-PVS-001", "item": 12}}],
           "ligacoes": [
             {"id": "forma-armacao", "de": {"ficha": "EXE-PVS-001", "item": 5}, "para": {"ficha": "EXE-PVS-002", "item": 2}},
-            {"id": "forma-concreto", "de": {"ficha": "EXE-PVS-001", "item": 5}, "para": {"ficha": "EXE-PVS-003", "item": 1}}]}',
+            {"id": "forma-concreto", "de": {"ficha": "EXE-PVS-001", "item": 5}, "para": {"ficha": "EXE-PVS-003", "item": 1}},
+            {"id": "laje-viga", "entre": "area", "de": {"ficha": "EXE-PVS-004", "item": 25}, "para": {"ficha": "EXE-PVS-003", "item": 15}}]}',
         'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
 select teste.ok((select count(*) from public.fvs_regras) = 1,
   'fvs_regras: gestor cadastra prazos e ligações (mesma origem para dois destinos vale)');
+-- ligação entre peças (20/11/2026): o campo a mais "entre" passa na conferência e fica guardado como veio
+select teste.ok(
+  (select regras -> 'ligacoes' -> 2 ->> 'entre' from public.fvs_regras where id = 'f7000000-0000-0000-0000-000000000001') = 'area',
+  'fvs_regras: ligação entre peças ("entre": "area") é aceita e guardada');
 
 insert into public.fvs_regras (obra_id, regras, dispositivo_id, criado_em_dispositivo)
 values ('11111111-1111-1111-1111-111111111111', '{}', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now());

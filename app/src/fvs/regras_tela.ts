@@ -23,6 +23,8 @@ export interface LinhaDeLigacao {
   id: string
   de: ItemDaRegra
   para: ItemDaRegra
+  /** ligação entre peças: o item da área de laje marca os pilares e as vigas de dentro dela */
+  entrePecas: boolean
 }
 
 export interface RegrasNaTela {
@@ -64,7 +66,7 @@ export function regrasNaTela(regras: RegrasFvs, fichas: readonly Ficha[]): Regra
     }
     return { id: p.id, item: alvo, texto: p.texto ?? null, regra: `${dias(p.dias)} depois ${depois}` }
   })
-  const ligacoes = regras.ligacoes.map((l) => ({ id: l.id, de: item(l.de), para: item(l.para) }))
+  const ligacoes = regras.ligacoes.map((l) => ({ id: l.id, de: item(l.de), para: item(l.para), entrePecas: l.entre === 'area' }))
   return { prazos, ligacoes, semFicha, fora: regras.fora ?? 0 }
 }
 

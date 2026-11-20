@@ -207,7 +207,7 @@ describe('tela das regras (só leitura)', () => {
       ['Escoramento', 'Retirada das escoras', '14 dias depois da concretagem da peça'],
       [null, 'Reescoramento', '1 dia depois do C no item 5 (Retirada das escoras)'],
     ])
-    expect(t.ligacoes[0]).toEqual({ id: 'l1', de: { ref: 'EXE-VIG item 3', titulo: 'Rastreabilidade' }, para: { ref: 'EXE-OUTRA item 1', titulo: null } })
+    expect(t.ligacoes[0]).toEqual({ id: 'l1', de: { ref: 'EXE-VIG item 3', titulo: 'Rastreabilidade' }, para: { ref: 'EXE-OUTRA item 1', titulo: null }, entrePecas: false })
     expect([t.semFicha, t.fora]).toEqual([1, 1])
     expect(resumoDasRegras(regras)).toBe('2 prazos · 1 ligação')
   })

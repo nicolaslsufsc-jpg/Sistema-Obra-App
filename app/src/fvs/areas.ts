@@ -288,3 +288,22 @@ export function resumoDasAreas(
   }
   return r
 }
+
+/**
+ * A área de laje que contém o ponto (coordenadas da planta); com mais de uma, a menor. É a conta que
+ * liga à área o que o pacote traz pronto: os furos de laje (furos_laje.ts) e, na ligação entre peças,
+ * os pilares e as vigas (ligacoes.ts).
+ */
+export function areaDoPonto(ponto: readonly [number, number], areas: readonly AreaDeLaje[]): AreaDeLaje | undefined {
+  let melhor: AreaDeLaje | undefined
+  let menor = Infinity
+  for (const a of areas) {
+    if (a.contorno.length < 3 || !dentro(ponto, a.contorno)) continue
+    const m = Math.abs(areaDoContorno(a.contorno))
+    if (m < menor) {
+      menor = m
+      melhor = a
+    }
+  }
+  return melhor
+}

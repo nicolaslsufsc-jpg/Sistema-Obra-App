@@ -1542,10 +1542,25 @@ suite('FVS na bancada (Chrome)', () => {
         await tocarNaPlanta(p, x, y)
       }
 
+      // celular: Pincel e Por item com 14 px; as quatro abas não cabem, e a borda do lado em que a fila
+      // continua esmaece (revisão da 06, 20/11: "Pilares" aparecia como "ares", sem sinal de mais abas)
+      const fila = () => p.locator('.fv-seg').evaluate((s: HTMLElement) => ({ esq: s.classList.contains('mais-esq'), dir: s.classList.contains('mais-dir'), cabe: s.scrollWidth <= s.clientWidth }))
+      expect(await p.locator('.fv-bpincel, .fv-bitem').evaluateAll((l: Element[]) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 14).map((e) => e.textContent))).toEqual([])
+      const noInicio = await fila()
+      if (noInicio.cabe) expect(noInicio).toEqual({ esq: false, dir: false, cabe: true })
+      else expect(noInicio).toEqual({ esq: false, dir: true, cabe: false })
+
       // antes da área: o furo fica fora de área de laje, não marca nada e diz por quê
       await aba('Furos')
+      if (!noInicio.cabe) await expect.poll(fila).toEqual({ esq: true, dir: false, cabe: false })
       await furo(600, 400)
       await aviso('fora de área de laje')
+      // o aviso quebra linha em vez de cortar o fim, e cabe na tela
+      const avisoCabe = await p.locator('.fv-toast').evaluate((t: HTMLElement) => {
+        const s = t.querySelector('span')!
+        return s.scrollWidth <= s.clientWidth + 1 && s.scrollHeight <= s.clientHeight + 1 && t.getBoundingClientRect().right <= innerWidth + 0.5
+      })
+      expect(avisoCabe).toBe(true)
       await nomeNoPainel(p, 'FL4')
       await p.getByTestId('fvs-furo-fora-area').waitFor()
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
@@ -1605,6 +1620,125 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-item[data-item="8"] button[data-r="C"]').click()
       await expect.poll(() => itemDaArea(8).then((x: any) => x?.r), { timeout: 5000 }).toBe('C')
       expect(await contrasteNosDoisTemas(p), 'contraste do painel da área').toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: ligação entre peças: o C no item da área de laje marca os pilares e as vigas de dentro dela, mostra a origem e se desfaz`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&regras=pecas`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      // tela das regras: a ligação entre peças diz que vale para as peças de dentro da área
+      await p.getByTestId('fvs-entra-regras').click()
+      expect(await p.getByTestId('fvs-regra-ligacao').count()).toBe(3)
+      expect(await p.getByTestId('fvs-regras-entre-pecas').innerText()).toContain('cada pilar e viga dentro dela')
+      const daLaje = p.getByTestId('fvs-regra-ligacao').filter({ hasText: 'TESTE-PVS-V item 4' })
+      expect(await daLaje.innerText()).toContain('em cada pilar e viga dentro da área de laje')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(await contrasteNosDoisTemas(p), 'contraste da tela das regras').toEqual([])
+      expect(await p.locator('.fv-regras li *').evaluateAll((l: Element[]) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 14).map((e) => e.textContent))).toEqual([])
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ligacao_pecas_${nome}_regras.png`), fullPage: true })
+      await p.locator('.fv-regras .fv-voltar').click()
+      await pavimento.waitFor()
+      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const painel = p.getByTestId('fvs-painel')
+      const fechar = async () => {
+        await p.locator('.fv-cab button').click()
+        await painel.waitFor({ state: 'detached' })
+      }
+      const aba = (t: string) => p.locator('.fv-seg button', { hasText: t }).click()
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const P8 = 'e0000000-0000-0000-0000-000000000008'
+      const P9 = 'e0000000-0000-0000-0000-000000000009'
+      const V7 = 'e1000000-0000-0000-0000-000000000007'
+      const V12 = 'e1000000-0000-0000-0000-000000000012'
+      const V25 = 'e1000000-0000-0000-0000-000000000025'
+      const ultimo = async (el: string, n: number) => (await registros(p)).filter((r) => r.el === el && r.item === n).at(-1)
+      // o item 4 da ficha de laje de teste, gravado na área
+      const itemDaArea = () =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => e.area_id && e.item === 4)
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          return l.at(-1)?.resultado ?? null
+        })()`)
+      const ORIGEM = 'Pela ligação: Laje ligada · item 4 (Rastreabilidade do concreto)'
+
+      // a V25 já tem o item 4 marcado à mão (NA): a ligação não mexe nela
+      await aba('Vigas')
+      await buscar(p, 'V25')
+      await nomeNoPainel(p, 'V25')
+      await item(p, 4, 'NA').click()
+      await p.locator('.fv-item[data-item="4"] button[data-r="NA"].on').waitFor()
+      await fechar()
+
+      // área de laje com o P8, a V7 e a V25 dentro (o centro de cada um); P9, P14 e V12 ficam de fora
+      await aba('Lajes')
+      await enquadrar(p, [-570, 570], 0)
+      await p.getByTestId('fvs-nova-area').click()
+      await p.getByTestId('fvs-desenho').waitFor()
+      for (const [x, y] of [[420, 420], [720, 420], [720, 720], [420, 720]]) await tocarNaPlanta(p, x, y)
+      await p.getByTestId('fvs-concluir-area').click()
+      await p.getByTestId('fvs-caixa-nome').fill('Laje ligada')
+      await p.getByTestId('fvs-caixa-criar').click()
+      await nomeNoPainel(p, 'Laje ligada')
+
+      // C no item 4 da área (botão do painel): marca o P8 (item 6) e a V7 (item 4); o aviso diz quais
+      await item(p, 4, 'C').click()
+      await aviso('Laje ligada: C pela ligação em 2 peças: P8 e V7')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ligacao_pecas_${nome}_aviso.png`) })
+      const noP8 = await ultimo(P8, 6)
+      const naV7 = await ultimo(V7, 4)
+      expect([noP8?.r, noP8?.obs]).toEqual(['C', ORIGEM])
+      expect([naV7?.r, naV7?.obs]).toEqual(['C', ORIGEM])
+      expect(noP8?.lote).toBeTruthy()
+      expect(naV7?.lote).toBe(noP8?.lote)
+      // quem já estava marcado e quem está fora da área não muda
+      expect((await ultimo(V25, 4))?.r).toBe('NA')
+      expect(await ultimo(V12, 4)).toBeUndefined()
+      expect(await ultimo(P9, 6)).toBeUndefined()
+      expect(await itemDaArea()).toBe('C')
+
+      // Desfazer do aviso: limpa só os ligados; o item da área continua C
+      await p.getByTestId('fvs-desfazer').click()
+      await aviso('Desfeito: 2 itens')
+      expect((await ultimo(P8, 6))?.r).toBeNull()
+      expect((await ultimo(V7, 4))?.r).toBeNull()
+      expect((await ultimo(V25, 4))?.r).toBe('NA')
+      expect(await itemDaArea()).toBe('C')
+
+      // de novo, agora pela Etapa C da área (lote): "+2 pela ligação"
+      await item(p, 4, 'C').click()
+      await expect.poll(() => itemDaArea(), { timeout: 5000 }).toBeNull()
+      await p.locator('.fv-etapa-tit', { hasText: 'CONCRETAGEM' }).getByRole('button').click()
+      await aviso('Laje ligada: 1 item C em concretagem · +2 pela ligação')
+      expect((await ultimo(P8, 6))?.r).toBe('C')
+      expect((await ultimo(V7, 4))?.r).toBe('C')
+      await fechar()
+
+      // na viga: o item ligado aparece C, com a origem no lugar de "em lote"
+      await aba('Vigas')
+      await buscar(p, 'V7')
+      await nomeNoPainel(p, 'V7')
+      await p.locator('.fv-item[data-item="4"] button[data-r="C"].on').waitFor()
+      expect(await p.locator('.fv-item[data-item="4"]').getByTestId('fvs-obs-c').innerText()).toContain('Pela ligação: Laje ligada · item 4')
+      expect(await p.locator('.fv-item[data-item="4"] .fv-hr').innerText()).not.toContain('em lote')
+      expect(await contrasteNosDoisTemas(p), 'contraste do painel da viga').toEqual([])
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ligacao_pecas_${nome}_viga.png`) })
+      await fechar()
+      // no pilar: o C ligado na concretagem (item 6) inicia o prazo da desforma (item 7)
+      await aba('Pilares')
+      await buscar(p, 'P8')
+      await nomeNoPainel(p, 'P8')
+      await p.locator('.fv-item[data-item="6"] button[data-r="C"].on').waitFor()
+      expect(await p.locator('.fv-item[data-item="7"]').getByTestId('fvs-prazo').innerText()).toMatch(/faltam 3 dias/)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       expect(erros).toEqual([])
       await contexto.close()
@@ -2328,7 +2462,8 @@ suite('FVS na bancada (Chrome)', () => {
         })
       })
       expect(cobertos, 'aviso por cima de').toEqual([])
-      // celular: com o painel aberto sobra pouca planta; o aviso é uma faixa de uma linha colada no painel
+      // celular: com o painel aberto sobra pouca planta; o aviso é uma faixa baixa colada no painel (desde
+      // 20/11 o texto quebra em vez de cortar: aqui são duas linhas, da altura do botão Desfazer)
       if (largura < 700) {
         const faixa = await p.evaluate(() => {
           const a = document.querySelector('.fv-toast')!.getBoundingClientRect()
@@ -2590,6 +2725,10 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.locator('.fv-item').count()).toBe(7)
       const naFicha = p.getByTestId('fvs-ficha-do-painel')
       expect(await naFicha.innerText()).toContain('rev. 0 (a vigente é a rev. 1; esta peça foi marcada nesta)')
+      // ficha, revisão, dispositivo, tolerância e "toque na imagem para ampliar": nada abaixo de 14 px (revisão da 06, 20/11)
+      const rotulos = await p.locator('.fv-painel .fv-mt, .fv-painel .fv-dica, .fv-painel .fv-ficha').evaluateAll((l: Element[]) => l.map((e): [number, string | null] => [parseFloat(getComputedStyle(e).fontSize), e.textContent]))
+      expect(rotulos.length).toBeGreaterThan(0)
+      expect(rotulos.filter((r: [number, string | null]) => r[0] < 14)).toEqual([])
 
       // peça que não foi marcada já usa a revisão nova
       await buscar(p, 'P5')

@@ -245,13 +245,18 @@ suite('telas no navegador', () => {
 
   it('menu abre o módulo pronto e o voltar do Android retorna ao menu', async () => {
     // Desde 18/11/2026 o Relatórios saiu do menu, com o código guardado.
-    // Desde 20/11/2026 o IFC voltou, com e sem conta, sem o selo "beta"; o Projetos voltou só sem conta.
+    // Desde 20/11/2026 o IFC voltou, com e sem conta, sem o selo "beta".
     // Desde 20/11/2026 (teste com cabo) o Documentos só aparece sem conta: com conta não há tabela no servidor.
+    // Desde 20/11/2026 (#44, lista de distribuição no servidor) o Projetos aparece também com conta, com o selo "beta".
     const concreto = pagina.getByRole('button', { name: /^Concreto/ })
     expect(await concreto.isEnabled()).toBe(true)
     expect(await pagina.getByRole('button', { name: /^IFC/ }).count()).toBe(1)
-    expect(await pagina.locator('.selo-beta').count()).toBe(0)
-    for (const beta of [/^Projetos/, /^Relatórios/, /^Documentos/]) expect(await pagina.getByRole('button', { name: beta }).count()).toBe(0)
+    const projetos = pagina.getByRole('button', { name: /^Projetos/ })
+    expect(await projetos.count()).toBe(1)
+    expect(await projetos.isEnabled()).toBe(true)
+    expect(await pagina.locator('.selo-beta').count()).toBe(1)
+    expect(await projetos.locator('.selo-beta').count()).toBe(1)
+    for (const beta of [/^Relatórios/, /^Documentos/]) expect(await pagina.getByRole('button', { name: beta }).count()).toBe(0)
 
     await concreto.click()
     await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()

@@ -54,10 +54,12 @@ export interface Modulo {
 // e sem conta; o Documentos continua no menu sem conta (com conta ainda não há tabela no servidor).
 // Desde 20/11/2026 o Projetos volta ao menu, com o selo "beta" (prioridade do Nicolas: lista de distribuição e
 // "a entregar"), só sem conta como o Documentos: a base e a lista ainda ficam no aparelho. Relatórios continua fora.
+// Desde 20/11/2026 (o Nicolas aprovou a lista de distribuição com conta, item 2 do núcleo, #44) o Projetos aparece
+// também com conta, ainda com o selo "beta". O Documentos continua só sem conta.
 // Para um deles voltar ao menu, apague o `foraDoMenu` da linha dele (e ligue `BETAS_NO_MENU` em testes/local.e2e.test.ts).
 const REGISTRO: readonly Modulo[] = [
   { id: 'fvs', nome: 'FVS', descricao: 'Fichas de pilares, vigas, lajes, furos e ambientes', Tela: FvsSobDemanda },
-  { id: 'projetos', nome: 'Projetos', descricao: 'Pranchas da obra: revisão em vigor e cópias entregues', Tela: ProjetosSobDemanda, beta: true, soSemConta: true },
+  { id: 'projetos', nome: 'Projetos', descricao: 'Pranchas da obra: revisão em vigor e cópias entregues', Tela: ProjetosSobDemanda, beta: true },
   { id: 'concreto', nome: 'Concreto', descricao: 'Caminhões, peças concretadas e corpos de prova', Tela: ConcretoSobDemanda },
   { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra do PBQP-H: revisões, validade e impressão', Tela: DocumentosSobDemanda, soSemConta: true },
   { id: 'relatorios', nome: 'Relatórios', descricao: 'Diário de obra, problemas, limpeza', Tela: RelatoriosSobDemanda, foraDoMenu: true },

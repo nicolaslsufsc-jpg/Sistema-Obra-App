@@ -162,6 +162,31 @@ const semAcento = (t: string) => t.normalize('NFD').replace(/[^A-Za-z0-9]/g, '')
 const ll = ([x, y]: [number, number]): L.LatLngTuple => [-y, x]
 const caixa = (r: readonly number[]) => L.latLngBounds([-r[1], r[0]], [-r[3], r[2]])
 
+/**
+ * Enquadra as peças e, se sobra altura (celular em pé), encosta o desenho embaixo do topo. Centrado, a
+ * faixa vazia de mapa em cima, escura como o topo, parecia parte do cabeçalho: o desenho só começava
+ * em ~440 de 812 px (testador com a obra piloto, 20/11). A sobra vai para baixo, onde abre o painel.
+ */
+function enquadrarNoTopo(m: L.Map, b: L.LatLngBounds, limites: L.LatLngBounds) {
+  // o limite do mapa, menor que a tela, puxaria o desenho de volta para o meio: solta e depois inclui a vista
+  m.setMaxBounds(null as unknown as L.LatLngBounds)
+  m.fitBounds(b, { animate: false })
+  const z = m.getZoom()
+  const alto = m.project(b.getSouthEast(), z).y - m.project(b.getNorthWest(), z).y
+  const sobra = m.getSize().y - alto
+  if (sobra <= 2) {
+    m.setMaxBounds(limites)
+    return
+  }
+  m.panBy([0, sobra / 2], { animate: false })
+  // o limite volta com o lado de baixo só até onde precisa: com menos zoom que este (tela maior que o
+  // limite), o Leaflet centraliza no meio do limite, e o meio fica onde o desenho continua no alto
+  const vista = m.getBounds()
+  const norte = limites.getNorth()
+  const sul = Math.min(limites.getSouth(), 2 * vista.getNorth() - (vista.getNorth() - vista.getSouth()) - norte)
+  m.setMaxBounds(L.latLngBounds([sul, limites.getWest()], [norte, limites.getEast()]))
+}
+
 interface Props {
   ctx: ContextoFvs
   plantaId: string
@@ -622,7 +647,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       preferCanvas: true,
     })
     const limites = L.latLngBounds([-manifest.altura, 0], [0, manifest.largura])
-    m.setMaxBounds(limites.pad(0.15))
+    const limitesDoMapa = limites.pad(0.15)
+    m.setMaxBounds(limitesDoMapa)
     const Tiles = L.GridLayer.extend({
       createTile(coords: L.Coords) {
         const u = pacote.tile(coords.z, coords.x, coords.y)
@@ -656,7 +682,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       }
       return b.pad(0.03)
     })()
-    m.fitBounds(enquadro)
+    enquadrarNoTopo(m, enquadro, limitesDoMapa)
     // vindo da lista de reprovações: a peça no meio da tela, com folga em volta para situar
     const pecaAlvo = pecaInicial ? elementoDe(pecaInicial) : undefined
     const irAoAlvo = () => {
@@ -768,7 +794,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     // o zoom inicial só vale depois que a área do mapa tem tamanho na tela
     const quadro = requestAnimationFrame(() => {
       m.invalidateSize()
-      m.fitBounds(enquadro)
+      enquadrarNoTopo(m, enquadro, limitesDoMapa)
       irAoAlvo()
       mostrarNomes()
       verFurosPerto()
@@ -784,7 +810,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     area.addEventListener('wheel', marcarMexeu, { passive: true })
     const aoRedimensionar = () => {
       m.invalidateSize()
-      if (!mexeu) m.fitBounds(enquadro)
+      if (!mexeu) enquadrarNoTopo(m, enquadro, limitesDoMapa)
     }
     window.addEventListener('resize', aoRedimensionar)
     return () => {

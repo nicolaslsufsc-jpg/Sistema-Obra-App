@@ -92,7 +92,8 @@ function celula(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return ''
   if (typeof v === 'number') return String(v).replace('.', ',')
   let t = v
-  if (/^[=+\-@]/.test(t)) t = `'${t}`
+  // tabulação no começo também vira fórmula no Excel (varredura do testador, 08/11; a da FVS já protege)
+  if (/^[=+\-@\t]/.test(t)) t = `'${t}`
   if (/[;"\n\r]/.test(t)) t = `"${t.replace(/"/g, '""')}"`
   return t
 }

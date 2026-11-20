@@ -188,7 +188,8 @@ function celulas(l: LinhaDaFicha): string[] {
 
 function celulaCsv(t: string): string {
   let s = t
-  if (/^[=+\-@]/.test(s)) s = `'${s}`
+  // tabulação no começo também vira fórmula no Excel (varredura do testador, 08/11; a da FVS já protege)
+  if (/^[=+\-@\t]/.test(s)) s = `'${s}`
   if (/[;"\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`
   return s
 }

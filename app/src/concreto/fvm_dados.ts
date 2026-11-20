@@ -1,20 +1,15 @@
 // FVM no aparelho: a lista de materiais controlados e os recebimentos (sem internet, entram no .obra).
 //
-// As tabelas ainda não têm migração no servidor (tabelas.ts): por isso não estão na lista do
-// sincronizador do app, que as baixaria do servidor e daria erro. Aqui um sincronizador PRÓPRIO,
-// só com elas, grava na mesma fila e no mesmo banco do aparelho (o .obra leva a fila inteira), mas
-// ninguém chama baixar() nele. As telas só aparecem no app sem conta, que não envia nada.
-// Limite conhecido: registro do FVM feito sem conta e depois enviado com login fica "com erro" na
-// fila até a migração existir.
+// Desde 20/11 as tabelas têm migração (20261120120000_concreto_fvm.sql) e estão na lista do
+// Concreto (tabelas.ts): gravam e baixam pelo sincronizador do app, com ou sem conta.
+// No servidor, só gestor e admin mexem na lista e tiram um material do retido (decisões 2 e 5).
 //
 // Simplificação desta rodada (a proposta de 14/11 tinha tabelas filhas): os itens conferidos, os
 // documentos e as fotos ficam dentro da linha do recebimento (json), com cópia do texto de cada
 // item. A ficha fica fiel ao que foi conferido mesmo se a lista de materiais mudar depois.
 
 import { recusaDoArquivo, tipoDoArquivo, nomeLimpo } from '../documentos/regras'
-import { banco, cliente, sincronizador } from '../nucleo/servicos'
-import { Sincronizador } from '../nucleo/sincronizacao'
-import { TABELAS_FVM } from './tabelas'
+import { sincronizador } from '../nucleo/servicos'
 import { camposDeCorrecao, vigentes, type Corrigivel, type Vigente } from './vigentes'
 import {
   camposDoMaterial,
@@ -31,9 +26,6 @@ const COLUNAS_RECEBIMENTO = [
   'material_codigo', 'material_nome', 'unidade', 'data', 'fornecedor', 'nota_fiscal', 'lote', 'quantidade',
   'itens', 'documentos', 'fotos', 'situacao', 'motivo', 'observacao', 'liberado_por', 'liberado_em',
 ] as const
-
-/** Só grava e lê no aparelho: nunca baixa (sem migração no servidor). Arquivos vão pelo do app. */
-const noAparelho = new Sincronizador({ banco, cliente, tabelas: TABELAS_FVM })
 
 export type MaterialNoAparelho = Vigente<Corrigivel> & MaterialControlado
 
@@ -70,7 +62,7 @@ export interface DadosFvm {
 }
 
 export async function carregarFvm(obraId: string): Promise<DadosFvm> {
-  const [mat, rec] = await Promise.all([noAparelho.linhas('materiais_controlados', obraId), noAparelho.linhas('recebimentos', obraId)])
+  const [mat, rec] = await Promise.all([sincronizador.linhas('materiais_controlados', obraId), sincronizador.linhas('recebimentos', obraId)])
   const materiais = vigentes(mat as Corrigivel[])
     .map(
       (m) =>
@@ -106,12 +98,12 @@ export async function importarLista(
   novos: readonly MaterialControlado[],
 ): Promise<{ incluidos: number; corrigidos: number; cancelados: number }> {
   const d = compararListas(atuais, novos)
-  for (const m of d.incluir) await noAparelho.registrar('materiais_controlados', obraId, usuarioId, camposDoMaterial(m))
+  for (const m of d.incluir) await sincronizador.registrar('materiais_controlados', obraId, usuarioId, camposDoMaterial(m))
   for (const { atual, novo } of d.corrigir) {
-    await noAparelho.registrar('materiais_controlados', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_MATERIAL, camposDoMaterial(novo)))
+    await sincronizador.registrar('materiais_controlados', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_MATERIAL, camposDoMaterial(novo)))
   }
   for (const a of d.cancelar) {
-    await noAparelho.registrar('materiais_controlados', obraId, usuarioId, camposDeCorrecao(a, COLUNAS_MATERIAL, { cancelado: true }))
+    await sincronizador.registrar('materiais_controlados', obraId, usuarioId, camposDeCorrecao(a, COLUNAS_MATERIAL, { cancelado: true }))
   }
   return { incluidos: d.incluir.length, corrigidos: d.corrigir.length, cancelados: d.cancelar.length }
 }
@@ -119,7 +111,7 @@ export async function importarLista(
 export type NovoRecebimento = Omit<Recebimento, keyof Vigente<Corrigivel> | 'liberado_por' | 'liberado_em'>
 
 export function registrarRecebimento(obraId: string, usuarioId: string, r: NovoRecebimento) {
-  return noAparelho.registrar('recebimentos', obraId, usuarioId, { ...r, liberado_por: null, liberado_em: null })
+  return sincronizador.registrar('recebimentos', obraId, usuarioId, { ...r, liberado_por: null, liberado_em: null })
 }
 
 /** Tira do "retido" (liberar, liberar com ressalva ou devolver): linha nova que substitui a anterior. */
@@ -130,7 +122,7 @@ export function decidirRetido(
   situacao: Exclude<SituacaoRecebimento, 'retido'>,
   motivo: string,
 ) {
-  return noAparelho.registrar(
+  return sincronizador.registrar(
     'recebimentos',
     obraId,
     usuarioId,
@@ -139,7 +131,7 @@ export function decidirRetido(
 }
 
 export function cancelarRecebimento(obraId: string, usuarioId: string, atual: Recebimento) {
-  return noAparelho.registrar('recebimentos', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_RECEBIMENTO, { cancelado: true }))
+  return sincronizador.registrar('recebimentos', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_RECEBIMENTO, { cancelado: true }))
 }
 
 export const ACEITAR_FOTO = 'image/jpeg,image/png,image/webp'

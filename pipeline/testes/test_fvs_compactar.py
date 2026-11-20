@@ -112,3 +112,76 @@ class TestCompactar(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCompactarDocumentos(unittest.TestCase):
+    """Documentos da empresa vão em dados_obra/documentos/, como no exportar_bancada.py (20/11/2026)."""
+
+    PDF = b"%PDF-1.4 documento de teste"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = pathlib.Path(self._tmp.name)
+        self.pasta = pasta_de_teste(self.base)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _indice_no_formato_do_app(self, **arquivo):
+        import hashlib
+        (self.pasta / "documentos" / "arquivos").mkdir(parents=True)
+        (self.pasta / "documentos" / "arquivos" / "001.pdf").write_bytes(self.PDF)
+        a = {"caminho": "arquivos/001.pdf", "nome": "manual.pdf", "tipo": "application/pdf", "tamanho": len(self.PDF), "sha256": hashlib.sha256(self.PDF).hexdigest()}
+        a.update(arquivo)
+        docs = {"documentos": [{"categoria": "sistema", "codigo": "EXE-MQ", "titulo": "Manual da Qualidade", "revisao": "03", "data_revisao": "2026-02-01",
+                                "validade": None, "responsavel": "Qualidade", "situacao": "vigente", "observacao": None, "arquivo": a}]}
+        (self.pasta / "documentos" / "indice.json").write_text(json.dumps(docs), encoding="utf-8")
+        # arquivo solto que o índice não cita: não entra
+        (self.pasta / "documentos" / "solto.pdf").write_bytes(self.PDF)
+
+    def test_leva_documentos_da_pasta_so_o_que_o_indice_cita(self):
+        self._indice_no_formato_do_app()
+        r = cp.compactar(self.pasta, self.base / "pacote.zip")
+        self.assertEqual(r["documentos"], 1)
+        with zipfile.ZipFile(self.base / "pacote.zip") as z:
+            nomes = set(z.namelist())
+            self.assertIn("dados_obra/documentos/indice.json", nomes)
+            self.assertEqual(z.read("dados_obra/documentos/arquivos/001.pdf"), self.PDF)
+            self.assertNotIn("dados_obra/documentos/solto.pdf", nomes)
+            self.assertEqual(json.loads(z.read("dados_obra/documentos/indice.json"))["documentos"][0]["codigo"], "EXE-MQ")
+
+    def test_sem_documentos_o_zip_sai_como_antes(self):
+        r = cp.compactar(self.pasta, self.base / "pacote.zip")
+        self.assertEqual((r["arquivos"], r["documentos"]), (4, 0))
+        with zipfile.ZipFile(self.base / "pacote.zip") as z:
+            self.assertFalse(any(n.startswith("dados_obra/documentos/") for n in z.namelist()))
+
+    def test_recusa_documento_adulterado_ou_fora_da_pasta(self):
+        self._indice_no_formato_do_app(sha256="0" * 64)
+        with self.assertRaisesRegex(cp.ErroCompactar, "SHA-256"):
+            cp.compactar(self.pasta, self.base / "x.zip")
+        for arquivo, erro in (({"caminho": "../indice.json"}, "não está em documentos"), ({"caminho": "arquivos/nao_existe.pdf"}, "não está em documentos")):
+            import shutil
+            shutil.rmtree(self.pasta / "documentos")
+            self._indice_no_formato_do_app(**arquivo)
+            with self.assertRaisesRegex(cp.ErroCompactar, erro):
+                cp.compactar(self.pasta, self.base / "x.zip")
+        self.assertFalse((self.base / "x.zip").exists())
+
+    def test_opcao_documentos_usa_a_conferencia_do_exportar_bancada(self):
+        origem = self.base / "docs_empresa"
+        origem.mkdir()
+        (origem / "manual.pdf").write_bytes(self.PDF)
+        lista = [{"categoria": "sistema", "codigo": "exe-mq", "titulo": "Manual da Qualidade", "revisao": "03", "data_revisao": "2026-02-01",
+                  "responsavel": "Qualidade", "arquivo": "manual.pdf"}]
+        (origem / "documentos.json").write_text(json.dumps(lista), encoding="utf-8")
+        r = cp.compactar(self.pasta, self.base / "pacote.zip", documentos=origem)
+        self.assertEqual(r["documentos"], 1)
+        with zipfile.ZipFile(self.base / "pacote.zip") as z:
+            docs = json.loads(z.read("dados_obra/documentos/indice.json"))
+            self.assertEqual(docs["documentos"][0]["codigo"], "EXE-MQ")
+            self.assertEqual(z.read("dados_obra/documentos/" + docs["documentos"][0]["arquivo"]["caminho"]), self.PDF)
+        lista[0]["categoria"] = "nao_existe"
+        (origem / "documentos.json").write_text(json.dumps(lista), encoding="utf-8")
+        with self.assertRaisesRegex(cp.ErroCompactar, "categoria"):
+            cp.compactar(self.pasta, self.base / "y.zip", documentos=origem)

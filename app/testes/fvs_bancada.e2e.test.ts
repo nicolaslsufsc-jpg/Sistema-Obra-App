@@ -1914,6 +1914,52 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: projetos no ambiente: modulação, paginação e impermeabilização, cada um nas fichas dele`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&modulacao=1&projetos=1`)
+      await p.getByTestId('fvs-pavimento').waitFor()
+      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await enquadrar(p, [-480, 320], 0)
+      await tocarNaPlanta(p, 320, 480)
+      await nomeNoPainel(p, '101-03')
+      // alvenaria (a primeira ficha): a modulação e a impermeabilização (sem lista de fichas); a paginação não
+      expect(await p.getByTestId('fvs-ficha-do-painel').textContent()).toContain('TESTE-PVS-ALV')
+      expect(await p.getByTestId('fvs-modulacao').locator('h3').textContent()).toBe('Modulação · Apto 101')
+      const proj = p.getByTestId('fvs-projeto')
+      expect(await proj.locator('h3').allTextContents()).toEqual(['Impermeabilização · Apto 101'])
+      expect(await proj.locator('.fv-dica').first().textContent()).toContain('TESTE.IM.EX.006.PAV-R01')
+      await expect.poll(() => proj.locator('img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0)
+      // os recortes vêm antes dos cômodos do apartamento
+      const ordem = await p
+        .locator('[data-testid="fvs-modulacao"], [data-testid="fvs-projeto"], [data-testid="fvs-irmaos"]')
+        .evaluateAll((els: Element[]) => els.map((e) => e.getAttribute('data-testid')))
+      expect(ordem).toEqual(['fvs-modulacao', 'fvs-projeto', 'fvs-irmaos'])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // reboco no topo: a paginação de piso entra (a lista de fichas dela tem o reboco de teste)
+      await p.locator('.fv-cab button').click()
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+      await p.getByTestId('fvs-servico').selectOption({ index: 1 })
+      await enquadrar(p, [-480, 320], 0)
+      await tocarNaPlanta(p, 320, 480)
+      await nomeNoPainel(p, '101-03')
+      expect(await p.getByTestId('fvs-ficha-do-painel').textContent()).toContain('TESTE-PVS-REB')
+      expect(await p.getByTestId('fvs-projeto').locator('h3').allTextContents()).toEqual([
+        'Paginação de piso · Apto 101',
+        'Impermeabilização · Apto 101',
+      ])
+      // tocar na imagem amplia
+      await p.getByTestId('fvs-projeto').first().locator('img').click()
+      await p.locator('.fv-zoom img, [data-testid="fvs-zoom"] img').first().waitFor()
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/projetos_${nome}_painel.png` })
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: barras de laje: toque OK, NC só com Confirmar, Desfazer, "Tudo OK" da camada e o item de armadura da laje`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

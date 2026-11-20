@@ -1,5 +1,6 @@
-"""Modulação nos ambientes (pipeline/fvs/modulacao.py): qual prancha de 1ª fiada mostra cada apartamento,
-onde recortar e o detalhe do ambiente no pacote. Dados fictícios da obra EXE, sem PDF e sem bibliotecas."""
+"""Projetos nos ambientes (pipeline/fvs/modulacao.py): qual prancha (1ª fiada, paginação de piso,
+impermeabilização) mostra cada apartamento, onde recortar e o recorte do ambiente no pacote.
+Dados fictícios da obra EXE, sem PDF; a nota por pedaço usa numpy, shapely e pillow quando há."""
 
 from __future__ import annotations
 
@@ -68,8 +69,9 @@ class TestPlano(unittest.TestCase):
         self.assertEqual((r["prancha"], r["clip"], r["ambientes"]), (A, (97, 97, 303, 253), ["101-01", "101-02"]))
         self.assertEqual(recortes["M_Apto_102"]["prancha"], B)
         self.assertEqual(rel["recortes"], 2)
-        self.assertEqual(rel["com_modulacao"], 3)
-        self.assertEqual(rel["sem_modulacao"], [])
+        self.assertEqual(rel["com_recorte"], 3)
+        self.assertEqual(rel["sem_recorte"], [])
+        self.assertNotIn("paredes_nao_bateram", rel)  # sem nota, nada a dizer
         self.assertEqual(rel["por_prancha"], {A: 1, B: 1})
 
     def test_apartamento_entre_dois_setores_vai_por_comodo(self):
@@ -89,7 +91,7 @@ class TestPlano(unittest.TestCase):
         ]
         recortes, de_cada, rel = modulacao.plano_da_modulacao(ambs, FOLHAS, PT)
         self.assertEqual(de_cada, {"AC-01": "M_AC-01", "AC-02": "M_AC-02"})  # área comum: um recorte cada
-        self.assertEqual(rel["sem_modulacao"], ["104-01"])
+        self.assertEqual(rel["sem_recorte"], ["104-01"])
 
     def test_detalhes_no_formato_do_montar_trecho(self):
         ambs = [amb("101-01", "Apto 101", a=(100, 100, 200, 200)), amb("101-02", "Apto 101", a=(200, 100, 300, 200))]
@@ -118,6 +120,125 @@ class TestPlano(unittest.TestCase):
         self.assertEqual(m["detalhes"]["M_Apto_101"]["titulo"], "Modulação · Apto 101")
         self.assertEqual(pedacos["d:M_Apto_101"], b"IMG")
         self.assertEqual(rel["sem_detalhe"], [])
+
+
+class TestNotaPorApartamento(unittest.TestCase):
+    """Prancha de setor com parte desenhada fora de posição: cada apartamento só fica com a prancha em que as
+    paredes dele batem (a nota vem de modulacao.nota_local; aqui, inventada)."""
+
+    def test_escolhe_pela_nota_e_recusa_abaixo_da_minima(self):
+        caixas = {A: (100, 100, 200, 200), B: (400, 100, 500, 200)}
+        self.assertEqual(modulacao.escolher_prancha(caixas, FOLHAS, {A: 0.9, B: 0.6}, 0.5), A)
+        # a folga desempata nota igual
+        self.assertEqual(modulacao.escolher_prancha({A: (900, 100, 990, 200), B: (400, 100, 500, 200)}, FOLHAS, {A: 0.7, B: 0.7}, 0.5), B)
+        # ninguém passa da mínima
+        self.assertIsNone(modulacao.escolher_prancha(caixas, FOLHAS, {A: 0.3, B: 0.1}, 0.5))
+        # caber na folha continua obrigatório
+        self.assertIsNone(modulacao.escolher_prancha({A: (950, 100, 1050, 200)}, FOLHAS, {A: 1.0}, 0.5))
+
+    def test_apartamento_cujas_paredes_nao_batem_fica_sem_recorte(self):
+        ambs = [
+            amb("101-01", "Apto 101", a=(100, 100, 200, 200), b=(100, 100, 200, 200)),
+            amb("102-01", "Apto 102", a=(300, 100, 400, 200)),
+        ]
+        notas = {(A, ("101-01",)): 0.4, (B, ("101-01",)): 0.8, (A, ("102-01",)): 0.2}
+        vistos = []
+
+        def nota(prancha, nomes):
+            vistos.append((prancha, tuple(nomes)))
+            return notas.get((prancha, tuple(nomes)), 0.0)
+
+        recortes, de_cada, rel = modulacao.plano_da_modulacao(ambs, FOLHAS, PT, sigla="PP", nota=nota, nota_minima=0.5)
+        self.assertEqual(de_cada, {"101-01": "PP_Apto_101"})
+        self.assertEqual((recortes["PP_Apto_101"]["prancha"], recortes["PP_Apto_101"]["nota"]), (B, 0.8))
+        self.assertEqual(rel["sem_recorte"], ["102-01"])
+        self.assertEqual(rel["paredes_nao_bateram"], ["102-01"])
+        self.assertIn((A, ("101-01",)), vistos)
+
+    def test_sigla_do_titulo(self):
+        self.assertEqual(modulacao.sigla_do_titulo("Paginação de piso"), "PP")
+        self.assertEqual(modulacao.sigla_do_titulo("Impermeabilização"), "I")
+        self.assertEqual(modulacao.sigla_do_titulo("de"), "D")
+        self.assertEqual(modulacao.chave_da_modulacao("Apto 101", "PP"), "PP_Apto_101")
+
+    def test_detalhe_do_projeto_leva_titulo_e_fichas(self):
+        ambs = [amb("101-01", "Apto 101", a=(100, 100, 200, 200))]
+        recortes, de_cada, _ = modulacao.plano_da_modulacao(ambs, FOLHAS, PT, sigla="I")
+        dets = modulacao.detalhes_dos_ambientes(recortes, de_cada, {"I_Apto_101": b"IMG"}, titulo="Impermeabilização",
+                                                fichas=["EXE-PVS-024", "EXE-PVS-015"])
+        self.assertEqual(dets["101-01"]["titulo"], "Impermeabilização · Apto 101")
+        self.assertEqual(dets["101-01"]["fichas"], ["EXE-PVS-024", "EXE-PVS-015"])
+
+    def test_montar_trecho_com_modulacao_e_projetos(self):
+        def a(nome, x0, grupo="Apto 101"):
+            return {"tipo": "A", "nome": nome, "secao": "9,0 m²", "grupo": grupo, "rotulo": [x0, 0, x0 + 1, 1],
+                    "polys": [[[x0, 0], [x0 + 5, 0], [x0 + 5, 5], [x0, 5]]]}
+
+        fm = {"prancha": "EXE.AR.EX.003-R00", "revisao": "R00", "largura": 100, "altura": 100, "tile": 512, "niveis": [0],
+              "tiles": {"0/0/0": b"T"}, "trecho": "Ambientes", "disciplina": "arquitetura",
+              "pecas": [a("101-01", 0), a("101-02", 10), a("AC-01", 20, "Área comum")]}
+        ambs = [amb("101-01", "Apto 101", a=(100, 100, 200, 200)), amb("101-02", "Apto 101", a=(200, 100, 300, 200))]
+        rm, dm, _ = modulacao.plano_da_modulacao(ambs, FOLHAS, PT)
+        rp, dp, _ = modulacao.plano_da_modulacao(ambs, FOLHAS, PT, sigla="PP")
+        ri, di, _ = modulacao.plano_da_modulacao(ambs, FOLHAS, PT, sigla="I")
+        pag = modulacao.detalhes_dos_ambientes(rp, dp, {"PP_Apto_101": b"PISO"}, titulo="Paginação de piso", fichas=["EXE-PVS-024"])
+        imp = modulacao.detalhes_dos_ambientes(ri, di, {"I_Apto_101": b"IMP"}, titulo="Impermeabilização")
+        detalhes = {"A": modulacao.detalhes_dos_ambientes(rm, dm, {"M_Apto_101": b"MOD"}),
+                    "A_projetos": {n: [pag[n], imp[n]] for n in pag}}
+        ids = {(p["tipo"], p["nome"]): f"id-{p['nome']}" for p in fm["pecas"]}
+        man, binario, rel = publicar_planta.montar_trecho(fm, detalhes, ids, {"planta_id": "p", "trecho": "Ambientes"})
+        m, pedacos = pacote.ler(man, binario)
+        e = m["elementos"]["id-101-02"]
+        self.assertEqual((e["detalhe"], e["projetos"]), ("M_Apto_101", ["PP_Apto_101", "I_Apto_101"]))
+        self.assertNotIn("projetos", m["elementos"]["id-AC-01"])  # sem recorte, sem a chave
+        self.assertEqual(m["detalhes"]["PP_Apto_101"], {"titulo": "Paginação de piso · Apto 101", "prancha": A, "aco": False,
+                                                        "fichas": ["EXE-PVS-024"]})
+        self.assertNotIn("fichas", m["detalhes"]["I_Apto_101"])  # sem lista: aparece em todas as fichas
+        self.assertNotIn("fichas", m["detalhes"]["M_Apto_101"])
+        self.assertEqual((pedacos["d:PP_Apto_101"], pedacos["d:I_Apto_101"]), (b"PISO", b"IMP"))
+        self.assertEqual(sorted(m["detalhes"]), ["I_Apto_101", "M_Apto_101", "PP_Apto_101"])  # um de cada, não um por cômodo
+        self.assertEqual(rel["sem_detalhe"], [])
+
+    def test_pacote_confere_os_projetos(self):
+        cab = {"planta_id": "p", "trecho": "T", "prancha": "X-R00", "revisao": "R00", "largura": 10, "altura": 10, "tile": 512, "niveis": [0]}
+        el = {"tipo": "A", "nome": "101-01", "secao": "", "rotulo": [0, 0, 1, 1], "polys": [], "projetos": ["PP_1"]}
+        det = {"PP_1": {"titulo": "Paginação", "prancha": "X", "img": b"I", "aco": None, "fichas": ["EXE-PVS-024"]}}
+        man, binario = pacote.montar(cab, {}, {"e1": el}, det)
+        self.assertEqual(pacote.ler(man, binario)[0]["elementos"]["e1"]["projetos"], ["PP_1"])
+        with self.assertRaises(pacote.ErroPacote):  # projeto que não está no pacote
+            pacote.montar(cab, {}, {"e1": dict(el, projetos=["PP_2"])}, det)
+        with self.assertRaises(pacote.ErroPacote):  # só ambiente
+            pacote.montar(cab, {}, {"e1": dict(el, tipo="P")}, det)
+        with self.assertRaises(pacote.ErroPacote):  # repetido
+            pacote.montar(cab, {}, {"e1": dict(el, projetos=["PP_1", "PP_1"])}, det)
+        with self.assertRaises(pacote.ErroPacote):  # fichas tem que ser lista de códigos
+            pacote.montar(cab, {}, {"e1": el}, {"PP_1": dict(det["PP_1"], fichas="EXE-PVS-024")})
+
+
+class TestNotaLocal(unittest.TestCase):
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+            import PIL  # noqa: F401
+            import shapely  # noqa: F401
+        except ImportError:
+            self.skipTest("sem numpy, pillow ou shapely")
+
+    def test_parte_das_paredes_em_cima_da_hachura(self):
+        import numpy as np
+        from shapely.geometry import box
+
+        # prancha de 100 x 100 pixels (k = 1 pixel por ponto, 10 pontos por metro); hachura só na metade esquerda
+        img = np.zeros((100, 100), dtype=np.float32)
+        img[:, :50] = 1
+        t = {"pt_por_m": 10.0, "x0": 0.0, "y1": 10.0, "dx_pt": 0.0, "dy_pt": 0.0}
+        self.assertAlmostEqual(modulacao.nota_local(img, 1.0, t, box(1, 1, 3, 9)), 1.0, places=1)  # parede à esquerda
+        self.assertAlmostEqual(modulacao.nota_local(img, 1.0, t, box(7, 1, 9, 9)), 0.0, places=1)  # à direita
+        meio = modulacao.nota_local(img, 1.0, t, box(3, 1, 7, 9))
+        self.assertTrue(0.4 < meio < 0.6, meio)
+        # fora da folha conta como sem hachura
+        self.assertAlmostEqual(modulacao.nota_local(img, 1.0, t, box(-4, 1, -2, 9)), 0.0, places=1)
+        self.assertIsNone(modulacao.nota_local(img, 1.0, t, box(1, 1, 3, 9).intersection(box(5, 5, 6, 6))))
 
 
 if __name__ == "__main__":

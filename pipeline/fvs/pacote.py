@@ -17,7 +17,9 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
   "elementos": {"<elementos.id>": {"tipo": "P", "nome": "P32", "secao": "19x60",
                                    "rotulo": [x0, y0, x1, y1], "polys": [[[x, y], ...]],
                                    "detalhe": "P_P32"}},
-               (ambiente: "tipo": "A", "nome": "303-04", "secao": "12,1 m²", "grupo": "Apto 303", opcional "comodo": "Suíte 01", sem detalhe)
+               (ambiente: "tipo": "A", "nome": "303-04", "secao": "12,1 m²", "grupo": "Apto 303", opcional "comodo": "Suíte 01";
+                opcional "detalhe" (modulação) e "projetos": ["PP_Apto_303", "I_Apto_303"] (paginação, impermeabilização...;
+                pipeline/fvs/modulacao.py))
                (pilar com consolo ou capitel: "partes": [{"tipo": "consolo", "polys": [[[x, y], ...]], "detalhe": "C_CONSOLO_P32"}])
                (furo de viga: "tipo": "F", "nome": "V12-F1", "viga": "<id da viga>", "furo": {"forma": "circular", "diametro": 10,
                 "topo": 25, "fundo": 273, "disciplinas": ["Hidráulica"]}, sem detalhe; pipeline/fvs/furos.py)
@@ -25,7 +27,9 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                 "espessura": 20, "disciplinas": ["Sanitário / drenagem"]}; a área de laje é achada no app)
                (esquadria do ambiente: "tipo": "E", "nome": "303-05-PM80", "secao": "PM80", "ambiente": "<id do ambiente>",
                 "esquadria": {"codigo": "PM80", "classe": "porta", "outro_lado": "303-04"}, sem detalhe; pipeline/fvs/esquadrias.py)
-  "detalhes": {"P_P32": {"titulo": "P32", "prancha": "EXE.ES.LO.285.PIL3PAVTIP-R00", "aco": true}},
+  "detalhes": {"P_P32": {"titulo": "P32", "prancha": "EXE.ES.LO.285.PIL3PAVTIP-R00", "aco": true},
+               "PP_Apto_303": {"titulo": "Paginação de piso · Apto 303", "prancha": "...", "aco": false,
+                               "fichas": ["PVS-024"]}},   (fichas, opcional: só nessas fichas o app mostra o recorte)
   "barras": {"<id da barra>": {"camada": "longitudinal_inferior", "posicao": "N25", "texto": "N25 1ø10 C=850",
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
   "pedacos": {"t:0/1/2": [inicio, tamanho], "d:P_P32": [..], "a:P_P32": [..]}
@@ -115,6 +119,10 @@ def montar(
         if d.get("aco"):
             guardar("a:" + chave, d["aco"])
         dets_manifest[chave] = {"titulo": d.get("titulo", ""), "prancha": d.get("prancha", ""), "aco": bool(d.get("aco"))}
+        if d.get("fichas"):
+            if not isinstance(d["fichas"], list) or not all(isinstance(f, str) and f for f in d["fichas"]):
+                raise ErroPacote(f"detalhe {chave}: \"fichas\" tem que ser uma lista de códigos")
+            dets_manifest[chave]["fichas"] = list(d["fichas"])
 
     elem_manifest: dict[str, dict] = {}
     for eid in sorted(elementos):
@@ -139,6 +147,15 @@ def montar(
             if e["tipo"] != "A":
                 raise ErroPacote(f"{e.get('nome')}: só ambiente tem nome de cômodo")
             reg["comodo"] = str(e["comodo"])
+        if e.get("projetos"):
+            if e["tipo"] != "A":
+                raise ErroPacote(f"{e.get('nome')}: só ambiente tem projetos")
+            if not isinstance(e["projetos"], list) or len(set(e["projetos"])) != len(e["projetos"]):
+                raise ErroPacote(f"{e.get('nome')}: \"projetos\" tem que ser uma lista sem repetição")
+            for chave in e["projetos"]:
+                if chave not in dets_manifest:
+                    raise ErroPacote(f"{e.get('nome')} aponta para um projeto que não está no pacote ({chave})")
+            reg["projetos"] = list(e["projetos"])
         if e.get("so_detalhe"):
             reg["so_detalhe"] = True
         if e.get("detalhe_corrigido_em"):

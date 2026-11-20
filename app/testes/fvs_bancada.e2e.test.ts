@@ -1436,10 +1436,25 @@ suite('FVS na bancada (Chrome)', () => {
         await tocarNaPlanta(p, x, y)
       }
 
+      // celular: Pincel e Por item com 14 px; as quatro abas não cabem, e a borda do lado em que a fila
+      // continua esmaece (revisão da 06, 20/11: "Pilares" aparecia como "ares", sem sinal de mais abas)
+      const fila = () => p.locator('.fv-seg').evaluate((s: HTMLElement) => ({ esq: s.classList.contains('mais-esq'), dir: s.classList.contains('mais-dir'), cabe: s.scrollWidth <= s.clientWidth }))
+      expect(await p.locator('.fv-bpincel, .fv-bitem').evaluateAll((l: Element[]) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 14).map((e) => e.textContent))).toEqual([])
+      const noInicio = await fila()
+      if (noInicio.cabe) expect(noInicio).toEqual({ esq: false, dir: false, cabe: true })
+      else expect(noInicio).toEqual({ esq: false, dir: true, cabe: false })
+
       // antes da área: o furo fica fora de área de laje, não marca nada e diz por quê
       await aba('Furos')
+      if (!noInicio.cabe) await expect.poll(fila).toEqual({ esq: true, dir: false, cabe: false })
       await furo(600, 400)
       await aviso('fora de área de laje')
+      // o aviso quebra linha em vez de cortar o fim, e cabe na tela
+      const avisoCabe = await p.locator('.fv-toast').evaluate((t: HTMLElement) => {
+        const s = t.querySelector('span')!
+        return s.scrollWidth <= s.clientWidth + 1 && s.scrollHeight <= s.clientHeight + 1 && t.getBoundingClientRect().right <= innerWidth + 0.5
+      })
+      expect(avisoCabe).toBe(true)
       await nomeNoPainel(p, 'FL4')
       await p.getByTestId('fvs-furo-fora-area').waitFor()
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
@@ -2224,7 +2239,8 @@ suite('FVS na bancada (Chrome)', () => {
         })
       })
       expect(cobertos, 'aviso por cima de').toEqual([])
-      // celular: com o painel aberto sobra pouca planta; o aviso é uma faixa de uma linha colada no painel
+      // celular: com o painel aberto sobra pouca planta; o aviso é uma faixa baixa colada no painel (desde
+      // 20/11 o texto quebra em vez de cortar: aqui são duas linhas, da altura do botão Desfazer)
       if (largura < 700) {
         const faixa = await p.evaluate(() => {
           const a = document.querySelector('.fv-toast')!.getBoundingClientRect()
@@ -2486,6 +2502,10 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.locator('.fv-item').count()).toBe(7)
       const naFicha = p.getByTestId('fvs-ficha-do-painel')
       expect(await naFicha.innerText()).toContain('rev. 0 (a vigente é a rev. 1; esta peça foi marcada nesta)')
+      // ficha, revisão, dispositivo, tolerância e "toque na imagem para ampliar": nada abaixo de 14 px (revisão da 06, 20/11)
+      const rotulos = await p.locator('.fv-painel .fv-mt, .fv-painel .fv-dica, .fv-painel .fv-ficha').evaluateAll((l: Element[]) => l.map((e): [number, string | null] => [parseFloat(getComputedStyle(e).fontSize), e.textContent]))
+      expect(rotulos.length).toBeGreaterThan(0)
+      expect(rotulos.filter((r: [number, string | null]) => r[0] < 14)).toEqual([])
 
       // peça que não foi marcada já usa a revisão nova
       await buscar(p, 'P5')

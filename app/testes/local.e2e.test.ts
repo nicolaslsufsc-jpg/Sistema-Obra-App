@@ -19,6 +19,7 @@ import { lerNomesProibidos, nomesNoTexto } from '../sem_dados_de_obra'
 import { amostraIfc } from './ifc/amostra'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from '../src/projetos/exemplo_exe'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
+import { abrirMenuObra, comPavimentosDoAparelho, fecharMenuObra } from './menu_obra'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Page = any
 
@@ -225,10 +226,16 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('persistente').isVisible()).toBe(false)
       expect(await p.getByTestId('aviso-sem-copia').count()).toBe(0)
       expect((await p.getByTestId('bloco-copia').locator(':scope > summary').boundingBox()).height).toBeGreaterThanOrEqual(44)
-      await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
+      await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
+      // menu da obra (topo, 20/11/2026): sem conta, a troca de obra é pelo pacote; não há Sair nem Trocar de obra
+      const painelObra = await abrirMenuObra(p)
+      await painelObra.getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor()
       expect(await p.getByRole('button', { name: 'Sair', exact: true }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Trocar de obra', exact: true }).count()).toBe(0)
-      await p.getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor() // a troca de obra sem conta é pelo pacote, à vista
+      expect(await p.getByTestId('menu-obra').getAttribute('aria-expanded')).toBe('true')
+      await fecharMenuObra(p) // fecha no Esc (espera a tela atualizar)
+      expect(await p.getByTestId('painel-obra').count()).toBe(0)
+      expect(await p.getByTestId('menu-obra').getAttribute('aria-expanded')).toBe('false')
       expect(await p.getByRole('button', { name: 'Nova obra' }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Usar neste aparelho, sem conta' }).count()).toBe(0)
       for (const m of ['FVS', 'Projetos', 'Concreto', 'Documentos', 'IFC']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(1)
@@ -236,7 +243,8 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.locator('.selo-beta').count()).toBe(1)
       expect(await p.getByRole('button', { name: /^Projetos/ }).locator('.selo-beta').count()).toBe(1)
       for (const m of ['Relatórios']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(BETAS_NO_MENU ? 1 : 0)
-      await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
+      // a lista de pavimentos saiu da tela do menu (20/11/2026)
+      expect(await p.getByTestId('pavimentos-obra').isVisible()).toBe(false)
 
       // FVS: o pavimento da pasta, com a planta já guardada no aparelho (botão Abrir, não Baixar)
       await p.getByRole('button', { name: /^FVS/ }).click()
@@ -244,7 +252,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: 'Abrir', exact: true }).waitFor()
       expect(await p.locator('.fv-baixar').count()).toBe(0)
       await print('2-fvs')
-      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
 
       // Relatórios fora do menu desde 18/11/2026 (código guardado): o roteiro dele fica parado até voltar
       if (BETAS_NO_MENU) {
@@ -472,6 +480,65 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: /^IFC/ }).waitFor()
       expect(erros).toEqual([])
       await contexto.close()
+    }, 120_000)
+  }
+
+  // Caixas dos módulos (20/11/2026, "arruma o tamanho das caixas"): todas com a mesma altura (a da maior
+  // da grade, não só por linha), o "Abrir ›" no mesmo lugar em todas e a descrição em até 2 linhas.
+  // Também com Verdana, mais larga que a fonte do sistema (no Linux do CI o título quebrava de outro jeito).
+  for (const [largura, altura, fonte] of [
+    [768, 1024, ''],
+    [800, 1280, ''],
+    [375, 812, ''],
+    [384, 832, ''],
+    [768, 1024, 'Verdana'],
+    [375, 812, 'Verdana'],
+  ] as const) {
+    it(`${largura}x${altura}${fonte ? ` (${fonte})` : ''}: caixas dos módulos iguais, "Abrir" alinhado e descrição em até 2 linhas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      try {
+        await abrirNaObra(p)
+        if (fonte) await p.addStyleTag({ content: `body, button { font-family: ${fonte}, sans-serif !important; }` })
+        await p.getByRole('button', { name: /^IFC/ }).waitFor()
+        type Caixa = { topo: number; altura: number; abrirAbaixo: number; abrirDireita: number; abrirAcima: number; linhas: number }
+        const caixas: Caixa[] = await p.locator('.menu-modulos .modulo').evaluateAll((bs: HTMLElement[]) =>
+          bs.map((b) => {
+            const r = b.getBoundingClientRect()
+            const abrir = b.querySelector('.modulo-abrir')!.getBoundingClientRect()
+            const d = b.querySelector('.modulo-descricao') as HTMLElement
+            // linhas visíveis da descrição: o topo distinto de cada pedaço do texto (não depende do line-height),
+            // contando só o que fica dentro da caixa (o corte em 2 linhas esconde o resto)
+            const caixa = d.getBoundingClientRect()
+            const faixa = document.createRange()
+            faixa.selectNodeContents(d)
+            const linhas = new Set(
+              [...faixa.getClientRects()].filter((q) => q.width > 0 && q.top >= caixa.top - 1 && q.bottom <= caixa.bottom + 1).map((q) => Math.round(q.top)),
+            ).size
+            return { topo: r.top, altura: r.height, abrirAbaixo: r.bottom - abrir.bottom, abrirDireita: r.right - abrir.right, abrirAcima: abrir.top - r.top, linhas }
+          }),
+        )
+        expect(caixas.length).toBeGreaterThanOrEqual(4)
+        // mesma altura em todas, inclusive em linhas diferentes da grade
+        const alturas = caixas.map((c) => c.altura)
+        // folga de 2 px para arredondamento de fonte; diferença real de layout é bem maior que isso
+        expect(Math.max(...alturas) - Math.min(...alturas)).toBeLessThanOrEqual(2)
+        // o "Abrir ›" no mesmo lugar em todas: colado embaixo no tablet; na linha do título no celular
+        for (const medida of ['abrirAbaixo', 'abrirDireita', 'abrirAcima'] as const) {
+          const v = caixas.map((c) => c[medida])
+          expect(Math.max(...v) - Math.min(...v), medida).toBeLessThanOrEqual(2)
+        }
+        if (largura >= 600) expect(caixas[0].abrirAbaixo).toBeLessThanOrEqual(24)
+        // tablet: as caixas lado a lado (2 colunas) e a altura não cresce por causa de uma só
+        if (largura >= 600) expect(new Set(caixas.map((c) => Math.round(c.topo))).size).toBeLessThan(caixas.length)
+        for (const c of caixas) {
+          expect(c.linhas).toBeGreaterThanOrEqual(1)
+          expect(c.linhas).toBeLessThanOrEqual(2)
+        }
+        expect(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+      } finally {
+        await contexto.close()
+      }
     }, 120_000)
   }
 
@@ -966,7 +1033,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByTestId('aba-empresa').click()
       await p.getByTestId('lista-mestra').getByRole('button', { name: /EXE-PS-01/ }).getByText(/rev\. 03/).waitFor()
       await p.getByTestId('contagem').getByText('1 documento.').waitFor()
-      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
 
       // Salvar e restaurar num navegador limpo: a revisão nova (com o PDF) e o documento novo voltam
       await abrirCopia(p)
@@ -1033,7 +1100,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await p.getByRole('heading', { name: /EXE/ }).waitFor()
-        await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
+        await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
         await print('2-menu')
 
         // fechado e aberto de novo, sem a pasta e sem o .zip: abre direto na obra, com a planta
@@ -1049,10 +1116,10 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         // pelo menu, um pacote novo (aqui o mesmo) entra de novo sem perder nada
         await irAoApp(p)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
-        await p.getByTestId('abrir-pacote').getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor()
+        await (await abrirMenuObra(p)).getByTestId('abrir-pacote').getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor()
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
-        await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
+        await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
 
         // nada saiu da tela pelos lados
         expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -1144,7 +1211,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByRole('button', { name: 'Escolher outro arquivo' }).waitFor()
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(leve)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
-        await p.getByTestId('pavimentos-obra').getByRole('listitem').filter({ hasText: /^3º Pavimento$/ }).waitFor()
+        await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
         expect(await plantas()).toBe(1)
         if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `espaco-${nome}-2-outro-arquivo.png`), fullPage: true })
         expect(erros).toEqual([])
@@ -1198,6 +1265,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         const antes = await banco()
 
         // .zip de outra obra: mostra as duas, com data; cancelar volta ao menu da EXE sem mexer em nada
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(outra)
         await p.getByRole('heading', { name: 'Trocar de obra?' }).waitFor()
         const quadro = await p.getByTestId('comparacao-pacote').innerText()
@@ -1210,6 +1278,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // .zip mais antigo da mesma obra: pede confirmação; cancelar também não mexe
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(antigo)
         await p.getByRole('heading', { name: 'Abrir um pacote mais antigo?' }).waitFor()
         expect(await p.getByTestId('comparacao-pacote').innerText()).toContain('gerado em 01/11/2026 às 10:00')
@@ -1218,6 +1287,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // .zip sem data: o título diz "sem data", não "mais antigo" (testador, 08/11, T3)
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(semData)
         await p.getByRole('heading', { name: 'Abrir um pacote sem data?' }).waitFor()
         expect(await p.getByRole('alert').innerText()).toContain('não tem data')
@@ -1226,11 +1296,13 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // mais novo da mesma obra: segue direto
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(novo)
         await naLac()
         expect(await p.getByRole('heading', { name: /pacote mais antigo|Trocar de obra/ }).count()).toBe(0)
 
         // confirmando a troca, o app passa para a outra obra
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(outra)
         await p.getByRole('button', { name: 'Trocar para a obra OUTRA2' }).click()
         await p.getByRole('heading', { name: /OUTRA2/ }).waitFor({ timeout: 30_000 })
@@ -1259,6 +1331,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await irAoApp(p)
         await p.getByRole('heading', { name: /EXE/ }).waitFor({ timeout: 30_000 })
         // troca para a outra obra pelo .zip
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(outra)
         await p.getByRole('button', { name: 'Trocar para a obra OUTRA2' }).click()
         await p.getByRole('heading', { name: /OUTRA2/ }).waitFor({ timeout: 30_000 })
@@ -1331,7 +1404,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await p.getByTestId('fvs-entra-duplicadas').count()).toBe(0)
         expect(await texto()).not.toMatch(/sistema oficial|lançar no/i)
         if (galho) expect((await texto()).toLowerCase()).not.toContain(galho.nome.toLowerCase())
-        await p.getByRole('button', { name: 'Voltar', exact: true }).first().click()
+        await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).first().click()
         await naObra()
 
         // Concreto: sem o campo da ficha do sistema oficial
@@ -1345,6 +1418,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         // pacote com historico.json mas sem sistema_oficial: aviso discreto no início da FVS, nada mais
         await irAoApp(p)
         await naObra()
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(semSistemaComHistorico)
         await naObra()
         await p.getByRole('button', { name: /^FVS/ }).click()
@@ -1356,13 +1430,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await p.getByTestId('fvs-entra-lancamento').count()).toBe(0)
         expect(await p.getByTestId('fvs-entra-duplicadas').count()).toBe(0)
         await print('2b-fvs-historico-sem-sistema')
-        await p.getByRole('button', { name: 'Voltar', exact: true }).first().click()
+        await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).first().click()
         await naObra()
 
         if (galho && comSistema) {
           // o mesmo pacote com sistema_oficial: o lançamento e o campo voltam, com o nome do galho
           await irAoApp(p)
           await naObra()
+          await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
           await p.getByLabel('Pacote da obra (.zip)').setInputFiles(comSistema)
           await naObra()
           await p.getByRole('button', { name: /^FVS/ }).click()
@@ -1371,7 +1446,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
           expect(await entrada.innerText()).toContain(`para lançar no ${galho.nome}`)
           expect(await p.getByTestId('fvs-aviso-sistema').count()).toBe(0)
           await print('3-fvs-com-sistema')
-          await p.getByRole('button', { name: 'Voltar', exact: true }).first().click()
+          await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).first().click()
           await naObra()
           await formDoConcreto()
           await p.getByText('Nº da ficha', { exact: true }).waitFor()
@@ -1437,11 +1512,12 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: /^FVS/ }).click()
       await p.locator('.fv-baixar').first().click()
       await p.getByRole('alert').filter({ hasText: 'abra o pacote da obra (.zip) no menu' }).waitFor()
-      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
       await naObra()
       expect(await guardados()).toBe(antes)
 
       // abre o .zip pelo menu: a planta volta e o P1 continua com o NC e o texto
+      await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
       await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
       await naObra()
       expect(await guardados()).toBe(antes)
@@ -1731,14 +1807,16 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         // sem escolha: escuro, com o botão do modo sol no menu
         await abrirNaObra(p)
         const botao = p.getByTestId('botao-tema')
-        expect(await botao.innerText()).toBe('Modo sol (claro)')
+        expect(await botao.getAttribute('aria-label')).toBe('Modo sol (claro)')
+        expect(await p.getByRole('button', { name: 'Modo sol (claro)', exact: true }).count()).toBe(1)
         expect((await botao.boundingBox()).height).toBeGreaterThanOrEqual(44)
+        expect((await botao.boundingBox()).width).toBeGreaterThanOrEqual(44)
         expect(await passar('escuro')).toBe('rgb(18, 20, 22)')
 
         // modo sol: claro de hoje, e continua claro depois de fechar e abrir o app
         await abrirNaObra(p)
         await p.getByTestId('botao-tema').click()
-        expect(await p.getByTestId('botao-tema').innerText()).toBe('Modo escuro')
+        expect(await p.getByTestId('botao-tema').getAttribute('aria-label')).toBe('Modo escuro')
         await abrirNaObra(p)
         expect(await p.evaluate(() => document.documentElement.dataset.tema)).toBe('claro')
         expect(await passar('claro')).toBe('rgb(244, 246, 248)')
@@ -1790,7 +1868,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
           // menu da obra, com a pasta de volta
           await contexto.unroute('**/dados_obra/**')
           await abrirNaObra(p)
-          await p.getByTestId('pavimentos-obra').getByRole('listitem').first().waitFor()
+          await comPavimentosDoAparelho(p, (lista) => lista.first().waitFor())
           await conferir('menu')
           await abrirCopia(p)
           await conferir('menu-copia')

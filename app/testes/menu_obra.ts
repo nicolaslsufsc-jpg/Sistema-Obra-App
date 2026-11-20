@@ -4,19 +4,37 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Page = any
 
-/** Abre o menu da obra (se estiver fechado) e devolve o painel. */
+/** Abre o menu da obra (se estiver fechado) e devolve o painel. Tenta de novo se a tela do menu for refeita
+ *  logo depois do toque (fim do login, pacote aberto): o menu volta fechado e precisa de outro toque. */
 export async function abrirMenuObra(p: Page) {
   const botao = p.getByTestId('menu-obra')
-  if ((await botao.getAttribute('aria-expanded')) !== 'true') await botao.click()
   const painel = p.getByTestId('painel-obra')
-  await painel.waitFor()
+  for (let tentativa = 0; tentativa < 10; tentativa++) {
+    if (await painel.isVisible()) return painel
+    if ((await botao.getAttribute('aria-expanded')) !== 'true') await botao.click()
+    try {
+      await painel.waitFor({ timeout: 2_000 })
+      return painel
+    } catch {
+      // a tela foi refeita e o menu voltou fechado: toca de novo
+    }
+  }
+  await painel.waitFor({ timeout: 2_000 })
   return painel
 }
 
 /** Toca num botão do menu da obra ("Sair", "Trocar de obra", "Pessoas da obra"). */
 export async function noMenuObra(p: Page, nome: string) {
-  const painel = await abrirMenuObra(p)
-  await painel.getByRole('button', { name: nome, exact: true }).click()
+  for (let tentativa = 0; ; tentativa++) {
+    const painel = await abrirMenuObra(p)
+    try {
+      await painel.getByRole('button', { name: nome, exact: true }).click({ timeout: 5_000 })
+      return
+    } catch (erro) {
+      // o painel sumiu antes do toque (tela refeita) ou o botão ainda não apareceu: abre e tenta de novo
+      if (tentativa >= 4) throw erro
+    }
+  }
 }
 
 /** Abre o bloco do aparelho e os "Detalhes técnicos", roda `fn` com a lista de pavimentos e fecha o que abriu. */

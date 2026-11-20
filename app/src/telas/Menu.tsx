@@ -48,9 +48,9 @@ export function Menu({
   const { estado, sincronizarAgora, recontar, marcarDadosNovos } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
   const [menuObra, setMenuObra] = useState(false)
 
-  // O menu da obra fecha no Esc e ao tocar fora dele (controle do usuário, 20/11/2026)
+  // O menu da obra fecha no Esc e ao tocar fora dele (controle do usuário, 20/11/2026). Os ouvintes ficam
+  // ligados desde que a tela abre: ligar só depois de abrir perdia o Esc apertado logo em seguida.
   useEffect(() => {
-    if (!menuObra) return
     const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setMenuObra(false)
     const toque = (e: PointerEvent) => {
       const alvo = e.target as Element | null
@@ -62,7 +62,7 @@ export function Menu({
       document.removeEventListener('keydown', tecla)
       document.removeEventListener('pointerdown', toque)
     }
-  }, [menuObra])
+  }, [])
 
   return (
     <main class="tela">
@@ -104,7 +104,15 @@ export function Menu({
                 Trocar de obra
               </button>
             )}
-            {estado.local && aoAbrirPacote && <AbrirPacote aoAbrir={aoAbrirPacote} rotulo="Trocar de obra / abrir pacote (.zip)" />}
+            {estado.local && aoAbrirPacote && (
+              <AbrirPacote
+                aoAbrir={(pacote) => {
+                  setMenuObra(false) // escolhido o pacote, o menu fecha (a tela troca ou pergunta antes)
+                  aoAbrirPacote(pacote)
+                }}
+                rotulo="Trocar de obra / abrir pacote (.zip)"
+              />
+            )}
             {aoAbrirPessoas && !estado.local && (
               <button type="button" onClick={aoAbrirPessoas}>
                 Pessoas da obra

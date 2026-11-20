@@ -228,7 +228,8 @@ suite('telas no navegador', () => {
     await pagina.getByRole('button', { name: 'Voltar para a obra' }).click()
     await (await abrirMenuObra(pagina)).getByRole('button', { name: 'Pessoas da obra', exact: true }).waitFor()
     await fecharMenuObra(pagina)
-  })
+    // teste longo (login, três mudanças de acesso e dois caminhos pelo menu da obra): 60 s no CI
+  }, 60_000)
 
   it('quem não é admin não vê o botão Pessoas da obra', async () => {
     await noMenuObra(pagina, 'Sair')

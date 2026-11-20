@@ -1630,9 +1630,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const comServico = escolha === 'tipos' && tipos.includes('A') && fichasPara('A', dados.fichas).length > 1
   // pavimento com mais de um trecho: a caixa de escolha (44 px) deixa o topo mais alto (fvs.css)
   const comTrecho = irmas.length > 1 ? ' com-trecho' : ''
+  // quatro abas ou mais (Furos, Barras): no celular e no tablet em pé elas ganham uma linha só delas (fvs.css)
+  const muitasAbas = escolha === 'tipos' && tipos.length >= 4 && !comServico ? ' muitas-abas' : ''
   return (
-    <div class={`fv-planta${comServico ? ' com-servico' : ''}${comTrecho}${pecaSel ? ' com-painel' : ''}${desenho ? ' desenhando' : ''}${porItemAtivo ? ' por-item' : ''}`}>
-      <header class={`fv-topo${comServico ? ' com-servico' : ''}${comTrecho}${escolha === 'nada' ? ' sem-seg' : ''}${pode && itensDoTipo.length > 0 ? ' com-item' : ''}`}>
+    <div class={`fv-planta${comServico ? ' com-servico' : ''}${comTrecho}${muitasAbas}${pecaSel ? ' com-painel' : ''}${desenho ? ' desenhando' : ''}${porItemAtivo ? ' por-item' : ''}`}>
+      <header class={`fv-topo${comServico ? ' com-servico' : ''}${comTrecho}${muitasAbas}${escolha === 'nada' ? ' sem-seg' : ''}${pode && itensDoTipo.length > 0 ? ' com-item' : ''}`}>
         <div class="fv-tit">
           <button type="button" class="fv-voltar" onClick={() => sair(voltar)} aria-label="Voltar">
             ‹

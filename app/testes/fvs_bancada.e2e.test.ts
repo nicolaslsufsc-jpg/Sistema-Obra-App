@@ -279,6 +279,64 @@ suite('FVS na bancada (Chrome)', () => {
     })
   }
 
+  // Rodada com a obra piloto (20/11): com a quarta aba (Furos), em 384 px ela saía cortada ("Fu") e em 800 px
+  // o "Etapas" saía cortado e o contador "0/385 liberados" ia a 4 linhas.
+  for (const [largura, altura] of [
+    [384, 832],
+    [375, 812],
+    [768, 1024],
+    [800, 1280],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: quatro abas inteiras, "Etapas" inteiro e contador em até 2 linhas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      await p.goto(`${url}?furos=1`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
+      // contador de obra grande, como o Pilotis
+      await p.evaluate(() => {
+        const prog = document.querySelector('.fv-prog')!
+        while (prog.firstChild && prog.firstChild.nodeType === Node.TEXT_NODE) prog.firstChild.remove()
+        prog.prepend('0/385 liberados')
+      })
+      const m = await p.evaluate(() => {
+        const seg = document.querySelector('.fv-seg') as HTMLElement
+        const s = seg.getBoundingClientRect()
+        const etapa = document.querySelector('.fv-etapa') as HTMLSelectElement
+        const ce = getComputedStyle(etapa)
+        const cv = document.createElement('canvas').getContext('2d')!
+        cv.font = `${ce.fontWeight} ${ce.fontSize} ${ce.fontFamily}`
+        const prog = document.querySelector('.fv-prog') as HTMLElement
+        // linhas do texto do contador: cada pedaço de texto que começa numa altura nova
+        const r = document.createRange()
+        r.selectNodeContents(prog)
+        // (o link "1 com NC" tem a caixa um pouco deslocada do texto da mesma linha: junta o que fica a menos de 6 px)
+        const topos = [...r.getClientRects()].filter((x) => x.width > 0).map((x) => x.top).sort((a, b) => a - b)
+        const linhas = topos.filter((t, i) => i === 0 || t - topos[i - 1] > 6).length
+        return {
+          abasRolam: seg.scrollWidth > seg.clientWidth + 1,
+          abasFora: [...seg.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().right > s.right + 0.5).map((b) => b.textContent),
+          etapaPrecisa: cv.measureText(etapa.options[etapa.selectedIndex].text).width + 24,
+          etapaTem: etapa.clientWidth,
+          linhasDoContador: linhas,
+        }
+      })
+      expect(m.abasRolam, 'as 4 abas cabem sem rolar').toBe(false)
+      expect(m.abasFora).toEqual([])
+      expect(m.etapaTem, '"Etapas" inteiro').toBeGreaterThanOrEqual(m.etapaPrecisa)
+      expect(m.linhasDoContador, 'contador em até 2 linhas').toBeLessThanOrEqual(2)
+      expect(await topoCabe(p)).toBe(true)
+      expect(await alvosPequenos(p)).toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // a planta começa embaixo do topo: o topo mais alto não cobre o mapa
+      const [topo, mapa] = await p.evaluate(() => [document.querySelector('.fv-topo')!.getBoundingClientRect().bottom, document.querySelector('.fv-mapa')!.getBoundingClientRect().top])
+      expect(mapa).toBeGreaterThanOrEqual(topo - 1)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_quatro_abas_${largura}.png`) })
+      await contexto.close()
+    })
+  }
+
   // Teste com cabo (20/11): no S23 (384 px) a caixa de trecho mostrava só "Trecho" (sem o número) e
   // "Lajes" saía cortado; no tablet (800 px) a caixa tinha 30 px de altura.
   for (const [largura, altura] of [

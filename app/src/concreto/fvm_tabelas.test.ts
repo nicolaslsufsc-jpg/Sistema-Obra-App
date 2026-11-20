@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { BLOCOS_SINCRONIZADOS, TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
-import { TABELAS_FVM } from './tabelas'
+import { TABELAS_CONCRETO, TABELAS_FVM } from './tabelas'
 
-// CI do PR #78 (18/11): com as tabelas do FVM na lista, a baixa do servidor dava erro nelas (sem
-// migração) e o app nunca chegava a "Sincronizado hoje". Enquanto não houver migração, ficam fora.
-describe('FVM sem migração', () => {
-  it('as tabelas do FVM não entram na baixa nem no envio do servidor', () => {
+// Desde 20/11 o FVM tem migração (20261120120000_concreto_fvm.sql) e sincroniza com o servidor.
+// No CI do PR #78 (18/11), sem a migração, a baixa dava erro nelas: por isso ficam no FIM da lista
+// do Concreto, e um servidor ainda sem a migração só perde o FVM, não o resto do Concreto.
+describe('FVM com migração', () => {
+  it('as tabelas do FVM entram na baixa e no envio, no bloco do Concreto', () => {
+    const bloco = BLOCOS_SINCRONIZADOS.find((b) => b.includes('concretagens'))!
     for (const t of TABELAS_FVM) {
-      expect(TABELAS_SINCRONIZADAS).not.toContain(t)
-      expect(BLOCOS_SINCRONIZADOS.flat()).not.toContain(t)
+      expect(TABELAS_SINCRONIZADAS).toContain(t)
+      expect(bloco).toContain(t)
     }
+  })
+
+  it('ficam no fim da lista do Concreto', () => {
+    expect(TABELAS_CONCRETO.slice(-TABELAS_FVM.length)).toEqual([...TABELAS_FVM])
   })
 })

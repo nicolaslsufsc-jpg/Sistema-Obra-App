@@ -2,12 +2,15 @@
 // Concreto, relatórios de Qualidade abertos como NC. Cada grupo diz em que módulo o registro está.
 import { dataBR } from '../../relatorios/regras'
 import { NOME_DA_SITUACAO_NC, type Ligacoes } from '../ligacoes'
+import { moduloPorId } from '../../modulos'
 
-const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
+const plural = (n: number, um: string, varios: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`
 
 // Abrir o registro direto no outro módulo pede a casca (núcleo) e uma entrada nova na FVS e no Concreto:
 // fica para quando o Nicolas aprovar. Por enquanto, o caminho por extenso.
-function Onde({ modulo }: { modulo: string }) {
+/** Caminho até o módulo; se ele está fora do menu agora (ex.: Relatórios desde 18/11), não aponta para lá. */
+function Onde({ id, modulo }: { id: string; modulo: string }) {
+  if (!moduloPorId(id)) return <p class="discreto doc-onde">O módulo {modulo} está fora do menu por enquanto.</p>
   return <p class="discreto doc-onde">Para abrir: menu da obra › {modulo}</p>
 }
 
@@ -37,7 +40,7 @@ export function Registros({ ligacoes }: { ligacoes: Ligacoes }) {
             ))}
           </ul>
         )}
-        <Onde modulo="FVS" />
+        <Onde id="fvs" modulo="FVS" />
       </section>
 
       <section class="doc-grupo" data-testid="registros-concreto">
@@ -59,7 +62,7 @@ export function Registros({ ligacoes }: { ligacoes: Ligacoes }) {
             ))}
           </ul>
         )}
-        <Onde modulo="Concreto" />
+        <Onde id="concreto" modulo="Concreto" />
       </section>
 
       <section class="doc-grupo" data-testid="registros-nc">
@@ -79,7 +82,7 @@ export function Registros({ ligacoes }: { ligacoes: Ligacoes }) {
             ))}
           </ul>
         )}
-        <Onde modulo="Relatórios" />
+        <Onde id="relatorios" modulo="Relatórios" />
       </section>
     </section>
   )

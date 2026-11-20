@@ -2,6 +2,12 @@
 
 Branch: `claude/app-documentos-112f59` (parte do PR #42).
 
+## Status (20/11/2026)
+**Fora do beta (Nicolas, 20/11: "Documentos, tá funcionando também. Tira do beta").** O módulo não tem selo nem aviso de beta nas próprias telas. Quem põe os módulos de volta no menu é a 06 · FRONT (`app/src/modulos.ts`, não mexido aqui).
+- **Sem conta:** funciona (lista mestra, revisão, validade, impressão, registros dos módulos, exemplos), conferido na main 806adec em 375 px e tablet.
+- **Com login:** ainda não abre. O registro do módulo tem `soSemConta` (some do menu com conta) e a tela diz que a tabela do servidor ainda não existe. Para funcionar com login falta a migração de `doc_documentos` e pôr a tabela na lista sincronizada do núcleo: decisão do Nicolas (núcleo + migração).
+- **Pacote da obra:** o `exportar_bancada.py` e, desde 20/11 ("pode" do Nicolas), o `compactar_pacote.py` levam `documentos/` (indice.json + arquivos) e o app lê (`pacote.ts`). No compactar: `--documentos PASTA` (documentos.json, mesma conferência do exportar) ou, sem a opção, o `documentos/indice.json` que já estiver na pasta da obra, com cada arquivo conferido (tipo, 10 MB, SHA-256). Testes em `pipeline/testes/test_fvs_compactar.py`.
+
 ## Status (09/11/2026)
 **Primeira versão das telas feita e no menu, só no modo sem conta.** A proposta abaixo foi aprovada pelo Professor (o Nicolas o deixou responsável por 1 h), com estas escolhas: empresa/obra pela opção 1; **sem migração** (a tabela fica só no banco do navegador); "levar para campo" fica para depois; 10 MB por arquivo e aviso aos 150 MB; as marcações "conferir na norma" ficam só neste documento, não na tela. **O Nicolas ainda não viu.**
 

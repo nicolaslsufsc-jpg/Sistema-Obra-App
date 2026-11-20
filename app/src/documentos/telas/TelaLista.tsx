@@ -41,7 +41,7 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
 
   return (
     <>
-      <Topo titulo="Documentos" sub={`${obra.codigo} · Lista mestra (PBQP-H)`} aoVoltar={voltar} />
+      <Topo titulo="Documentos" sub={`${obra.codigo} · Lista mestra (PBQP-H)`} aoVoltar={voltar} paraMenu />
 
       {(avisos.vencidos > 0 || avisos.vencendo > 0) && (
         <p class="doc-avisos" data-testid="avisos">

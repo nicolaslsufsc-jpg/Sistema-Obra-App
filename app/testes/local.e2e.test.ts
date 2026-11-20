@@ -1833,6 +1833,92 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     }, 120_000)
   }
 
+  // Faixa "Instale o app" (20/11/2026, achado do testador): com o app já instalado ela não aparece,
+  // nem na aba do Chrome. O navegador de teste sempre recusa a proteção dos dados (como numa aba comum
+  // do Android), e cada sinal de "instalado" é simulado: evento appinstalled (com a marca que fica depois
+  // de recarregar), getInstalledRelatedApps e a tela aberta como app (display-mode standalone).
+  for (const [nome, largura, altura] of [
+    ['celular', 375, 812],
+    ['tablet', 1280, 800],
+  ] as const) {
+    it(`${nome} ${largura}x${altura}: a faixa "Instale o app" some quando o app já está instalado`, async () => {
+      const semProtecao = () => {
+        Object.defineProperty(navigator.storage, 'persist', { value: async () => false })
+        Object.defineProperty(navigator.storage, 'persisted', { value: async () => false })
+      }
+      const novaAba = async (extra?: () => void) => {
+        const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+        await contexto.addInitScript(semProtecao)
+        if (extra) await contexto.addInitScript(extra)
+        const p: Page = await contexto.newPage()
+        const erros: string[] = []
+        p.on('pageerror', (e: Error) => erros.push(e.message))
+        return { contexto, p, erros }
+      }
+      const faixa = (p: Page) => p.getByTestId('aviso-protecao')
+      // a conferência é assíncrona: espera a linha do aparelho sair do "…" antes de dizer que a faixa não está
+      const linhaAparelho = (p: Page) => p.getByTestId('persistente').evaluate((e: Element) => e.textContent ?? '')
+      const semFaixa = async (p: Page, onde: string) => {
+        await expect.poll(() => linhaAparelho(p), { timeout: 10_000 }).toMatch(/não$/)
+        expect(await faixa(p).count(), onde).toBe(0)
+      }
+
+      // 1. aba comum, app não instalado: a faixa aparece, e a linha do aparelho pede para instalar
+      const a = await novaAba()
+      try {
+        await abrirNaObra(a.p)
+        await faixa(a.p).waitFor()
+        expect(await faixa(a.p).isVisible()).toBe(true)
+        await expect.poll(() => linhaAparelho(a.p)).toMatch(/Instale o app para proteger\.$/)
+        expect(await a.p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+
+        // 2. instalou com a aba aberta (o Chrome manda appinstalled): a faixa some na hora
+        await a.p.evaluate(() => window.dispatchEvent(new Event('appinstalled')))
+        await faixa(a.p).waitFor({ state: 'detached' })
+        await semFaixa(a.p, 'depois do appinstalled')
+        // ... e continua fora depois de recarregar a aba (a marca fica no armazenamento local)
+        await abrirNaObra(a.p)
+        await semFaixa(a.p, 'aba recarregada depois de instalar')
+
+        // 3. desinstalou: o Chrome volta a oferecer a instalação, a marca sai e a faixa volta
+        await a.p.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt')))
+        await faixa(a.p).waitFor()
+        expect(await a.p.evaluate(() => localStorage.getItem('app_instalado'))).toBeNull()
+        expect(a.erros).toEqual([])
+      } finally {
+        await a.contexto.close()
+      }
+
+      // 4. aba nova, sem marca, mas o Chrome diz que o app está instalado (getInstalledRelatedApps)
+      const b = await novaAba(() => {
+        Object.defineProperty(navigator, 'getInstalledRelatedApps', { value: async () => [{ platform: 'webapp', url: location.origin + '/manifest.webmanifest' }] })
+      })
+      try {
+        await abrirNaObra(b.p)
+        await semFaixa(b.p, 'getInstalledRelatedApps')
+        // o manifesto se lista em related_applications: é o que faz o Chrome de verdade responder "instalado"
+        const manifesto = await b.p.evaluate(() => fetch('/manifest.webmanifest').then((r) => r.json()))
+        expect(manifesto.related_applications).toEqual([{ platform: 'webapp', url: '/manifest.webmanifest' }])
+        expect(b.erros).toEqual([])
+      } finally {
+        await b.contexto.close()
+      }
+
+      // 5. aberto como app (display-mode standalone)
+      const c = await novaAba(() => {
+        const original = window.matchMedia.bind(window)
+        window.matchMedia = (q: string) => (q.includes('display-mode: standalone') ? ({ matches: true, media: q } as MediaQueryList) : original(q))
+      })
+      try {
+        await abrirNaObra(c.p)
+        await semFaixa(c.p, 'display-mode standalone')
+        expect(c.erros).toEqual([])
+      } finally {
+        await c.contexto.close()
+      }
+    }, 120_000)
+  }
+
   // Telas comuns (front end, 19/11/2026): entrada sem obra, Nova obra e menu com o bloco da cópia aberto,
   // nos dois temas, no celular, no tablet em pé e no tablet deitado. Em todas: contraste ≥ 4,5:1,
   // nada de tocar menor que 44 px, nenhuma rolagem para o lado e nenhum erro na página.

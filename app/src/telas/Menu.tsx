@@ -18,6 +18,7 @@ import { BarraLocal } from './BarraLocal'
 import { AbrirPacote } from './AbrirPacote'
 import { BotaoTema } from './BotaoTema'
 import { IconeInstalar, IconeModulo } from './icones'
+import { aoMudarAppInstalado, appInstalado } from './instalado'
 import { PlantasSemInternet } from './PlantasSemInternet'
 import type { PacoteLocalizado } from '../nucleo/pacote_obra'
 
@@ -311,8 +312,25 @@ function ItensComErro({
   )
 }
 
+/** O app está instalado neste aparelho? null enquanto confere. Muda sozinho se instalar com a tela aberta. */
+function usarAppInstalado(): boolean | null {
+  const [instalado, setInstalado] = useState<boolean | null>(null)
+  useEffect(() => {
+    let vivo = true
+    const conferir = () => appInstalado().then((sim) => vivo && setInstalado(sim))
+    conferir()
+    const desligar = aoMudarAppInstalado(conferir)
+    return () => {
+      vivo = false
+      desligar()
+    }
+  }, [])
+  return instalado
+}
+
 function Aparelho({ obraId, versaoDados }: { obraId: string; versaoDados: number }) {
   const [persistente, setPersistente] = useState<boolean | null>(null)
+  const instalado = usarAppInstalado()
   const [pavimentos, setPavimentos] = useState<Linha[]>([])
   const [espaco, setEspaco] = useState<{ usado: number; total: number } | null>(null)
   const [dispositivo, setDispositivo] = useState('')
@@ -336,7 +354,7 @@ function Aparelho({ obraId, versaoDados }: { obraId: string; versaoDados: number
       <ul class="detalhes">
         <li data-testid="persistente">
           Dados protegidos neste aparelho:{' '}
-          {persistente === null ? '…' : persistente ? 'sim' : 'não. Instale o app para proteger.'}
+          {persistente === null ? '…' : persistente ? 'sim' : instalado ? 'não' : 'não. Instale o app para proteger.'}
         </li>
         {espaco && (
           <li>
@@ -371,9 +389,12 @@ function Aparelho({ obraId, versaoDados }: { obraId: string; versaoDados: number
  * Aviso à vista quando o navegador não protege os dados do app (correção C4, risco R4): sem a proteção,
  * o Chrome do Android pode apagar o banco do aparelho quando falta espaço, e com ele a fila. Pede a
  * proteção de novo ao abrir o menu; com o app instalado o Chrome costuma dar.
+ * Com o app já instalado a faixa não aparece, nem na aba do navegador (20/11/2026): pedir para instalar
+ * o que já está instalado só confunde.
  */
 function AvisoDadosDesprotegidos() {
   const [protegido, setProtegido] = useState<boolean | null>(null)
+  const instalado = usarAppInstalado()
   useEffect(() => {
     let vivo = true
     pedirArmazenamentoPersistente().then((p) => vivo && setProtegido(p))
@@ -381,7 +402,7 @@ function AvisoDadosDesprotegidos() {
       vivo = false
     }
   }, [])
-  if (protegido !== false) return null
+  if (protegido !== false || instalado !== false) return null
   return (
     <section class="barra atencao" data-testid="aviso-protecao">
       <p>

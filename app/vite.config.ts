@@ -68,6 +68,9 @@ export default defineConfig(({ mode }) => ({
         start_url: '/',
         scope: '/',
         display: 'standalone',
+        // O próprio app se lista aqui para o Chrome responder "já instalado" ao getInstalledRelatedApps
+        // (src/telas/instalado.ts): assim a faixa "Instale o app" some também na aba do navegador.
+        related_applications: [{ platform: 'webapp', url: '/manifest.webmanifest' }],
         orientation: 'any',
         background_color: '#f4f6f8',
         theme_color: '#1f4e79',

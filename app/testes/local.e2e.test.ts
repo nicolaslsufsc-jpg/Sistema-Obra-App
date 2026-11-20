@@ -19,7 +19,7 @@ import { lerNomesProibidos, nomesNoTexto } from '../sem_dados_de_obra'
 import { amostraIfc } from './ifc/amostra'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from '../src/projetos/exemplo_exe'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
-import { abrirMenuObra, comPavimentosDoAparelho, fecharMenuObra } from './menu_obra'
+import { abrirMenuObra, comPavimentosDoAparelho, escolherPacote, fecharMenuObra } from './menu_obra'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Page = any
 
@@ -1093,11 +1093,11 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await print('1-entrar')
 
         // um .zip que não é a obra: avisa e fica na mesma tela
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(ruim)
+        await escolherPacote(p, ruim)
         await p.getByRole('alert').filter({ hasText: 'não é o pacote da obra' }).waitFor()
 
         // o pacote certo: guarda as plantas e cai no menu da EXE
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+        await escolherPacote(p, zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await p.getByRole('heading', { name: /EXE/ }).waitFor()
         await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
@@ -1117,7 +1117,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await irAoApp(p)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await (await abrirMenuObra(p)).getByTestId('abrir-pacote').getByRole('button', { name: 'Trocar de obra / abrir pacote (.zip)' }).waitFor()
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+        await escolherPacote(p, zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
 
@@ -1169,7 +1169,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await irAoApp(p)
         await p.getByRole('heading', { name: 'Sem conta, sem internet' }).waitFor({ timeout: 30_000 })
 
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(pesado)
+        await escolherPacote(p, pesado)
         const aviso = p.getByRole('alert').filter({ hasText: 'Não coube no aparelho' })
         await aviso.waitFor({ timeout: 30_000 })
         expect(await aviso.textContent()).toMatch(/precisa de cerca de 80 MB(?: e há \d+ MB livres)?\. Libere pelo menos \d+ MB/)
@@ -1209,7 +1209,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
 
         // escolher outro arquivo (o pacote certo, menor) pela mesma tela: entra na obra
         await p.getByRole('button', { name: 'Escolher outro arquivo' }).waitFor()
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(leve)
+        await escolherPacote(p, leve)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await comPavimentosDoAparelho(p, (lista) => lista.filter({ hasText: /^3º Pavimento$/ }).waitFor())
         expect(await plantas()).toBe(1)
@@ -1260,13 +1260,12 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       try {
         // primeira vez, aparelho vazio: o .zip da EXE abre sem perguntar
         await irAoApp(p)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zipCerto)
+        await escolherPacote(p, zipCerto)
         await naLac()
         const antes = await banco()
 
         // .zip de outra obra: mostra as duas, com data; cancelar volta ao menu da EXE sem mexer em nada
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(outra)
+        await escolherPacote(p, outra) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await p.getByRole('heading', { name: 'Trocar de obra?' }).waitFor()
         const quadro = await p.getByTestId('comparacao-pacote').innerText()
         expect(quadro).toContain('Obra OUTRA2 (Outra Obra), gerado em 09/11/2026 às 08:30')
@@ -1278,8 +1277,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // .zip mais antigo da mesma obra: pede confirmação; cancelar também não mexe
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(antigo)
+        await escolherPacote(p, antigo) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await p.getByRole('heading', { name: 'Abrir um pacote mais antigo?' }).waitFor()
         expect(await p.getByTestId('comparacao-pacote').innerText()).toContain('gerado em 01/11/2026 às 10:00')
         await p.getByRole('button', { name: 'Cancelar' }).click()
@@ -1287,8 +1285,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // .zip sem data: o título diz "sem data", não "mais antigo" (testador, 08/11, T3)
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(semData)
+        await escolherPacote(p, semData) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await p.getByRole('heading', { name: 'Abrir um pacote sem data?' }).waitFor()
         expect(await p.getByRole('alert').innerText()).toContain('não tem data')
         await p.getByRole('button', { name: 'Cancelar' }).click()
@@ -1296,14 +1293,12 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // mais novo da mesma obra: segue direto
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(novo)
+        await escolherPacote(p, novo) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await naLac()
         expect(await p.getByRole('heading', { name: /pacote mais antigo|Trocar de obra/ }).count()).toBe(0)
 
         // confirmando a troca, o app passa para a outra obra
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(outra)
+        await escolherPacote(p, outra) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await p.getByRole('button', { name: 'Trocar para a obra OUTRA2' }).click()
         await p.getByRole('heading', { name: /OUTRA2/ }).waitFor({ timeout: 30_000 })
         expect(erros).toEqual([])
@@ -1331,8 +1326,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await irAoApp(p)
         await p.getByRole('heading', { name: /EXE/ }).waitFor({ timeout: 30_000 })
         // troca para a outra obra pelo .zip
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(outra)
+        await escolherPacote(p, outra) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await p.getByRole('button', { name: 'Trocar para a obra OUTRA2' }).click()
         await p.getByRole('heading', { name: /OUTRA2/ }).waitFor({ timeout: 30_000 })
         // recarrega (F5, ou fecha e abre o app): continua na OUTRA2, com a pasta da EXE ainda ao lado
@@ -1418,8 +1412,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         // pacote com historico.json mas sem sistema_oficial: aviso discreto no início da FVS, nada mais
         await irAoApp(p)
         await naObra()
-        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(semSistemaComHistorico)
+        await escolherPacote(p, semSistemaComHistorico) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         await naObra()
         await p.getByRole('button', { name: /^FVS/ }).click()
         const avisoSistema = p.getByTestId('fvs-aviso-sistema')
@@ -1437,8 +1430,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
           // o mesmo pacote com sistema_oficial: o lançamento e o campo voltam, com o nome do galho
           await irAoApp(p)
           await naObra()
-          await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-          await p.getByLabel('Pacote da obra (.zip)').setInputFiles(comSistema)
+          await escolherPacote(p, comSistema) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
           await naObra()
           await p.getByRole('button', { name: /^FVS/ }).click()
           const entrada = p.getByTestId('fvs-entra-lancamento')
@@ -1480,7 +1472,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     try {
       // abre o .zip (como o Android: escolhe o arquivo) e marca NC com texto no P1
       await irAoApp(p)
-      await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+      await escolherPacote(p, zip)
       await naObra()
       await p.getByRole('button', { name: /^FVS/ }).click()
       await p.getByRole('button', { name: 'Abrir', exact: true }).click()
@@ -1517,8 +1509,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await guardados()).toBe(antes)
 
       // abre o .zip pelo menu: a planta volta e o P1 continua com o NC e o texto
-      await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
-      await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+      await escolherPacote(p, zip) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
       await naObra()
       expect(await guardados()).toBe(antes)
       await p.getByRole('button', { name: /^FVS/ }).click()
@@ -1547,7 +1538,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       try {
         await irAoApp(p)
-        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+        await escolherPacote(p, zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await p.getByRole('button', { name: /^FVS/ }).click()
         await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor()
@@ -1829,6 +1820,92 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(erros).toEqual([])
       } finally {
         await contexto.close()
+      }
+    }, 120_000)
+  }
+
+  // Faixa "Instale o app" (20/11/2026, achado do testador): com o app já instalado ela não aparece,
+  // nem na aba do Chrome. O navegador de teste sempre recusa a proteção dos dados (como numa aba comum
+  // do Android), e cada sinal de "instalado" é simulado: evento appinstalled (com a marca que fica depois
+  // de recarregar), getInstalledRelatedApps e a tela aberta como app (display-mode standalone).
+  for (const [nome, largura, altura] of [
+    ['celular', 375, 812],
+    ['tablet', 1280, 800],
+  ] as const) {
+    it(`${nome} ${largura}x${altura}: a faixa "Instale o app" some quando o app já está instalado`, async () => {
+      const semProtecao = () => {
+        Object.defineProperty(navigator.storage, 'persist', { value: async () => false })
+        Object.defineProperty(navigator.storage, 'persisted', { value: async () => false })
+      }
+      const novaAba = async (extra?: () => void) => {
+        const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+        await contexto.addInitScript(semProtecao)
+        if (extra) await contexto.addInitScript(extra)
+        const p: Page = await contexto.newPage()
+        const erros: string[] = []
+        p.on('pageerror', (e: Error) => erros.push(e.message))
+        return { contexto, p, erros }
+      }
+      const faixa = (p: Page) => p.getByTestId('aviso-protecao')
+      // a conferência é assíncrona: espera a linha do aparelho sair do "…" antes de dizer que a faixa não está
+      const linhaAparelho = (p: Page) => p.getByTestId('persistente').evaluate((e: Element) => e.textContent ?? '')
+      const semFaixa = async (p: Page, onde: string) => {
+        await expect.poll(() => linhaAparelho(p), { timeout: 10_000 }).toMatch(/não$/)
+        expect(await faixa(p).count(), onde).toBe(0)
+      }
+
+      // 1. aba comum, app não instalado: a faixa aparece, e a linha do aparelho pede para instalar
+      const a = await novaAba()
+      try {
+        await abrirNaObra(a.p)
+        await faixa(a.p).waitFor()
+        expect(await faixa(a.p).isVisible()).toBe(true)
+        await expect.poll(() => linhaAparelho(a.p)).toMatch(/Instale o app para proteger\.$/)
+        expect(await a.p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+
+        // 2. instalou com a aba aberta (o Chrome manda appinstalled): a faixa some na hora
+        await a.p.evaluate(() => window.dispatchEvent(new Event('appinstalled')))
+        await faixa(a.p).waitFor({ state: 'detached' })
+        await semFaixa(a.p, 'depois do appinstalled')
+        // ... e continua fora depois de recarregar a aba (a marca fica no armazenamento local)
+        await abrirNaObra(a.p)
+        await semFaixa(a.p, 'aba recarregada depois de instalar')
+
+        // 3. desinstalou: o Chrome volta a oferecer a instalação, a marca sai e a faixa volta
+        await a.p.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt')))
+        await faixa(a.p).waitFor()
+        expect(await a.p.evaluate(() => localStorage.getItem('app_instalado'))).toBeNull()
+        expect(a.erros).toEqual([])
+      } finally {
+        await a.contexto.close()
+      }
+
+      // 4. aba nova, sem marca, mas o Chrome diz que o app está instalado (getInstalledRelatedApps)
+      const b = await novaAba(() => {
+        Object.defineProperty(navigator, 'getInstalledRelatedApps', { value: async () => [{ platform: 'webapp', url: location.origin + '/manifest.webmanifest' }] })
+      })
+      try {
+        await abrirNaObra(b.p)
+        await semFaixa(b.p, 'getInstalledRelatedApps')
+        // o manifesto se lista em related_applications: é o que faz o Chrome de verdade responder "instalado"
+        const manifesto = await b.p.evaluate(() => fetch('/manifest.webmanifest').then((r) => r.json()))
+        expect(manifesto.related_applications).toEqual([{ platform: 'webapp', url: '/manifest.webmanifest' }])
+        expect(b.erros).toEqual([])
+      } finally {
+        await b.contexto.close()
+      }
+
+      // 5. aberto como app (display-mode standalone)
+      const c = await novaAba(() => {
+        const original = window.matchMedia.bind(window)
+        window.matchMedia = (q: string) => (q.includes('display-mode: standalone') ? ({ matches: true, media: q } as MediaQueryList) : original(q))
+      })
+      try {
+        await abrirNaObra(c.p)
+        await semFaixa(c.p, 'display-mode standalone')
+        expect(c.erros).toEqual([])
+      } finally {
+        await c.contexto.close()
       }
     }, 120_000)
   }

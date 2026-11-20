@@ -1,6 +1,6 @@
 # Front end: aparência e componentes comuns (frente 06)
 
-Status em 20/11/2026: o menu refeito pelas heurísticas de Nielsen está na main (#38). A correção da faixa "Instale o app" está na branch `app/instalado`, com commit local e esperando PR.
+Status em 20/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar.
 
 **O que esta frente cuida:** casca do app, menu, entrada, tema (escuro e modo sol), estilos comuns em `app/src/style.css` e `app/src/tema.css`, e a regra de 375 px e tablet.
 - Cada tela de módulo nasce e muda na frente do próprio módulo. A 06 só aponta o problema para a frente dona.
@@ -31,7 +31,7 @@ Status em 20/11/2026: o menu refeito pelas heurísticas de Nielsen está na main
   - o app se dá por instalado em três casos: quando está aberto como app; quando o Chrome responde que está instalado (`getInstalledRelatedApps`, com o manifesto listando a si mesmo); ou quando há a marca guardada no aparelho no momento em que o Chrome avisa que instalou;
   - se o Chrome volta a oferecer a instalação, o app foi desinstalado: a marca sai e a faixa volta;
   - o código fica em `app/src/telas/instalado.ts`, e o núcleo não mudou;
-  - o teste de tela confere os quatro casos em 375 px e no tablet.
+  - o teste de tela confere os quatro casos em 375 px e no tablet (na main pelo #41).
 
 ## Pendências
 1. **Um estilo só para aviso, toast e tela vazia.**
@@ -39,7 +39,7 @@ Status em 20/11/2026: o menu refeito pelas heurísticas de Nielsen está na main
    - As repetições estão em `fvs.css` e `concreto.css`.
    - Fica para quando as frentes 03 a 05 fecharem.
 2. **Abas dos passos da Nova obra.** No celular elas quebram em duas linhas (`nova_obra.css`). Fica junto com o item 1.
-3. **Projetos (#34):** a descrição nova já está em `modulos.ts`. Se o #34 mexer na mesma linha, fica com a descrição desta frente.
+3. **Projetos com conta (branch `app/projetos-com-conta`):** saiu o `soSemConta` só do Projetos em `modulos.ts`, e ele continua com o selo "beta". O teste de unidade e o teste de tela com conta (`telas.e2e`) foram ajustados. Esperando o #44.
 
 ## Próximo passo
 Uma barra comum em todas as telas, com "‹ Menu" à esquerda, inclusive na planta da FVS. Só depois que o #31 (topo da TelaPlanta, frente 02) entrar na main, e combinado com o Professor.

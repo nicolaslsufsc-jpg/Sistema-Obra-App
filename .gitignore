@@ -42,3 +42,6 @@ fora_do_repo/
 *.jpg
 *.jpeg
 *.heic
+
+# capturas dos testes de tela que travaram (telas.e2e, CI 70)
+app/testes/saida/

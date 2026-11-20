@@ -11,6 +11,10 @@ import { dataBR } from './comum'
 /** A base desta obra (só dela), com as correções aplicadas e o cruzamento feito. */
 export function usarBase(ctx: Contexto) {
   const { obra, dados, usuario } = ctx
+  // sem conta não há nome de usuário: o histórico diz "neste aparelho"
+  const autor = ctx.semConta ? 'neste aparelho' : usuario.email || usuario.id
+  // lista de distribuição sincronizada: quem não é este usuário aparece como "outra pessoa da obra"
+  const nomeDe = (id: string) => (id === usuario.id ? autor : 'outra pessoa da obra')
   const [base, setBase] = useState<BaseProjetos | null | undefined>(undefined)
   const [edicoes, setEdicoes] = useState<Edicao[]>([])
   const [destinatarios, setDestinatarios] = useState<Destinatario[]>([])
@@ -19,7 +23,7 @@ export function usarBase(ctx: Contexto) {
   useEffect(() => {
     let valendo = true
     setBase(undefined)
-    Promise.all([lerBaseOuDoPacote(obra.id), lerEdicoes(obra.id), lerDestinatarios(obra.id)]).then(([b, e, d]) => {
+    Promise.all([lerBaseOuDoPacote(obra.id), lerEdicoes(obra.id), lerDestinatarios(obra.id, usuario.id, nomeDe)]).then(([b, e, d]) => {
       if (!valendo) return
       setEdicoes(e)
       setDestinatarios(d)
@@ -41,10 +45,8 @@ export function usarBase(ctx: Contexto) {
   const regras = useMemo(() => regrasAtuais(destinatarios), [destinatarios])
   const pendentes = useMemo(() => (corrigida && cruzadas ? aEntregar(corrigida.vigentes, cruzadas, regras) : null), [corrigida, cruzadas, regras])
 
-  // sem conta não há nome de usuário: o histórico diz "neste aparelho"
-  const autor = ctx.semConta ? 'neste aparelho' : usuario.email || usuario.id
   const salvar = async (nova: NovaEdicao) => setEdicoes(await gravarEdicao(obra.id, nova, autor))
-  const salvarRegras = async (novas: (DadosDestinatario & { substitui_id?: string | null })[]) => setDestinatarios(await gravarDestinatarios(obra.id, novas, autor))
+  const salvarRegras = async (novas: (DadosDestinatario & { substitui_id?: string | null })[]) => setDestinatarios(await gravarDestinatarios(obra.id, novas, usuario.id, nomeDe))
 
   return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras }
 }

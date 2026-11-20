@@ -21,7 +21,7 @@ import {
   type Ponto,
   type TravaDaArea,
 } from '../areas'
-import { anexarFoto, ligarEntrePecas, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDasLigacoes } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
@@ -217,7 +217,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [baixando, setBaixando] = useState<number | null>(null)
   const [erroBaixar, setErroBaixar] = useState('')
   // o registro guarda a revisão que estava na tela, que pode ser a anterior (ver revisoes.ts)
-  const c: Contexto = { obraId: obra.id, usuarioId: usuario.id, plantaId: pacote?.manifest.planta_id ?? plantaId, areas: dados.areaPorId }
+  // a barra de laje grava em barra_id (não está em elementos), e a área em area_id
+  const c: Contexto = {
+    obraId: obra.id,
+    usuarioId: usuario.id,
+    plantaId: pacote?.manifest.planta_id ?? plantaId,
+    areas: dados.areaPorId,
+    barras: { has: (id: string) => !!pacote?.manifest.barras?.[id] },
+  }
   const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : 'P')
   /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
   const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string } | null>(null)
@@ -1322,7 +1329,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // ligação entre fichas: o C marca os itens ligados da peça (o "Desfazer" volta os dois)
       const ligados = gravado.resultado === 'C' ? await ligar(cx, id, ficha, [item.n], [...eventos, gravado as unknown as EventoFvs]) : []
       // os ligados do próprio local contam para "ficha completa"; os das peças de dentro da área, não
-      const depois = [...eventos, gravado as unknown as EventoFvs, ...(ligados.filter((l) => String(l.elemento_id ?? l.area_id) === id) as unknown as EventoFvs[])]
+      const depois = [...eventos, gravado as unknown as EventoFvs, ...(ligados.filter((l) => localDoRegistro(l) === id) as unknown as EventoFvs[])]
       // o toque que fecha a ficha inteira da peça avisa
       const fechou = situacaoDaPeca(ficha, eventos) !== 'liberado' && situacaoDaPeca(ficha, depois) === 'liberado'
       const reinspecao = esperado === 'NC' ? ` (reinspeção ${rotuloRodada(Number(gravado.rodada))})` : ''

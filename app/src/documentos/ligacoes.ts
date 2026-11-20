@@ -90,8 +90,9 @@ function fichasDaFvs(t: LinhasLidas): FichaFvs[] {
     const codigo = codigoDoId.get(String(e.ficha_id ?? ''))
     if (!codigo || !e.resultado) continue
     marcacoes.set(codigo, (marcacoes.get(codigo) ?? 0) + 1)
-    // a área de laje grava em area_id, não em elemento_id (fvs/dados.ts): conta como local verificado
-    const local = e.elemento_id ?? e.area_id
+    // a área de laje grava em area_id e a barra de laje em barra_id, não em elemento_id (fvs/dados.ts):
+    // contam como local verificado
+    const local = e.elemento_id ?? e.area_id ?? e.barra_id
     if (local) {
       const s = pecas.get(codigo) ?? new Set<string>()
       s.add(String(local))

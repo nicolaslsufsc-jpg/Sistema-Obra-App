@@ -34,6 +34,8 @@ interface Registro {
   obs: string | null
   lote: string | null
   planta: string | null
+  /** barra de laje: o registro vai em barra_id (desde 20/11), e "el" mostra a barra como local */
+  barra: string | null
 }
 
 /** Registros marcados no app, do mais antigo para o mais novo (lidos pelo núcleo, na página). */
@@ -45,7 +47,7 @@ function registros(p: Page): Promise<Registro[]> {
     return l
       .filter((e) => !e.origem_id) // só o que foi marcado no app, não o histórico importado
       .sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
-      .map((e) => ({ el: e.elemento_id, ficha: e.ficha_id, item: e.item, r: e.resultado, rod: e.rodada, obs: e.observacao, lote: e.lote_id, planta: e.planta_id }))
+      .map((e) => ({ el: e.elemento_id ?? e.barra_id, ficha: e.ficha_id, item: e.item, r: e.resultado, rod: e.rodada, obs: e.observacao, lote: e.lote_id, planta: e.planta_id, barra: e.barra_id ?? null }))
   })()`)
 }
 
@@ -2250,6 +2252,8 @@ suite('FVS na bancada (Chrome)', () => {
       await tocarNaPlanta(p, 600, 525)
       await aviso('N1 (long. inf.): OK')
       expect(await ultimo(N1)).toMatchObject({ el: N1, ficha: 'f0000000-0000-0000-0000-000000000009', item: 3, r: 'C' })
+      // vai ao servidor em barra_id (a barra não está em elementos), sempre com a planta
+      expect(await ultimo(N1)).toMatchObject({ barra: N1, planta: expect.any(String) })
       expect(await p.getByTestId('fvs-progresso').innerText()).toBe('1/4 OK')
       await p.getByTestId('fvs-desfazer').click()
       await aviso('Desfeito: N1')

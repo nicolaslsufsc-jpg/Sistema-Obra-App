@@ -176,8 +176,8 @@ export function observacaoEntrePecas(nomeDaArea: string, a: AlvoEntrePecas): str
   return `Pela ligação: ${nomeDaArea} · item ${a.origem.item}${it ? ` (${it.titulo})` : ''}`
 }
 
-/** O local do registro: a peça ou a área de laje. */
-const localDe = (l: Readonly<Record<string, unknown>>) => String(l.elemento_id ?? l.area_id ?? '')
+/** O local do registro: a peça, a área de laje ou a barra de laje. */
+const localDe = (l: Readonly<Record<string, unknown>>) => String(l.elemento_id ?? l.area_id ?? l.barra_id ?? '')
 
 /**
  * O aviso depois de um C que marcou outros itens pela ligação, na própria peça e nas peças de dentro

@@ -47,7 +47,7 @@ import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { buscarPecas } from './busca'
-import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, horaNaFrente, horaNormal, ligarDepoisDe, ligarEntrePecas, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
+import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, localDoRegistro, marcarPelosFuros, voltarItem, horaNaFrente, horaNormal, ligarDepoisDe, ligarEntrePecas, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
 import { sincronizador } from '../nucleo/servicos'
 import { hojeNoAparelho } from './formato'
 import { DadosDaTela } from './leitura'
@@ -349,6 +349,38 @@ describe('marcação em lote no aparelho', () => {
     // a hora gravada é a do aparelho, não a do registro "do futuro"
     for (const g of gravados) expect(Date.parse(String(g.criado_em_dispositivo))).toBeLessThanOrEqual(Date.now())
     for (const g of gravados) expect(Date.parse(String(g.criado_em_dispositivo))).toBeGreaterThanOrEqual(inicio - 1)
+  })
+})
+
+describe('barra de laje no servidor (pedido 0, 20/11)', () => {
+  const OBRA = 'b0000000-0000-0000-0000-00000000bbb0'
+  const BARRA = 'fb000000-0000-0000-0000-000000000001'
+  const LAJE: Ficha = { ...ficha, id: 'f-laje', codigo: 'TESTE-PVS-LAJE', aplica_a: ['L'] }
+  // a barra é do pacote da planta: o registro vai em barra_id, com a planta
+  const c = { obraId: OBRA, usuarioId: '00000000-0000-0000-0000-0000000000a1', plantaId: 'pl1', areas: new Set(['ar1']), barras: new Set([BARRA]) }
+  const paraEventos = (linhas: Linha[]) => comRegistros({ eventosDe: new Map() } as unknown as DadosFvs, linhas).eventosDe
+
+  it('o registro da barra vai em barra_id (não em elemento_id) e a tela lê como os outros locais', async () => {
+    const ok = await marcarPelosFuros(c, BARRA, LAJE, 2, 'C', null, [])
+    expect([ok.barra_id, ok.elemento_id, ok.area_id, ok.planta_id]).toEqual([BARRA, undefined, undefined, 'pl1'])
+    expect(localDoRegistro(ok)).toBe(BARRA)
+    const eventos = paraEventos([ok])
+    expect(eventos.get(BARRA)?.map((e) => [e.item, e.resultado])).toEqual([[2, 'C']])
+    // o "Desfazer" do toque volta o item na mesma barra
+    const volta = await voltarItem(c, ok, undefined, eventos.get(BARRA) ?? [])
+    expect([volta?.barra_id, volta?.elemento_id, volta?.resultado]).toEqual([BARRA, undefined, null])
+    // o "Desfazer" do "Tudo OK nesta camada" (lote) também
+    const lote = [{ ...ok, lote_id: 'lt1' }]
+    const desfeitos = await desfazerLote(c, lote, (id) => paraEventos(lote).get(id) ?? [])
+    expect(desfeitos.map((l) => [l.barra_id, l.elemento_id, l.resultado])).toEqual([[BARRA, undefined, null]])
+    // peça e área não mudam
+    expect((await marcarPelosFuros(c, 'v1', ficha, 2, 'C', null, [])).elemento_id).toBe('v1')
+    expect((await marcarPelosFuros(c, 'ar1', LAJE, 2, 'C', null, [])).area_id).toBe('ar1')
+  })
+
+  it('registro antigo da barra (gravado em elemento_id, antes de 20/11) continua no lugar dela', () => {
+    const antigo = { id: 'x1', elemento_id: BARRA, ficha_id: LAJE.id, item: 2, resultado: 'C', rodada: 1, criado_em_dispositivo: '2026-11-19T10:00:00.000Z' } as unknown as Linha
+    expect(paraEventos([antigo]).get(BARRA)?.length).toBe(1)
   })
 })
 

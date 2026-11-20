@@ -24,30 +24,30 @@ select teste.ok(
   'elementos: ambiente (A), furo (F) e esquadria (E) entram como local');
 
 select teste.deve_falhar($$
-  insert into public.elementos (obra_id, pavimento_id, tipo, nome, dispositivo_id, criado_em_dispositivo)
+  insert into public.elementos (obra_id, pavimento_id, tipo, nome, usuario_id, dispositivo_id, criado_em_dispositivo)
   values ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'X', 'X1',
-          'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+          '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23514', 'elementos: tipo fora de P, V, L, A, F e E é recusado');
 select teste.deve_falhar($$
-  insert into public.elementos (obra_id, pavimento_id, tipo, nome, dispositivo_id, criado_em_dispositivo)
+  insert into public.elementos (obra_id, pavimento_id, tipo, nome, usuario_id, dispositivo_id, criado_em_dispositivo)
   values ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'e', '101-01-PM70',
-          'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+          '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23514', 'elementos: tipo em minúscula é recusado');
 select teste.deve_falhar($$
-  insert into public.elementos (obra_id, pavimento_id, tipo, nome, dispositivo_id, criado_em_dispositivo)
+  insert into public.elementos (obra_id, pavimento_id, tipo, nome, usuario_id, dispositivo_id, criado_em_dispositivo)
   values ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'E', '101-01 PM80',
-          'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+          '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23514', 'elementos: nome de esquadria continua sem espaço');
 select teste.deve_falhar($$
-  insert into public.elementos (obra_id, pavimento_id, tipo, nome, dispositivo_id, criado_em_dispositivo)
+  insert into public.elementos (obra_id, pavimento_id, tipo, nome, usuario_id, dispositivo_id, criado_em_dispositivo)
   values ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'E', '101-01-PM80',
-          'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+          '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23505', 'elementos: a mesma esquadria duas vezes no pavimento é recusada');
 
 -- o mesmo nome em tipo diferente é outro local (o único é por pavimento, tipo e nome)
-insert into public.elementos (obra_id, pavimento_id, tipo, nome, dispositivo_id, criado_em_dispositivo)
+insert into public.elementos (obra_id, pavimento_id, tipo, nome, usuario_id, dispositivo_id, criado_em_dispositivo)
 values ('11111111-1111-1111-1111-111111111111', 'a0000000-0000-0000-0000-000000000001', 'E', '101-01',
-        'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
+        '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
 select teste.ok((select count(*) from public.elementos where nome = '101-01' and not apagado) = 2,
   'elementos: ambiente e esquadria com o mesmo nome são locais diferentes');
 

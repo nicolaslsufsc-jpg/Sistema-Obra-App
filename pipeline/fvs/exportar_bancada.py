@@ -1,12 +1,19 @@
 """Empacota os dados da obra para a bancada rodar num PC sem Python (o "PC da empresa").
 
 Faz num zip o que bancada.py faz na hora: indice.json, fichas.json, historico.json e os pacotes de
-planta. Quem entrega ao navegador é o servidor.ps1 do pacote de pipeline/fvs/montar_entrega.py.
+planta, mais o config_fvs.json (regras da FVS: prazos e ligações), que o app grava como as regras da
+obra. Quem entrega ao navegador é o servidor.ps1 do pacote de pipeline/fvs/montar_entrega.py.
 
 Uso (no PC, na raiz do repositório):
     py pipeline/fvs/exportar_bancada.py "C:\\...\\pacotes" --saida "C:\\...\\dados_obra_FVS.zip" ^
         --fichas "C:\\...\\fichas_da_empresa.json" --fichas "C:\\...\\fichas_ambientes.json" ^
-        --historico "C:\\...\\historico.json" --documentos "C:\\...\\documentos_da_empresa" --sistema-oficial ID_DO_SISTEMA
+        --historico "C:\\...\\historico.json" --documentos "C:\\...\\documentos_da_empresa" --sistema-oficial ID_DO_SISTEMA ^
+        --config-fvs "C:\\...\\config_fvs.json"
+
+--config-fvs (opcional): as regras da FVS da obra (formato em regras_fvs.py). Sem a opção, vale o
+config_fvs.json que estiver na raiz da pasta dos pacotes, o mesmo que a bancada.py entrega. O arquivo
+é conferido antes: regra fora do formato (prazo sem dias, por exemplo) para o script, em vez de
+sumir calada no aparelho. Sem arquivo nenhum, o zip sai sem regras e a FVS funciona como antes.
 
 --documentos (opcional): pasta com um documentos.json e os arquivos (PDF ou foto) dos documentos da
 empresa (Manual, procedimentos, PES, modelos). Vão no zip em dados_obra/documentos/ e o app grava
@@ -35,6 +42,7 @@ sys.path.insert(0, str(AQUI))
 sys.path.insert(0, str(AQUI.parent))
 
 import bancada  # noqa: E402
+import regras_fvs  # noqa: E402
 import sistema_oficial  # noqa: E402
 from exportar_obra import dentro_de_repositorio  # noqa: E402
 
@@ -113,7 +121,7 @@ def ler_documentos(pasta: pathlib.Path) -> tuple[dict, list[tuple[str, pathlib.P
 
 
 def exportar(pacotes: pathlib.Path, fichas: list[dict], historico: pathlib.Path | None, saida: pathlib.Path, nome: str | None = None,
-             documentos: pathlib.Path | None = None, sistema: str | None = None) -> dict:
+             documentos: pathlib.Path | None = None, sistema: str | None = None, config_fvs: pathlib.Path | None = None) -> dict:
     """Grava o zip e devolve o resumo. Confere cada arquivo com o SHA-256 do relatório antes de incluir."""
     saida = saida.resolve()
     if dentro_de_repositorio(saida.parent):
@@ -130,11 +138,24 @@ def exportar(pacotes: pathlib.Path, fichas: list[dict], historico: pathlib.Path 
     if not plantas:
         raise ErroExportacaoBancada(f"nenhuma planta em {pacotes}")
     docs, arquivos_doc = ler_documentos(documentos) if documentos else (None, [])
+    # regras da FVS: o arquivo pedido ou, sem ele, o que está na raiz dos pacotes (o que a bancada.py entrega)
+    if config_fvs is None and (pacotes / regras_fvs.NOME_DO_ARQUIVO).is_file():
+        config_fvs = pacotes / regras_fvs.NOME_DO_ARQUIVO
+    regras, contagem = None, {"prazos": 0, "ligacoes": 0}
+    if config_fvs is not None:
+        if not config_fvs.is_file():
+            raise ErroExportacaoBancada(f"falta {config_fvs}")
+        try:
+            regras, contagem = regras_fvs.ler(config_fvs)
+        except regras_fvs.ErroRegrasFvs as e:
+            raise ErroExportacaoBancada(str(e)) from e
     temporario = saida.with_suffix(".tmp")
     tamanho = 0
     try:
         with zipfile.ZipFile(temporario, "w") as z:
             z.writestr(f"{PASTA_NO_ZIP}/fichas.json", json.dumps(fichas, ensure_ascii=False), zipfile.ZIP_DEFLATED)
+            if regras is not None:
+                z.writestr(f"{PASTA_NO_ZIP}/{regras_fvs.NOME_DO_ARQUIVO}", json.dumps(regras, ensure_ascii=False), zipfile.ZIP_DEFLATED)
             if historico:
                 z.write(historico, f"{PASTA_NO_ZIP}/historico.json", zipfile.ZIP_DEFLATED)
             for pl in plantas:
@@ -156,7 +177,8 @@ def exportar(pacotes: pathlib.Path, fichas: list[dict], historico: pathlib.Path 
         temporario.replace(saida)
     finally:
         temporario.unlink(missing_ok=True)
-    return {"pavimentos": len(indice["pavimentos"]), "plantas": len(plantas), "fichas": len(fichas), "documentos": len(docs["documentos"]) if docs else 0, "mb_pacotes": round(tamanho / 1e6, 1), "mb_zip": round(saida.stat().st_size / 1e6, 1)}
+    return {"pavimentos": len(indice["pavimentos"]), "plantas": len(plantas), "fichas": len(fichas), "documentos": len(docs["documentos"]) if docs else 0,
+            "regras": str(config_fvs) if regras is not None else None, "prazos": contagem["prazos"], "ligacoes": contagem["ligacoes"], "mb_pacotes": round(tamanho / 1e6, 1), "mb_zip": round(saida.stat().st_size / 1e6, 1)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,14 +190,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--documentos", help="pasta com documentos.json e os arquivos dos documentos da empresa (opcional)")
     ap.add_argument("--nome", help='nome por extenso da obra, que o app mostra (ex.: "Obra Exemplo"); só vai no pacote')
     ap.add_argument("--sistema-oficial", help="id do sistema oficial da obra (um galho de app/src/integracoes/); sem ele, o app não mostra nada de sistema oficial")
+    ap.add_argument("--config-fvs", help="regras da FVS da obra (prazos e ligações); sem a opção, vale o config_fvs.json da raiz da pasta dos pacotes, se houver")
     args = ap.parse_args(argv)
     try:
         fichas = bancada.ler_fichas(args.fichas or [str(AQUI.parent / "legado" / "itens_fvs.exemplo.json")])
-        r = exportar(pathlib.Path(args.pacotes).resolve(), fichas, pathlib.Path(args.historico) if args.historico else None, pathlib.Path(args.saida), args.nome, pathlib.Path(args.documentos) if args.documentos else None, args.sistema_oficial)
+        r = exportar(pathlib.Path(args.pacotes).resolve(), fichas, pathlib.Path(args.historico) if args.historico else None, pathlib.Path(args.saida), args.nome, pathlib.Path(args.documentos) if args.documentos else None, args.sistema_oficial,
+                     pathlib.Path(args.config_fvs).resolve() if args.config_fvs else None)
     except (ErroExportacaoBancada, OSError, ValueError) as e:
         print(f"PROBLEMA: {e}")
         return 1
     print(f"{r['pavimentos']} pavimentos, {r['plantas']} plantas, {r['fichas']} fichas, {r['documentos']} documentos; {r['mb_zip']} MB em {args.saida}")
+    if r["regras"]:
+        print(f"Regras da FVS: {r['prazos']} prazos e {r['ligacoes']} ligações, de {r['regras']}")
+    else:
+        print("Regras da FVS: nenhuma (sem config_fvs.json; o app abre sem prazos e sem ligações)")
     return 0
 
 

@@ -10,10 +10,13 @@ import {
   furosConferiveisPorArea,
   furosDeLajeNasAreas,
   furosNoToque,
+  ladoDoQuadradoEmPontos,
   instalacaoDaDisciplina,
   instalacoesDoFuro,
   itemDaInstalacao,
   itemDoFuroDeLaje,
+  juntarNumerosPerto,
+  multiploDoQuadrado,
   observacaoDosFuros,
   resultadoDaInstalacao,
   situacaoDoFuroDeLajeNaObra,
@@ -187,14 +190,58 @@ describe('densidade na planta (20/11): escondidos, conferíveis, número por ár
     expect(furoConferivel(els.e, nasAreas.get('e'))).toBe(false)
   })
   it('um grupo por área, só com os conferíveis, com o centro e a caixa deles', () => {
-    const grupos = furosConferiveisPorArea(els, nasAreas)
-    expect(grupos.map((g) => [g.areaId, g.ids])).toEqual([
+    const grupos = furosConferiveisPorArea(els, nasAreas, [l1, l2])
+    expect(grupos.map((g) => [g.chave, g.ids])).toEqual([
       ['L1', ['a', 'b']],
       ['L2', ['d']],
+      ['q:0:0', ['v']], // furo de viga fora de área: quadrado de 6 m
     ])
     expect(grupos[0].centro).toEqual([20, 30])
     expect(grupos[0].caixa).toEqual([10, 10, 30, 50])
     expect(grupos[0].perto).toEqual([10, 10]) // centro (20, 30): FL1 e FL2 a 22,4 pontos; o empate fica com o primeiro
+  })
+  it('furo de viga longe (20/11): dentro de área entra no número dela; fora, um número por quadrado de 6 m', () => {
+    const lado = ladoDoQuadradoEmPontos(50)
+    expect(lado).toBeCloseTo(340.2, 1) // 6 m na 1:50 = 120 mm de papel = 340 pontos
+    expect(ladoDoQuadradoEmPontos(100)).toBeCloseTo(170.1, 1)
+    const viga = (nome: string, x: number, y: number): ElementoPacote => ({ ...furo(nome, x, y, ['Hidráulica'], false), viga: 'v' })
+    const todos: Record<string, ElementoPacote> = {
+      a: els.a,
+      v1: viga('V1-F1', 60, 60), // dentro de L1
+      v2: viga('V2-F1', 400, 50), // fora: quadrado (1, 0)
+      v3: viga('V2-F2', 600, 300), // fora: mesmo quadrado (1, 0)
+      v4: viga('V3-F1', 400, 400), // fora: quadrado (1, 1)
+      g: viga('V4-F1', 410, 410), // Geral em viga também conta (furo de viga é sempre conferível)
+    }
+    todos.g = { ...todos.g, furo: { ...todos.g.furo!, disciplinas: ['Geral'] } }
+    const grupos = furosConferiveisPorArea(todos, furosDeLajeNasAreas(todos, [l1, l2]), [l1, l2])
+    expect(grupos.map((g) => [g.chave, g.ids])).toEqual([
+      ['L1', ['a', 'v1']],
+      ['q:1:0', ['v2', 'v3']],
+      ['q:1:1', ['v4', 'g']],
+    ])
+    expect(grupos[1].caixa).toEqual([400, 50, 600, 300])
+    // sem áreas desenhadas: todos os de viga em quadrados, os de laje somem do número (não são conferíveis)
+    expect(furosConferiveisPorArea(todos, furosDeLajeNasAreas(todos, []), []).map((g) => g.chave)).toEqual(['q:0:0', 'q:1:0', 'q:1:1'])
+  })
+  it('longe, o quadrado cresce em dobros de 6 m até dar 200 px na tela; números que se tocam viram um', () => {
+    expect(multiploDoQuadrado(0)).toBe(1) // 6 m = 340 px
+    expect(multiploDoQuadrado(-1)).toBe(2) // 170 px: 12 m
+    expect(multiploDoQuadrado(-4.5)).toBe(16) // abertura do celular: 15 px, 96 m
+    const viga = (nome: string, x: number, y: number): ElementoPacote => ({ ...furo(nome, x, y, ['Hidráulica'], false), viga: 'v' })
+    const vs: Record<string, ElementoPacote> = { p: viga('V1-F1', 330, 10), q: viga('V2-F1', 350, 10), r: viga('V3-F1', 900, 10) }
+    const g1 = furosConferiveisPorArea(vs, new Map(), [], 50, 1)
+    expect(g1.map((g) => g.ids)).toEqual([['p'], ['q'], ['r']]) // p e q na divisa x = 340
+    expect(furosConferiveisPorArea(vs, new Map(), [], 50, 2).map((g) => g.ids)).toEqual([['p', 'q'], ['r']])
+    const juntos = juntarNumerosPerto(g1, 104, 48)
+    expect(juntos.map((g) => g.ids)).toEqual([['p', 'q'], ['r']])
+    expect(juntos[0].centro).toEqual([340, 10])
+    expect(juntos[0].caixa).toEqual([330, 10, 350, 10])
+    expect(g1[0].ids).toEqual(['p']) // não mexe nos grupos de entrada
+    // número de área não se junta com quadrado
+    const comArea = [{ chave: 'L1', ids: ['a'], centro: [340, 10] as [number, number], caixa: [0, 0, 1, 1] as [number, number, number, number], perto: [0, 0] as [number, number] }, ...g1]
+    expect(juntarNumerosPerto(comArea, 104, 48).map((g) => g.ids)).toEqual([['a'], ['p', 'q'], ['r']])
+    expect(juntarNumerosPerto(comArea, 104, 48)[1].centro).toEqual([340, 58]) // desceu uma altura, saiu de baixo da área
   })
   it('texto e cor do número da área', () => {
     expect(textoDoNumeroDaArea(['nada', 'nada'])).toBe('2 furos')

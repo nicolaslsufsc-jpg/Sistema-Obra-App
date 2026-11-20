@@ -169,9 +169,68 @@ export function furoConferivel(e: ElementoPacote, area: AreaDeLaje | undefined):
   return !!area && instalacoesDoFuro(e).length > 0
 }
 
-/** Um número por área: quantos furos conferíveis ela tem e onde escrever (o centro deles, na folha). */
+/**
+ * Furos de viga longe (20/11, decisão do Nicolas pelo Professor): o de dentro de uma área de laje entra no
+ * número dela; o de fora de área, num número por quadrado de uns 6 m de obra (assim a planta fica limpa
+ * mesmo antes de alguém desenhar as áreas). Um número por viga não: são dezenas de vigas com furo por
+ * pavimento, e de longe os números se encavalariam como as bolinhas.
+ */
+export const LADO_DO_QUADRADO_M = 6
+
+/** Lado do quadrado em pontos da folha (1 ponto = 25,4/72 mm no papel; escala 1:N). */
+export function ladoDoQuadradoEmPontos(escala = 50): number {
+  return (LADO_DO_QUADRADO_M * 1000) / (25.4 / 72) / escala
+}
+
+/**
+ * Quadrado que cresce com a planta longe (20/11, medido no pacote do 2º): na abertura (zoom -4,5) 6 m são
+ * 15 px e saíam 71 números encavalados. O lado é 6 m vezes 1, 2, 4, 8... (os quadrados maiores contêm
+ * os menores, então o número só se junta, nunca pula de lugar), o menor que dê LADO_MINIMO_PX na tela.
+ * De perto (zoom 0 ou mais na 1:50) fica o quadrado de 6 m.
+ */
+export const LADO_MINIMO_PX = 200
+export function multiploDoQuadrado(zoom: number, escala = 50): number {
+  const px = ladoDoQuadradoEmPontos(escala) * 2 ** zoom
+  let m = 1
+  while (px * m < LADO_MINIMO_PX && m < 1024) m *= 2
+  return m
+}
+
+/**
+ * Números de quadrado que ainda se tocariam na tela (furos na divisa de dois quadrados) viram um só.
+ * largura e altura: o tamanho do número na tela, já em pontos da folha. Os números de área não se juntam;
+ * o de quadrado que cair em cima de um deles desce até ficar livre.
+ */
+export function juntarNumerosPerto(grupos: readonly FurosDaArea[], largura: number, altura: number): FurosDaArea[] {
+  const saida: FurosDaArea[] = []
+  for (const g of grupos) {
+    const alvo = g.chave.startsWith('q:')
+      ? saida.find((o) => o.chave.startsWith('q:') && Math.abs(o.centro[0] - g.centro[0]) < largura && Math.abs(o.centro[1] - g.centro[1]) < altura)
+      : undefined
+    if (!alvo) {
+      saida.push({ ...g, ids: [...g.ids] })
+      continue
+    }
+    const n0 = alvo.ids.length
+    const n1 = g.ids.length
+    alvo.centro = [(alvo.centro[0] * n0 + g.centro[0] * n1) / (n0 + n1), (alvo.centro[1] * n0 + g.centro[1] * n1) / (n0 + n1)]
+    alvo.caixa = [Math.min(alvo.caixa[0], g.caixa[0]), Math.min(alvo.caixa[1], g.caixa[1]), Math.max(alvo.caixa[2], g.caixa[2]), Math.max(alvo.caixa[3], g.caixa[3])]
+    alvo.ids.push(...g.ids)
+    alvo.chave = `${alvo.chave}+${g.chave}`
+  }
+  // número de quadrado embaixo de um número de área: desce (a área fica onde está; a conta não se mistura)
+  const toca = (a: FurosDaArea, b: FurosDaArea) => Math.abs(a.centro[0] - b.centro[0]) < largura && Math.abs(a.centro[1] - b.centro[1]) < altura
+  for (const q of saida) {
+    if (!q.chave.startsWith('q:')) continue
+    for (let i = 0; i < 6 && saida.some((o) => o !== q && !o.chave.startsWith('q:') && toca(o, q)); i++) q.centro = [q.centro[0], q.centro[1] + altura]
+  }
+  return saida
+}
+
+/** Um número por área (ou por quadrado): quantos furos conferíveis e onde escrever (o centro deles, na folha). */
 export interface FurosDaArea {
-  areaId: string
+  /** id da área de laje, ou "q:i:j" para o quadrado de furos de viga fora de área. */
+  chave: string
   ids: string[]
   centro: [number, number]
   /** caixa dos furos na folha: [x0, y0, x1, y1] (o toque no número aproxima até ela). */
@@ -180,29 +239,53 @@ export interface FurosDaArea {
   perto: [number, number]
 }
 
-/** Os furos de laje conferíveis agrupados pela área (na ordem do nome da área). */
+/**
+ * Os furos conferíveis agrupados para o número de longe: os de laje pela área (sempre têm uma); os de viga
+ * pela área que os contém ou, fora de área, pelo quadrado de LADO_DO_QUADRADO_M. Áreas na ordem do nome,
+ * depois os quadrados.
+ */
 export function furosConferiveisPorArea(
   elementos: Record<string, ElementoPacote> | undefined,
   furosNasAreas: ReadonlyMap<string, AreaDeLaje | undefined>,
+  areas: readonly AreaDeLaje[] = [],
+  escala = 50,
+  multiplo = 1,
 ): FurosDaArea[] {
-  const porArea = new Map<string, { nome: string; ids: string[]; pts: Array<[number, number]> }>()
+  const lado = ladoDoQuadradoEmPontos(escala) * multiplo
+  const grupos = new Map<string, { ordem: string; ids: string[]; pts: Array<[number, number]> }>()
+  const juntar = (chave: string, ordem: string, id: string, pt: [number, number]) => {
+    const g = grupos.get(chave) ?? { ordem, ids: [], pts: [] }
+    g.ids.push(id)
+    g.pts.push(pt)
+    grupos.set(chave, g)
+  }
   for (const [id, area] of furosNasAreas) {
     const e = elementos?.[id]
     if (!e || !area || !furoConferivel(e, area)) continue
-    const g = porArea.get(area.id) ?? { nome: area.nome, ids: [], pts: [] }
-    g.ids.push(id)
-    g.pts.push(centroDoFuro(e))
-    porArea.set(area.id, g)
+    juntar(area.id, `a ${area.nome}`, id, centroDoFuro(e))
   }
-  return [...porArea.entries()]
+  const vigas = Object.entries(elementos ?? {})
+    .filter(([, e]) => e.tipo === 'F' && !ehFuroDeLaje(e))
     .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
-    .map(([areaId, g]) => {
+  for (const [id, e] of vigas) {
+    const pt = centroDoFuro(e)
+    const area = areaDoFuro(pt, areas)
+    if (area) juntar(area.id, `a ${area.nome}`, id, pt)
+    else {
+      const i = Math.floor(pt[0] / lado)
+      const j = Math.floor(pt[1] / lado)
+      juntar(`q:${i}:${j}`, `q ${String(j).padStart(6, '0')} ${String(i).padStart(6, '0')}`, id, pt)
+    }
+  }
+  return [...grupos.entries()]
+    .sort(([, a], [, b]) => a.ordem.localeCompare(b.ordem, 'pt-BR', { numeric: true }))
+    .map(([chave, g]) => {
       const xs = g.pts.map((p) => p[0])
       const ys = g.pts.map((p) => p[1])
       const centro: [number, number] = [xs.reduce((s, v) => s + v, 0) / xs.length, ys.reduce((s, v) => s + v, 0) / ys.length]
       let perto = g.pts[0]
       for (const p of g.pts) if (Math.hypot(p[0] - centro[0], p[1] - centro[1]) < Math.hypot(perto[0] - centro[0], perto[1] - centro[1])) perto = p
-      return { areaId, ids: g.ids, centro, caixa: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], perto }
+      return { chave, ids: g.ids, centro, caixa: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], perto }
     })
 }
 

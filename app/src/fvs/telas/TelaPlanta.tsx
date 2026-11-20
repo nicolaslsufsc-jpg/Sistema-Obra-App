@@ -33,6 +33,8 @@ import {
   furoConferivel,
   furoDeLajeEscondido,
   furosConferiveisPorArea,
+  juntarNumerosPerto,
+  multiploDoQuadrado,
   furosDeLajeNasAreas,
   furosNoToque,
   instalacoesDoFuro,
@@ -288,6 +290,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [qualFuro, setQualFuro] = useState<string[] | null>(null)
   /** O mapa está perto o bastante para os furos de laje aparecerem (zoom ≥ ZOOM_DOS_FUROS_DE_LAJE). */
   const [furosPerto, setFurosPerto] = useState(false)
+  /** Zoom (em meios) para o tamanho do quadrado dos furos de viga longe e para juntar números que se tocam. */
+  const [zoomDosNumeros, setZoomDosNumeros] = useState(0)
   // tipos de local que esta planta tem (forma: pilares, vigas e as lajes desenhadas; arquitetura: ambientes)
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && (pode || areasDaPlanta.length > 0)
   // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
@@ -385,8 +389,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const nasPecas = await ligarEntrePecas(cx, dados.regras, elementoDe(id)?.nome ?? 'Laje', ficha, [...itens, ...daqui.map((l) => Number(l.item))], pecasParaLigar(id))
     return [...daqui, ...nasPecas]
   }
-  /** Longe (zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área no lugar dos furos de laje conferíveis. */
-  const numerosDasAreas = useMemo(() => furosConferiveisPorArea(manifest?.elementos, furosDeLaje), [manifest, furosDeLaje])
+  /** Longe (zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área (laje + viga) ou por quadrado de 6 m (viga fora de área). */
+  const numerosDasAreas = useMemo(() => {
+    const escala = manifest?.escala ?? 50
+    const grupos = furosConferiveisPorArea(manifest?.elementos, furosDeLaje, areasDaPlanta, escala, multiploDoQuadrado(zoomDosNumeros, escala))
+    // número de 44 px de altura e até ~100 px de largura ("110 furos"), convertido para pontos da folha
+    const pt = 1 / 2 ** zoomDosNumeros
+    return juntarNumerosPerto(grupos, 104 * pt, 48 * pt)
+  }, [manifest, furosDeLaje, chaveDasAreas, zoomDosNumeros])
   /** Furos de laje de cada área (id da área → ids dos furos, na ordem do nome). */
   const furosPorArea = useMemo(() => {
     const m = new Map<string, string[]>()
@@ -742,7 +752,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
     m.on('zoomend', mostrarNomes)
     // furos de laje: só de perto (longe, o alvo de 44 px cobre metros de obra e o toque pega o furo errado)
-    const verFurosPerto = () => setFurosPerto(m.getZoom() >= ZOOM_DOS_FUROS_DE_LAJE)
+    const verFurosPerto = () => {
+      setFurosPerto(m.getZoom() >= ZOOM_DOS_FUROS_DE_LAJE)
+      setZoomDosNumeros(Math.floor(m.getZoom() * 2) / 2)
+    }
     m.on('zoomend', verFurosPerto)
     mapa.current = m
     if (import.meta.env.DEV) (window as unknown as { __fvMapa: L.Map }).__fvMapa = m
@@ -867,8 +880,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     cima.addTo(m)
   }, [tipo, manifest, chaveDasAreas])
 
-  // furos de laje longe (aba Furos, zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área ("23 furos"); o
-  // toque aproxima até os furos dela. Texto e cor ficam em dia no efeito das cores.
+  // furos longe (aba Furos, zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área de laje ("23 furos", laje e
+  // viga dentro dela) ou por quadrado de 6 m (furo de viga fora de área); o toque aproxima até os furos dele. Texto e cor ficam em dia no efeito das cores.
   useEffect(() => {
     const m = mapa.current
     if (!m || tipo !== 'F' || furosPerto || !numerosDasAreas.length) return
@@ -893,7 +906,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         mapaDoEfeito.flyTo(zCabe >= ZOOM_DOS_FUROS_DE_LAJE ? b.getCenter() : ll(g.perto), z, { duration: 0.5 })
       })
       criados.push(marcador)
-      numerosDeFuros.current.set(g.areaId, { marcador, texto })
+      numerosDeFuros.current.set(g.chave, { marcador, texto })
     }
     return () => {
       for (const k of criados) k.remove()
@@ -940,10 +953,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         // furo (ou esquadria) pendente: miolo branco (fica visível em cima da viga); fora da aba dele, apagado e sem toque
         const fill = s === 'nada' ? '#ffffff' : cor
         // escondido (20/11): furo fora da aba Furos (não cobre pilar e viga); furo de laje de Geral,
-        // Climatização ou Incêndio (o dado fica no pacote); furo de laje com a planta longe (no lugar, o
-        // número da área). O furo selecionado (pela busca, por exemplo) aparece sempre.
+        // Climatização ou Incêndio (o dado fica no pacote); qualquer furo com a planta longe (no lugar, o
+        // número da área ou do quadrado). O furo selecionado (pela busca, por exemplo) aparece sempre.
         const escondido =
-          sel !== id && e.tipo === 'F' && (tipo !== 'F' || furoDeLajeEscondido(e) || (ehFuroDeLaje(e) && !furosPerto))
+          sel !== id && e.tipo === 'F' && (tipo !== 'F' || furoDeLajeEscondido(e) || !furosPerto)
         // furo de laje fora de área de laje: apagado, não marca nada (o toque diz por quê)
         const vivo = ativo && !(ehFuroDeLaje(e) && !furosDeLaje.get(id))
         const fo = escondido ? 0 : vivo ? 0.95 : 0.25
@@ -992,7 +1005,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
     // número de furos de cada área (longe): "5 de 23 furos OK", na cor do conjunto
     for (const g of numerosDasAreas) {
-      const n = numerosDeFuros.current.get(g.areaId)
+      const n = numerosDeFuros.current.get(g.chave)
       if (!n) continue
       const sits = g.ids.map((id) => {
         const e = manifest.elementos[id]

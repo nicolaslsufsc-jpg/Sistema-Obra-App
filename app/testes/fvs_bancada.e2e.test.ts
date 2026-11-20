@@ -1422,6 +1422,11 @@ suite('FVS na bancada (Chrome)', () => {
       const ultimo = async (el = F1) => (await registros(p)).filter((r) => r.el === el).at(-1)
       // o item de furação da viga (5 na ficha de teste), que os furos marcam
       const itemDaViga = () => ultimo(V1).then((r) => (r ? { item: r.item, r: r.r, obs: r.obs } : null))
+      // furo só aparece de perto (zoom 1,5 ou mais, 20/11): o toque é no zoom 2, com o furo no meio
+      const noFuro = async (x: number, y: number) => {
+        await enquadrar(p, [-y, x], 2)
+        await tocarNaPlanta(p, x, y)
+      }
       const sitDaViga = async () => {
         await enquadrar(p, [-150, 300], 1)
         await aba('Vigas')
@@ -1441,14 +1446,25 @@ suite('FVS na bancada (Chrome)', () => {
       // furo não é peça: a conta da aba é de furos OK, não de "liberados" (bug do celular, 18/11)
       expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/3 OK')
       expect(await p.getByTestId('fvs-progresso').getAttribute('title')).toBe('0 de 3 furos OK')
-      await enquadrar(p, [-150, 300], 1)
-      await tocarNaPlanta(p, 220, 150)
+      // longe (zoom abaixo de 1,5), os furos de viga somem; sem área de laje desenhada, ficam num número
+      // por quadrado de 6 m de obra (20/11; 340 pontos na 1:50, a linha x = 340 separa V1-F3 dos outros
+      // dois); o toque no número aproxima até eles
+      await enquadrar(p, [-150, 300], 0)
+      const numero = p.getByTestId('fvs-numero-furos')
+      await numero.first().waitFor()
+      expect(await numero.allTextContents()).toEqual(['2 furos', '1 furo'])
+      for (const b of await numero.all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_${nome}_numero.png` })
+      await numero.first().click()
+      await numero.first().waitFor({ state: 'detached' })
+      expect(await p.evaluate(() => (window as any).__fvMapa.getZoom())).toBeGreaterThanOrEqual(1.5)
+      await noFuro(220, 150)
       await aviso('V1-F1: OK')
       // o furo grava no item de furação da ficha da viga (sem ficha própria)
       expect(await ultimo()).toMatchObject({ el: F1, ficha: 'f0000000-0000-0000-0000-000000000002', item: 5, r: 'C', rod: 1 })
       // um furo OK e dois sem conferir: o item da viga continua pendente (nada gravado nela)
       expect(await itemDaViga()).toBe(null)
-      await tocarNaPlanta(p, 220, 150)
+      await noFuro(220, 150)
       await aviso('V1-F1: errado')
       await nomeNoPainel(p, 'V1-F1')
       expect(await ultimo()).toMatchObject({ el: F1, r: 'NC' })
@@ -1462,8 +1478,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.getByTestId('fvs-furos-da-viga').locator('h3').textContent()).toBe('Furos: 0 de 3 OK, 1 errado')
       await fechar()
       await aba('Furos')
-      await enquadrar(p, [-150, 300], 1)
-      await tocarNaPlanta(p, 220, 150)
+      await noFuro(220, 150)
       await aviso('V1-F1: sem conferir')
       expect((await ultimo())?.r).toBe(null)
       await expect.poll(() => itemDaViga().then((i) => i?.r)).toBe(null)
@@ -1474,11 +1489,11 @@ suite('FVS na bancada (Chrome)', () => {
       await expect.poll(() => itemDaViga().then((i) => i?.r)).toBe('NC')
 
       // corrigido: errado → sem conferir → OK; os três OK
-      await tocarNaPlanta(p, 220, 150)
+      await noFuro(220, 150)
       await aviso('V1-F1: sem conferir')
-      await tocarNaPlanta(p, 220, 150)
+      await noFuro(220, 150)
       await aviso('V1-F1: OK')
-      await tocarNaPlanta(p, 300, 150)
+      await noFuro(300, 150)
       await aviso('V1-F2: OK')
 
       // viga com os outros itens C e um furo sem conferir: o item de furação fica pendente, não fica verde
@@ -1496,8 +1511,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.getByTestId('fvs-furos-da-viga').getByRole('button', { name: /^V1-F3/ }).click()
       await nomeNoPainel(p, 'V1-F3')
       await fechar()
-      await enquadrar(p, [-150, 300], 1)
-      await tocarNaPlanta(p, 380, 150)
+      await noFuro(380, 150)
       await aviso('V1-F3: OK')
       await expect.poll(itemDaViga).toMatchObject({ item: 5, r: 'C' })
       expect(await sitDaViga()).toBe('Liberado')

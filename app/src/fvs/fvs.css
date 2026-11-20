@@ -1949,3 +1949,7 @@
   border-radius: 22px;
   font-size: 13px;
 }
+/* número das esquadrias: centrado na esquadria (embaixo dela, caía fora da planta, nos detalhes) */
+.fv-num-esq span {
+  transform: translate(-50%, -50%);
+}

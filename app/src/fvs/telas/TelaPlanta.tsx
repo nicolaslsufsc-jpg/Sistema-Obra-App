@@ -109,7 +109,7 @@ import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { recortesDoAmbiente } from '../projetos_ambiente'
 import { usarCamadas } from './usarCamadas'
 import type { AbaDosAmbientes } from '../opcoes_ambientes'
-import { esquadriasPorUnidade, zoomDasEsquadrias } from '../esquadrias_longe'
+import { esquadriasPorUnidade, pontosPorMetroDasEsquadrias, posicoesDasEsquadrias, zoomDasEsquadrias } from '../esquadrias_longe'
 
 const COR: Record<Situacao, [string, number]> = {
   nada: ['#6b7075', 0.12],
@@ -438,11 +438,25 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const pt = 1 / 2 ** zoomDosNumeros
     return juntarNumerosPerto(grupos, 104 * pt, 48 * pt)
   }, [manifest, furosDeLaje, chaveDasAreas, zoomDosNumeros])
-  /** Longe, na aba Esquadrias: um número por apartamento ("12 esquadrias"), juntando os que se tocam. */
+  /** Onde cada esquadria é desenhada: as que caem juntas se afastam (esquadrias_longe.ts). */
+  const ptPorMEsq = useMemo(() => pontosPorMetroDasEsquadrias(manifest?.elementos, manifest?.escala), [manifest])
+  const posicoesEsq = useMemo(() => posicoesDasEsquadrias(manifest?.elementos, ptPorMEsq), [manifest, ptPorMEsq])
+  /**
+   * Longe, na aba Esquadrias: um número por apartamento ("12 esquadrias"), juntando os que se tocam. O número
+   * fica na esquadria do grupo mais perto do meio dele (o meio de grupos juntos podia cair fora da planta,
+   * em cima dos detalhes: testador no S23, 20/11).
+   */
   const numerosDasEsquadrias = useMemo(() => {
     const pt = 1 / 2 ** zoomDosNumeros
-    return juntarNumerosPerto(esquadriasPorUnidade(manifest?.elementos), 150 * pt, 48 * pt)
-  }, [manifest, zoomDosNumeros])
+    return juntarNumerosPerto(esquadriasPorUnidade(manifest?.elementos), 150 * pt, 48 * pt).map((g) => {
+      let melhor: [number, number] | null = null
+      for (const id of g.ids) {
+        const q = posicoesEsq.get(id)
+        if (q && (!melhor || Math.hypot(q[0] - g.centro[0], q[1] - g.centro[1]) < Math.hypot(melhor[0] - g.centro[0], melhor[1] - g.centro[1]))) melhor = q
+      }
+      return melhor ? { ...g, centro: melhor, perto: melhor } : g
+    })
+  }, [manifest, zoomDosNumeros, posicoesEsq])
   /** Os números de longe da aba atual (Furos ou Esquadrias), ou nenhum se a planta está perto. */
   const numerosDeLonge = tipo === 'F' && !furosPerto ? numerosDasAreas : tipo === 'E' && !esquadriasPerto ? numerosDasEsquadrias : []
   /** Furos de laje de cada área (id da área → ids dos furos, na ordem do nome). */
@@ -733,8 +747,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         nomes.push({ marcador, zoomMinimo: Math.log2(Math.max(ROTULO_PX.largura / Math.max(larg, 1), ROTULO_PX.altura / Math.max(alt, 1))) })
       }
       if (ehFilho(e.tipo)) {
-        // furo e esquadria: bolinha do mesmo tamanho na tela em qualquer zoom, com alvo de 44 px para o dedo
-        const centro = caixa(e.rotulo).getCenter()
+        // furo e esquadria: bolinha do mesmo tamanho na tela em qualquer zoom, com alvo de 44 px para o dedo;
+        // esquadrias que caem juntas, cada uma um pouco afastada (posicoesDasEsquadrias)
+        const afastada = e.tipo === 'E' ? posicoesEsq.get(id) : undefined
+        const centro = afastada ? L.latLng(ll(afastada)) : caixa(e.rotulo).getCenter()
         const marca = L.circleMarker(centro, { renderer: rend, radius: RAIO_FURO_PX, weight: 2 })
         const alvo = L.circleMarker(centro, { renderer: rend, radius: ALVO_FURO_PX, stroke: false, fillOpacity: 0, fillColor: '#000' })
         marca.addTo(g)
@@ -801,7 +817,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
     m.on('zoomend', mostrarNomes)
     // furos de laje: só de perto (longe, o alvo de 44 px cobre metros de obra e o toque pega o furo errado)
-    const zEsq = zoomDasEsquadrias(manifest.escala)
+    const zEsq = zoomDasEsquadrias(pontosPorMetroDasEsquadrias(manifest.elementos, manifest.escala))
     const verFurosPerto = () => {
       setFurosPerto(m.getZoom() >= ZOOM_DOS_FUROS_DE_LAJE)
       setEsquadriasPerto(m.getZoom() >= zEsq)
@@ -938,13 +954,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (!m || !numerosDeLonge.length) return
     const mapaDoEfeito = m
     const criados: L.Marker[] = []
+    const textos: HTMLElement[] = []
     // esquadrias: aproxima até o zoom em que as bolinhas delas aparecem
-    const zPerto = tipo === 'E' ? zoomDasEsquadrias(manifest?.escala) : ZOOM_DOS_FUROS_DE_LAJE
+    const zPerto = tipo === 'E' ? zoomDasEsquadrias(ptPorMEsq) : ZOOM_DOS_FUROS_DE_LAJE
     for (const g of numerosDeLonge) {
       const texto = document.createElement('span')
       texto.setAttribute('data-testid', tipo === 'E' ? 'fvs-numero-esquadrias' : 'fvs-numero-furos')
       const marcador = L.marker(ll(g.centro), {
-        icon: L.divIcon({ className: 'fv-caixa fv-num-furos', html: texto, iconSize: [0, 0] }),
+        icon: L.divIcon({ className: tipo === 'E' ? 'fv-caixa fv-num-furos fv-num-esq' : 'fv-caixa fv-num-furos', html: texto, iconSize: [0, 0] }),
         keyboard: false,
         // por cima da caixa com o nome da área (que fica no centro dela e seguraria o toque)
         zIndexOffset: 1000,
@@ -959,9 +976,32 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         mapaDoEfeito.flyTo(zCabe >= zPerto ? b.getCenter() : ll(g.perto), z, { duration: 0.5 })
       })
       criados.push(marcador)
+      textos.push(texto)
       numerosDeFuros.current.set(g.chave, { marcador, texto })
     }
+    // número com o ponto dentro da tela fica inteiro na tela (testador no S23, 20/11: "28 esquadrias" saía
+    // 5 px à direita); o que tem o ponto fora da tela fica onde está
+    const prender = () => {
+      const tela = mapaDoEfeito.getContainer().getBoundingClientRect()
+      const folga = 4
+      criados.forEach((marcador, i) => {
+        const texto = textos[i]
+        texto.style.marginLeft = ''
+        texto.style.marginTop = ''
+        const pt = mapaDoEfeito.latLngToContainerPoint(marcador.getLatLng())
+        if (pt.x < 0 || pt.y < 0 || pt.x > tela.width || pt.y > tela.height) return
+        const r = texto.getBoundingClientRect()
+        const dx = r.left < tela.left + folga ? tela.left + folga - r.left : r.right > tela.right - folga ? tela.right - folga - r.right : 0
+        const dy = r.top < tela.top + folga ? tela.top + folga - r.top : r.bottom > tela.bottom - folga ? tela.bottom - folga - r.bottom : 0
+        if (dx) texto.style.marginLeft = `${Math.round(dx)}px`
+        if (dy) texto.style.marginTop = `${Math.round(dy)}px`
+      })
+    }
+    const quadroDoPrender = requestAnimationFrame(prender)
+    mapaDoEfeito.on('moveend zoomend resize', prender)
     return () => {
+      cancelAnimationFrame(quadroDoPrender)
+      mapaDoEfeito.off('moveend zoomend resize', prender)
       for (const k of criados) k.remove()
       numerosDeFuros.current.clear()
     }
@@ -1360,6 +1400,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
    */
   const tocarFuro = (id: string, e: ElementoPacote) => {
     const f = alvoDoFilho(id)
+    // esquadria sem item na ficha: só o aviso, sem painel por cima da planta (testador no S23, 20/11)
+    if (!f && e.tipo === 'E') return avisar(furoSemItem(id))
     if (!f) {
       setParteAberta(null)
       abrirPainel(id)
@@ -1617,6 +1659,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   tocarNoFuroRef.current = (id: string, pos: L.LatLng) => {
     const m = mapa.current
     if (desenho || !m) return tocarRef.current(id)
+    // esquadria com a ficha sem item de esquadria: nada a escolher, vai direto ao aviso
+    if (elementoDe(id)?.tipo === 'E' && !itemEsq) return tocarRef.current(id)
     // o canvas entrega o toque ao furo desenhado por cima; com dois alvos no ponto, a pessoa escolhe
     const toque = m.latLngToContainerPoint(pos)
     const pontos: Array<{ id: string; x: number; y: number }> = []
@@ -1924,7 +1968,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             {resumoDaCamada.ok}/{resumoDaCamada.total} OK
             {resumoDaCamada.erradas > 0 && ` · ${resumoDaCamada.erradas} errada${resumoDaCamada.erradas > 1 ? 's' : ''}`}
           </span>
-        ) : (
+        ) : tipo === 'E' && !itemEsq ? null : (
+        // aba Esquadrias sem item de esquadria na ficha: sem conta (não há o que marcar; o topo já diz)
         <span class="fv-prog" data-testid="fvs-progresso" title={`${liberadas} de ${doTipo.length} ${(PLURAL_TIPO[tipo] ?? 'peças').toLowerCase()} ${palavraDoProgresso}`}>
           {/* "1/24 pilares" era lido como "pilar 1 de 24" (demonstração, 09/11): o tipo já está na aba */}
           {liberadas}/{doTipo.length} {palavraDoProgresso}
@@ -2222,7 +2267,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
       {qualFuro && (
         <div class="fv-escolha" role="dialog" aria-label="Qual furo?" data-testid="fvs-escolha-furo">
-          <b>Qual furo? O toque pegou {qualFuro.length} furos.</b>
+          <b>
+            {elementoDe(qualFuro[0])?.tipo === 'E' ? `Qual esquadria? O toque pegou ${qualFuro.length} esquadrias.` : `Qual furo? O toque pegou ${qualFuro.length} furos.`}
+          </b>
           <div class="fv-escolha-pecas">
             {qualFuro.map((id) => {
               const e = elementoDe(id)
@@ -3094,7 +3141,8 @@ function Painel(p: PropsPainel) {
               {vigente && vigente.id !== ficha.id && ` (a vigente é a rev. ${vigente.revisao}; esta peça foi marcada nesta)`}
             </p>
           ) : (
-            <p class="aviso">Não há ficha (PVS) para {NOME_TIPO[peca.tipo] ?? peca.tipo} nesta obra.</p>
+            // furo e esquadria não têm ficha própria (usam a do pai): o aviso de cima já diz o que falta
+            !ehFilho(peca.tipo) && <p class="aviso">Não há ficha (PVS) para {NOME_TIPO[peca.tipo] ?? peca.tipo} nesta obra.</p>
           )}
           {!soDetalhe && !p.pode && <p class="discreto">Seu acesso nesta obra é só de leitura.</p>}
           {!soDetalhe && linhas}

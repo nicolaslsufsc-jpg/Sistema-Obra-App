@@ -126,7 +126,8 @@ Proposta aprovada pelo Nicolas em 20/11 (pelo Professor). O Projetos volta ao me
   - gera, no pacote da obra: `distribuicao.csv` no formato do app, `destinatarios_sugeridos.csv` (quem recebeu cada pasta nos últimos 90 dias), `apelidos_sugeridos.csv` (grafias diferentes da mesma pessoa, para o Nicolas confirmar) e `pontos_a_conferir.csv`.
 - **Migração `20261120130000_projetos_destinatarios.sql`** (tabela `distribuicao_destinatarios`, só inclusão, gestor inclui, mais a view `destinatarios_vigentes`) e o teste dela, `supabase/testes/testes_x_projetos_destinatarios.sql`.
   - **Não foi aplicada no servidor:** o Professor fala com o Nicolas antes.
-  - O app ainda grava a lista no navegador. Ligar o app à tabela (sincronização) é do NUC-SINC.
+  - **Desde 20/11/2026 o app grava na tabela** (núcleo, branch `nucleo/destinatarios-sync`): com conta, a lista sobe ao servidor e desce para os outros aparelhos da obra. Baixa num bloco à parte, no fim (servidor sem a migração só deixa esta tabela de fora). Só o gestor inclui (regra do servidor; a tela também esconde). A lista antiga do navegador passa para a tabela uma vez, com os mesmos ids, e sai do navegador.
+  - *Suposições marcadas:* na passagem da lista antiga, a hora de cada regra vira a da passagem e o autor vira quem está no aparelho; regra gravada por outra pessoa aparece como "outra pessoa da obra" (o app ainda não tem os nomes dos usuários).
 - **Testes:**
   - 10 de unidade em `distribuicao.test.ts`;
   - um teste de tela em 375 e 768, nos dois temas: formulário, regra repetida recusada, importar, a entregar, desativar, persistência e contraste;

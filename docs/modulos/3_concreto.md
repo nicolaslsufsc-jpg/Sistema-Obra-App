@@ -51,14 +51,14 @@ Todas são **eventos só de inclusão** (`nucleo.preparar_tabela(..., 'nenhuma')
 | `caminhao_elementos` | campo | caminhao_id, elemento_id, origem (`desenho`/`manual`), fracao (0 a 1; vazia no toque e na laje que veio com a área), incluido (sim/não). Vale o último registro de cada par caminhão + peça. Gravado a partir do desenho, para o relatório e a FVS não precisarem da geometria. |
 | `cp_resultados` | gestor | caminhao_id, idade_dias, numero_cp, data_ensaio, resistencia_mpa, origem (`manual`/`lado37`/`construpoint`), laudo_arquivo_id, substitui_id, cancelado |
 
-**FVM (recebimento de materiais, desde 18/11, SEM MIGRAÇÃO ainda: só o app sem conta usa):**
+**FVM (recebimento de materiais, desde 18/11; migração `20261120120000_concreto_fvm.sql` desde 20/11):**
 
 | Tabela | Quem inclui | Colunas do módulo |
 |---|---|---|
 | `materiais_controlados` | gestor (importa a lista) | codigo, nome, unidade, estrutural, exige_ensaio, via (`concreto` = recebido pelo caminhão), itens (json: codigo, texto, valor {min, max}), documentos (json), ordem, substitui_id, cancelado |
 | `recebimentos` | campo | material_codigo, material_nome, unidade, data, fornecedor, nota_fiscal, lote, quantidade, itens (json: a conferência, com cópia do texto), documentos (json: nome, veio), fotos (ids em `arquivos`), situacao (`liberado`/`liberado_ressalva`/`retido`/`devolvido`), motivo, observacao, liberado_por, liberado_em, substitui_id, cancelado |
 
-As duas ficam **fora** da lista de sincronização do app (`TABELAS_FVM` em `concreto/tabelas.ts`, não em `TABELAS_CONCRETO`): não entram na baixa nem no envio do servidor. Elas são gravadas por um sincronizador próprio do FVM (`fvm_dados.ts`), que usa a mesma fila e o mesmo banco do aparelho, então entram no `.obra`, mas nunca baixa nada. **Com a migração**, passam para `TABELAS_CONCRETO` e o sincronizador próprio sai (pendência 11).
+As duas estão no fim da lista do Concreto (`TABELAS_FVM` dentro de `TABELAS_CONCRETO`, em `concreto/tabelas.ts`): gravam e baixam pelo sincronizador do app, com ou sem conta. No fim de propósito: num servidor ainda sem a migração, só o FVM dá erro na baixa, o resto do Concreto chega. No banco: só gestor e admin incluem na lista de materiais; o campo registra o recebimento; fora de "liberado" o motivo (ou a ressalva) é obrigatório; e só gestor e admin gravam a linha que tira um material do "retido", com `liberado_por` = quem gravou (gatilho `concreto_conferir_recebimento`). Nenhuma tabela do núcleo muda.
 
 `planta_ref` guarda qual planta (e revisão) foi usada no desenho (regra da arquitetura: toda conferência guarda a revisão da prancha).
 
@@ -105,14 +105,11 @@ O desenho usa o pacote de planta da FVS. Combinado com a sessão FVS em 04/11: o
 Núcleo (sincronização, `pavimentos`, `elementos`). FVS entrega 1 (pacote de planta) para desenhar em obra de verdade.
 
 ## Status
-Atualizado em 20/11/2026, conferido no `git log` da `main` do repositório público (211fb7f) e no código.
-- **Na `main`:** tudo o que estava em commit local em 18/11 (PDF do laudo, FVM só no app sem conta, botão de reportar problema) e o rastreio de pilar e viga para a FVS (`concreto/rastreio.ts`, PR #2 do repositório público).
-- **Em PR ou commit local (20/11):**
-  - rastreio da laje pela área da FVS (PR #20);
-  - as áreas de laje da FVS no relatório do Concreto (branch `concreto/laje-areas-relatorio`, em cima do #20).
-- **Migrações no servidor de São Paulo:** `20261103230000_concreto.sql` e `20261107210000_concreto_caneta.sql` (`caminhao_areas.alvo`), aplicada em 08/11/2026. Nenhuma migração nova do Concreto desde então.
-- **FVM:** só no app sem conta e sem migração (pendência 11). As 5 decisões seguem para o Nicolas confirmar.
-- **Testes de 20/11 neste PC:** build, `npx vitest run` (707 passaram) e a bancada do Concreto no Chrome (18 passaram, 375 px e 1280).
+Atualizado em 20/11/2026, conferido no `git log` da `main` do repositório público (806adec) e no código.
+- **Na `main`:** o rastreio para a FVS (pilar e viga, PR #2; laje pela área da FVS, PR #20) e as áreas de laje da FVS no relatório (PR #23).
+- **Commit local (20/11), branch `concreto/fvm-migracao`:** migração do FVM e o FVM ligado com login (pendência 11). Push, PR e a migração no servidor ficam com o Professor.
+- **Migrações no servidor de São Paulo:** `20261103230000_concreto.sql` e `20261107210000_concreto_caneta.sql` (`caminhao_areas.alvo`), aplicada em 08/11/2026. A do FVM (`20261120120000_concreto_fvm.sql`) espera o merge.
+- **Testes de 20/11 neste PC:** testes SQL (`rodar_testes_windows.py`, 300 checagens), build, `npx vitest run` (742 passaram) e a bancada do Concreto no Chrome (18 passaram, 375 px e 1280). O teste contra o PostgREST (`rodar_integracao.sh`) não roda no Windows: fica para o GitHub.
 - **Não testado:** no tablet de verdade (pendência 1).
 
 ## Feito
@@ -132,6 +129,10 @@ Atualizado em 20/11/2026, conferido no `git log` da `main` do repositório públ
   - **tela "Reportes" para o admin.**
 
   O plano completo está nas notas do Professor (`plano_reportar_problema.md`).
+**20/11/2026, FVM com migração** (o Nicolas confirmou as 5 decisões em 20/11, recado do Professor):
+- Migração `20261120120000_concreto_fvm.sql`: `materiais_controlados` (gestor inclui) e `recebimentos` (campo inclui), só de inclusão. O banco confere a ressalva (decisão 4) e que só gestor e admin tiram do retido (decisão 5).
+- App: as tabelas entraram no fim da lista do Concreto e o sincronizador próprio do FVM saiu (`fvm_dados.ts` usa o do app). O FVM aparece também com login, não só no app sem conta.
+- Testes: `supabase/testes/testes_x_concreto_fvm.sql` (papéis, ressalva, retido, leitura, sem acesso, restaurar, exportação) e `fvm_tabelas.test.ts` (FVM na lista, no fim do bloco do Concreto).
 **18/11/2026, FVM: recebimento de materiais** (passo 3, liberado pelo Nicolas via Professor; só no app sem conta e no ambiente de desenvolvimento, sem migração):
 - **Lista de materiais:** o gestor importa um `materiais.json` (o formato que o pacote da obra vai trazer) em "Materiais controlados". Material com problema fica de fora com a explicação. Importar de novo inclui o novo, corrige o que mudou e retira o que saiu; os recebimentos ficam. A lista é dado, nunca código.
 - **Ficha de recebimento:** material (botões grandes; o de `via: concreto` manda para o caminhão), data (não depois de hoje), fornecedor, NF, lote (obrigatório em material estrutural), quantidade, documentos que vieram, C/NC/NA por item (item medido: o número dentro da faixa marca C e fora marca NC sozinho; NC pede o que estava errado), até 5 fotos (`registrarArquivo`, mesmas regras dos Documentos) e o resultado.
@@ -261,10 +262,11 @@ Atualizado em 20/11/2026, conferido no `git log` da `main` do repositório públ
 - Testes do app: 18 de unidade (correções, CPs, geometria, peças, relatório) e 1 de integração contra o PostgREST (`app/testes/concreto.test.ts`, roda no GitHub).
 
 ## Próximo passo
-1. Merge do PR #20 (rastreio da laje) e, depois, da branch do relatório com as áreas da FVS.
-2. A FVS liga o rastreio na ficha (03 · FVS-EST) e o Nicolas marca `rastreio_concreto` nas fichas da obra piloto (pendência 8).
-3. Esperando o Nicolas: a laje marcada no toque (pendência 3), a moldagem com lacre e código do CP (pendência 5, pede migração), as 5 decisões do FVM e a migração dele (pendência 11).
-4. Quando o app abrir no tablet (pendência 1): Nicolas testa no tablet com a caneta, sem internet.
+1. Professor: PR da `concreto/fvm-migracao` e, depois do merge, a migração do FVM no servidor (sem ela, o FVM dá erro na baixa com login).
+2. Laudo lido sozinho (pendência 4): o Nicolas mandou um laudo de exemplo em 20/11. Montar o leitor com teste de dado fictício (EXE), sem copiar o PDF nem citar laboratório.
+3. A FVS liga o rastreio na ficha (03 · FVS-EST) e o Nicolas marca `rastreio_concreto` nas fichas da obra piloto (pendência 8).
+4. Depois: o `.xlsx` da ficha pelo modelo da empresa (o Nicolas disse "pode ser depois").
+5. Quando o app abrir no tablet (pendência 1): Nicolas testa no tablet com a caneta, sem internet.
 
 ## Próximas entregas
 1. **Feita (03/11):** tabelas, telas de concretagem e caminhão, CPs com situação, desenho com caneta, relatório. Planta de teste.
@@ -278,31 +280,30 @@ Atualizado em 20/11/2026, conferido no `git log` da `main` do repositório públ
 2. **Exemplo misturado com dado real: resolvido (09/11).** A concretagem de exemplo aparece com EXEMPLO no Concreto e na ficha (08/11), e a PR #42 trocou código e fornecedor por `EXEMPLO-0001` e "Concreteira Exemplo". Se a chave `conc:1` do `exemplos.ts` mudar, mudar também `concreto/exemplo.ts`. Tirar antes do uso na obra continua valendo.
 3. **Laje com folha única: respondida em 20/11** (recado do Professor: na obra a laje é a área desenhada na FVS, não a peça L).
    - Feito: o rastreio para a FVS e o relatório do Concreto usam as áreas da FVS (`fvs_areas`), só por cálculo.
-   - Falta decidir (Perguntas ao Nicolas): o que fazer com a "Laje (Planta inteira)" marcada no toque, que continua na tela e no relatório.
+   - A "Laje (Planta inteira)" marcada no toque **fica como está** (Nicolas, 20/11).
 4. **Laudos do laboratório.**
    - Lançar vários CPs de uma vez: **feito (09/11).**
    - Guardar o PDF do laudo: **feito (18/11)**, pelo `registrarArquivo` do núcleo, sem migração.
    - Ler o laudo sozinho: fonte a decidir.
-   - Preciso de um laudo em PDF de exemplo e de uma foto da ficha de papel do caminhão.
-5. **Moldagem dos CPs.** O app guarda só a quantidade de CPs moldados. Betoneira, lacre, aditivo, flow e o código do CP da concreteira (chave para ligar o laudo ao caminhão) precisam de coluna nova, ou seja, migração pelo chat da FVS, se o Nicolas quiser.
+   - Laudo em PDF de exemplo: recebido em 20/11 (fica no PC do Nicolas, fora do repositório). Falta a foto da ficha de papel do caminhão, se servir.
+5. **Moldagem dos CPs: não precisa (Nicolas, 20/11).** O app continua guardando só a quantidade de CPs moldados; betoneira, lacre e código do CP ficam fora.
 6. **Laje que entrou com a área antes de 08/11** ficou gravada como toque e só sai no toque. Se já existe algum dado real assim: a confirmar com o Nicolas (até onde sei, só dados de teste).
 7. **Dados só no navegador do tablet.** No Android não há salvamento automático em pasta (`showDirectoryPicker`), só o "Salvar arquivo" manual (núcleo).
 8. **FVS lendo `caminhao_elementos`** (itens 13 e 18 das fichas): o lado do Concreto está pronto (`concreto/rastreio.ts`: pilar e viga em 19/11, laje pela área da FVS em 20/11). Falta a FVS ligar na ficha (03 · FVS-EST) e o Nicolas pôr a marca `rastreio_concreto` nas fichas da obra piloto.
 9. **Desempenho no tablet:** medido só no PC, com 560 peças. O Pilotis tem 845.
 10. **Tela preta ao desenhar a área (relatos do Nicolas, 16/11/2026): resolvida, na `main` pelo #71 (d1730f8).** No PC, com mouse: nova concretagem, + Caminhão (sem horário), desenhar a área: a prancha inteira ficava preta enquanto desenhava, a área era gravada e, ao voltar, aparecia marcada. O horário do caminhão não tem relação. Causa (confirmada pelo Nicolas em 16/11 no Opera GX do PC dele: a versão antiga ficava preta, a corrigida não; no Chrome do mesmo PC nunca ficou): a "tinta" do traço (`caneta.ts`) usava canvas de baixa latência (`desynchronized`), que nesse navegador perde a transparência. Agora ela só vale no Android; no PC a tinta é um canvas comum. Testes: `src/concreto/caneta.test.ts` e conferência no `concreto_bancada.e2e.test.ts`.
 
-11. **FVM sem migração (18/11).** Na primeira versão (770381b) as tabelas do FVM estavam na lista de sincronização. No CI do PR #78, a baixa do servidor deu erro nelas e o app nunca chegou a "Sincronizado hoje" (2 testes de `telas.e2e.test.ts`). Corrigido no mesmo dia: o FVM saiu da lista e grava por um sincronizador próprio, só no aparelho (Tabelas, acima). As telas só aparecem no app sem conta. Limite: um registro do FVM feito sem conta e depois mandado ao servidor com login ficaria "com erro" na fila até a migração existir. **Falta:** a migração do FVM (chat da FVS, com o ok do Nicolas) antes de ligar o FVM com login.
+11. **FVM sem migração (18/11): resolvida no código em 20/11** (branch `concreto/fvm-migracao`). Em 18/11 o FVM saiu da lista de sincronização porque, sem migração, a baixa dava erro (CI do PR #78). Agora tem a migração e voltou para a lista, no fim do bloco do Concreto. **Falta:** o merge e a migração no servidor (Professor).
 
 ## Perguntas ao Nicolas
-- **FVM, as 5 decisões (usei as minhas recomendações em 18/11; confirmar):**
-  1. Migração: depois, junto com o servidor. Até lá, só no app sem conta.
+- **FVM, as 5 decisões: confirmadas pelo Nicolas em 20/11** (a 1 mudou: a migração foi feita agora):
+  1. Migração agora; o FVM sincroniza com o servidor.
   2. Lista de materiais: no futuro vem no pacote da obra, pelo núcleo. Por enquanto o gestor importa o `materiais.json` na tela.
-  3. Dentro do Concreto, não módulo novo. O nome do menu continua "Concreto" (trocar para "Concreto e materiais" mexe no núcleo).
+  3. Dentro do Concreto, não módulo novo. O nome do menu continua "Concreto".
   4. "Liberado com ressalva" existe e exige escrever a ressalva.
   5. Só gestor e admin tiram um material do retido; o campo registra o recebimento.
-- **Laje marcada no toque** (pendência 3): agora que a laje é a área da FVS, o botão "Laje do Trecho / Planta inteira" do Concreto continua, some da tela ou fica só para obra sem área desenhada? Hoje as duas aparecem no relatório.
 - **Laje criada por quem é de campo:** hoje só gestor e admin criam a laje de um trecho (regra do banco para cadastro de peça). Quem é de campo só marca a laje depois que um gestor ou admin tocou nela uma vez naquele trecho. Basta assim? Se o campo precisar criar, é um pedido ao núcleo (abaixo).
-- Ficha de concreto: o app não registra **lacre**, **brita** nem **A/C**. Vale acrescentar lacre no caminhão e brita na concretagem (mudança só nas tabelas do Concreto)? Ou continuam em branco, como no lançamento à mão?
+- Ficha de concreto: o app não registra **lacre**, **brita** nem **A/C**. Em 20/11 o Nicolas disse que a moldagem não precisa de lacre; brita e A/C seguem em branco, como no lançamento à mão.
 - Na ficha, a coluna "CP" recebe os CPs moldados do caminhão (4 por padrão). É isso que a coluna "CP 4" do modelo quer dizer?
 - Peça que fica só 10% a 90% dentro da área entra como **parcial** (o relatório avisa). O limite de 10% é de propósito inclusivo: se um CP der abaixo do fck, é melhor listar uma peça a mais do que deixar uma de fora. Está bom assim?
 - Quantos CPs por idade o laboratório molda por caminhão? (A ficha de concreto tem a coluna "CP 4" e o Construpoint mostra 4 valores por idade.)

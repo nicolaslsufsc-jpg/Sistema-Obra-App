@@ -1,6 +1,6 @@
 // FVM (recebimento de materiais controlados) dentro do Concreto: a seção do início, a lista de
 // recebimentos com a importação da lista de materiais, a ficha de recebimento e o detalhe (onde o
-// gestor tira do "retido"). Por enquanto só no app sem conta (tabelas sem migração: tabelas.ts).
+// gestor tira do "retido"). Com ou sem conta desde a migração de 20/11 (tabelas.ts).
 import { useEffect, useState } from 'preact/hooks'
 import { dataLocal } from '../cps'
 import { podeLancarLaudo, podeRegistrar } from '../dados'

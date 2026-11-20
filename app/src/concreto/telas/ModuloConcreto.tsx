@@ -121,8 +121,8 @@ export function ModuloConcreto({
   }
 
   if (!dados) return <main class="tela">Carregando…</main>
-  const fvmLigado = estado.local || import.meta.env.DEV
-  const ctx: Contexto = { usuario, obra, dados, fvm: fvmLigado ? fvm : null, ir, trocar, voltar, recarregar }
+  // FVM com ou sem conta desde a migração de 20/11 (concreto/tabelas.ts)
+  const ctx: Contexto = { usuario, obra, dados, fvm, ir, trocar, voltar, recarregar }
 
   // sem conta (estado.local) não há servidor: nenhum aviso de envio (concreto/aviso_sync.ts);
   // no lugar, a FaixaLocal (só neste aparelho · Salvar arquivo)

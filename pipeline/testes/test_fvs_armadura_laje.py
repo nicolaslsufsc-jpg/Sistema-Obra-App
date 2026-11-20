@@ -93,6 +93,23 @@ class TestPlantaDeArmadura(unittest.TestCase):
         self.assertEqual(len(formas), 1)
         self.assertNotIn("camadas_separadas", fm)
 
+    def test_so_armadura_nao_mexe_na_forma(self):
+        """--so-armadura: no servidor entra só o setor e a planta da direção; nenhuma peça, nenhuma forma nova."""
+        import publicar_planta
+        from test_fvs_demo import ServidorFalso
+
+        _, _, formas = self._forma()
+        srv = ServidorFalso("EXE")
+        rels = publicar_planta.publicar_no_servidor(srv, {"obra": "EXE", "pavimento": "2º Pavimento"}, {"P": {}, "V": {}}, publicar_planta.so_armadura(formas))
+        self.assertEqual([r["trecho"] for r in rels], ["Armadura longitudinal inferior"])
+        self.assertEqual([s["trecho"] for s in srv.tabelas["setores"]], ["Armadura longitudinal inferior"])
+        self.assertEqual(len(srv.tabelas["plantas"]), 1)
+        self.assertEqual(srv.tabelas["plantas"][0]["elementos"], 4)
+        self.assertEqual(srv.tabelas["elementos"], [])
+        self.assertNotIn(("inserir", "elementos"), srv.pedidos)
+        with self.assertRaises(publicar_planta.ErroPublicacao):
+            publicar_planta.so_armadura([f for f in formas if f.get("disciplina") != "armadura"])
+
     def test_prancha_girada_cai_no_mesmo_lugar(self):
         """A transformação inteira do alinhamento (com giro) vira a matriz do desenho: o ponto da prancha cai
         onde a barra caiu."""

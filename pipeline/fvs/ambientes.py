@@ -20,7 +20,11 @@ Sala e cozinha sem parede entre elas ficam um ambiente só (decisão do Nicolas,
 
 No pavimento.json (ver publicar_planta.py):
   "ambientes": {"ifc": "...TORRESEMMO-R03.ifc", "andar": "3", "prancha": "...036.3PAVTOXXXX-R03.pdf", "escala": 200,
-                "nomes": "nomes_dos_comodos.json"}
+                "nomes": "nomes_dos_comodos.json", "esquadrias": true}
+"esquadrias": true (opcional) põe as portas e janelas do mesmo IFC como locais "E" dentro dos ambientes
+(esquadrias.py).
+"modulacao": {"pranchas": [...], "escala": 50} (opcional) põe o recorte da planta de 1ª fiada como detalhe
+de cada ambiente (modulacao.py; o mesmo recorte para os cômodos do mesmo apartamento).
 
 Ler o IFC leva alguns minutos por pavimento; o resultado fica guardado ao lado do IFC
 (<arquivo>.andar<N>.json) e é reaproveitado enquanto o IFC não mudar.
@@ -540,6 +544,25 @@ def ler_planta(cfg: dict) -> dict:
         if a["nome"] in comodos:
             peca["comodo"] = comodos[a["nome"]]
         pecas.append(peca)
+    rel_esquadrias = None
+    if cfg.get("esquadrias"):
+        # portas e janelas do mesmo IFC viram locais "E" dentro dos ambientes (esquadrias.py)
+        import esquadrias as mod_esq
+
+        lista = [{"nome": nome, "pts": [para_prancha(x, y) for x, y in g.exterior.coords[:-1]]} for nome, g in portas]
+        locais, rel_esquadrias = mod_esq.distribuir_esquadrias(lista, pecas, t["pt_por_m"])
+        pecas.extend(locais)
+    dets_a, rel_modulacao = {}, None
+    if cfg.get("modulacao"):
+        # planta de 1ª fiada de cada setor: o recorte do apartamento vira o detalhe do ambiente (modulacao.py)
+        import modulacao as mod_mod
+
+        geometrias = {a["nome"]: ambientes[a["indice"]] for a in nomeados}
+        grupos = {a["nome"]: a["grupo"] for a in nomeados}
+        try:
+            dets_a, rel_modulacao = mod_mod.ler_modulacao(cfg["modulacao"], paredes, geometrias, grupos, casar_com_a_prancha)
+        except mod_mod.ErroModulacao as e:
+            raise ErroAmbientes(f"modulação: {e}") from e
     prancha = nome_da_prancha(cfg["prancha"])
     import base64
     return {
@@ -548,9 +571,12 @@ def ler_planta(cfg: dict) -> dict:
         "largura": page.rect.width, "altura": page.rect.height, "tile": legado.TILE, "niveis": list(legado.NIVEIS),
         "tiles": {k: base64.b64decode(v) for k, v in legado.tiles_da_forma(page).items()},
         "pecas": pecas,
+        "detalhes_a": dets_a,
         "resumo": {"ambientes": len(ambientes), "apartamentos": {n: len(a["ambientes"]) for n, a in sorted(aptos.items())},
                    "area_comum": sum(1 for p in pecas if p["grupo"] == "Área comum"), "coincidencia": round(t["coincidencia"], 2),
                    "tipos": {n: a["tipo"] for n, a in sorted(aptos.items())},
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
-                   **({"nomes": resumo_nomes} if resumo_nomes else {})},
+                   **({"nomes": resumo_nomes} if resumo_nomes else {}),
+                   **({"esquadrias": rel_esquadrias} if rel_esquadrias else {}),
+                   **({"modulacao": rel_modulacao} if rel_modulacao else {})},
     }

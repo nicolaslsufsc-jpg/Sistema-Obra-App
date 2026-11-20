@@ -13,7 +13,7 @@ import {
   podeInstalar,
 } from '../nucleo/aparelho'
 import { PAPEL, horaCurta } from './rotulos'
-import { MODULOS, type IdModulo } from '../modulos'
+import { modulosDoMenu, type IdModulo } from '../modulos'
 import { BarraLocal } from './BarraLocal'
 import { AbrirPacote } from './AbrirPacote'
 import { BotaoTema } from './BotaoTema'
@@ -69,7 +69,7 @@ export function Menu({
       <section class="menu-modulos">
         <h2>Módulos</h2>
         <ul class="grade">
-          {MODULOS.map((m) => (
+          {modulosDoMenu(estado.local).map((m) => (
             <li key={m.id}>
               <button
                 type="button"
@@ -294,18 +294,25 @@ function Aparelho() {
   return (
     <section>
       <h2>Este aparelho</h2>
+      {/* Texto simples à vista; o que só serve para suporte fica em "Detalhes técnicos" (front end, 19/11/2026) */}
       <ul class="detalhes">
         <li data-testid="persistente">
-          Dados protegidos contra limpeza automática:{' '}
-          {persistente === null ? '…' : persistente ? 'sim' : 'não (instale o app para proteger)'}
+          Dados protegidos neste aparelho:{' '}
+          {persistente === null ? '…' : persistente ? 'sim' : 'não. Instale o app para proteger.'}
         </li>
         {espaco && (
           <li>
             Espaço usado: {formatarBytes(espaco.usado)} de {formatarBytes(espaco.total)}
           </li>
         )}
-        <li>Código do aparelho: {dispositivo.slice(0, 8)}</li>
       </ul>
+      <details class="detalhes-tecnicos" data-testid="detalhes-tecnicos">
+        <summary>Detalhes técnicos (para o suporte)</summary>
+        <ul class="detalhes">
+          <li>Código do aparelho: {dispositivo.slice(0, 8)}</li>
+          <li>Proteção contra limpeza automática do navegador: {persistente === null ? '…' : persistente ? 'ligada' : 'desligada'}</li>
+        </ul>
+      </details>
     </section>
   )
 }

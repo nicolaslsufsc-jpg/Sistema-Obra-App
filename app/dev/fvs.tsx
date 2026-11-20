@@ -404,6 +404,32 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
   for (let i = 0; i < 2; i++) apto(105 + i, 100 + i * 450, false)
   ambiente('AC-01', 'Área comum', 100, 560, 1790, 140)
   ambiente('AC-02', 'Área comum', 1450, 710, 440, 250)
+  if (params.get('esquadrias')) {
+    // ?esquadrias=1: portas e janelas do apto 101, como o pipeline faz (pipeline/fvs/esquadrias.py): a porta
+    // entre dois cômodos fica nos dois, um ponto de cada lado da parede; a janela, só do lado de dentro
+    const idDe = (nome: string) => Object.entries(elementos).find(([, e]) => e.nome === nome)![0]
+    let k = 0
+    const esq = (amb: string, codigo: string, x: number, y: number, outro?: string, classe: 'porta' | 'janela' = 'porta') => {
+      k++
+      const r = 3
+      elementos[uuid('e4000000', k)] = {
+        tipo: 'E',
+        nome: `${amb}-${codigo}`,
+        secao: codigo,
+        rotulo: [x - 20, y - r, x + 20, y + r],
+        polys: [[[x - r, y - r], [x + r, y - r], [x + r, y + r], [x - r, y + r]]],
+        ambiente: idDe(amb),
+        esquadria: { codigo, classe, ...(outro ? { outro_lado: outro } : {}) },
+      }
+    }
+    esq('101-01', 'PM80', 305, 170, '101-02')
+    esq('101-02', 'PM80', 335, 170, '101-01')
+    esq('101-01', 'JA120B', 180, 112, undefined, 'janela')
+    esq('101-01', 'PM70', 220, 280, '101-03')
+    esq('101-03', 'PM70', 220, 312, '101-01')
+    esq('101-03', 'PM90', 420, 538, 'AC-01')
+    esq('AC-01', 'PM90', 420, 572, '101-03')
+  }
 
   const base = document.createElement('canvas')
   const escala = 2
@@ -416,6 +442,7 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
   g.strokeStyle = '#333'
   g.lineWidth = 7
   for (const e of Object.values(elementos)) {
+    if (e.tipo !== 'A') continue
     const [[x0, y0], , [x1, y1]] = e.polys[0]
     g.strokeRect(x0, y0, x1 - x0, y1 - y0)
   }
@@ -432,6 +459,30 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
 
   const { pedacos, guardar, fechar } = novoBinario()
   await cortarTiles(base, escala, guardar)
+  const detalhes: Manifest['detalhes'] = {}
+  if (params.get('modulacao')) {
+    // ?modulacao=1: o recorte da 1ª fiada do apto 101, como o pipeline faz (pipeline/fvs/modulacao.py):
+    // uma imagem só, apontada pelos três cômodos do apartamento
+    const t = document.createElement('canvas')
+    t.width = 640
+    t.height = 520
+    const tg = t.getContext('2d')!
+    tg.fillStyle = '#fff'
+    tg.fillRect(0, 0, 640, 520)
+    tg.strokeStyle = '#333'
+    tg.lineWidth = 6
+    tg.strokeRect(40, 60, 270, 220)
+    tg.strokeRect(330, 60, 270, 220)
+    tg.strokeRect(40, 300, 560, 180)
+    tg.lineWidth = 1
+    for (let x = 40; x < 600; x += 20) tg.strokeRect(x, 54, 20, 6)
+    tg.fillStyle = '#111'
+    tg.font = 'bold 24px sans-serif'
+    tg.fillText('MODULAÇÃO 1ª FIADA · APTO 101 (teste)', 40, 36)
+    guardar('d:M_Apto_101', await blobDaTela(t))
+    detalhes['M_Apto_101'] = { titulo: 'Modulação · Apto 101', prancha: 'TESTE.VD.EX.024.TIPA-R00', aco: false }
+    for (const e of Object.values(elementos)) if (e.tipo === 'A' && e.grupo === 'Apto 101') e.detalhe = 'M_Apto_101'
+  }
   const manifest: Manifest = {
     formato: 1,
     planta_id: PLANTA_AMB,
@@ -445,7 +496,7 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
     tile: 512,
     niveis: NIVEIS,
     elementos,
-    detalhes: {},
+    detalhes,
     pedacos,
   }
   return { manifest, bin: fechar() }
@@ -561,13 +612,28 @@ async function semearHistoricoDeTeste(base: Record<string, unknown>) {
   await gravarCadastro(linhas)
 }
 
+/**
+ * ?esquadrias=1: os itens de vão das fichas de teste passam a ser marcados pelas esquadrias (a alvenaria
+ * com dois, como a ficha de verdade: eixos e vãos, vergas e contravergas; o reboco com os requadros).
+ */
+function itensComEsquadrias(codigo: string, itens: ItemFicha[]): ItemFicha[] {
+  if (!params.get('esquadrias')) return itens
+  if (codigo === 'TESTE-PVS-ALV')
+    return [
+      ...itens.map((i) => (i.n === 3 ? { ...i, esquadrias: true } : i)),
+      { n: 7, etapa: 'ELEVAÇÃO', titulo: 'Vergas e contravergas', dispositivo: 'Trena', tolerancia: 'Conforme projeto', esquadrias: true },
+    ]
+  if (codigo === 'TESTE-PVS-REB') return [...itens, { n: 5, etapa: 'TERMINALIDADE', titulo: 'Requadros dos vãos', dispositivo: 'Esquadro', tolerancia: '3 mm', esquadrias: true }]
+  return itens
+}
+
 /** Planta de ambientes e fichas por ambiente de teste (entra também em bancada já usada antes). */
 async function semearAmbientes(base: Record<string, unknown>) {
   const { manifest, bin } = await pacoteDeAmbientesDeTeste()
   await guardarPacote(JSON.stringify(manifest), bin)
   const linhas = cadastroDaPlanta(base, manifest, bin, SETOR_AMB, 'arquitetura', 3)
   FICHAS_AMBIENTE_TESTE.forEach((f, i) => {
-    linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 3 + i), codigo: f.codigo, titulo: f.titulo, revisao: '0', aplica_a: ['A'], itens: f.itens } })
+    linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 3 + i), codigo: f.codigo, titulo: f.titulo, revisao: '0', aplica_a: ['A'], itens: itensComEsquadrias(f.codigo, f.itens) } })
   })
   await gravarCadastro(linhas)
 }

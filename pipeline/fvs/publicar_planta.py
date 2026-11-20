@@ -36,6 +36,12 @@ Consolo e capitel (item 2 de 17/11/2026, partes.py): viram "partes" do pilar com
 da forma (camada "consolo" com o rótulo "CONSOLO Pxx"); o capitel, da lista de pilares das pranchas
 de maciços. O detalhe de cada um vem das pranchas de "det_consolos" e "det_macicos".
 
+Esquadrias (esquadrias.py, com "esquadrias": true em "ambientes"): cada porta ou janela do IFC de
+arquitetura vira um local "E" dentro do ambiente; a porta entre dois cômodos, um local de cada lado.
+
+Modulação (modulacao.py, com "modulacao": {"pranchas": [...], "escala": 50} em "ambientes"): o recorte da
+planta de 1ª fiada do apartamento vira o detalhe de cada cômodo dele (uma imagem por apartamento).
+
 Furos de viga (fatia 1 da conferência por elemento, furos.py): cada furo do modelo de furação vira um
 local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga. Os furos
 de laje (item 4, 19/11/2026) viram locais "F" sem viga ("FL1"...); a área de laje de cada um é achada no app.
@@ -132,6 +138,12 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if len(achados) != 1:
                 raise ErroPublicacao(f"ambientes: \"nomes\" tem que ser um arquivo só (achei {len(achados)})")
             amb["nomes"] = achados[0]
+        if amb.get("modulacao"):
+            mod = dict(amb["modulacao"])
+            mod["pranchas"] = arquivos(mod.get("pranchas"))
+            if not mod["pranchas"]:
+                raise ErroPublicacao("ambientes: \"modulacao\" sem prancha nenhuma (confira \"pranchas\")")
+            amb["modulacao"] = mod
     fur = None
     if cfg.get("furos"):
         fur = dict(cfg["furos"])
@@ -266,6 +278,9 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
             if p.get("viga"):
                 reg["viga"] = ids[("V", p["viga"])]
             reg["furo"] = p["furo"]
+        if p["tipo"] == "E":
+            reg["ambiente"] = ids[("A", p["ambiente"])]
+            reg["esquadria"] = p["esquadria"]
         if d:
             reg["detalhe"] = d["chave"]
             if d.get("situacao") == "nasce":
@@ -278,7 +293,7 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
                 if corrigido:
                     reg["detalhe_corrigido_em"] = corrigido
             dets.setdefault(d["chave"], {"titulo": d["titulo"], "prancha": d["prancha"], "img": d["img"], "aco": d["aco"]})
-        elif p["tipo"] not in ("A", "F"):  # ambiente e furo não têm prancha de detalhe
+        elif p["tipo"] not in ("A", "F", "E"):  # ambiente, furo e esquadria não têm prancha de detalhe
             sem_detalhe.append(p["nome"])
         if p.get("partes"):
             reg["partes"] = []
@@ -301,6 +316,7 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         "pilares": sum(1 for p in forma["pecas"] if p["tipo"] == "P"),
         "vigas": sum(1 for p in forma["pecas"] if p["tipo"] == "V"),
         "furos": sum(1 for p in forma["pecas"] if p["tipo"] == "F"),
+        "esquadrias": sum(1 for p in forma["pecas"] if p["tipo"] == "E"),
         "barras": len(forma.get("barras") or {}),
         "elementos": len(forma["pecas"]),
         "disciplina": forma.get("disciplina") or DISCIPLINA,
@@ -526,6 +542,16 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             n = r["nomes"]
             print(f"  nomes dos cômodos: {n['com_nome']} com nome, {sum(n['sem_nome'].values())} só com o número"
                   + (f"; {len(n['do_tipo_sem_par'])} cômodos do tipo sem par num apartamento (lista no relatorio.json)" if n["do_tipo_sem_par"] else ""))
+        if r.get("esquadrias"):
+            e = r["esquadrias"]
+            print(f"  esquadrias: {e['em_ambiente']} de {e['esquadrias']} em ambiente ({e['em_dois_ambientes']} entre dois), {e['locais']} locais"
+                  + (f"; {len(e['sem_ambiente'])} sem ambiente (lista no relatorio.json)" if e["sem_ambiente"] else ""))
+        if r.get("modulacao"):
+            mo = r["modulacao"]
+            print(f"  modulação: {mo['com_modulacao']} ambientes com recorte ({mo['recortes']} recortes de {mo['pranchas']} pranchas)"
+                  + (f"; {len(mo['sem_modulacao'])} sem (lista no relatorio.json)" if mo["sem_modulacao"] else "")
+                  + (f"; não casaram: {', '.join(mo['nao_casaram'])}" if mo["nao_casaram"] else ""))
+        detalhes.setdefault("A", {}).update(lida.pop("detalhes_a", None) or {})
         formas.append(lida)
     if cfg.get("det_consolos") or cfg.get("det_macicos"):
         import partes as pt

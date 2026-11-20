@@ -37,9 +37,20 @@ export interface DadosDoFuro {
   espessura?: number
 }
 
+/** Porta ou janela de um ambiente (pipeline/fvs/esquadrias.py). O código já diz o tamanho. */
+export interface DadosDaEsquadria {
+  /** "PM80", "JA120B" */
+  codigo: string
+  classe: 'porta' | 'janela'
+  /** o nome inteiro no modelo, quando é mais que o código ("JA120B VVP") */
+  modelo?: string
+  /** porta entre dois cômodos: o nome do ambiente do outro lado (ele tem a sua esquadria) */
+  outro_lado?: string
+}
+
 export interface ElementoPacote {
-  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga) */
-  tipo: 'P' | 'V' | 'L' | 'A' | 'F'
+  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga), E esquadria do ambiente */
+  tipo: 'P' | 'V' | 'L' | 'A' | 'F' | 'E'
   nome: string
   /** seção da peça ("19x60") ou área do ambiente ("12,1 m²") */
   secao: string
@@ -61,6 +72,18 @@ export interface ElementoPacote {
   viga?: string
   /** só furo: posição, tamanho e disciplinas do modelo */
   furo?: DadosDoFuro
+  /** só esquadria: id (no manifest) do ambiente em que ela fica */
+  ambiente?: string
+  /** só esquadria: código e classe */
+  esquadria?: DadosDaEsquadria
+}
+
+/** Tipos que são filhos de outro local (contam dentro dele, por um item da ficha dele). */
+export const TIPOS_FILHOS = ['F', 'E'] as const
+
+/** O local pai de um filho: a viga do furo, o ambiente da esquadria. */
+export function paiDe(e: ElementoPacote | undefined): string | undefined {
+  return e?.tipo === 'F' ? e.viga : e?.tipo === 'E' ? e.ambiente : undefined
 }
 
 /** Nomes das disciplinas do furo (pipeline/fvs/furos.py, DISCIPLINAS). */
@@ -73,18 +96,35 @@ export const NOME_DA_DISCIPLINA: Record<string, string> = {
   GERAL: 'Geral',
 }
 
+/**
+ * Filhos de cada local do manifest: id do pai → ids dos filhos, na ordem do nome. Furos da viga
+ * (V12-F1, V12-F2...) e esquadrias do ambiente (303-05-PM80, 303-05-JA120B...).
+ */
+export function filhosDoManifest(m: Pick<Manifest, 'elementos'>): Map<string, string[]> {
+  const saida = new Map<string, string[]>()
+  const ordem = new Intl.Collator('pt-BR', { numeric: true })
+  const lista = Object.entries(m.elementos ?? {}).filter(([, e]) => paiDe(e))
+  lista.sort(([, a], [, b]) => ordem.compare(a.nome, b.nome))
+  for (const [id, e] of lista) {
+    const pai = paiDe(e)!
+    const l = saida.get(pai) ?? []
+    l.push(id)
+    saida.set(pai, l)
+  }
+  return saida
+}
+
 /** Furos de cada viga do manifest: id da viga → ids dos furos, na ordem do nome (V12-F1, V12-F2...). */
 export function furosDoManifest(m: Pick<Manifest, 'elementos'>): Map<string, string[]> {
   const saida = new Map<string, string[]>()
-  const ordem = new Intl.Collator('pt-BR', { numeric: true })
-  const lista = Object.entries(m.elementos ?? {}).filter(([, e]) => e.tipo === 'F' && e.viga)
-  lista.sort(([, a], [, b]) => ordem.compare(a.nome, b.nome))
-  for (const [id, e] of lista) {
-    const l = saida.get(e.viga!) ?? []
-    l.push(id)
-    saida.set(e.viga!, l)
-  }
+  for (const [pai, ids] of filhosDoManifest(m)) if (m.elementos[pai]?.tipo === 'V') saida.set(pai, ids)
   return saida
+}
+
+/** O que se lê no botão da esquadria dentro do ambiente: o nome sem o do ambiente ("PM80", "PM70-2"). */
+export function rotuloDoFilho(nome: string, nomeDoPai: string | undefined): string {
+  if (nomeDoPai && nome.startsWith(`${nomeDoPai}-`)) return nome.slice(nomeDoPai.length + 1)
+  return nome.slice(nome.lastIndexOf('-') + 1)
 }
 
 /** Os tipos de parte (sem repetir) de um elemento do pacote. */

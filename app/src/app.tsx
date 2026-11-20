@@ -82,11 +82,11 @@ async function telaInicial(): Promise<Tela> {
  * Reabrir o app volta ao módulo que estava aberto na obra atual (o Chrome fechado perde o histórico).
  * Só quando já ia ao menu: entrar, código, preparar e confirmar pacote nunca são pulados.
  */
-function voltarAoModulo(t: Tela): Tela {
+function voltarAoModulo(t: Tela, semConta: boolean): Tela {
   if (t.nome !== 'menu') return t
   const id = moduloGuardado(t.obra.id)
   const modulo = id ? moduloPorId(id) : undefined
-  if (!modulo?.Tela) {
+  if (!modulo?.Tela || (modulo.soSemConta && !semConta)) {
     if (id) esquecerModulo() // saiu do menu (ou nunca esteve): não insiste
     return t
   }
@@ -196,7 +196,7 @@ export function App() {
     // Os dois juntos: a tela de obras precisa saber se é modo sem conta antes de montar.
     Promise.all([ehModoLocal(banco), telaInicial()]).then(([l, t]) => {
       setLocal(l)
-      setTela(voltarAoModulo(t))
+      setTela(voltarAoModulo(t, l))
     })
     // Botão/gesto "voltar" do Android numa subtela volta ao menu em vez de fechar o app.
     // Num módulo, o próprio módulo cuida do voltar entre as telas dele (estados com
@@ -255,7 +255,7 @@ export function App() {
           aoEscolherOutro={(pacote) => escolherPacote(pacote, tela)}
           aoPronto={(usuario, obra) => {
             setLocal(true)
-            setTela(voltarAoModulo({ nome: 'menu', usuario, obra }))
+            setTela(voltarAoModulo({ nome: 'menu', usuario, obra }, true))
           }}
         />
       )

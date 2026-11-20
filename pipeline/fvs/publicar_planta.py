@@ -32,6 +32,8 @@ pavimento.json (fica fora do repositório, junto das pranchas):
                                                     Com isso, "nivel" pode ficar vazio.
   "barras_laje": {"longitudinal_inferior": "../Lajes/*.46[4-8].*.pdf",   opcional: pranchas de armação da laje, por camada
                   "alinhamento": {"<prancha>": {"matriz": [a, b, c, d], "t": [tx, ty]}}}   opcional: encaixe à mão
+  "camadas_separadas": false                       opcional: sem as plantas de armadura (uma por direção, o padrão
+                                                   quando há barras_laje; armadura_laje.py); as barras ficam na aba da forma
 }
 Caminhos relativos valem a partir da pasta do pavimento.json.
 
@@ -227,6 +229,7 @@ def ler_config(caminho: pathlib.Path) -> dict:
         "det_macicos": arquivos(cfg.get("det_macicos")),
         "furos": fur,
         "barras_laje": barras,
+        "camadas_separadas": cfg.get("camadas_separadas", True) is not False,
     }
 
 
@@ -353,6 +356,10 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         elementos[eid] = reg
     cab = dict(cabecalho)
     cab.update({k: forma[k] for k in ("prancha", "revisao", "largura", "altura", "tile", "niveis")})
+    if forma.get("camadas_separadas"):
+        cab["camadas_separadas"] = True
+    if forma.get("camada"):
+        cab["camada"] = forma["camada"]
     manifest, binario = pacote.montar(cab, forma["tiles"], elementos, dets, forma.get("barras"))
     rel = {
         "trecho": cab.get("trecho"),
@@ -362,7 +369,7 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         "furos": sum(1 for p in forma["pecas"] if p["tipo"] == "F"),
         "esquadrias": sum(1 for p in forma["pecas"] if p["tipo"] == "E"),
         "barras": len(forma.get("barras") or {}),
-        "elementos": len(forma["pecas"]),
+        "elementos": quantos_locais(forma),
         "disciplina": forma.get("disciplina") or DISCIPLINA,
         "sem_contorno": sorted(sem_contorno),
         "sem_detalhe": sorted(sem_detalhe),
@@ -442,6 +449,27 @@ def por_furos(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
     if enc.get("duvidoso"):
         print("  ATENÇÃO: encaixe dos furos duvidoso. Confira na tela antes de publicar, ou passe \"encaixe\" no pavimento.json.")
     return rel
+
+
+def quantos_locais(forma: dict) -> int:
+    """O que a planta tem para tocar: as peças; na planta de armadura (sem peças), as barras."""
+    if forma.get("disciplina") == "armadura":
+        return sum(1 for b in (forma.get("barras") or {}).values() if b["camada"] == forma.get("camada"))
+    return len(forma["pecas"])
+
+
+def por_armadura(cfg: dict, detalhes: dict, formas: list[dict], rel_barras: dict | None) -> list[dict]:
+    """Uma planta por direção da armadura de laje (armadura_laje.py), acrescentada a formas. Por padrão sim
+    quando há barras; "camadas_separadas": false no pavimento.json deixa as barras só na aba da forma."""
+    if not rel_barras or cfg.get("camadas_separadas") is False:
+        return []
+    import armadura_laje
+
+    fm = next(f for f in formas if (f.get("disciplina") or DISCIPLINA) == DISCIPLINA)
+    print("Montando a armadura de laje em plantas próprias, uma por direção:")
+    folhas = armadura_laje.folhas_de_armadura(fm, detalhes.get("barras") or [], rel_barras["pranchas"])
+    formas.extend(folhas)
+    return folhas
 
 
 def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
@@ -701,6 +729,7 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
     """Grava em pasta (--so-gerar) ou publica no servidor, a partir das plantas já lidas."""
     relatorios = []
     rel_barras = por_barras(cfg, detalhes, formas)
+    por_armadura(cfg, detalhes, formas, rel_barras)
     fora = separar_pecas(formas, detalhes, cfg.get("manter_sem_detalhe") or ())
     if fora:
         print(f"  {len(fora)} peças não existem no pavimento e saíram da planta (lista no relatorio.json)")
@@ -799,7 +828,7 @@ def publicar_no_servidor(srv, cfg: dict, detalhes: dict, formas: list[dict], ace
         srv.inserir("plantas", [{**srv._base(obra["id"]), "id": planta_id, "pavimento_id": pav["id"], "setor_id": setor["id"],
                                  "prancha": fm["prancha"], "revisao": fm["revisao"], "largura": fm["largura"],
                                  "altura": fm["altura"], "manifest_id": man_id, "pacote_id": pac_id,
-                                 "elementos": len(fm["pecas"]), "substitui_id": anterior}])
+                                 "elementos": quantos_locais(fm), "substitui_id": anterior}])
         rel["planta_id"] = planta_id
         rel["substituiu"] = anterior
         relatorios.append(rel)

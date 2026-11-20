@@ -39,13 +39,14 @@ NOME_DA_CAMADA = {
     "longitudinal_superior": "Longitudinal superior",
     "longitudinal_inferior": "Longitudinal inferior",
 }
-# Camada do PDF de cada uma. Só a longitudinal inferior foi conferida nas pranchas (fatia 1); as outras
-# podem ser passadas no pavimento.json ("camada_pdf") quando entrarem.
+# Camada do PDF de cada uma. Conferidas nas pranchas do 2º pavimento da obra piloto (longitudinal inferior em
+# 18/11; as outras três em 20/11: a transversal é "TRANS", não "TRANSV"). Outra obra pode passar o nome no
+# pavimento.json ("camada_pdf").
 CAMADA_DO_PDF = {
     "longitudinal_inferior": "ARR_LONG_INF",
     "longitudinal_superior": "ARR_LONG_SUP",
-    "transversal_inferior": "ARR_TRANSV_INF",
-    "transversal_superior": "ARR_TRANSV_SUP",
+    "transversal_inferior": "ARR_TRANS_INF",
+    "transversal_superior": "ARR_TRANS_SUP",
 }
 CAMADAS_DE_PILAR = ("PILAR_CONCRETO",)
 

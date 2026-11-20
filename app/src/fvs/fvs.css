@@ -1054,6 +1054,73 @@
 .fv-sem-peca {
   margin-top: 8px;
 }
+.fv-subgrupo {
+  margin: 8px 0 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.fv-grade-armadura + .fv-grade-armadura,
+.fv-trechos + .fv-grade-armadura {
+  margin-top: 8px;
+}
+/* armadura de laje: um botão grande por direção (20/11/2026); dois por linha a partir do tablet */
+.fv-grade-armadura {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+@media (min-width: 700px) {
+  .fv-grade-armadura {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.fv-bt-armadura {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  background: var(--superficie);
+  color: var(--texto);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  font: inherit;
+  text-align: left;
+}
+.fv-bt-armadura:disabled {
+  opacity: 0.6;
+}
+.fv-bt-icone {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  color: var(--primaria-claro, var(--primaria));
+}
+.fv-bt-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.fv-bt-texto small {
+  color: var(--discreto);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.fv-bt-acao {
+  flex: none;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--primaria);
+  color: var(--primaria-texto);
+}
+.fv-bt-acao.fv-bt-baixar {
+  background: transparent;
+  color: var(--primaria-claro, var(--primaria));
+  border: 2px solid var(--primaria-claro, var(--primaria));
+}
 .fv-sem-peca summary {
   cursor: pointer;
   min-height: 44px;

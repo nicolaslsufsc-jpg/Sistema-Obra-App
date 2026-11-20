@@ -64,6 +64,12 @@ function naTela(p: Page, x: number, y: number): Promise<[number, number]> {
   )
 }
 
+/** Abre a planta de ambientes pela linha dela no cartão do pavimento (o "Abrir" da lista de trechos), e não
+ *  pelos botões das opções do menu do pavimento (Alvenaria, Reboco...), que também abrem a planta. */
+function abrirPlantaDeAmbientes(p: Page) {
+  return p.getByTestId('fvs-ambientes').locator('.fv-trechos').getByRole('button', { name: 'Abrir', exact: true }).click()
+}
+
 async function tocarNaPlanta(p: Page, x: number, y: number) {
   const [tx, ty] = await naTela(p, x, y)
   await p.mouse.click(tx, ty)
@@ -627,7 +633,7 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&esquadrias=1`)
       await p.getByTestId('fvs-pavimento').waitFor()
-      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       /** Caixas do topo em que o texto escolhido (ou a dica) não cabe: texto + margens + a seta. */
       const cortados = () =>
@@ -776,7 +782,7 @@ suite('FVS na bancada (Chrome)', () => {
       await capturar('1_inicio')
 
       // ------------------------------------------------------------ planta de ambientes
-      await cartaoAmbientes.getByRole('button', { name: 'Abrir' }).click()
+      await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(400)
       expect(await p.locator('.fv-seg').count()).toBe(0) // não há pilar nem viga para escolher
@@ -883,7 +889,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.waitForTimeout(100)
       expect(textoDaConfirmacao).toContain('Tirar do aparelho as plantas de Pavimento de teste')
       expect(textoDaConfirmacao).toContain('As marcações não são afetadas')
-      expect(await pavimento.getByRole('button', { name: 'Abrir' }).count()).toBe(2) // disse não: nada muda
+      expect(await pavimento.locator('.fv-trechos').getByRole('button', { name: 'Abrir', exact: true }).count()).toBe(2) // disse não: nada muda
 
       // ficha sem peça na planta: fica na lista, com a situação e as contagens
       const semPeca = p.getByTestId('fvs-sem-peca')
@@ -1040,7 +1046,7 @@ suite('FVS na bancada (Chrome)', () => {
       if (!(await p.getByTestId('fvs-tirar-pavimento').isVisible())) await p.getByTestId('fvs-mais-pavimento').click()
       await p.getByTestId('fvs-tirar-pavimento').click()
       await pavimento.getByRole('button', { name: /^Baixar/ }).first().waitFor()
-      expect(await pavimento.getByRole('button', { name: 'Abrir' }).count()).toBe(0)
+      expect(await pavimento.locator('.fv-trechos').getByRole('button', { name: 'Abrir', exact: true }).count()).toBe(0)
       expect(await p.getByTestId('fvs-tirar-pavimento').count()).toBe(0)
       expect((await registros(p)).length).toBe(marcacoesDepois)
 
@@ -1986,7 +1992,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.goto(`${url}?abrir=0&esquadrias=1`)
       const pavimento = p.getByTestId('fvs-pavimento')
       await pavimento.waitFor()
-      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       // com esquadrias, a planta de ambientes ganha abas, e o serviço continua no topo
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Ambientes', 'Esquadrias'])
@@ -2103,7 +2109,7 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&modulacao=1`)
       await p.getByTestId('fvs-pavimento').waitFor()
-      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       // a sala do 101: o recorte da modulação no lugar do detalhe, e os cômodos do apartamento logo abaixo.
       // Enquadra o ponto antes de tocar: com espera fixa depois da busca, o toque caía fora da tela de
@@ -2144,7 +2150,7 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&modulacao=1&projetos=1`)
       await p.getByTestId('fvs-pavimento').waitFor()
-      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await enquadrar(p, [-480, 320], 0)
       await tocarNaPlanta(p, 320, 480)
@@ -2555,7 +2561,7 @@ suite('FVS na bancada (Chrome)', () => {
 
       // ------------------------------------------------------------ ambientes
       await p.goto(`${url}?abrir=0`)
-      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await bt.waitFor()
       expect(await topoCabe(p)).toBe(true)

@@ -463,6 +463,104 @@ suite('FVS na bancada (Chrome)', () => {
     }, 120_000)
   }
 
+  // Revisão de telas da 06 (20/11): na planta de ambientes com esquadrias, o topo passava da tela em
+  // 768 px, cortava os textos em 800 e no celular; o código da esquadria era letra branca em planta clara.
+  for (const [largura, altura] of [
+    [375, 812],
+    [384, 832],
+    [768, 1024],
+    [800, 1280],
+    [1024, 768],
+    [1280, 800],
+  ] as const) {
+    it(`${largura}x${altura}: ambientes com esquadrias: o topo cabe, nada cortado, e o código da esquadria se lê nos dois temas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&esquadrias=1`)
+      await p.getByTestId('fvs-pavimento').waitFor()
+      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      /** Caixas do topo em que o texto escolhido (ou a dica) não cabe: texto + margens + a seta. */
+      const cortados = () =>
+        p.evaluate(() => {
+          const cv = document.createElement('canvas').getContext('2d')!
+          return [...document.querySelectorAll<HTMLSelectElement | HTMLInputElement>('.fv-topo select, .fv-topo input')].flatMap((c) => {
+            const cs = getComputedStyle(c)
+            cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+            const texto = c instanceof HTMLSelectElement ? c.options[c.selectedIndex].text : c.placeholder
+            const precisa = cv.measureText(texto).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + (c instanceof HTMLSelectElement ? 20 : 0)
+            return c.clientWidth + 0.5 >= precisa ? [] : [`${texto} (${Math.round(c.clientWidth)} de ${Math.round(precisa)} px)`]
+          })
+        })
+      const linhasDoProgresso = () =>
+        p.getByTestId('fvs-progresso').evaluate((e: HTMLElement) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)))
+      const confere = async (aba: string) => {
+        // o nome da ficha de teste é curto; a ficha de alvenaria de verdade tem o nome mais comprido das
+        // fichas de ambiente ("Alvenaria em Bloco Cerâmico Comum") e cortava em 768 e 1280 px
+        await p.getByTestId('fvs-servico').evaluate((s: HTMLSelectElement) => (s.options[s.selectedIndex].text = 'Alvenaria em Bloco Cerâmico Comum'))
+        expect(await topoCabe(p), `${aba}: o topo cabe`).toBe(true)
+        expect(await cortados(), `${aba}: nada cortado`).toEqual([])
+        expect(await alvosPequenos(p)).toEqual([])
+        expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+        // do tablet para cima, o progresso fica numa linha só ("0/7 OK" quebrava em duas em 800 px)
+        if (largura > 700) expect(await linhasDoProgresso(), `${aba}: progresso numa linha`).toBe(1)
+      }
+      await confere('Ambientes')
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_topo_${largura}_aba_ambientes.png`) })
+      await p.locator('.fv-seg button', { hasText: 'Esquadrias' }).click()
+      await p.getByTestId('fvs-item-esquadria').waitFor()
+      await confere('Esquadrias')
+      // o outro item de esquadria da ficha de teste também cabe
+      await p.getByTestId('fvs-item-esquadria').selectOption({ index: 1 })
+      await confere('Esquadrias, item 7')
+
+      // o código da esquadria: etiqueta clara com letra escura, igual nos dois temas (a planta é sempre clara)
+      await enquadrar(p, [-200, 260], 1)
+      const etiqueta = () =>
+        p.evaluate(() => {
+          const cv = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!
+          const lum = (cor: string) => {
+            cv.clearRect(0, 0, 1, 1)
+            cv.fillStyle = cor
+            cv.fillRect(0, 0, 1, 1)
+            const d = cv.getImageData(0, 0, 1, 1).data
+            const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+            return 0.2126 * f(d[0]) + 0.7152 * f(d[1]) + 0.0722 * f(d[2])
+          }
+          const esq = [...document.querySelectorAll<HTMLElement>('.fv-rot-esq span')].find((e) => e.textContent === 'JA120B')!
+          const amb = document.querySelector<HTMLElement>('.fv-rot:not(.fv-rot-esq) span')
+          const ce = getComputedStyle(esq)
+          const [l1, l2] = [lum(ce.color), lum(ce.backgroundColor)]
+          return {
+            contraste: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05),
+            fundoClaro: l2 > 0.8,
+            fonte: parseFloat(ce.fontSize),
+            // o número do ambiente não tem fundo próprio: a letra tem que ser escura (fica em cima da planta)
+            ambienteEscuro: amb ? lum(getComputedStyle(amb).color) < 0.1 : true,
+          }
+        })
+      await p.locator('.fv-rot-esq span', { hasText: 'JA120B' }).waitFor()
+      for (const tema of ['escuro', 'claro'] as const) {
+        await p.evaluate((t: string) => {
+          if (t === 'claro') document.documentElement.dataset.tema = 'claro'
+          else delete document.documentElement.dataset.tema
+        }, tema)
+        const e = await etiqueta()
+        expect(e.contraste, `${tema}: contraste da etiqueta`).toBeGreaterThanOrEqual(7)
+        expect(e.fundoClaro, `${tema}: etiqueta clara`).toBe(true)
+        expect(e.fonte).toBeGreaterThanOrEqual(11)
+        expect(e.ambienteEscuro, `${tema}: número do ambiente em letra escura`).toBe(true)
+        expect(await topoCabe(p)).toBe(true)
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_topo_${largura}_${tema}.png`) })
+      }
+      await p.evaluate(() => delete document.documentElement.dataset.tema)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
   for (const [nome, largura, altura] of [
     ['tablet', 1280, 800],
     ['celular', 375, 812],
@@ -1639,10 +1737,10 @@ suite('FVS na bancada (Chrome)', () => {
       await p.getByTestId('fvs-pavimento').waitFor()
       await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
-      await buscar(p, '101')
-      await p.locator('.fv-toast', { hasText: 'Apto 101: 3 ambientes' }).waitFor()
-      await p.waitForTimeout(900)
-      // a sala do 101: o recorte da modulação no lugar do detalhe, e os cômodos do apartamento logo abaixo
+      // a sala do 101: o recorte da modulação no lugar do detalhe, e os cômodos do apartamento logo abaixo.
+      // Enquadra o ponto antes de tocar: com espera fixa depois da busca, o toque caía fora da tela de
+      // 375 px quando o voo do mapa atrasava (revisão de telas, 20/11)
+      await enquadrar(p, [-480, 320], 0)
       await tocarNaPlanta(p, 320, 480)
       await nomeNoPainel(p, '101-03')
       const mod = p.getByTestId('fvs-modulacao')
@@ -1661,9 +1759,7 @@ suite('FVS na bancada (Chrome)', () => {
       // outro apartamento, sem recorte no pacote: o painel de sempre, sem aviso de detalhe faltando
       await p.locator('.fv-cab button').click()
       await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
-      await buscar(p, '102')
-      await p.locator('.fv-toast', { hasText: 'Apto 102: 3 ambientes' }).waitFor()
-      await p.waitForTimeout(900)
+      await enquadrar(p, [-480, 770], 0)
       await tocarNaPlanta(p, 770, 480)
       await nomeNoPainel(p, '102-03')
       expect(await p.getByTestId('fvs-modulacao').count()).toBe(0)

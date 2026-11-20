@@ -120,6 +120,16 @@
 .fv-etapa {
   max-width: 190px;
 }
+/* tela larga, numa linha só: o item da esquadria ("3. Primeira fiada conferida") precisa de mais que a etapa */
+@media (min-width: 1200px) {
+  .fv-etapa.fv-item-esq {
+    max-width: 260px;
+  }
+  /* o nome inteiro da ficha de ambiente ("Alvenaria em Bloco Cerâmico Comum", ~290 px) */
+  .fv-topo.com-servico .fv-servico {
+    max-width: 300px;
+  }
+}
 .fv-servico {
   max-width: 230px;
   font-weight: 600;
@@ -135,13 +145,19 @@
   position: absolute;
   transform: translate(-50%, -50%);
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
-  color: var(--texto-1b1c1e);
-  text-shadow: 0 0 2px var(--texto-ffffff),
-    0 0 2px var(--texto-ffffff),
-    0 0 3px var(--texto-ffffff);
+  /* a planta é sempre clara, no tema claro e no escuro: a cor do texto não segue o tema (as variáveis
+     --texto-* viram claras no escuro e o número sumia; revisão de telas, 20/11). --fundo-1b1c1e é
+     escura nos dois temas e --borda-ffffff é branca nos dois */
+  color: var(--fundo-1b1c1e);
+  /* contorno branco firme (1 px para cada lado) e um halo curto: lê-se em cima do branco e do cinza */
+  text-shadow: -1px 0 0 var(--borda-ffffff),
+    1px 0 0 var(--borda-ffffff),
+    0 -1px 0 var(--borda-ffffff),
+    0 1px 0 var(--borda-ffffff),
+    0 0 2px var(--borda-ffffff);
 }
 /* a caixa da área de laje: o nome em cima do polígono, na cor da situação da ficha ligada a ela */
 .fv-caixa {
@@ -1433,6 +1449,61 @@
     width: 84px;
   }
 }
+/* planta de ambientes com esquadrias, de 701 a 1199 px (tablet em pé e deitado estreito): abas, serviço,
+   item, busca, progresso e botões não cabem numa linha só (em 768 px o topo passava da tela e em 800 os
+   textos saíam cortados; revisão de telas, 20/11). Duas linhas:
+   1: título, busca, progresso e botões · 2: abas, serviço e etapa (ou item da esquadria) */
+@media (min-width: 701px) and (max-width: 1199px) {
+  .fv-planta.com-servico {
+    --fv-hdr: 108px;
+  }
+  .fv-planta.com-servico.com-trecho {
+    --fv-hdr: 122px;
+  }
+  .fv-topo.com-servico {
+    flex-wrap: wrap;
+    align-content: center;
+    /* a quebra (::after) é uma linha de altura zero entre as duas: 3 + 3 = 6 px entre elas */
+    row-gap: 3px;
+  }
+  .fv-topo.com-servico > * {
+    order: 6;
+  }
+  .fv-topo.com-servico .fv-tit {
+    order: 1;
+    max-width: 240px;
+  }
+  .fv-topo.com-servico .fv-busca {
+    order: 2;
+    width: 140px;
+  }
+  .fv-topo.com-servico .fv-prog {
+    order: 3;
+    white-space: nowrap;
+  }
+  .fv-topo.com-servico .fv-bpincel,
+  .fv-topo.com-servico .fv-bitem {
+    order: 4;
+  }
+  /* quebra de linha: tudo depois disto vai para a segunda linha */
+  .fv-topo.com-servico::after {
+    content: '';
+    order: 5;
+    flex: 0 0 100%;
+    height: 0;
+  }
+  /* o serviço fica com 3/5 da linha: o nome da ficha ("Alvenaria em Bloco Cerâmico Comum") é mais
+     comprido que a etapa e cortava em 768 px meio a meio (conferido com a obra piloto, 20/11) */
+  .fv-topo.com-servico .fv-servico,
+  .fv-topo.com-servico .fv-etapa,
+  .fv-topo.com-servico .fv-sem-item-esq {
+    flex: 2 1 0;
+    max-width: none;
+  }
+  .fv-topo.com-servico .fv-servico {
+    flex-grow: 3;
+  }
+}
 @media (max-width: 700px) {
   .fv-planta {
     --fv-hdr: 104px;
@@ -1484,7 +1555,7 @@
     --fv-hdr: 118px;
   }
   .fv-planta.com-servico.com-trecho {
-    --fv-hdr: 172px;
+    --fv-hdr: 222px;
   }
   .fv-topo.com-item.com-trecho .fv-tit {
     grid-column: 1 / 6;
@@ -1542,26 +1613,40 @@
   .fv-topo.sem-seg .fv-etapa {
     grid-column: 1 / 10;
   }
-  /* planta de ambientes com esquadrias (19/11): abas e serviço na segunda linha; etapa (ou o item das
-     esquadrias) e busca na terceira. Na segunda linha não cabem os quatro sem cortar as abas */
+  /* planta de ambientes com esquadrias: quatro linhas (revisão de telas, 20/11). Com três, o serviço
+     saía cortado ("Alvenaria (ficha d…") e a caixa do trecho ficava com a seta em cima do texto.
+     1: título, progresso e botões · 2: abas e busca · 3: serviço inteiro · 4: etapa ou item da esquadria */
   .fv-planta.com-servico {
-    --fv-hdr: 158px;
+    --fv-hdr: 208px;
+  }
+  .fv-topo.com-servico .fv-tit,
+  .fv-topo.com-servico.com-item .fv-tit,
+  .fv-topo.com-servico.com-item.com-trecho .fv-tit {
+    grid-column: 1 / 7;
+  }
+  .fv-topo.com-servico .fv-prog {
+    grid-column: 7 / 10;
+  }
+  .fv-topo.com-servico.com-item .fv-prog,
+  .fv-topo.com-servico.com-item.com-trecho .fv-prog {
+    grid-column: 7 / 9;
   }
   .fv-topo.com-servico .fv-seg {
     grid-column: 1 / 8;
     grid-row: 2;
   }
-  .fv-topo.com-servico .fv-servico {
+  .fv-topo.com-servico .fv-busca {
     grid-column: 8 / 13;
     grid-row: 2;
   }
-  .fv-topo.com-servico .fv-etapa,
-  .fv-topo.com-servico .fv-sem-item-esq {
-    grid-column: 1 / 10;
+  .fv-topo.com-servico .fv-servico {
+    grid-column: 1 / 13;
     grid-row: 3;
   }
-  .fv-topo.com-servico .fv-busca {
-    grid-row: 3;
+  .fv-topo.com-servico .fv-etapa,
+  .fv-topo.com-servico .fv-sem-item-esq {
+    grid-column: 1 / 13;
+    grid-row: 4;
   }
   .fv-busca {
     grid-column: 10 / 13;
@@ -1685,9 +1770,15 @@
   font-size: 14px;
   color: var(--texto-5b5d61);
 }
-/* código da esquadria (PM80, JA120B) ao lado da bolinha, menor que o número do ambiente */
+/* código da esquadria (PM80, JA120B) ao lado da bolinha: etiqueta branca com letra escura, que se lê
+   em cima de ambiente pendente (branco), liberado (verde) ou com NC (vermelho), nos dois temas */
 .fv-rot-esq span {
-  font-size: 9px;
-  font-weight: 500;
-  transform: translate(8px, -50%);
+  font-size: 11px;
+  font-weight: 600;
+  transform: translate(11px, -50%);
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--borda-ffffff);
+  box-shadow: 0 0 0 1px var(--fundo-1b1c1e);
+  text-shadow: none;
 }

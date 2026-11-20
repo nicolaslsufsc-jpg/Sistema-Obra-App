@@ -128,7 +128,7 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
         {nExemplos > 0 && (
           <div class="doc-exemplos" data-testid="aviso-exemplos">
             <p class="discreto">
-              {nExemplos === 1 ? '1 documento é de exemplo' : `${nExemplos} documentos são de exemplo`} (marcados EXEMPLO): não saem na impressão nem nos avisos de vencido.
+              {nExemplos === 1 ? '1 documento é de exemplo' : `${nExemplos} documentos são de exemplo`} (marcados EXEMPLO): saem na impressão com a marca EXEMPLO e não contam nos avisos de vencido.
             </p>
             {podeCadastrar(obra.papel) && (
               <button

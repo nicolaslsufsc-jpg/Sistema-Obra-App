@@ -763,6 +763,12 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       // Registros dos outros módulos, só leitura (fichas da FVS do pacote, concretagens, NC)
       await p.getByTestId('registros-modulos').getByText('Registros dos módulos').waitFor()
       for (const g of ['registros-fvs', 'registros-concreto', 'registros-nc']) await p.getByTestId(g).waitFor()
+      // o aviso diz o que a impressão faz (desde o #64 os exemplos saem marcados) e não manda para módulo fora do menu (20/11)
+      await p.getByTestId('aviso-exemplos').getByText(/saem na impressão com a marca EXEMPLO/).waitFor()
+      if (!BETAS_NO_MENU) {
+        await p.getByTestId('registros-nc').getByText('O módulo Relatórios está fora do menu por enquanto.').waitFor()
+        expect(await p.getByText('Para abrir: menu da obra › Relatórios').count()).toBe(0)
+      }
       await print('1-obra')
 
       // Empresa: filtro por categoria e por status

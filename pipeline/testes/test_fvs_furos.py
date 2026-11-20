@@ -508,5 +508,59 @@ class TestReferencia(unittest.TestCase):
             self.assertEqual(pathlib.Path(lido["furos"]["referencia"]), base / "pacotes" / "03_pilotis")
 
 
+class TestDeOutroPavimento(unittest.TestCase):
+    """Furo do nível de outro pavimento que cai numa viga deste (a viga do subsolo desenhada no térreo, 20/11)."""
+
+    def test_filtro(self):
+        fs = [furo("ja", 0, 0), furo("nao", 0, 0), {**furo("laje", 0, 0), "laje": True}]
+        vindos = furos.furos_de_outro_pavimento(fs, {"ja"}, "02_terreo")
+        self.assertEqual([(f["id"], f["de"]) for f in vindos], [("nao", "02_terreo")])
+
+    def test_so_entra_o_que_cai_em_viga_daqui(self):
+        pecas = [viga("V1", 0, 0, 200, 10)]
+        vindos = furos.furos_de_outro_pavimento([furo("dentro", 50, 5), furo("longe", 900, 900)], set(), "02_terreo")
+        parede = {**furo("parede", 80, 5), "altura_viga": 310.0, "de": "02_terreo"}
+        locais, rel = furos.distribuir_furos([furo("meu", 20, 5)] + vindos + [parede], pecas, IDENT)
+        self.assertEqual([(p["nome"], p["furo"]["modelo_id"]) for p in locais], [("V1-F1", "meu"), ("V1-F2", "dentro")])
+        self.assertEqual(rel["de_outro_pavimento"], [{"id": "dentro", "furo": "V1-F2", "de": "02_terreo"}])
+        self.assertEqual(rel["sem_viga"], [])  # o que não caiu aqui segue só no relatório do outro pavimento
+        self.assertEqual((rel["furos"], rel["em_viga"]), (2, 2))
+
+    def test_sem_vindos_nao_poe_a_chave(self):
+        _, rel = furos.distribuir_furos([furo("meu", 20, 5)], [viga("V1", 0, 0, 200, 10)], IDENT)
+        self.assertNotIn("de_outro_pavimento", rel)
+
+    def test_encaixe_votado_pelos_do_proprio_nivel(self):
+        forma = {"pecas": [viga("V1", 0, 0, 200, 10)]}
+        rel = furos.juntar_furos(forma, [{**furo("v", 50, 5), "de": "x"}], encaixe=IDENT)
+        self.assertEqual(rel["em_viga"], 1)
+
+    def test_config_e_leitura_da_pasta(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = pathlib.Path(d)
+            (base / "EXE_furacao.ifc").write_text("x")
+            (base / "f.pdf").write_text("x")
+            cfg = {"obra": "EXE", "pavimento": "Subsolo", "formas": [{"trecho": "T1", "pdf": "f.pdf"}], "folha_unica": True,
+                   "furos": {"ifc": "EXE_furacao.ifc", "de_outro_pavimento": [{"nivel": "TÉRREO (NO)", "pasta": "pacotes/02_terreo"}]}}
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            with self.assertRaises(publicar_planta.ErroPublicacao):  # a pasta do outro pavimento ainda não foi gerada
+                publicar_planta.ler_config(base / "pav.json")
+            pasta = base / "pacotes" / "02_terreo"
+            (pasta / "Planta_inteira").mkdir(parents=True)
+            (pasta / "relatorio.json").write_text(json.dumps({"trechos": [{"pasta": "Planta_inteira"}]}), encoding="utf-8")
+            man = {"elementos": {"a": {"tipo": "F", "viga": "v", "furo": {"modelo_id": "123"}},
+                                 "b": {"tipo": "F", "furo": {"modelo_id": "999", "laje": True}},
+                                 "v": {"tipo": "V", "nome": "V1"}}}
+            (pasta / "Planta_inteira" / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
+            lido = publicar_planta.ler_config(base / "pav.json")  # "nivel" pode ficar vazio
+            self.assertEqual(lido["furos"]["nivel"], [])
+            self.assertEqual(pathlib.Path(lido["furos"]["de_outro_pavimento"][0]["pasta"]), pasta)
+            self.assertEqual(publicar_planta.ids_em_viga(str(pasta)), {"123"})
+            cfg["furos"]["de_outro_pavimento"] = [{"nivel": "X"}]
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            with self.assertRaises(publicar_planta.ErroPublicacao):
+                publicar_planta.ler_config(base / "pav.json")
+
+
 if __name__ == "__main__":
     unittest.main()

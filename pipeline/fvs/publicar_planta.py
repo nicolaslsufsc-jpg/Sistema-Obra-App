@@ -23,8 +23,13 @@ pavimento.json (fica fora do repositório, junto das pranchas):
   "furos": {"ifc": "../Furacao/modelo.ifc",          opcional: furos de viga e de laje do modelo de furação (só com a folha única)
             "nivel": "2º PAVIMENTO (NO)",            o "Level" dos furos deste pavimento no modelo (ou uma lista)
             "encaixe": {...},                        opcional: o encaixe do relatorio.json, para fixar ou corrigir à mão
-            "referencia": "../pacotes/03_pilotis"}   opcional: a pasta gerada (--so-gerar) de outro pavimento com furos do
+            "referencia": "../pacotes/03_pilotis",   opcional: a pasta gerada (--so-gerar) de outro pavimento com furos do
                                                     mesmo modelo; o encaixe sai do dela pelos pilares em comum (furos.py)
+            "de_outro_pavimento": [{"nivel": "TÉRREO (NO)", "pasta": "../pacotes/02_terreo"}]}
+                                                    opcional: furos de viga do nível de outro pavimento que ele (a pasta
+                                                    gerada dele) não pôs em viga; entram aqui só os que caem numa viga
+                                                    desta forma (viga deste pavimento desenhada lá só como referência).
+                                                    Com isso, "nivel" pode ficar vazio.
   "barras_laje": {"longitudinal_inferior": "../Lajes/*.46[4-8].*.pdf",   opcional: pranchas de armação da laje, por camada
                   "alinhamento": {"<prancha>": {"matriz": [a, b, c, d], "t": [tx, ty]}}}   opcional: encaixe à mão
 }
@@ -155,7 +160,17 @@ def ler_config(caminho: pathlib.Path) -> dict:
         fur["ifc"] = achados[0]
         niveis = fur.get("nivel")
         fur["nivel"] = [n for n in (niveis if isinstance(niveis, list) else [niveis]) if n]
-        if not fur["nivel"]:
+        outros = []
+        for o in fur.get("de_outro_pavimento") or []:
+            if not isinstance(o, dict) or not o.get("nivel") or not o.get("pasta"):
+                raise ErroPublicacao("furos: cada item de \"de_outro_pavimento\" precisa de \"nivel\" e \"pasta\"")
+            pasta = pathlib.Path(o["pasta"])
+            pasta = pasta if pasta.is_absolute() else base / pasta
+            if not (pasta / "relatorio.json").is_file():
+                raise ErroPublicacao(f"furos: \"de_outro_pavimento\" tem que apontar a pasta gerada do outro pavimento (falta {pasta / 'relatorio.json'})")
+            outros.append({"nivel": o["nivel"], "pasta": str(pasta)})
+        fur["de_outro_pavimento"] = outros
+        if not fur["nivel"] and not outros:
             raise ErroPublicacao("furos: falta \"nivel\" (o nível dos furos deste pavimento no modelo)")
         if fur.get("referencia"):
             ref = pathlib.Path(fur["referencia"])
@@ -338,6 +353,24 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
     return manifest, binario, rel
 
 
+def ids_em_viga(pasta: str) -> set[str]:
+    """Os modelo_id dos furos de viga ("F" com viga) dos pacotes de uma pasta gerada (--so-gerar)."""
+    pasta_p = pathlib.Path(pasta)
+    rel = json.loads((pasta_p / "relatorio.json").read_text(encoding="utf-8"))
+    ids: set[str] = set()
+    for t in rel.get("trechos") or []:
+        man = json.loads((pasta_p / t["pasta"] / "manifest.json").read_text(encoding="utf-8"))
+        ids |= {str(e["furo"]["modelo_id"]) for e in man["elementos"].values()
+                if e.get("tipo") == "F" and e.get("viga") and (e.get("furo") or {}).get("modelo_id")}
+    return ids
+
+
+def furos_do_outro_pavimento(ifc: str, outro: dict) -> list[dict]:
+    """Furos de viga do nível de outro pavimento que a pasta gerada dele não pôs em viga (furos.furos_de_outro_pavimento)."""
+    lidos = mod_furos.ler_ifc(ifc, [outro["nivel"]])
+    return mod_furos.furos_de_outro_pavimento(lidos, ids_em_viga(outro["pasta"]), pathlib.Path(outro["pasta"]).name)
+
+
 def encaixe_da_referencia(pasta: str, pecas: list[dict]) -> dict:
     """O encaixe dos furos pelos pilares em comum com outro pavimento já gerado (--so-gerar) com furos do mesmo
     modelo: o relatorio.json dele dá o encaixe (modelo -> folha dele) e o manifest.json, os pilares."""
@@ -383,6 +416,7 @@ def por_furos(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
     print(f"  furos: {rel['em_viga']} de {rel['furos']} em {rel['vigas_com_furo']} vigas"
           + (f" (encaixe: {enc.get('dentro')} dentro de viga; outra orientação, no máximo {enc.get('segundo')})" if enc.get("dentro") is not None else "")
           + (f"; {len(rel['sem_viga'])} fora de viga (lista no relatorio.json)" if rel["sem_viga"] else "")
+          + (f"; {len(rel['de_outro_pavimento'])} vindos de outro pavimento" if rel.get("de_outro_pavimento") else "")
           + (f"; {rel['em_laje']} furos de laje (a área de cada um é achada no app)" if rel.get("em_laje") else ""))
     if enc.get("duvidoso"):
         print("  ATENÇÃO: encaixe dos furos duvidoso. Confira na tela antes de publicar, ou passe \"encaixe\" no pavimento.json.")
@@ -601,11 +635,16 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
     if cfg.get("furos"):
         print(f"Lendo os furos de viga: {pathlib.Path(cfg['furos']['ifc']).name}")
         try:
-            detalhes["furos"] = mod_furos.ler_ifc(cfg["furos"]["ifc"], cfg["furos"]["nivel"])
+            detalhes["furos"] = mod_furos.ler_ifc(cfg["furos"]["ifc"], cfg["furos"]["nivel"]) if cfg["furos"]["nivel"] else []
+            n_laje = sum(1 for f in detalhes["furos"] if f.get("laje"))
+            if cfg["furos"]["nivel"]:
+                print(f"  {len(detalhes['furos']) - n_laje} furos de viga e {n_laje} de laje no nível {', '.join(cfg['furos']['nivel'])}")
+            for o in cfg["furos"].get("de_outro_pavimento") or []:
+                vindos = furos_do_outro_pavimento(cfg["furos"]["ifc"], o)
+                detalhes["furos"] += vindos
+                print(f"  {len(vindos)} furos de viga do nível {o['nivel']} que {pathlib.Path(o['pasta']).name} não pôs em viga (entram só os que caírem numa viga daqui)")
         except mod_furos.ErroFuros as e:
             raise ErroPublicacao(f"furos: {e}") from e
-        n_laje = sum(1 for f in detalhes["furos"] if f.get("laje"))
-        print(f"  {len(detalhes['furos']) - n_laje} furos de viga e {n_laje} de laje no nível {', '.join(cfg['furos']['nivel'])}")
     if cfg.get("barras_laje"):
         import barras_laje
 

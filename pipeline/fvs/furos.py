@@ -395,6 +395,7 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
     vigas = [p for p in pecas if p.get("tipo") == "V" and p.get("polys")]
     por_viga: dict[str, list[tuple[float, dict, tuple[float, float]]]] = {}
     sem_viga = []
+    emprestados_fora = 0
     for f in furos:
         x, y = transformar(enc, f["x"], f["y"])
         em_parede = (f.get("altura_viga") or 0) >= ALTURA_PAREDE_CM
@@ -406,6 +407,9 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
             if d <= folga and (melhor is None or d < melhor[0] or (d == melhor[0] and v["nome"] < melhor[1]["nome"])):
                 melhor = (d, v)
         if melhor is None:
+            if f.get("de"):  # de outro pavimento: fora de viga daqui, segue só no relatório de lá
+                emprestados_fora += 1
+                continue
             fora = {"id": f["id"], "x": round(x, 1), "y": round(y, 1), "secao": secao_do_furo(f), "disciplinas": f.get("disciplinas") or []}
             perto = min(((min(dist_ao_poligono(x, y, poly) for poly in v["polys"]), v["nome"]) for v in vigas), default=None)
             if perto is not None:  # para conferir na prancha: a viga mais perto e a distância, em cm de obra
@@ -420,6 +424,7 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
         v = melhor[1]
         por_viga.setdefault(v["nome"], []).append((_ordem_na_viga(v["polys"], x, y), f, (x, y)))
     locais = []
+    de_fora = []
     raio = max(2.0, 5.0 * float(enc["fator"]))  # 5 cm de obra, no mínimo 2 pontos
     for nome_viga in sorted(por_viga, key=_chave_natural):
         lista = sorted(por_viga[nome_viga], key=lambda t: (t[0], t[1]["id"]))
@@ -434,8 +439,10 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
                 "polys": [contorno_do_furo(x, y, raio)],
                 "viga": nome_viga, "furo": info,
             })
+            if f.get("de"):
+                de_fora.append({"id": f["id"], "furo": nome, "de": f["de"]})
     rel = {
-        "furos": len(furos),
+        "furos": len(furos) - emprestados_fora,
         "em_viga": len(locais),
         "vigas_com_furo": len(por_viga),
         "sem_viga": sem_viga,
@@ -444,10 +451,21 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
                     "fator": round(float(enc["fator"]), 5), "rotacao": enc["rotacao"], "t": [round(v, 1) for v in enc["t"]],
                     "duvidoso": encaixe_duvidoso(enc)},
     }
+    if de_fora or emprestados_fora:
+        rel["de_outro_pavimento"] = de_fora  # furos do nível de outro pavimento que caíram numa viga daqui
     for campo in ("metodo", "referencia", "pilares", "erro_cm", "pilares_fora"):
         if enc.get(campo) is not None:
             rel["encaixe"][campo] = enc[campo]
     return locais, rel
+
+
+def furos_de_outro_pavimento(furos: list[dict], ja_em_viga: set[str], nome: str) -> list[dict]:
+    """Furos do nível de outro pavimento que podem ser de uma viga deste: os de viga que o outro pavimento não
+    pôs em viga nenhuma (ja_em_viga: os modelo_id dos furos "F" do pacote dele). Os de laje ficam lá. Cada um
+    sai marcado com "de" (o nome da pasta do outro pavimento); em distribuir_furos, o que não cair numa viga
+    daqui não vai para o relatório daqui (já está no de lá). Ex.: a viga do subsolo desenhada na forma do
+    térreo só como referência (Térreo comercial da obra de teste, 20/11)."""
+    return [{**f, "de": nome} for f in furos if not f.get("laje") and str(f.get("id")) not in ja_em_viga]
 
 
 def furos_de_laje(furos: list[dict], enc: dict) -> list[dict]:
@@ -502,9 +520,10 @@ def juntar_furos(forma: dict, furos: list[dict], escala_prancha: float = 50.0, e
     if not furos:
         return {"furos": 0, "em_viga": 0, "vigas_com_furo": 0, "sem_viga": [], "em_laje": 0}
     de_viga = [f for f in furos if not f.get("laje")]
+    proprios = [f for f in de_viga if not f.get("de")] or de_viga  # o encaixe é votado pelos do próprio nível
     vigas = [(p["nome"], p["polys"]) for p in forma["pecas"] if p.get("tipo") == "V" and p.get("polys")]
     # o encaixe é votado pelos furos de viga (caem dentro das vigas da forma); o de laje vai junto
-    enc = encaixe or (encaixar([(f["x"], f["y"]) for f in de_viga], vigas, escala_prancha) if de_viga else None)
+    enc = encaixe or (encaixar([(f["x"], f["y"]) for f in proprios], vigas, escala_prancha) if proprios else None)
     if enc is None:
         raise ErroFuros("a forma não tem vigas com contorno para encaixar os furos" if de_viga
                         else "só há furos de laje: sem furo de viga não dá para encaixar; passe \"encaixe\" no pavimento.json")

@@ -288,11 +288,15 @@ suite('FVS na bancada (Chrome)', () => {
     [800, 1280],
     [1024, 768],
   ] as const) {
-    it(`${largura}x${altura}: quatro abas inteiras, "Etapas" inteiro e contador em até 2 linhas`, async () => {
+   // fonte larga: no Linux do CI a fonte do sistema é ~20% mais larga e o contador ia a 3 linhas em 375 px;
+   // a Verdana tem largura parecida, então a falta de folga aparece também no Windows
+   for (const larga of [false, true]) {
+    it(`${largura}x${altura}${larga ? ' (fonte larga)' : ''}: quatro abas inteiras, "Etapas" inteiro e contador em até 2 linhas`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       await p.goto(`${url}?furos=1`)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      if (larga) await p.addStyleTag({ content: 'body, button, input, select { font-family: Verdana, sans-serif !important; }' })
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
       // contador de obra grande, como o Pilotis
       await p.evaluate(() => {
@@ -314,10 +318,23 @@ suite('FVS na bancada (Chrome)', () => {
         // (o link "1 com NC" tem a caixa um pouco deslocada do texto da mesma linha: junta o que fica a menos de 6 px)
         const topos = [...r.getClientRects()].filter((x) => x.width > 0).map((x) => x.top).sort((a, b) => a - b)
         const linhas = topos.filter((t, i) => i === 0 || t - topos[i - 1] > 6).length
+        // a folga do contador não pode vir da caixa do trecho nem da busca
+        const trecho = document.querySelector('.fv-nomes select') as HTMLSelectElement | null
+        const ct = trecho ? getComputedStyle(trecho) : null
+        const busca = document.querySelector('.fv-busca') as HTMLInputElement
+        const cb = getComputedStyle(busca)
+        const larguraDe = (texto: string, c: CSSStyleDeclaration) => {
+          cv.font = `${c.fontWeight} ${c.fontSize} ${c.fontFamily}`
+          return cv.measureText(texto).width
+        }
         return {
+          trechoPrecisa: trecho && ct ? larguraDe(trecho.options[trecho.selectedIndex].text, ct) + 24 : 0,
+          trechoTem: trecho ? trecho.clientWidth : 0,
+          buscaPrecisa: larguraDe(busca.placeholder, cb) + parseFloat(cb.paddingLeft) + parseFloat(cb.paddingRight),
+          buscaTem: busca.clientWidth,
           abasRolam: seg.scrollWidth > seg.clientWidth + 1,
           abasFora: [...seg.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().right > s.right + 0.5).map((b) => b.textContent),
-          etapaPrecisa: cv.measureText(etapa.options[etapa.selectedIndex].text).width + 24,
+          etapaPrecisa: larguraDe(etapa.options[etapa.selectedIndex].text, ce) + 24,
           etapaTem: etapa.clientWidth,
           linhasDoContador: linhas,
         }
@@ -326,15 +343,18 @@ suite('FVS na bancada (Chrome)', () => {
       expect(m.abasFora).toEqual([])
       expect(m.etapaTem, '"Etapas" inteiro').toBeGreaterThanOrEqual(m.etapaPrecisa)
       expect(m.linhasDoContador, 'contador em até 2 linhas').toBeLessThanOrEqual(2)
+      expect(m.trechoTem, '"Trecho 1" inteiro').toBeGreaterThanOrEqual(m.trechoPrecisa)
+      expect(m.buscaTem, '"Buscar" inteiro').toBeGreaterThanOrEqual(m.buscaPrecisa)
       expect(await topoCabe(p)).toBe(true)
       expect(await alvosPequenos(p)).toEqual([])
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       // a planta começa embaixo do topo: o topo mais alto não cobre o mapa
       const [topo, mapa] = await p.evaluate(() => [document.querySelector('.fv-topo')!.getBoundingClientRect().bottom, document.querySelector('.fv-mapa')!.getBoundingClientRect().top])
       expect(mapa).toBeGreaterThanOrEqual(topo - 1)
-      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_quatro_abas_${largura}.png`) })
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_quatro_abas_${largura}${larga ? '_larga' : ''}.png`) })
       await contexto.close()
     })
+   }
   }
 
   // Rodada com a obra piloto (20/11): a aba Pilares mostrava 385 e o início contava 445 (+60 arranques do

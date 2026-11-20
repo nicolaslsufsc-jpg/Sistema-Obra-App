@@ -97,24 +97,26 @@ O desenho usa o pacote de planta da FVS. Combinado com a sessão FVS em 04/11: o
 - Os caminhos foram passados à sessão FVS (gerador de planta). Como baixar de novo: a memória de como baixar as formas (fora do repositório).
 
 ## Ligações
-- Item 13 da ficha de viga e item 18 da ficha de pilar (controle de concreto e rastreabilidade, procedimento de concreto da empresa): o item marcado com `rastreio_concreto: true` na ficha (dado da obra) fica C quando a peça tem caminhão. **Rastreio na FVS (19/11/2026):** o lado do Concreto está em `concreto/rastreio.ts`. Ele tem `caminhoesDasPecas(obraId)`, que devolve os caminhões de cada pilar e viga em ordem de data e sequência e lê o banco do aparelho, sem cache, e `situacaoDoRastreio`, uma regra pura. Ficam de fora o caminhão e a concretagem cancelados, o EXEMPLO e a laje (por enquanto). Peça com caminhão fica C. A peça parcial fica C com aviso só quando a soma das frações não fecha a peça; incluída à mão vale inteira. Caminhão sem NF conta C. Sem caminhão fica pendente, nunca NC. Tudo é só calculado e nada é gravado na FVS. O texto da tela e a ligação na ficha são da FVS (03 · FVS-EST). Decisões do Nicolas: 18/11 e 19/11/2026.
+- Item 13 da ficha de viga e item 18 da ficha de pilar (controle de concreto e rastreabilidade, procedimento de concreto da empresa): o item marcado com `rastreio_concreto: true` na ficha (dado da obra) fica C quando a peça tem caminhão. **Rastreio na FVS (19/11/2026):** o lado do Concreto está em `concreto/rastreio.ts`. Ele tem `caminhoesDasPecas(obraId)`, que devolve os caminhões de cada pilar e viga em ordem de data e sequência e lê o banco do aparelho, sem cache, e `situacaoDoRastreio`, uma regra pura. Ficam de fora o caminhão e a concretagem cancelados, o EXEMPLO e a peça de laje (tipo L). Peça com caminhão fica C. A peça parcial fica C com aviso só quando a soma das frações não fecha a peça; incluída à mão vale inteira. Caminhão sem NF conta C. Sem caminhão fica pendente, nunca NC. Tudo é só calculado e nada é gravado na FVS. O texto da tela e a ligação na ficha são da FVS (03 · FVS-EST). Decisões do Nicolas: 18/11 e 19/11/2026.
+- **Rastreio da laje (20/11/2026):** na obra a laje é a área que a FVS desenha no app (`fvs_areas`), não a peça L. `caminhoesDasLajes(obraId, areas)` recebe as áreas vigentes que a FVS já tem (`id`, `setor_id`, `contorno`) e devolve, por área, os caminhões e a `cobertura`. Não há tabela nova nem migração: a ligação é a sobreposição do desenho da FVS com as áreas dos caminhões (`caminhao_areas`) da mesma planta. A planta é o mesmo trecho: `setor_id` = o id antes do "@" no `planta_ref`, sem olhar a revisão. Contam a caneta "vigas e laje" e as áreas antigas sem alvo; a caneta "pilares" não conta. O caminhão entra quando cobre pelo menos 10% da área. A `cobertura` é a fração da área dentro de todos os caminhões juntos, então dois caminhões no mesmo pedaço não somam duas vezes. `situacaoDoRastreio(caminhoes, cobertura)` dá C, com aviso de parcial quando a cobertura fica abaixo de 90%. Sem caminhão fica pendente. As mesmas exclusões valem: cancelados e EXEMPLO. Tudo é só calculado. A laje marcada só no toque, sem área desenhada, não liga a nenhuma área da FVS: fica pendente.
 - Skill `rastreabilidade-concreto-construpoint` (conta do Nicolas): foto da ficha de papel concreteira → Construpoint → ficha de concreto. Campos da ficha de papel: Seq, Betoneira, Volume, NF, Fck, Faixa de abatimento, Lacre, Água (L), Aditivo, Saída central, Chegada obra, Início descarga, Fim descarga, Slump, Flow.
 
 ## Depende de
 Núcleo (sincronização, `pavimentos`, `elementos`). FVS entrega 1 (pacote de planta) para desenhar em obra de verdade.
 
 ## Status
-Atualizado em 18/11/2026, conferido no `git log` da `main` (1323092) e no código.
-- **Tudo do Concreto está na `main`.** Não há branch do módulo com trabalho fora dela; a `app/concreto` foi levada à `main` em 18/11 (o WIP antigo do laudo, já substituído, ficou só na tag local `guardado/wip-laudo-antigo`).
-- **Entraram desde 09/11:** #44 (laudo com vários CPs e validação dos números), #52 (data de ensaio no futuro ou antes da moldagem), #56 (sem conta, sem aviso "esperando envio"), #66 (dicas de Nova concretagem sem nome de sistema), #39 (faixa "só neste aparelho · Salvar" e caminhões numa linha no celular), exemplos da demo com 5 concretagens (0dfb81e) e #71 (planta preta ao desenhar a área no PC).
+Atualizado em 20/11/2026, conferido no `git log` da `main` do repositório público (211fb7f) e no código.
+- **Na `main`:** tudo o que estava em commit local em 18/11 (PDF do laudo, FVM só no app sem conta, botão de reportar problema) e o rastreio de pilar e viga para a FVS (`concreto/rastreio.ts`, PR #2 do repositório público).
+- **Em PR ou commit local (20/11):**
+  - rastreio da laje pela área da FVS (PR #20);
+  - as áreas de laje da FVS no relatório do Concreto (branch `concreto/laje-areas-relatorio`, em cima do #20).
 - **Migrações no servidor de São Paulo:** `20261103230000_concreto.sql` e `20261107210000_concreto_caneta.sql` (`caminhao_areas.alvo`), aplicada em 08/11/2026. Nenhuma migração nova do Concreto desde então.
-- **Demo de 17/11:** o Concreto foi mostrado aos chefes no app sem conta, com os exemplos.
-- **Testes de 18/11 neste PC:** build, `npx vitest run` (582 passaram) e a bancada do Concreto mais o app sem conta no Chrome (47 passaram).
-- **FVM** (recebimento de materiais controlados, dentro do Concreto): proposta de 14/11 fora do repositório (`09_ESTAGIO\PBQP-H\fvm_proposta.md`). Telas feitas em 18/11 (commit local na `app/concreto`, sem push), **só no app sem conta e sem migração**, com as recomendações da proposta nas 5 decisões, que o Nicolas ainda confirma (Perguntas ao Nicolas).
-- **Commits locais de 18/11 (sem push):** doc do módulo, PDF do laudo e FVM.
+- **FVM:** só no app sem conta e sem migração (pendência 11). As 5 decisões seguem para o Nicolas confirmar.
+- **Testes de 20/11 neste PC:** build, `npx vitest run` (707 passaram) e a bancada do Concreto no Chrome (18 passaram, 375 px e 1280).
 - **Não testado:** no tablet de verdade (pendência 1).
 
 ## Feito
+- **20/11/2026, laje da FVS no relatório:** em "Peças concretadas" (por caminhão, por peça e CSV), cada caminhão mostra as áreas de laje desenhadas na FVS (`fvs_areas`) que ele cobriu. Elas entram como peça do tipo L, com a porcentagem quando a cobertura é parcial. É só cálculo (`montarRastreioDasLajes`, a mesma conta do rastreio da FVS): nada gravado, sem tabela nova. `dados.ts` guarda isso em `lajesFvsDe`. A "Laje do Trecho" marcada no toque continua como estava. Testes: `laje_fvs_relatorio.test.ts` e um caso na bancada (celular e tablet).
 **18/11/2026, Reportar problema, versão sem servidor** (branch `concreto/reportar-problema`, da `main` aa7e1e7; commit local, sem push; o merge espera a sincronização sólida):
 - Botão "Reportar" fixo embaixo, à esquerda, em todas as telas do Concreto. No mapa, só um "!" na beira esquerda, para não cobrir o painel nem o zoom.
 - Janela: "O que aconteceu?" (obrigatório), gravidade (atrapalha / impede) e até 3 imagens. A imagem é um print tirado antes no aparelho, ou uma foto. Ela é reduzida para JPEG de 1600 px, o que também apaga os metadados, inclusive o GPS. SVG e PDF são recusados.
@@ -259,9 +261,9 @@ Atualizado em 18/11/2026, conferido no `git log` da `main` (1323092) e no códig
 - Testes do app: 18 de unidade (correções, CPs, geometria, peças, relatório) e 1 de integração contra o PostgREST (`app/testes/concreto.test.ts`, roda no GitHub).
 
 ## Próximo passo
-1. PDF do laudo: feito em 18/11 (commit local na `app/concreto`, sem push). Abrir pelo servidor fica para quando o login entrar.
-2. FVM: feito em 18/11 no app sem conta (commit local). Falta o Nicolas confirmar as 5 decisões (Perguntas ao Nicolas) e decidir a migração antes de qualquer PR (pendência 11).
-3. Esperando o Nicolas: a laje com folha única (pendência 3) e a moldagem com lacre e código do CP (pendência 5, pede migração).
+1. Merge do PR #20 (rastreio da laje) e, depois, da branch do relatório com as áreas da FVS.
+2. A FVS liga o rastreio na ficha (03 · FVS-EST) e o Nicolas marca `rastreio_concreto` nas fichas da obra piloto (pendência 8).
+3. Esperando o Nicolas: a laje marcada no toque (pendência 3), a moldagem com lacre e código do CP (pendência 5, pede migração), as 5 decisões do FVM e a migração dele (pendência 11).
 4. Quando o app abrir no tablet (pendência 1): Nicolas testa no tablet com a caneta, sem internet.
 
 ## Próximas entregas
@@ -274,7 +276,9 @@ Atualizado em 18/11/2026, conferido no `git log` da `main` (1323092) e no códig
 ## Pendências
 1. **App no tablet sem internet** (núcleo, pelo chat da FVS). *16/11: branch `demo/rede-17-11` faz o app abrir pelo IP da rede (substitutos de `crypto.randomUUID`/`crypto.subtle`) e traz o `ABRIR_NA_REDE.bat` com QR; o offline (service worker) continua pedindo https.* Hoje o app só abre no PC (`ABRIR_SISTEMA_OBRA.bat`; o `servidor.ps1` atende só o próprio PC). Pelo IP da rede, sem https, o navegador não deixa gravar (`crypto.randomUUID`) nem funcionar sem internet (service worker). Precisa de um endereço https e de um jeito de pôr o pacote da obra piloto (uns 120 MB) no tablet sem publicar dados da empresa. O testador relatou em 08/11 que o servidor do PC também troca de porta sem avisar.
 2. **Exemplo misturado com dado real: resolvido (09/11).** A concretagem de exemplo aparece com EXEMPLO no Concreto e na ficha (08/11), e a PR #42 trocou código e fornecedor por `EXEMPLO-0001` e "Concreteira Exemplo". Se a chave `conc:1` do `exemplos.ts` mudar, mudar também `concreto/exemplo.ts`. Tirar antes do uso na obra continua valendo.
-3. **Laje com folha única** (decisão do Nicolas). Com uma planta por pavimento, a laje virou uma só por pavimento, "Laje (Planta inteira)". Opções: usar as áreas de laje que a FVS desenha (`fvs_areas`), desenhar a laje no Concreto ou outro jeito. A confirmar com o Nicolas.
+3. **Laje com folha única: respondida em 20/11** (recado do Professor: na obra a laje é a área desenhada na FVS, não a peça L).
+   - Feito: o rastreio para a FVS e o relatório do Concreto usam as áreas da FVS (`fvs_areas`), só por cálculo.
+   - Falta decidir (Perguntas ao Nicolas): o que fazer com a "Laje (Planta inteira)" marcada no toque, que continua na tela e no relatório.
 4. **Laudos do laboratório.**
    - Lançar vários CPs de uma vez: **feito (09/11).**
    - Guardar o PDF do laudo: **feito (18/11)**, pelo `registrarArquivo` do núcleo, sem migração.
@@ -283,7 +287,7 @@ Atualizado em 18/11/2026, conferido no `git log` da `main` (1323092) e no códig
 5. **Moldagem dos CPs.** O app guarda só a quantidade de CPs moldados. Betoneira, lacre, aditivo, flow e o código do CP da concreteira (chave para ligar o laudo ao caminhão) precisam de coluna nova, ou seja, migração pelo chat da FVS, se o Nicolas quiser.
 6. **Laje que entrou com a área antes de 08/11** ficou gravada como toque e só sai no toque. Se já existe algum dado real assim: a confirmar com o Nicolas (até onde sei, só dados de teste).
 7. **Dados só no navegador do tablet.** No Android não há salvamento automático em pasta (`showDirectoryPicker`), só o "Salvar arquivo" manual (núcleo).
-8. **FVS lendo `caminhao_elementos`** (itens 13 e 18 das fichas): o lado do Concreto está pronto (`concreto/rastreio.ts`, 19/11). Falta a FVS ligar na ficha (03 · FVS-EST) e o Nicolas pôr a marca `rastreio_concreto` nas fichas da obra piloto.
+8. **FVS lendo `caminhao_elementos`** (itens 13 e 18 das fichas): o lado do Concreto está pronto (`concreto/rastreio.ts`: pilar e viga em 19/11, laje pela área da FVS em 20/11). Falta a FVS ligar na ficha (03 · FVS-EST) e o Nicolas pôr a marca `rastreio_concreto` nas fichas da obra piloto.
 9. **Desempenho no tablet:** medido só no PC, com 560 peças. O Pilotis tem 845.
 10. **Tela preta ao desenhar a área (relatos do Nicolas, 16/11/2026): resolvida, na `main` pelo #71 (d1730f8).** No PC, com mouse: nova concretagem, + Caminhão (sem horário), desenhar a área: a prancha inteira ficava preta enquanto desenhava, a área era gravada e, ao voltar, aparecia marcada. O horário do caminhão não tem relação. Causa (confirmada pelo Nicolas em 16/11 no Opera GX do PC dele: a versão antiga ficava preta, a corrigida não; no Chrome do mesmo PC nunca ficou): a "tinta" do traço (`caneta.ts`) usava canvas de baixa latência (`desynchronized`), que nesse navegador perde a transparência. Agora ela só vale no Android; no PC a tinta é um canvas comum. Testes: `src/concreto/caneta.test.ts` e conferência no `concreto_bancada.e2e.test.ts`.
 
@@ -296,7 +300,7 @@ Atualizado em 18/11/2026, conferido no `git log` da `main` (1323092) e no códig
   3. Dentro do Concreto, não módulo novo. O nome do menu continua "Concreto" (trocar para "Concreto e materiais" mexe no núcleo).
   4. "Liberado com ressalva" existe e exige escrever a ressalva.
   5. Só gestor e admin tiram um material do retido; o campo registra o recebimento.
-- **Laje com folha única** (pendência 3): usar as áreas de laje da FVS, desenhar a laje no Concreto ou outro jeito?
+- **Laje marcada no toque** (pendência 3): agora que a laje é a área da FVS, o botão "Laje do Trecho / Planta inteira" do Concreto continua, some da tela ou fica só para obra sem área desenhada? Hoje as duas aparecem no relatório.
 - **Laje criada por quem é de campo:** hoje só gestor e admin criam a laje de um trecho (regra do banco para cadastro de peça). Quem é de campo só marca a laje depois que um gestor ou admin tocou nela uma vez naquele trecho. Basta assim? Se o campo precisar criar, é um pedido ao núcleo (abaixo).
 - Ficha de concreto: o app não registra **lacre**, **brita** nem **A/C**. Vale acrescentar lacre no caminhão e brita na concretagem (mudança só nas tabelas do Concreto)? Ou continuam em branco, como no lançamento à mão?
 - Na ficha, a coluna "CP" recebe os CPs moldados do caminhão (4 por padrão). É isso que a coluna "CP 4" do modelo quer dizer?

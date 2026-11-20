@@ -403,6 +403,31 @@ select teste.deve_falhar($$
   values (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'fa000000-0000-0000-0000-000000000001',
           'f1000000-0000-0000-0000-000000000001', 99, 'A', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23503', 'fvs: item marcado na área tem que existir na ficha');
+
+-- barra de laje (20261120140000_fvs_eventos_barra.sql): coluna própria, sempre com a planta
+insert into public.fvs_eventos (id, obra_id, barra_id, ficha_id, item, resultado, planta_id, dispositivo_id, criado_em_dispositivo)
+values ('f7000000-0000-0000-0000-0000000000b1', '11111111-1111-1111-1111-111111111111', 'fb000000-0000-0000-0000-000000000001',
+        'f1000000-0000-0000-0000-000000000001', 1, 'C', 'f4000000-0000-0000-0000-000000000001',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
+select teste.ok((select count(*) from public.fvs_eventos where barra_id = 'fb000000-0000-0000-0000-000000000001') = 1,
+  'fvs: campo marca uma barra de laje (sem ser peça em elementos)');
+select teste.deve_falhar($$
+  insert into public.fvs_eventos (id, obra_id, barra_id, ficha_id, item, resultado, dispositivo_id, criado_em_dispositivo)
+  values (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'fb000000-0000-0000-0000-000000000001',
+          'f1000000-0000-0000-0000-000000000001', 1, 'C', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+$$, '23514', 'fvs: registro da barra diz de qual planta ela é');
+select teste.deve_falhar($$
+  insert into public.fvs_eventos (id, obra_id, elemento_id, barra_id, ficha_id, item, resultado, planta_id, dispositivo_id, criado_em_dispositivo)
+  values (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'fe000000-0000-0000-0000-000000000001',
+          'fb000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-000000000001', 1, 'C',
+          'f4000000-0000-0000-0000-000000000001', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+$$, '23514', 'fvs: registro não é de uma peça e de uma barra ao mesmo tempo');
+select teste.deve_falhar($$
+  insert into public.fvs_eventos (id, obra_id, barra_id, ficha_id, item, resultado, planta_id, dispositivo_id, criado_em_dispositivo)
+  values (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'fb000000-0000-0000-0000-000000000001',
+          'f1000000-0000-0000-0000-000000000001', 1, 'C', 'f4000000-0000-0000-0000-0000000000ff',
+          'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+$$, '23503', 'fvs: a planta da barra tem que existir');
 reset role;
 
 -- quem só lê não desenha; quem não tem acesso não vê

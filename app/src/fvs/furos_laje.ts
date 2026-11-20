@@ -144,3 +144,91 @@ export function avisoDoCEletrico(sits: readonly Situacao[]): string | null {
   if (sem) partes.push(`${sem} ${sem === 1 ? 'passagem elétrica ainda sem conferir' : 'passagens elétricas ainda sem conferir'}`)
   return partes.length ? `${partes.join(' e ')}. Marcar C mesmo assim?`.replace(/^./, (c) => c.toUpperCase()) : null
 }
+
+// ---------------------------------------------------------------- densidade na planta (20/11/2026)
+// No 2º pavimento da obra piloto são 954 furos de laje. Com a planta inteira na tela, o alvo de 44 px de
+// cada furo cobre metros de obra e quase todo toque pegava o furo errado (medido: 88% ou mais; 2% no
+// zoom 1,5; 0% do 2 para cima). Decisões do Nicolas (20/11, pelo Professor): longe, um número por área
+// no lugar dos furos; toque que pega dois furos pergunta qual; o contador só com os conferíveis; os
+// furos que não são de esgoto, água nem elétrica (Geral, Climatização, Incêndio) ficam escondidos.
+
+/** Zoom a partir do qual os furos de laje aparecem e recebem toque (1 ponto da folha = 2^zoom px). */
+export const ZOOM_DOS_FUROS_DE_LAJE = 1.5
+
+/** Furo de laje que não é de esgoto, água nem elétrica: fica no pacote, mas não aparece na aba Furos. */
+export function furoDeLajeEscondido(e: ElementoPacote | undefined): boolean {
+  return ehFuroDeLaje(e) && instalacoesDoFuro(e!).length === 0
+}
+
+/**
+ * Furo que entra no "x/y OK" da aba Furos: o de viga sempre; o de laje só dentro de área de laje e de
+ * esgoto, água ou elétrica.
+ */
+export function furoConferivel(e: ElementoPacote, area: AreaDeLaje | undefined): boolean {
+  if (!ehFuroDeLaje(e)) return true
+  return !!area && instalacoesDoFuro(e).length > 0
+}
+
+/** Um número por área: quantos furos conferíveis ela tem e onde escrever (o centro deles, na folha). */
+export interface FurosDaArea {
+  areaId: string
+  ids: string[]
+  centro: [number, number]
+  /** caixa dos furos na folha: [x0, y0, x1, y1] (o toque no número aproxima até ela). */
+  caixa: [number, number, number, number]
+  /** o furo mais perto do centro: o toque no número aproxima até ele (o centro pode cair num vão sem furo). */
+  perto: [number, number]
+}
+
+/** Os furos de laje conferíveis agrupados pela área (na ordem do nome da área). */
+export function furosConferiveisPorArea(
+  elementos: Record<string, ElementoPacote> | undefined,
+  furosNasAreas: ReadonlyMap<string, AreaDeLaje | undefined>,
+): FurosDaArea[] {
+  const porArea = new Map<string, { nome: string; ids: string[]; pts: Array<[number, number]> }>()
+  for (const [id, area] of furosNasAreas) {
+    const e = elementos?.[id]
+    if (!e || !area || !furoConferivel(e, area)) continue
+    const g = porArea.get(area.id) ?? { nome: area.nome, ids: [], pts: [] }
+    g.ids.push(id)
+    g.pts.push(centroDoFuro(e))
+    porArea.set(area.id, g)
+  }
+  return [...porArea.entries()]
+    .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
+    .map(([areaId, g]) => {
+      const xs = g.pts.map((p) => p[0])
+      const ys = g.pts.map((p) => p[1])
+      const centro: [number, number] = [xs.reduce((s, v) => s + v, 0) / xs.length, ys.reduce((s, v) => s + v, 0) / ys.length]
+      let perto = g.pts[0]
+      for (const p of g.pts) if (Math.hypot(p[0] - centro[0], p[1] - centro[1]) < Math.hypot(perto[0] - centro[0], perto[1] - centro[1])) perto = p
+      return { areaId, ids: g.ids, centro, caixa: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], perto }
+    })
+}
+
+/** Texto do número da área: "23 furos", "1 furo"; com marcação, "5 de 23 furos OK". */
+export function textoDoNumeroDaArea(sits: readonly Situacao[]): string {
+  const n = sits.length
+  const ok = sits.filter((s) => s === 'liberado').length
+  const furos = n === 1 ? 'furo' : 'furos'
+  return ok ? `${ok} de ${n} ${furos} OK` : `${n} ${furos}`
+}
+
+/** Cor do número da área: algum errado, vermelho; todos OK, verde; algum OK, em andamento; senão, pendente. */
+export function situacaoDoNumeroDaArea(sits: readonly Situacao[]): Situacao {
+  if (sits.includes('reprovado')) return 'reprovado'
+  if (sits.length && sits.every((s) => s === 'liberado')) return 'liberado'
+  return sits.includes('liberado') ? 'andamento' : 'nada'
+}
+
+/**
+ * Os furos cujo alvo contém o ponto do toque (tudo em px de tela), do mais perto ao mais longe. Dois ou
+ * mais: a pessoa escolhe qual ("Qual furo?").
+ */
+export function furosNoToque(pontos: ReadonlyArray<{ id: string; x: number; y: number }>, x: number, y: number, raio: number): string[] {
+  return pontos
+    .map((p) => ({ id: p.id, d: Math.hypot(p.x - x, p.y - y) }))
+    .filter((p) => p.d <= raio)
+    .sort((a, b) => a.d - b.d)
+    .map((p) => p.id)
+}

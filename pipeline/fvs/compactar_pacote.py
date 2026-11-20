@@ -8,6 +8,13 @@ Uso (no PC, na raiz do repositório):
     py pipeline/fvs/compactar_pacote.py "C:\\...\\dados_obra" --saida "C:\\...\\EXE_pacote.zip" --nome "Obra Exemplo"
 
 O exportar_bancada.py já gera um .zip no mesmo formato; este é para quando só existe a pasta.
+
+Documentos da empresa (módulo Documentos, app/src/documentos/pacote.ts) vão em dados_obra/documentos/,
+como no exportar_bancada.py:
+- com --documentos PASTA: a pasta com documentos.json e os arquivos, no mesmo formato e com a mesma
+  conferência do exportar_bancada.py (ler_documentos);
+- sem a opção: se a pasta da obra já tem documentos/indice.json (de um pacote extraído, por exemplo),
+  ele vai junto com os arquivos que cita, conferidos um a um (tipo, tamanho até 10 MB e SHA-256).
 Só entra o que o índice cita (manifest.json e pacote.bin de cada planta), mais fichas.json,
 historico.json e config_fvs.json (regras da FVS, conferido antes: regras_fvs.py): nada que tenha
 ficado solto na pasta, e nenhum atalho. Se o indice.json não tem a
@@ -31,6 +38,7 @@ sys.path.insert(0, str(AQUI.parent))
 
 import regras_fvs  # noqa: E402
 import sistema_oficial  # noqa: E402
+from exportar_bancada import LIMITE_DOC, TIPOS_DOC, ErroExportacaoBancada, _sha256, ler_documentos  # noqa: E402
 from exportar_obra import dentro_de_repositorio  # noqa: E402
 
 PASTA_NO_ZIP = "dados_obra"
@@ -55,7 +63,40 @@ def _data_valida(valor: object) -> bool:
         return False
 
 
-def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None, sistema: str | None = None) -> dict:
+def _documentos_da_pasta(pasta: pathlib.Path) -> tuple[dict, list[tuple[str, pathlib.Path]]] | None:
+    """documentos/indice.json que já está na pasta da obra (formato do app) e os arquivos que ele cita, conferidos."""
+    raiz = pasta / "documentos"
+    if not _arquivo_da_pasta(pasta, "documentos/indice.json"):
+        return None
+    try:
+        docs = json.loads((raiz / "indice.json").read_text(encoding="utf-8"))
+    except ValueError as e:
+        raise ErroCompactar(f"documentos/indice.json ilegível: {e}") from e
+    if not isinstance(docs, dict) or not isinstance(docs.get("documentos"), list):
+        raise ErroCompactar("documentos/indice.json sem a lista de documentos")
+    arquivos: list[tuple[str, pathlib.Path]] = []
+    for i, d in enumerate(docs["documentos"], 1):
+        a = d.get("arquivo") if isinstance(d, dict) else None
+        if not a:
+            continue
+        onde = f"documento {i} ({d.get('codigo') or 'sem código'})"
+        caminho = str(a.get("caminho") or "") if isinstance(a, dict) else ""
+        origem = raiz / caminho
+        if not caminho or not _arquivo_da_pasta(raiz.resolve(), caminho):
+            raise ErroCompactar(f"{onde}: arquivo {caminho!r} não está em documentos/")
+        if TIPOS_DOC.get(origem.suffix.lower()) is None:
+            raise ErroCompactar(f"{onde}: só PDF ou foto (jpg, png, webp, heic)")
+        tamanho = origem.stat().st_size
+        if tamanho == 0 or tamanho > LIMITE_DOC or tamanho != a.get("tamanho"):
+            raise ErroCompactar(f"{onde}: arquivo vazio, maior que 10 MB ou com tamanho diferente do índice")
+        if _sha256(origem) != a.get("sha256"):
+            raise ErroCompactar(f"{onde}: arquivo não confere com o SHA-256 do índice")
+        arquivos.append((caminho, origem))
+    return docs, arquivos
+
+
+def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None, sistema: str | None = None,
+              documentos: pathlib.Path | None = None) -> dict:
     """Grava o .zip e devolve o resumo (obra, arquivos, tamanho)."""
     pasta = pasta.resolve()
     saida = saida.resolve()
@@ -96,6 +137,14 @@ def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None,
         sistema_oficial.aplicar(indice, sistema)
     except ValueError as e:
         raise ErroCompactar(str(e)) from e
+    # documentos da empresa: a pasta pedida ou, sem ela, o que já está em documentos/ (conferido antes de gravar)
+    if documentos is not None:
+        try:
+            docs = ler_documentos(documentos.resolve())
+        except ErroExportacaoBancada as e:
+            raise ErroCompactar(str(e)) from e
+    else:
+        docs = _documentos_da_pasta(pasta)
     if not _data_valida(indice.get("gerado_em")):
         quando = datetime.datetime.fromtimestamp(indice_arq.stat().st_mtime, datetime.timezone.utc)
         indice["gerado_em"] = quando.isoformat(timespec="seconds")
@@ -106,6 +155,10 @@ def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None,
             for rel in arquivos:
                 compressao = zipfile.ZIP_STORED if pathlib.PurePosixPath(rel).suffix.lower() in SEM_COMPRESSAO else zipfile.ZIP_DEFLATED
                 z.write(pasta / rel, f"{PASTA_NO_ZIP}/{rel}", compressao)
+            if docs is not None:
+                for caminho, origem in docs[1]:
+                    z.write(origem, f"{PASTA_NO_ZIP}/documentos/{caminho}", zipfile.ZIP_DEFLATED)
+                z.writestr(f"{PASTA_NO_ZIP}/documentos/indice.json", json.dumps(docs[0], ensure_ascii=False), zipfile.ZIP_DEFLATED)
             # o índice por último (como no exportar_bancada.py), com a data
             z.writestr(f"{PASTA_NO_ZIP}/indice.json", json.dumps(indice, ensure_ascii=False), zipfile.ZIP_DEFLATED)
         if zipfile.ZipFile(temporario).testzip() is not None:
@@ -113,7 +166,9 @@ def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None,
         temporario.replace(saida)
     finally:
         temporario.unlink(missing_ok=True)
-    return {"obra": indice["obra"], "arquivos": len(arquivos) + 1, "tamanho_mb": round(saida.stat().st_size / 1e6, 1), "saida": str(saida)}
+    n_docs = len(docs[0]["documentos"]) if docs else 0
+    n_arquivos = len(arquivos) + 1 + (len(docs[1]) + 1 if docs else 0)
+    return {"obra": indice["obra"], "arquivos": n_arquivos, "documentos": n_docs, "tamanho_mb": round(saida.stat().st_size / 1e6, 1), "saida": str(saida)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,14 +176,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("pasta", type=pathlib.Path, help="a pasta dados_obra (com o indice.json)")
     ap.add_argument("--saida", type=pathlib.Path, required=True, help="o .zip a gravar, fora do repositório")
     ap.add_argument("--nome", help='nome por extenso da obra, que o app mostra (ex.: "Obra Exemplo"); só vai no .zip')
+    ap.add_argument("--documentos", type=pathlib.Path, help="pasta com documentos.json e os arquivos dos documentos da empresa (opcional)")
     ap.add_argument("--sistema-oficial", help="id do sistema oficial da obra (um galho de app/src/integracoes/)")
     args = ap.parse_args(argv)
     try:
-        r = compactar(args.pasta, args.saida, args.nome, args.sistema_oficial)
+        r = compactar(args.pasta, args.saida, args.nome, args.sistema_oficial, args.documentos)
     except ErroCompactar as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
-    print(f"Obra {r['obra']}: {r['arquivos']} arquivos, {r['tamanho_mb']} MB em {r['saida']}")
+    print(f"Obra {r['obra']}: {r['arquivos']} arquivos ({r['documentos']} documentos), {r['tamanho_mb']} MB em {r['saida']}")
     print('No tablet: copie o .zip e use "Abrir pacote da obra (.zip)" no app.')
     return 0
 

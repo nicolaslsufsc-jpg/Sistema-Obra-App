@@ -27,7 +27,24 @@ import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDas
 import { ehDoConcreto } from '../rastreio'
 import { dia, mb, quando } from '../formato'
 import { casaComodo, textoDoComodo } from '../busca'
-import { avisoDoCEletrico, ehFuroDeLaje, furosDeLajeNasAreas, instalacoesDoFuro, itemDaInstalacao, itemDoFuroDeLaje, observacaoDosFuros, resultadoDaInstalacao, type Instalacao } from '../furos_laje'
+import {
+  avisoDoCEletrico,
+  ehFuroDeLaje,
+  furoConferivel,
+  furoDeLajeEscondido,
+  furosConferiveisPorArea,
+  furosDeLajeNasAreas,
+  furosNoToque,
+  instalacoesDoFuro,
+  itemDaInstalacao,
+  itemDoFuroDeLaje,
+  observacaoDosFuros,
+  resultadoDaInstalacao,
+  situacaoDoNumeroDaArea,
+  textoDoNumeroDaArea,
+  ZOOM_DOS_FUROS_DE_LAJE,
+  type Instalacao,
+} from '../furos_laje'
 import { abrirPacoteOuAnterior, dataCurta, filhosDoManifest, NOME_DA_DISCIPLINA, paiDe, rotuloDoFilho, NOME_DA_PARTE, partesDoManifest, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
 import { filtrosDoTrecho } from '../reprovacoes'
 import {
@@ -268,6 +285,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Peças que dividem o desenho com outra (P101 e P101a): o toque no desenho pergunta qual. */
   const mesmoDesenho = useMemo(() => pecasDoMesmoDesenho(Object.entries(manifest?.elementos ?? {})), [manifest])
   const [mesmoDesenhoAberto, setMesmoDesenhoAberto] = useState<string[] | null>(null)
+  /** Toque que caiu no alvo de dois ou mais furos: a pessoa escolhe qual (20/11). */
+  const [qualFuro, setQualFuro] = useState<string[] | null>(null)
+  /** O mapa está perto o bastante para os furos de laje aparecerem (zoom ≥ ZOOM_DOS_FUROS_DE_LAJE). */
+  const [furosPerto, setFurosPerto] = useState(false)
   // tipos de local que esta planta tem (forma: pilares, vigas e as lajes desenhadas; arquitetura: ambientes)
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && (pode || areasDaPlanta.length > 0)
   // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
@@ -365,6 +386,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const nasPecas = await ligarEntrePecas(cx, dados.regras, elementoDe(id)?.nome ?? 'Laje', ficha, [...itens, ...daqui.map((l) => Number(l.item))], pecasParaLigar(id))
     return [...daqui, ...nasPecas]
   }
+  /** Longe (zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área no lugar dos furos de laje conferíveis. */
+  const numerosDasAreas = useMemo(() => furosConferiveisPorArea(manifest?.elementos, furosDeLaje), [manifest, furosDeLaje])
   /** Furos de laje de cada área (id da área → ids dos furos, na ordem do nome). */
   const furosPorArea = useMemo(() => {
     const m = new Map<string, string[]>()
@@ -546,6 +569,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const camadas = useRef(new Map<string, L.Path[]>())
   const grupos = useRef<Map<string, L.LayerGroup> | null>(null)
   const tocarRef = useRef<(id: string) => void>(() => {})
+  /** Toque na bolinha do furo: se o alvo de outro furo também pega o ponto, pergunta qual (20/11). */
+  const tocarNoFuroRef = useRef<(id: string, pos: L.LatLng) => void>(() => {})
+  /** Número de furos de cada área (longe): id da área → marcador e texto. */
+  const numerosDeFuros = useRef(new Map<string, { marcador: L.Marker; texto: HTMLElement }>())
   /** Toque no desenho (e não no nome): se o desenho é de mais de uma peça, a pessoa escolhe qual. */
   const tocarDesenhoRef = useRef<(id: string) => void>(() => {})
   const tocarMapaRef = useRef<(pos: L.LatLng) => void>(() => {})
@@ -654,8 +681,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         const alvo = L.circleMarker(centro, { renderer: rend, radius: ALVO_FURO_PX, stroke: false, fillOpacity: 0, fillColor: '#000' })
         marca.addTo(g)
         alvo.addTo(g)
-        marca.on('click', () => tocarRef.current(id))
-        alvo.on('click', () => tocarRef.current(id))
+        marca.on('click', (ev: L.LeafletMouseEvent) => tocarNoFuroRef.current(id, ev.latlng))
+        alvo.on('click', (ev: L.LeafletMouseEvent) => tocarNoFuroRef.current(id, ev.latlng))
         camadas.current.set(id, [marca])
         alvosDosFuros.current.set(id, alvo)
         if (e.tipo === 'E') {
@@ -715,6 +742,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       }
     }
     m.on('zoomend', mostrarNomes)
+    // furos de laje: só de perto (longe, o alvo de 44 px cobre metros de obra e o toque pega o furo errado)
+    const verFurosPerto = () => setFurosPerto(m.getZoom() >= ZOOM_DOS_FUROS_DE_LAJE)
+    m.on('zoomend', verFurosPerto)
     mapa.current = m
     if (import.meta.env.DEV) (window as unknown as { __fvMapa: L.Map }).__fvMapa = m
     // o zoom inicial só vale depois que a área do mapa tem tamanho na tela
@@ -723,6 +753,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       m.fitBounds(enquadro)
       irAoAlvo()
       mostrarNomes()
+      verFurosPerto()
     })
     // Tela mudou de tamanho (girou o aparelho, por exemplo): enquanto a pessoa não mexeu na
     // planta, ela continua enquadrada inteira; depois disso, fica onde a pessoa deixou.
@@ -837,6 +868,40 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     cima.addTo(m)
   }, [tipo, manifest, chaveDasAreas])
 
+  // furos de laje longe (aba Furos, zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área ("23 furos"); o
+  // toque aproxima até os furos dela. Texto e cor ficam em dia no efeito das cores.
+  useEffect(() => {
+    const m = mapa.current
+    if (!m || tipo !== 'F' || furosPerto || !numerosDasAreas.length) return
+    const mapaDoEfeito = m
+    const criados: L.Marker[] = []
+    for (const g of numerosDasAreas) {
+      const texto = document.createElement('span')
+      texto.setAttribute('data-testid', 'fvs-numero-furos')
+      const marcador = L.marker(ll(g.centro), {
+        icon: L.divIcon({ className: 'fv-caixa fv-num-furos', html: texto, iconSize: [0, 0] }),
+        keyboard: false,
+        // por cima da caixa com o nome da área (que fica no centro dela e seguraria o toque)
+        zIndexOffset: 1000,
+      }).addTo(m)
+      marcador.on('click', () => {
+        const [x0, y0, x1, y1] = g.caixa
+        const b = L.latLngBounds(ll([x0, y0]), ll([x1, y1])).pad(0.1)
+        // aproxima até caberem os furos da área, e no mínimo até o zoom em que eles aparecem; se não
+        // cabem todos, para no furo mais perto do centro deles (o centro pode cair num vão sem furo)
+        const zCabe = mapaDoEfeito.getBoundsZoom(b)
+        const z = Math.min(Math.max(zCabe, ZOOM_DOS_FUROS_DE_LAJE), mapaDoEfeito.getMaxZoom())
+        mapaDoEfeito.flyTo(zCabe >= ZOOM_DOS_FUROS_DE_LAJE ? b.getCenter() : ll(g.perto), z, { duration: 0.5 })
+      })
+      criados.push(marcador)
+      numerosDeFuros.current.set(g.areaId, { marcador, texto })
+    }
+    return () => {
+      for (const k of criados) k.remove()
+      numerosDeFuros.current.clear()
+    }
+  }, [tipo, furosPerto, numerosDasAreas, manifest, pacote])
+
   // barras: só a camada escolhida, só na aba Barras, por cima de tudo
   useEffect(() => {
     const m = mapa.current
@@ -875,20 +940,26 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       if (ehFilho(e.tipo)) {
         // furo (ou esquadria) pendente: miolo branco (fica visível em cima da viga); fora da aba dele, apagado e sem toque
         const fill = s === 'nada' ? '#ffffff' : cor
+        // escondido (20/11): furo fora da aba Furos (não cobre pilar e viga); furo de laje de Geral,
+        // Climatização ou Incêndio (o dado fica no pacote); furo de laje com a planta longe (no lugar, o
+        // número da área). O furo selecionado (pela busca, por exemplo) aparece sempre.
+        const escondido =
+          sel !== id && e.tipo === 'F' && (tipo !== 'F' || furoDeLajeEscondido(e) || (ehFuroDeLaje(e) && !furosPerto))
         // furo de laje fora de área de laje: apagado, não marca nada (o toque diz por quê)
         const vivo = ativo && !(ehFuroDeLaje(e) && !furosDeLaje.get(id))
-        const fo = vivo ? 0.95 : 0.25
-        const op = vivo ? 1 : 0.35
+        const fo = escondido ? 0 : vivo ? 0.95 : 0.25
+        const op = escondido ? 0 : vivo ? 1 : 0.35
         const w = sel === id ? 4 : 2
+        const tocavel = ativo && !escondido
         const chaveFuro = `${color}|${fill}|${fo}|${op}|${w}`
         for (const l of camadas.current.get(id) ?? []) {
-          ;(l.options as { interactive?: boolean }).interactive = ativo
+          ;(l.options as { interactive?: boolean }).interactive = tocavel
           if (estilos.current.get(l) === chaveFuro) continue
           estilos.current.set(l, chaveFuro)
           l.setStyle({ color: sel === id ? '#111' : cor, fillColor: fill, fillOpacity: fo, opacity: op, weight: w })
         }
         const alvo = alvosDosFuros.current.get(id)
-        if (alvo) (alvo.options as { interactive?: boolean }).interactive = ativo
+        if (alvo) (alvo.options as { interactive?: boolean }).interactive = tocavel
         continue
       }
       const chave = `${color}|${cor}|${fillOpacity}|${opacity}|${weight}|${dashArray}`
@@ -919,6 +990,18 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           l.setStyle({ color, fillColor: cor, fillOpacity, opacity, weight })
         }
       }
+    }
+    // número de furos de cada área (longe): "5 de 23 furos OK", na cor do conjunto
+    for (const g of numerosDasAreas) {
+      const n = numerosDeFuros.current.get(g.areaId)
+      if (!n) continue
+      const sits = g.ids.map((id) => {
+        const e = manifest.elementos[id]
+        return e ? situacao(id, e) : 'nada'
+      })
+      const texto = textoDoNumeroDaArea(sits)
+      if (n.texto.textContent !== texto) n.texto.textContent = texto
+      n.texto.className = `s-${situacaoDoNumeroDaArea(sits)}`
     }
     if (tipo === 'B') {
       for (const [id, l] of camadasDeBarra.current) {
@@ -1464,6 +1547,29 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (id) tocarRef.current(id)
   }
 
+  tocarNoFuroRef.current = (id: string, pos: L.LatLng) => {
+    const m = mapa.current
+    if (desenho || !m) return tocarRef.current(id)
+    // o canvas entrega o toque ao furo desenhado por cima; com dois alvos no ponto, a pessoa escolhe
+    const toque = m.latLngToContainerPoint(pos)
+    const pontos: Array<{ id: string; x: number; y: number }> = []
+    for (const [fid, alvo] of alvosDosFuros.current) {
+      if (!(alvo.options as { interactive?: boolean }).interactive) continue
+      const p = m.latLngToContainerPoint(alvo.getLatLng())
+      if (Math.abs(p.x - toque.x) <= ALVO_FURO_PX && Math.abs(p.y - toque.y) <= ALVO_FURO_PX) pontos.push({ id: fid, x: p.x, y: p.y })
+    }
+    const ids = furosNoToque(pontos, toque.x, toque.y, ALVO_FURO_PX)
+    if (ids.length < 2) return tocarRef.current(id)
+    setQualFuro(ids)
+    // o voltar do aparelho fecha a escolha, sem sair da planta
+    abrirSobre(() => setQualFuro(null))
+  }
+  const escolherFuro = (id: string | null) => {
+    setQualFuro(null)
+    fecharSobre()
+    if (id) tocarRef.current(id)
+  }
+
   const limitesDe =(id: string, e: ElementoPacote) =>
     (camadas.current.get(id) ?? []).reduce((acc, l) => acc.extend(limitesDaCamada(l)), caixa(e.rotulo))
 
@@ -1515,8 +1621,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
 
   // ------------------------------------------------------------------ progresso
-  // arranque (só detalhe) não tem ficha: não conta no "x/y liberados"
-  const doTipo = useMemo(() => elementos.filter(([, e]) => e.tipo === tipo && !e.so_detalhe), [elementos, tipo])
+  // arranque (só detalhe) não tem ficha: não conta no "x/y liberados"; na aba Furos, só os furos
+  // conferíveis (o de laje fora de área ou de Geral, Climatização e Incêndio não marca nada; 20/11)
+  const doTipo = useMemo(
+    () => elementos.filter(([id, e]) => e.tipo === tipo && !e.so_detalhe && (e.tipo !== 'F' || furoConferivel(e, furosDeLaje.get(id)))),
+    [elementos, tipo, furosDeLaje],
+  )
   let liberadas = 0
   let paraConcretar = 0
   let comR = 0
@@ -2036,6 +2146,28 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             })}
           </div>
           <button type="button" class="fv-escolha-cancelar" onClick={() => escolherPeca(null)}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {qualFuro && (
+        <div class="fv-escolha" role="dialog" aria-label="Qual furo?" data-testid="fvs-escolha-furo">
+          <b>Qual furo? O toque pegou {qualFuro.length} furos.</b>
+          <div class="fv-escolha-pecas">
+            {qualFuro.map((id) => {
+              const e = elementoDe(id)
+              const s = e ? situacao(id, e) : 'nada'
+              return (
+                <button type="button" key={id} data-situacao={s} onClick={() => escolherFuro(id)}>
+                  <i style={{ borderColor: COR[s][0], background: COR[s][0] + '55' }} />
+                  <b>{e?.nome ?? id}</b>
+                  <span>{e?.secao ? `${e.secao} · ` : ''}{s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errado' : 'sem conferir'}</span>
+                </button>
+              )
+            })}
+          </div>
+          <button type="button" class="fv-escolha-cancelar" onClick={() => escolherFuro(null)}>
             Cancelar
           </button>
         </div>

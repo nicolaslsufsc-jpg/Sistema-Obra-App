@@ -8,8 +8,9 @@ Uso (no PC, na raiz do repositório):
     py pipeline/fvs/compactar_pacote.py "C:\\...\\dados_obra" --saida "C:\\...\\EXE_pacote.zip" --nome "Obra Exemplo"
 
 O exportar_bancada.py já gera um .zip no mesmo formato; este é para quando só existe a pasta.
-Só entra o que o índice cita (manifest.json e pacote.bin de cada planta), mais fichas.json e
-historico.json: nada que tenha ficado solto na pasta, e nenhum atalho. Se o indice.json não tem a
+Só entra o que o índice cita (manifest.json e pacote.bin de cada planta), mais fichas.json,
+historico.json e config_fvs.json (regras da FVS, conferido antes: regras_fvs.py): nada que tenha
+ficado solto na pasta, e nenhum atalho. Se o indice.json não tem a
 data em que foi gerado ("gerado_em", que o app mostra ao trocar de pacote), vai a data do arquivo.
 O .zip tem dados de obra: nunca entra no repositório nem vai para servidor (o script recusa saída
 dentro de um repositório). Quem leva ao tablet é a pessoa (cabo, pendrive ou o meio que a empresa aceitar).
@@ -28,12 +29,13 @@ AQUI = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI))
 sys.path.insert(0, str(AQUI.parent))
 
+import regras_fvs  # noqa: E402
 import sistema_oficial  # noqa: E402
 from exportar_obra import dentro_de_repositorio  # noqa: E402
 
 PASTA_NO_ZIP = "dados_obra"
 SEM_COMPRESSAO = {".bin"}
-SOLTOS = ("fichas.json", "historico.json")
+SOLTOS = ("fichas.json", "historico.json", regras_fvs.NOME_DO_ARQUIVO)
 
 
 class ErroCompactar(Exception):
@@ -79,6 +81,12 @@ def compactar(pasta: pathlib.Path, saida: pathlib.Path, nome: str | None = None,
     if faltam:
         raise ErroCompactar(f"faltam {len(faltam)} arquivo(s) de planta, por exemplo {faltam[0]}")
     arquivos = sorted(set(citados) | {rel for rel in SOLTOS if _arquivo_da_pasta(pasta, rel)})
+    # regras da FVS: regra fora do formato para aqui, em vez de sumir calada no tablet
+    if regras_fvs.NOME_DO_ARQUIVO in arquivos:
+        try:
+            regras_fvs.ler(pasta / regras_fvs.NOME_DO_ARQUIVO)
+        except regras_fvs.ErroRegrasFvs as e:
+            raise ErroCompactar(str(e)) from e
 
     # o nome por extenso da obra só existe no pacote: o app publicado não leva (08/11, "Tirar o nome")
     if nome and nome.strip():

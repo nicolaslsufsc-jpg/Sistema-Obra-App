@@ -62,11 +62,16 @@ export function TelaRegras({ ctx }: { ctx: ContextoFvs }) {
         <section>
           <h2>Ligações</h2>
           <p class="discreto">O C no primeiro item marca C no segundo, na mesma peça, se ele ainda estiver vazio. Dá para desfazer.</p>
+          {r.ligacoes.some((l) => l.entrePecas) && (
+            <p class="discreto" data-testid="fvs-regras-entre-pecas">
+              Entre peças: o C no item da área de laje marca C no item de cada pilar e viga dentro dela (vale o centro da peça).
+            </p>
+          )}
           <ul class="lista fv-regras-lista">
             {r.ligacoes.map((l) => (
               <li key={l.id} data-testid="fvs-regra-ligacao">
                 <Item i={l.de} />
-                <span class="fv-regra-seta">↓ marca C em</span>
+                <span class="fv-regra-seta">{l.entrePecas ? '↓ marca C, em cada pilar e viga dentro da área de laje, em' : '↓ marca C em'}</span>
                 <Item i={l.para} />
               </li>
             ))}

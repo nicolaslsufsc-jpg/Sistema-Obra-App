@@ -20,11 +20,16 @@ export interface Prazo extends RefItem {
   texto?: string
 }
 
-/** O item `de`, ao ficar C, marca C no item `para` da mesma peça (se ele ainda estiver vazio). */
+/**
+ * O item `de`, ao ficar C, marca C no item `para` (se ele ainda estiver vazio). Sem `entre`, na mesma
+ * peça. Com `entre: 'area'` (20/11/2026), entre peças: `de` é um item da ficha de uma área de laje, e
+ * `para` é marcado em cada pilar ou viga dentro dela (ligacoes.ts).
+ */
 export interface Ligacao {
   id: string
   de: RefItem
   para: RefItem
+  entre?: 'area'
 }
 
 export interface RegrasFvs {
@@ -67,7 +72,9 @@ function lerLigacao(v: unknown): Ligacao | null {
   const de = refItem(l.de)
   const para = refItem(l.para)
   if (!de || !para || (de.ficha === para.ficha && de.item === para.item)) return null
-  return { id: l.id, de, para }
+  // "entre" que este app não conhece: a regra fica de fora (não vira ligação da mesma peça por engano)
+  if (l.entre !== undefined && l.entre !== null && l.entre !== 'area') return null
+  return { id: l.id, de, para, ...(l.entre === 'area' ? { entre: 'area' as const } : {}) }
 }
 
 /** As regras de um objeto `regras` (o jsonb da tabela ou o config_fvs.json). Entrada torta fica de fora. */

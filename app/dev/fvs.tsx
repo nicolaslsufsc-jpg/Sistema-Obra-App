@@ -641,6 +641,8 @@ async function semearAmbientes(base: Record<string, unknown>) {
 /**
  * ?regras=1: regras da obra de teste (como viriam do config_fvs.json): a desforma do pilar (item 7)
  * espera 3 dias da concretagem (item 6), e o item 4 (armadura) marca C no item 5 (prumo) pela ligação.
+ * ?regras=pecas: mais as ligações entre peças (20/11): o item 4 da ficha de laje (concretagem) marca C
+ * no item 4 da viga e no item 6 do pilar, em cada peça de dentro da área de laje.
  */
 /**
  * ?rastreio=1: o item 6 do pilar (rastreabilidade) é o do rastreio do concreto, e o P6 tem um caminhão
@@ -663,7 +665,15 @@ async function semearRastreio() {
 async function semearRegras() {
   const regras = {
     prazos: [{ id: 'desforma', ficha: 'TESTE-PVS-P', item: 7, dias: 3, depois_de: { tipo: 'concretagem' }, texto: 'Desforma' }],
-    ligacoes: [{ id: 'armadura-prumo', de: { ficha: 'TESTE-PVS-P', item: 4 }, para: { ficha: 'TESTE-PVS-P', item: 5 } }],
+    ligacoes: [
+      { id: 'armadura-prumo', de: { ficha: 'TESTE-PVS-P', item: 4 }, para: { ficha: 'TESTE-PVS-P', item: 5 } },
+      ...(params.get('regras') === 'pecas'
+        ? [
+            { id: 'laje-viga', entre: 'area', de: { ficha: 'TESTE-PVS-LAJE', item: 4 }, para: { ficha: 'TESTE-PVS-V', item: 4 } },
+            { id: 'laje-pilar', entre: 'area', de: { ficha: 'TESTE-PVS-LAJE', item: 4 }, para: { ficha: 'TESTE-PVS-P', item: 6 } },
+          ]
+        : []),
+    ],
   }
   const linha = { id: 'c0000000-0000-0000-0000-0000000000a1', obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: '2026-11-19T00:00:00.000Z', apagado: false, regras }
   await banco.registros.put({ tabela: 'fvs_regras', id: linha.id, obra_id: OBRA, linha: linha as never, pendente: 0 as const })

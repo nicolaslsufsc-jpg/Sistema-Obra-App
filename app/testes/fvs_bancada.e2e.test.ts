@@ -284,10 +284,11 @@ suite('FVS na bancada (Chrome)', () => {
   for (const [largura, altura] of [
     [384, 832],
     [375, 812],
+    [768, 1024],
     [800, 1280],
     [1024, 768],
   ] as const) {
-    it(`${largura}x${altura}: caixa de trecho com o número e 44 px; abas inteiras`, async () => {
+    it(`${largura}x${altura}: caixa de trecho com o número e 44 px; abas e "Buscar" inteiros`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       await p.goto(url)
@@ -301,7 +302,13 @@ suite('FVS na bancada (Chrome)', () => {
         const texto = sel.options[sel.selectedIndex].text
         const seg = document.querySelector('.fv-seg') as HTMLElement
         const s = seg.getBoundingClientRect()
+        // reteste com cabo (20/11): no tablet de 800 px o campo de busca mostrava só "Busc"
+        const busca = document.querySelector('.fv-busca') as HTMLInputElement
+        const cb = getComputedStyle(busca)
+        cv.font = `${cb.fontWeight} ${cb.fontSize} ${cb.fontFamily}`
         return {
+          buscaPrecisa: cv.measureText(busca.placeholder).width + parseFloat(cb.paddingLeft) + parseFloat(cb.paddingRight),
+          buscaTem: busca.clientWidth,
           texto,
           precisa: cv.measureText(texto).width + 24,
           tem: sel.clientWidth,
@@ -315,6 +322,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(m.altura).toBeGreaterThanOrEqual(43.5)
       expect(m.abasRolam, 'Pilares, Vigas e Lajes cabem sem rolar').toBe(false)
       expect(m.abasFora).toEqual([])
+      expect(m.buscaTem, '"Buscar" inteiro').toBeGreaterThanOrEqual(m.buscaPrecisa)
       expect(await topoCabe(p)).toBe(true)
       expect(await alvosPequenos(p)).toEqual([])
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)

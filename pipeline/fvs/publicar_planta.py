@@ -48,6 +48,9 @@ arquitetura vira um local "E" dentro do ambiente; a porta entre dois cômodos, u
 
 Modulação (modulacao.py, com "modulacao": {"pranchas": [...], "escala": 50} em "ambientes"): o recorte da
 planta de 1ª fiada do apartamento vira o detalhe de cada cômodo dele (uma imagem por apartamento).
+Outros projetos ("projetos": [{"titulo": "Paginação de piso", "pranchas": [...], "escala": 50, "fichas": [...]}]
+em "ambientes"): o mesmo recorte, colorido, em "projetos" do ambiente; o app mostra cada um só nas fichas
+listadas (paginação de piso no piso, impermeabilização no piso e no reboco...).
 
 Furos de viga (fatia 1 da conferência por elemento, furos.py): cada furo do modelo de furação vira um
 local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga. Os furos
@@ -151,6 +154,17 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if not mod["pranchas"]:
                 raise ErroPublicacao("ambientes: \"modulacao\" sem prancha nenhuma (confira \"pranchas\")")
             amb["modulacao"] = mod
+        if amb.get("projetos"):
+            if not isinstance(amb["projetos"], list):
+                raise ErroPublicacao("ambientes: \"projetos\" tem que ser uma lista")
+            projetos = []
+            for i, pj in enumerate(amb["projetos"]):
+                pj = dict(pj)
+                pj["pranchas"] = arquivos(pj.get("pranchas"))
+                if not pj["pranchas"]:
+                    raise ErroPublicacao(f"ambientes: projeto {i + 1} ({pj.get('titulo') or 'sem título'}) sem prancha nenhuma (confira \"pranchas\")")
+                projetos.append(pj)
+            amb["projetos"] = projetos
     fur = None
     if cfg.get("furos"):
         fur = dict(cfg["furos"])
@@ -304,6 +318,13 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         if p["tipo"] == "E":
             reg["ambiente"] = ids[("A", p["ambiente"])]
             reg["esquadria"] = p["esquadria"]
+        if p["tipo"] == "A" and detalhes.get("A_projetos", {}).get(p["nome"]):
+            # paginação de piso, impermeabilização...: um recorte a mais por projeto, com as fichas em que aparece
+            reg["projetos"] = []
+            for dp in detalhes["A_projetos"][p["nome"]]:
+                reg["projetos"].append(dp["chave"])
+                dets.setdefault(dp["chave"], {"titulo": dp["titulo"], "prancha": dp["prancha"], "img": dp["img"], "aco": None,
+                                              **({"fichas": dp["fichas"]} if dp.get("fichas") else {})})
         if d:
             reg["detalhe"] = d["chave"]
             if d.get("situacao") == "nasce":
@@ -621,7 +642,12 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             print(f"  modulação: {mo['com_modulacao']} ambientes com recorte ({mo['recortes']} recortes de {mo['pranchas']} pranchas)"
                   + (f"; {len(mo['sem_modulacao'])} sem (lista no relatorio.json)" if mo["sem_modulacao"] else "")
                   + (f"; não casaram: {', '.join(mo['nao_casaram'])}" if mo["nao_casaram"] else ""))
+        for pj in r.get("projetos") or []:
+            print(f"  {pj['titulo']}: {pj['com_recorte']} ambientes com recorte ({pj['recortes']} recortes de {pj['pranchas']} pranchas, {pj['kb']} KB)"
+                  + (f"; {len(pj['sem_recorte'])} sem (lista no relatorio.json)" if pj["sem_recorte"] else "")
+                  + (f"; não casaram: {', '.join(pj['nao_casaram'])}" if pj["nao_casaram"] else ""))
         detalhes.setdefault("A", {}).update(lida.pop("detalhes_a", None) or {})
+        detalhes.setdefault("A_projetos", {}).update(lida.pop("projetos_a", None) or {})
         formas.append(lida)
     if cfg.get("det_consolos") or cfg.get("det_macicos"):
         import partes as pt

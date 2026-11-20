@@ -25,6 +25,9 @@ No pavimento.json (ver publicar_planta.py):
 (esquadrias.py).
 "modulacao": {"pranchas": [...], "escala": 50} (opcional) põe o recorte da planta de 1ª fiada como detalhe
 de cada ambiente (modulacao.py; o mesmo recorte para os cômodos do mesmo apartamento).
+"projetos": [{"titulo": "Paginação de piso", "pranchas": [...], "escala": 50, "fichas": [...]}, ...] (opcional)
+põe outros projetos do ambiente (paginação de piso, impermeabilização...) do mesmo jeito, cada um com o
+seu recorte, mostrado só nas fichas listadas (modulacao.ler_projeto).
 
 Ler o IFC leva alguns minutos por pavimento; o resultado fica guardado ao lado do IFC
 (<arquivo>.andar<N>.json) e é reaproveitado enquanto o IFC não mudar.
@@ -501,11 +504,13 @@ def do_ifc_com_guarda(caminho_ifc: str, andar: str) -> dict:
 # Prancha PDF
 # ---------------------------------------------------------------------------
 
-def casar_com_a_prancha(page, paredes, escala: float) -> dict:
+def casar_com_a_prancha(page, paredes, escala: float, com_imagem: bool = False) -> dict:
     """Deslocamento que põe as paredes do modelo em cima das paredes desenhadas na prancha.
 
     Desenha as duas em preto e branco na mesma resolução e procura o deslocamento com mais
     coincidência. Devolve os números para converter metros do modelo em pontos da prancha.
+    com_imagem: devolve também a prancha desenhada ("imagem", 0 a 1) e "k" (pixel por ponto), para
+    conferir um pedaço de cada vez (modulacao.nota_local).
     """
     import numpy as np
     from PIL import Image, ImageDraw
@@ -550,7 +555,10 @@ def casar_com_a_prancha(page, paredes, escala: float) -> dict:
     c = np.fft.irfft2(np.fft.rfft2(a, forma) * np.fft.rfft2(b[::-1, ::-1], forma), forma)
     iy, ix = np.unravel_index(np.argmax(c), c.shape)
     oy, ox = iy - (b.shape[0] - 1), ix - (b.shape[1] - 1)
-    return {"pt_por_m": pt_por_m, "x0": x0, "y1": y1, "dx_pt": ox / k, "dy_pt": oy / k, "coincidencia": float(c[iy, ix] / b.sum())}
+    saida = {"pt_por_m": pt_por_m, "x0": x0, "y1": y1, "dx_pt": ox / k, "dy_pt": oy / k, "coincidencia": float(c[iy, ix] / b.sum())}
+    if com_imagem:
+        saida.update(imagem=a, k=k)
+    return saida
 
 
 def rotulos_de_apartamento(page, re_apto=RE_APTO) -> list[tuple[str, str, float, float]]:
@@ -624,17 +632,32 @@ def ler_planta(cfg: dict) -> dict:
         lista = [{"nome": nome, "pts": [para_prancha(x, y) for x, y in g.exterior.coords[:-1]]} for nome, g in portas]
         locais, rel_esquadrias = mod_esq.distribuir_esquadrias(lista, pecas, t["pt_por_m"])
         pecas.extend(locais)
-    dets_a, rel_modulacao = {}, None
-    if cfg.get("modulacao"):
-        # planta de 1ª fiada de cada setor: o recorte do apartamento vira o detalhe do ambiente (modulacao.py)
+    dets_a, rel_modulacao, projetos_a, rel_projetos = {}, None, {}, []
+    if cfg.get("modulacao") or cfg.get("projetos"):
         import modulacao as mod_mod
 
         geometrias = {a["nome"]: ambientes[a["indice"]] for a in nomeados}
         grupos = {a["nome"]: a["grupo"] for a in nomeados}
-        try:
-            dets_a, rel_modulacao = mod_mod.ler_modulacao(cfg["modulacao"], paredes, geometrias, grupos, casar_com_a_prancha)
-        except mod_mod.ErroModulacao as e:
-            raise ErroAmbientes(f"modulação: {e}") from e
+        if cfg.get("modulacao"):
+            # planta de 1ª fiada de cada setor: o recorte do apartamento vira o detalhe do ambiente (modulacao.py)
+            try:
+                dets_a, rel_modulacao = mod_mod.ler_modulacao(cfg["modulacao"], paredes, geometrias, grupos, casar_com_a_prancha)
+            except mod_mod.ErroModulacao as e:
+                raise ErroAmbientes(f"modulação: {e}") from e
+        # outros projetos do ambiente (paginação de piso, impermeabilização): um recorte cada, nas fichas listadas
+        siglas = set()
+        for i, proj in enumerate(cfg.get("projetos") or []):
+            try:
+                dets, rel = mod_mod.ler_projeto(proj, paredes, geometrias, grupos, casar_com_a_prancha,
+                                                base={"page": page, "t": t, "escala": escala})
+            except mod_mod.ErroModulacao as e:
+                raise ErroAmbientes(f"projeto {i + 1} ({proj.get('titulo') or 'sem título'}): {e}") from e
+            if rel["sigla"] in siglas:
+                raise ErroAmbientes(f"dois projetos com a mesma sigla ({rel['sigla']}): dê uma \"sigla\" diferente a cada um")
+            siglas.add(rel["sigla"])
+            for nome, d in dets.items():
+                projetos_a.setdefault(nome, []).append(d)
+            rel_projetos.append(rel)
     prancha = nome_da_prancha(cfg["prancha"])
     import base64
     return {
@@ -644,11 +667,13 @@ def ler_planta(cfg: dict) -> dict:
         "tiles": {k: base64.b64decode(v) for k, v in legado.tiles_da_forma(page).items()},
         "pecas": pecas,
         "detalhes_a": dets_a,
+        "projetos_a": projetos_a,
         "resumo": {"ambientes": len(ambientes), "apartamentos": {n: len(a["ambientes"]) for n, a in sorted(aptos.items())},
                    "area_comum": area_comum(pecas), "coincidencia": round(t["coincidencia"], 2),
                    "tipos": {n: a["tipo"] for n, a in sorted(aptos.items())},
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
                    **({"nomes": resumo_nomes} if resumo_nomes else {}),
                    **({"esquadrias": rel_esquadrias} if rel_esquadrias else {}),
-                   **({"modulacao": rel_modulacao} if rel_modulacao else {})},
+                   **({"modulacao": rel_modulacao} if rel_modulacao else {}),
+                   **({"projetos": rel_projetos} if rel_projetos else {})},
     }

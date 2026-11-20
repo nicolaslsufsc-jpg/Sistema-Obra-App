@@ -106,6 +106,7 @@ import { anotarToque, esquecerToque, type Toque } from '../toques'
 import './escolha.css'
 import type { ContextoFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
+import { recortesDoAmbiente } from '../projetos_ambiente'
 import { usarCamadas } from './usarCamadas'
 
 const COR: Record<Situacao, [string, number]> = {
@@ -2448,6 +2449,8 @@ function Painel(p: PropsPainel) {
   // arranque do pilar de cima (pipeline/fvs/lances.py): só o detalhe, sem ficha
   const soDetalhe = !!peca.so_detalhe
   const corrigidoEm = dataCurta(peca.detalhe_corrigido_em)
+  // ambiente: a modulação e os projetos da ficha escolhida (paginação de piso, impermeabilização...), um embaixo do outro
+  const recortesA = recortesDoAmbiente(peca, pacote.manifest.detalhes, ficha?.codigo)
   // os outros cômodos do apartamento (o ambiente com recorte de modulação mostra os dois)
   const irmaosDoAmbiente =
     peca.tipo === 'A' && p.irmaos.length > 1 ? (
@@ -2907,13 +2910,32 @@ function Painel(p: PropsPainel) {
             })}
           </div>
         )}
-        {imgDet ? (
+        {peca.tipo === 'A' && recortesA.length > 0 ? (
           <>
-            <div class="fv-sec fv-det" data-testid={peca.tipo === 'A' ? 'fvs-modulacao' : undefined}>
+            {recortesA.map((r) => {
+              const img = pacote.url(`d:${r.chave}`)
+              return (
+                <div key={r.chave} class="fv-sec fv-det" data-testid={r.modulacao ? 'fvs-modulacao' : 'fvs-projeto'}>
+                  <h3>
+                    <span>{r.titulo}</span>
+                  </h3>
+                  {img && <img src={img} alt={r.titulo} onClick={() => p.aoZoom(img)} onLoad={rolarAoItem} />}
+                  <p class="fv-dica">{r.prancha} · toque na imagem para ampliar</p>
+                  {r.modulacao && corrigidoEm && (
+                    <p class="fv-dica" data-testid="fvs-detalhe-corrigido">
+                      Detalhe corrigido em {corrigidoEm}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+            {irmaosDoAmbiente}
+          </>
+        ) : imgDet && peca.tipo !== 'A' ? (
+          <>
+            <div class="fv-sec fv-det">
               <h3>
-                <span>
-                  {peca.tipo === 'A' ? (det?.titulo ?? 'Modulação') : `Detalhe${det && det.titulo !== peca.nome ? ` (${det.titulo})` : ''}`}
-                </span>
+                <span>{`Detalhe${det && det.titulo !== peca.nome ? ` (${det.titulo})` : ''}`}</span>
               </h3>
               <img src={imgDet} alt={`Detalhe ${peca.nome}`} onClick={() => p.aoZoom(imgDet)} onLoad={rolarAoItem} />
               {imgAco && (

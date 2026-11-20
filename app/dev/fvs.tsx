@@ -487,6 +487,32 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
     detalhes['M_Apto_101'] = { titulo: 'Modulação · Apto 101', prancha: 'TESTE.VD.EX.024.TIPA-R00', aco: false }
     for (const e of Object.values(elementos)) if (e.tipo === 'A' && e.grupo === 'Apto 101') e.detalhe = 'M_Apto_101'
   }
+  if (params.get('projetos')) {
+    // ?projetos=1: outros projetos do apto 101 (pipeline/fvs/modulacao.py, ler_projeto): a paginação de piso só na
+    // ficha de reboco de teste e a impermeabilização em todas (sem lista de fichas), coloridos como no pipeline
+    const desenhar = async (chave: string, texto: string, cor: string) => {
+      const t = document.createElement('canvas')
+      t.width = 600
+      t.height = 420
+      const tg = t.getContext('2d')!
+      tg.fillStyle = '#fff'
+      tg.fillRect(0, 0, 600, 420)
+      tg.fillStyle = cor
+      tg.fillRect(60, 80, 220, 160)
+      tg.strokeStyle = '#333'
+      tg.lineWidth = 6
+      tg.strokeRect(40, 60, 520, 320)
+      tg.fillStyle = '#111'
+      tg.font = 'bold 22px sans-serif'
+      tg.fillText(texto, 40, 36)
+      guardar(`d:${chave}`, await blobDaTela(t))
+    }
+    await desenhar('PP_Apto_101', 'PAGINAÇÃO DE PISO · APTO 101 (teste)', '#f3c98b')
+    await desenhar('IM_Apto_101', 'IMPERMEABILIZAÇÃO · APTO 101 (teste)', '#a6e3a6')
+    detalhes['PP_Apto_101'] = { titulo: 'Paginação de piso · Apto 101', prancha: 'TESTE.AR.DE.053.PISO-R00', aco: false, fichas: ['TESTE-PVS-REB'] }
+    detalhes['IM_Apto_101'] = { titulo: 'Impermeabilização · Apto 101', prancha: 'TESTE.IM.EX.006.PAV-R01', aco: false }
+    for (const e of Object.values(elementos)) if (e.tipo === 'A' && e.grupo === 'Apto 101') e.projetos = ['PP_Apto_101', 'IM_Apto_101']
+  }
   const manifest: Manifest = {
     formato: 1,
     planta_id: PLANTA_AMB,

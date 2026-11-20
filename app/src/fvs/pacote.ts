@@ -72,6 +72,9 @@ export interface ElementoPacote {
   viga?: string
   /** só furo: posição, tamanho e disciplinas do modelo */
   furo?: DadosDoFuro
+  /** só ambiente: recortes de outros projetos (paginação de piso, impermeabilização...), chaves em `detalhes`;
+   * a modulação continua em `detalhe` (projetos_ambiente.ts) */
+  projetos?: string[]
   /** só esquadria: id (no manifest) do ambiente em que ela fica */
   ambiente?: string
   /** só esquadria: código e classe */
@@ -142,6 +145,8 @@ export interface DetalhePacote {
   titulo: string
   prancha: string
   aco: boolean
+  /** só recorte de projeto do ambiente: códigos das fichas em que ele aparece (sem a lista, em todas) */
+  fichas?: string[]
 }
 
 export interface Manifest {

@@ -807,6 +807,25 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const b = on.getBoundingClientRect()
     if (b.left < f.left || b.right > f.right) fila.scrollLeft += b.left - f.left - (f.width - b.width) / 2
   }, [tipo, tipos.length])
+  // ... e a borda do lado em que a fila continua esmaece (fvs.css: mais-esq, mais-dir), para quem está
+  // no celular saber que há mais abas (revisão da frente 06, 20/11: "Pilares" aparecia como "ares")
+  useEffect(() => {
+    const fila = filaDeAbas.current
+    if (!fila) return
+    const marcar = () => {
+      fila.classList.toggle('mais-esq', fila.scrollLeft > 1)
+      fila.classList.toggle('mais-dir', fila.scrollLeft + fila.clientWidth < fila.scrollWidth - 1)
+    }
+    marcar()
+    fila.addEventListener('scroll', marcar, { passive: true })
+    // a largura da fila muda com a tela e com o topo (com ou sem serviço, trecho)
+    const tamanho = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(marcar)
+    tamanho?.observe(fila)
+    return () => {
+      fila.removeEventListener('scroll', marcar)
+      tamanho?.disconnect()
+    }
+  }, [tipo, tipos.length])
 
   // peça do tipo escolhido fica por cima (recebe o toque primeiro)
   useEffect(() => {

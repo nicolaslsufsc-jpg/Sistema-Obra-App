@@ -305,7 +305,10 @@ suite('telas no navegador', () => {
 
     // Documentos com conta: abre a lista mestra da obra do servidor, sem os exemplos da demonstração; o gestor cadastra
     await passo('clicar em Documentos', () => documentos.click(PRAZO))
-    await passo('lista-mestra do Documentos', () => pagina.getByTestId('lista-mestra').waitFor(PRAZO))
+    // Com conta a lista começa vazia (os exemplos são só sem conta): o contêiner da lista existe, mas sem
+    // altura, e o Playwright o trata como invisível (CI 73). A contagem ("0 documentos.") sempre aparece.
+    await passo('contagem do Documentos', () => pagina.getByTestId('contagem').waitFor(PRAZO))
+    await passo('lista-mestra do Documentos', () => pagina.getByTestId('lista-mestra').waitFor({ ...PRAZO, state: 'attached' }))
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('documentos')
     expect(await pagina.getByTestId('aviso-exemplos').count()).toBe(0)
     expect(await pagina.getByTestId('cadastrar').count()).toBe(1)

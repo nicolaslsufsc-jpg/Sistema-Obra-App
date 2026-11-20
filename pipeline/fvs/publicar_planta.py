@@ -39,6 +39,9 @@ de maciços. O detalhe de cada um vem das pranchas de "det_consolos" e "det_maci
 Esquadrias (esquadrias.py, com "esquadrias": true em "ambientes"): cada porta ou janela do IFC de
 arquitetura vira um local "E" dentro do ambiente; a porta entre dois cômodos, um local de cada lado.
 
+Modulação (modulacao.py, com "modulacao": {"pranchas": [...], "escala": 50} em "ambientes"): o recorte da
+planta de 1ª fiada do apartamento vira o detalhe de cada cômodo dele (uma imagem por apartamento).
+
 Furos de viga (fatia 1 da conferência por elemento, furos.py): cada furo do modelo de furação vira um
 local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga.
 
@@ -134,6 +137,12 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if len(achados) != 1:
                 raise ErroPublicacao(f"ambientes: \"nomes\" tem que ser um arquivo só (achei {len(achados)})")
             amb["nomes"] = achados[0]
+        if amb.get("modulacao"):
+            mod = dict(amb["modulacao"])
+            mod["pranchas"] = arquivos(mod.get("pranchas"))
+            if not mod["pranchas"]:
+                raise ErroPublicacao("ambientes: \"modulacao\" sem prancha nenhuma (confira \"pranchas\")")
+            amb["modulacao"] = mod
     fur = None
     if cfg.get("furos"):
         fur = dict(cfg["furos"])
@@ -534,6 +543,12 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             e = r["esquadrias"]
             print(f"  esquadrias: {e['em_ambiente']} de {e['esquadrias']} em ambiente ({e['em_dois_ambientes']} entre dois), {e['locais']} locais"
                   + (f"; {len(e['sem_ambiente'])} sem ambiente (lista no relatorio.json)" if e["sem_ambiente"] else ""))
+        if r.get("modulacao"):
+            mo = r["modulacao"]
+            print(f"  modulação: {mo['com_modulacao']} ambientes com recorte ({mo['recortes']} recortes de {mo['pranchas']} pranchas)"
+                  + (f"; {len(mo['sem_modulacao'])} sem (lista no relatorio.json)" if mo["sem_modulacao"] else "")
+                  + (f"; não casaram: {', '.join(mo['nao_casaram'])}" if mo["nao_casaram"] else ""))
+        detalhes.setdefault("A", {}).update(lida.pop("detalhes_a", None) or {})
         formas.append(lida)
     if cfg.get("det_consolos") or cfg.get("det_macicos"):
         import partes as pt

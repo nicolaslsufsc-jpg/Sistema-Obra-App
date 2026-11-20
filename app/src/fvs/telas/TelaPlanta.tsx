@@ -2129,6 +2129,32 @@ function Painel(p: PropsPainel) {
   // arranque do pilar de cima (pipeline/fvs/lances.py): só o detalhe, sem ficha
   const soDetalhe = !!peca.so_detalhe
   const corrigidoEm = dataCurta(peca.detalhe_corrigido_em)
+  // os outros cômodos do apartamento (o ambiente com recorte de modulação mostra os dois)
+  const irmaosDoAmbiente =
+    peca.tipo === 'A' && p.irmaos.length > 1 ? (
+      <div class="fv-sec fv-irmaos" data-testid="fvs-irmaos">
+        <h3>
+          <span>
+            {peca.grupo} · {p.irmaos.length} ambientes
+          </span>
+        </h3>
+        <div class="fv-chips">
+          {p.irmaos.map((i) => (
+            <button
+              type="button"
+              key={i.id}
+              class={`fv-chip s-${i.sit}${i.id === p.id ? ' on' : ''}`}
+              aria-label={`${i.nome}${i.comodo ? ` ${i.comodo}` : ''}: ${ROTULO_SITUACAO[i.sit]}`}
+              aria-current={i.id === p.id}
+              onClick={() => p.aoIr(i.id)}
+            >
+              {i.nome.slice(i.nome.lastIndexOf('-') + 1)}
+              {i.comodo && <span class="fv-chip-nm"> {i.comodo}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null
   const corpo = useRef<HTMLDivElement>(null)
   const daFicha = ficha ? eventos.filter((e) => e.ficha_id === ficha.id) : []
   const ult = ultimosPorItem(daFicha)
@@ -2528,28 +2554,33 @@ function Painel(p: PropsPainel) {
           </div>
         )}
         {imgDet ? (
-          <div class="fv-sec fv-det">
-            <h3>
-              <span>Detalhe{det && det.titulo !== peca.nome ? ` (${det.titulo})` : ''}</span>
-            </h3>
-            <img src={imgDet} alt={`Detalhe ${peca.nome}`} onClick={() => p.aoZoom(imgDet)} onLoad={rolarAoItem} />
-            {imgAco && (
-              <>
-                <h3>
-                  <span>Tabela de aço</span>
-                </h3>
-                <img src={imgAco} alt={`Tabela de aço ${peca.nome}`} onClick={() => p.aoZoom(imgAco)} onLoad={rolarAoItem} />
-              </>
-            )}
-            <p class="fv-dica">
-              {det?.prancha} · toque na imagem para ampliar
-            </p>
-            {corrigidoEm && (
-              <p class="fv-dica" data-testid="fvs-detalhe-corrigido">
-                Detalhe corrigido em {corrigidoEm}
+          <>
+            <div class="fv-sec fv-det" data-testid={peca.tipo === 'A' ? 'fvs-modulacao' : undefined}>
+              <h3>
+                <span>
+                  {peca.tipo === 'A' ? (det?.titulo ?? 'Modulação') : `Detalhe${det && det.titulo !== peca.nome ? ` (${det.titulo})` : ''}`}
+                </span>
+              </h3>
+              <img src={imgDet} alt={`Detalhe ${peca.nome}`} onClick={() => p.aoZoom(imgDet)} onLoad={rolarAoItem} />
+              {imgAco && (
+                <>
+                  <h3>
+                    <span>Tabela de aço</span>
+                  </h3>
+                  <img src={imgAco} alt={`Tabela de aço ${peca.nome}`} onClick={() => p.aoZoom(imgAco)} onLoad={rolarAoItem} />
+                </>
+              )}
+              <p class="fv-dica">
+                {det?.prancha} · toque na imagem para ampliar
               </p>
-            )}
-          </div>
+              {corrigidoEm && (
+                <p class="fv-dica" data-testid="fvs-detalhe-corrigido">
+                  Detalhe corrigido em {corrigidoEm}
+                </p>
+              )}
+            </div>
+            {irmaosDoAmbiente}
+          </>
         ) : p.area ? (
           <div class="fv-sec fv-area" data-testid="fvs-area-info">
             <h3>
@@ -2604,30 +2635,7 @@ function Painel(p: PropsPainel) {
             )}
           </div>
         ) : peca.tipo === 'F' || peca.tipo === 'E' ? null : peca.tipo === 'A' ? (
-          p.irmaos.length > 1 && (
-            <div class="fv-sec fv-irmaos" data-testid="fvs-irmaos">
-              <h3>
-                <span>
-                  {peca.grupo} · {p.irmaos.length} ambientes
-                </span>
-              </h3>
-              <div class="fv-chips">
-                {p.irmaos.map((i) => (
-                  <button
-                    type="button"
-                    key={i.id}
-                    class={`fv-chip s-${i.sit}${i.id === p.id ? ' on' : ''}`}
-                    aria-label={`${i.nome}${i.comodo ? ` ${i.comodo}` : ''}: ${ROTULO_SITUACAO[i.sit]}`}
-                    aria-current={i.id === p.id}
-                    onClick={() => p.aoIr(i.id)}
-                  >
-                    {i.nome.slice(i.nome.lastIndexOf('-') + 1)}
-                    {i.comodo && <span class="fv-chip-nm"> {i.comodo}</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
+          irmaosDoAmbiente
         ) : (
           <div class="fv-sec">
             <p class="aviso">O detalhe desta peça não está nas pranchas carregadas.</p>

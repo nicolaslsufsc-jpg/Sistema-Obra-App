@@ -1472,6 +1472,49 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: modulação no ambiente: o recorte da 1ª fiada do apartamento como detalhe, com os outros cômodos`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&modulacao=1`)
+      await p.getByTestId('fvs-pavimento').waitFor()
+      await p.getByTestId('fvs-ambientes').getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, '101')
+      await p.locator('.fv-toast', { hasText: 'Apto 101: 3 ambientes' }).waitFor()
+      await p.waitForTimeout(900)
+      // a sala do 101: o recorte da modulação no lugar do detalhe, e os cômodos do apartamento logo abaixo
+      await tocarNaPlanta(p, 320, 480)
+      await nomeNoPainel(p, '101-03')
+      const mod = p.getByTestId('fvs-modulacao')
+      expect(await mod.locator('h3').textContent()).toBe('Modulação · Apto 101')
+      expect(await mod.locator('.fv-dica').first().textContent()).toContain('TESTE.VD.EX.024.TIPA-R00')
+      await expect.poll(() => mod.locator('img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0)
+      expect(await p.getByTestId('fvs-irmaos').locator('.fv-chip').allTextContents()).toEqual(['01', '02', '03'])
+      // a ficha continua no painel, como sem modulação
+      expect(await p.getByTestId('fvs-ficha-do-painel').textContent()).toContain('TESTE-PVS-ALV')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/modulacao_${nome}_painel.png` })
+      // o quarto do mesmo apartamento mostra o mesmo recorte
+      await p.getByTestId('fvs-irmaos').locator('.fv-chip').first().click()
+      await nomeNoPainel(p, '101-01')
+      expect(await p.getByTestId('fvs-modulacao').locator('h3').textContent()).toBe('Modulação · Apto 101')
+      // outro apartamento, sem recorte no pacote: o painel de sempre, sem aviso de detalhe faltando
+      await p.locator('.fv-cab button').click()
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+      await buscar(p, '102')
+      await p.locator('.fv-toast', { hasText: 'Apto 102: 3 ambientes' }).waitFor()
+      await p.waitForTimeout(900)
+      await tocarNaPlanta(p, 770, 480)
+      await nomeNoPainel(p, '102-03')
+      expect(await p.getByTestId('fvs-modulacao').count()).toBe(0)
+      expect(await p.getByTestId('fvs-painel').innerText()).not.toContain('detalhe desta peça')
+      expect(await p.getByTestId('fvs-irmaos').locator('.fv-chip').count()).toBe(3)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: barras de laje: toque OK, NC só com Confirmar, Desfazer, "Tudo OK" da camada e o item de armadura da laje`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

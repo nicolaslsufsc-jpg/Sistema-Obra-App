@@ -515,6 +515,17 @@ suite('FVS na bancada (Chrome)', () => {
       // o outro item de esquadria da ficha de teste também cabe
       await p.getByTestId('fvs-item-esquadria').selectOption({ index: 1 })
       await confere('Esquadrias, item 7')
+      // a fonte do Linux (CI do GitHub) é mais larga que a do Windows: no CI, caixas que cabiam no PC
+      // ficavam 7 a 32 px curtas. A Verdana, onde existe, tem a largura dela; assim a falta de folga
+      // aparece também no teste rodado no Windows (no Linux, sem Verdana, fica a fonte do sistema)
+      await p.addStyleTag({ content: 'body, button, input, select { font-family: Verdana, sans-serif !important; }' })
+      await p.locator('.fv-seg button', { hasText: 'Ambientes' }).click()
+      await confere('Ambientes, fonte larga')
+      await p.locator('.fv-seg button', { hasText: 'Esquadrias' }).click()
+      await p.getByTestId('fvs-item-esquadria').selectOption({ index: 0 })
+      await confere('Esquadrias, fonte larga')
+      await p.getByTestId('fvs-item-esquadria').selectOption({ index: 1 })
+      await confere('Esquadrias, item 7, fonte larga')
 
       // o código da esquadria: etiqueta clara com letra escura, igual nos dois temas (a planta é sempre clara)
       await enquadrar(p, [-200, 260], 1)

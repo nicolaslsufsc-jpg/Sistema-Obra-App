@@ -125,9 +125,24 @@
   .fv-etapa.fv-item-esq {
     max-width: 260px;
   }
-  /* o nome inteiro da ficha de ambiente ("Alvenaria em Bloco Cerâmico Comum", ~290 px) */
+  /* o nome inteiro da ficha de ambiente ("Alvenaria em Bloco Cerâmico Comum": ~290 px no Linux, em 13 px) */
   .fv-topo.com-servico .fv-servico {
-    max-width: 300px;
+    min-width: 300px;
+    max-width: 320px;
+  }
+  /* largura mínima com folga sobre o texto (do tamanho do texto, a caixa ficava justa: 0 px de sobra) */
+  .fv-topo.com-servico .fv-etapa.fv-item-esq {
+    min-width: 225px;
+  }
+  /* numa linha só a fila enche (com a fonte do Linux não sobra nada em 1280): serviço, etapa e busca
+     ficam do tamanho do texto, as abas ficam mais justas e, se ainda faltar, quem cede é o título */
+  .fv-topo.com-servico .fv-servico,
+  .fv-topo.com-servico .fv-etapa,
+  .fv-topo.com-servico .fv-busca {
+    flex-shrink: 0;
+  }
+  .fv-topo.com-servico .fv-seg button {
+    padding: 0 10px !important;
   }
 }
 .fv-servico {
@@ -1513,6 +1528,18 @@
   }
   .fv-topo.com-servico .fv-servico {
     flex-grow: 3;
+  }
+}
+/* do tablet para cima, serviço e etapa em 13 px e com margem interna menor: com a fonte do Linux
+   (CI do GitHub, mais larga) o nome da alvenaria pedia 320 px em 768 e "3. Primeira fiada conferida"
+   235 em 800, e faltava espaço; a conta em 15 px só fechava com a fonte do Windows */
+@media (min-width: 701px) {
+  .fv-topo.com-servico .fv-servico,
+  .fv-topo.com-servico .fv-etapa,
+  .fv-topo.com-servico .fv-sem-item-esq {
+    font-size: 13px;
+    padding-left: 6px;
+    padding-right: 6px;
   }
 }
 @media (max-width: 700px) {

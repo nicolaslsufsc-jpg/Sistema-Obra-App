@@ -6,7 +6,8 @@ import { idsDosExemplos, semearExemplos, pdfDeExemplo, tirarExemplos } from './e
 import { Sincronizador } from '../nucleo/sincronizacao'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { banco as bancoDoApp } from '../nucleo/servicos'
-import { registrarDocumento, trocarBaixador, urlDoArquivo } from './dados'
+import { ArquivoNaoConfere, registrarDocumento, trocarBaixador, urlDoArquivo } from './dados'
+import { sha256Hex } from '../fvs/pacote'
 import {
   camposDoRascunho,
   conferirRascunho,
@@ -279,7 +280,8 @@ describe('com conta (item 3 do núcleo, 20/11)', () => {
       pedidos.push(caminho)
       return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer
     })
-    const arquivo = { id: 'f0000000-0000-0000-0000-0000000000d7', caminho: `${OBRA.id}/documentos/x.pdf` }
+    const bytes = pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer
+    const arquivo = { id: 'f0000000-0000-0000-0000-0000000000d7', caminho: `${OBRA.id}/documentos/x.pdf`, tamanho: pdf.byteLength, hash: await sha256Hex(bytes) }
     vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true })
     expect(await urlDoArquivo(arquivo)).toBeNull()
     expect(pedidos).toEqual([])
@@ -293,6 +295,27 @@ describe('com conta (item 3 do núcleo, 20/11)', () => {
     vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: false })
     expect(await urlDoArquivo(arquivo, true)).toBeNull()
     expect(pedidos).toHaveLength(1)
+    vi.unstubAllGlobals()
+  })
+
+  it('o arquivo baixado só abre se o tamanho e o SHA-256 baterem com o registro (revisor, 20/11)', async () => {
+    const pdf = pdfDeExemplo(['DOCUMENTO DE EXEMPLO', 'conferido'])
+    const bytes = pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer
+    const certo = { id: 'f0000000-0000-0000-0000-0000000000d8', caminho: `${OBRA.id}/documentos/y.pdf`, tamanho: pdf.byteLength, hash: await sha256Hex(bytes) }
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true })
+    // o servidor devolve outro arquivo, do mesmo tamanho
+    const trocado = new Uint8Array(bytes.slice(0))
+    trocado[trocado.length - 2] ^= 1
+    trocarBaixador(async () => trocado.buffer as ArrayBuffer)
+    await expect(urlDoArquivo(certo, true)).rejects.toBeInstanceOf(ArquivoNaoConfere)
+    // tamanho diferente do registrado
+    trocarBaixador(async () => bytes.slice(0, 100))
+    await expect(urlDoArquivo(certo, true)).rejects.toBeInstanceOf(ArquivoNaoConfere)
+    // registro sem hash (não deveria existir com conta): não abre
+    trocarBaixador(async () => bytes)
+    await expect(urlDoArquivo({ ...certo, hash: '' }, true)).rejects.toBeInstanceOf(ArquivoNaoConfere)
+    // o certo abre
+    expect(await urlDoArquivo(certo, true)).toMatchObject({ abrir: true })
     vi.unstubAllGlobals()
   })
 

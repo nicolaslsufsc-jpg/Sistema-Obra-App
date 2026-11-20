@@ -38,6 +38,13 @@ values ('d6000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-1111111
         'd6000000-0000-0000-0000-000000000001', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
 select teste.ok((select count(*) from public.doc_documentos) = 3, 'documentos: nada se apaga (3 linhas)');
 
+-- a mesma linha não pode ser substituída duas vezes (23505 = unique_violation; 20261120160000)
+select teste.deve_falhar($$
+  insert into public.doc_documentos (id, obra_id, escopo, categoria, codigo, titulo, revisao, data_revisao, responsavel, situacao, substitui_id, dispositivo_id, criado_em_dispositivo)
+  values (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'empresa', 'pes', 'EXE-PES-01', 'Execução de alvenaria', '00',
+          '2026-11-01', 'Engenheira da qualidade', 'vigente', 'd6000000-0000-0000-0000-000000000001', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+$$, '23505', 'documentos: a mesma revisão não é substituída duas vezes');
+
 -- formatos recusados (23514 = check_violation)
 select teste.deve_falhar($$
   insert into public.doc_documentos (id, obra_id, escopo, categoria, codigo, titulo, revisao, data_revisao, responsavel, dispositivo_id, criado_em_dispositivo)

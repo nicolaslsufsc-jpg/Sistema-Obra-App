@@ -736,8 +736,10 @@ button:active:not(:disabled) {
     grid-template-rows: auto 1fr;
     align-content: start;
   }
+  /* preso no alto, na linha do título: não muda de lugar se o título quebrar (fonte mais larga) */
   .menu-modulos .modulo-abrir {
-    align-self: center;
+    align-self: start;
+    padding-top: 0.2rem;
   }
   .modulo strong {
     gap: 0.4rem;

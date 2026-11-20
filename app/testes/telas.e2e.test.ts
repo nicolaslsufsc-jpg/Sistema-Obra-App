@@ -14,7 +14,7 @@ import { build, preview, type PreviewServer } from 'vite'
 type Browser = any
 type BrowserContext = any
 type Page = any
-import { abrirMenuObra, comPavimentosDoAparelho, noMenuObra } from './menu_obra'
+import { abrirMenuObra, comPavimentosDoAparelho, fecharMenuObra, noMenuObra } from './menu_obra'
 import { iniciarServidorTeste, type ServidorTeste } from './servidor_teste'
 import { CODIGO_TESTE, USUARIOS } from './dados'
 
@@ -157,7 +157,8 @@ suite('telas no navegador', () => {
   })
 
   it('app fechado enquanto a pessoa lê o e-mail: volta direto na tela do código', async () => {
-    await noMenuObra(pagina, 'Sair')
+    // a conta sem acesso está na tela de obras (sem menu da obra): o Sair dela é um botão à vista
+    await pagina.getByRole('button', { name: 'Sair', exact: true }).click()
     await pagina.getByLabel('E-mail').fill(USUARIOS.campo.email)
     await pagina.getByRole('button', { name: 'Enviar código' }).click()
     await pagina.getByRole('heading', { name: 'Digite o código' }).waitFor()
@@ -226,6 +227,7 @@ suite('telas no navegador', () => {
     await noMenuObra(pagina, 'Pessoas da obra')
     await pagina.getByRole('button', { name: 'Voltar para a obra' }).click()
     await (await abrirMenuObra(pagina)).getByRole('button', { name: 'Pessoas da obra', exact: true }).waitFor()
+    await fecharMenuObra(pagina)
   })
 
   it('quem não é admin não vê o botão Pessoas da obra', async () => {
@@ -237,6 +239,7 @@ suite('telas no navegador', () => {
     await painel.getByRole('button', { name: 'Trocar de obra', exact: true }).waitFor()
     await painel.getByRole('button', { name: 'Sair', exact: true }).waitFor()
     expect(await pagina.getByRole('button', { name: 'Pessoas da obra' }).count()).toBe(0)
+    await fecharMenuObra(pagina)
   })
 
   it('menu abre o módulo pronto e o voltar do Android retorna ao menu', async () => {

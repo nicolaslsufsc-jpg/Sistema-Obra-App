@@ -19,7 +19,7 @@ import { lerNomesProibidos, nomesNoTexto } from '../sem_dados_de_obra'
 import { amostraIfc } from './ifc/amostra'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from '../src/projetos/exemplo_exe'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
-import { abrirMenuObra, comPavimentosDoAparelho } from './menu_obra'
+import { abrirMenuObra, comPavimentosDoAparelho, fecharMenuObra } from './menu_obra'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Page = any
 
@@ -233,7 +233,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByRole('button', { name: 'Sair', exact: true }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Trocar de obra', exact: true }).count()).toBe(0)
       expect(await p.getByTestId('menu-obra').getAttribute('aria-expanded')).toBe('true')
-      await p.keyboard.press('Escape') // fecha no Esc
+      await fecharMenuObra(p) // fecha no Esc (espera a tela atualizar)
       expect(await p.getByTestId('painel-obra').count()).toBe(0)
       expect(await p.getByTestId('menu-obra').getAttribute('aria-expanded')).toBe('false')
       expect(await p.getByRole('button', { name: 'Nova obra' }).count()).toBe(0)
@@ -485,17 +485,21 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
 
   // Caixas dos módulos (20/11/2026, "arruma o tamanho das caixas"): todas com a mesma altura (a da maior
   // da grade, não só por linha), o "Abrir ›" no mesmo lugar em todas e a descrição em até 2 linhas.
-  for (const [largura, altura] of [
-    [768, 1024],
-    [800, 1280],
-    [375, 812],
-    [384, 832],
+  // Também com Verdana, mais larga que a fonte do sistema (no Linux do CI o título quebrava de outro jeito).
+  for (const [largura, altura, fonte] of [
+    [768, 1024, ''],
+    [800, 1280, ''],
+    [375, 812, ''],
+    [384, 832, ''],
+    [768, 1024, 'Verdana'],
+    [375, 812, 'Verdana'],
   ] as const) {
-    it(`${largura}x${altura}: caixas dos módulos iguais, "Abrir" alinhado e descrição em até 2 linhas`, async () => {
+    it(`${largura}x${altura}${fonte ? ` (${fonte})` : ''}: caixas dos módulos iguais, "Abrir" alinhado e descrição em até 2 linhas`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       try {
         await abrirNaObra(p)
+        if (fonte) await p.addStyleTag({ content: `body, button { font-family: ${fonte}, sans-serif !important; }` })
         await p.getByRole('button', { name: /^IFC/ }).waitFor()
         type Caixa = { topo: number; altura: number; abrirAbaixo: number; abrirDireita: number; abrirAcima: number; linhas: number }
         const caixas: Caixa[] = await p.locator('.menu-modulos .modulo').evaluateAll((bs: HTMLElement[]) =>
@@ -517,11 +521,12 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(caixas.length).toBeGreaterThanOrEqual(4)
         // mesma altura em todas, inclusive em linhas diferentes da grade
         const alturas = caixas.map((c) => c.altura)
-        expect(Math.max(...alturas) - Math.min(...alturas)).toBeLessThanOrEqual(1)
+        // folga de 2 px para arredondamento de fonte; diferença real de layout é bem maior que isso
+        expect(Math.max(...alturas) - Math.min(...alturas)).toBeLessThanOrEqual(2)
         // o "Abrir ›" no mesmo lugar em todas: colado embaixo no tablet; na linha do título no celular
         for (const medida of ['abrirAbaixo', 'abrirDireita', 'abrirAcima'] as const) {
           const v = caixas.map((c) => c[medida])
-          expect(Math.max(...v) - Math.min(...v), medida).toBeLessThanOrEqual(1)
+          expect(Math.max(...v) - Math.min(...v), medida).toBeLessThanOrEqual(2)
         }
         if (largura >= 600) expect(caixas[0].abrirAbaixo).toBeLessThanOrEqual(24)
         // tablet: as caixas lado a lado (2 colunas) e a altura não cresce por causa de uma só

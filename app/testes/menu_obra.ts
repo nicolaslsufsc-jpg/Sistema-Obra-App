@@ -37,3 +37,9 @@ export async function comPavimentosDoAparelho<T>(p: Page, fn: (itens: Page) => P
     if (abriuBloco) await bloco.locator(':scope > summary').click()
   }
 }
+
+/** Fecha o menu da obra pelo Esc e espera ele sair da tela (o painel aberto cobre os primeiros cartões). */
+export async function fecharMenuObra(p: Page) {
+  await p.keyboard.press('Escape')
+  await p.getByTestId('painel-obra').waitFor({ state: 'detached' })
+}

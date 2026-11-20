@@ -5,7 +5,22 @@ Branch: `claude/app-documentos-112f59` (parte do PR #42).
 ## Status (20/11/2026)
 **Fora do beta (Nicolas, 20/11: "Documentos, tá funcionando também. Tira do beta").** O módulo não tem selo nem aviso de beta nas próprias telas. Quem põe os módulos de volta no menu é a 06 · FRONT (`app/src/modulos.ts`, não mexido aqui).
 - **Sem conta:** funciona (lista mestra, revisão, validade, impressão, registros dos módulos, exemplos), conferido na main 806adec em 375 px e tablet.
-- **Com login:** ainda não abre. O registro do módulo tem `soSemConta` (some do menu com conta) e a tela diz que a tabela do servidor ainda não existe. Para funcionar com login falta a migração de `doc_documentos` e pôr a tabela na lista sincronizada do núcleo: decisão do Nicolas (núcleo + migração).
+- **Com login (desde 20/11/2026, item 3 do núcleo, aprovado pelo Nicolas):** abre e sincroniza. Branch `nucleo/documentos-login`; **a migração ainda não foi aplicada no servidor** (o Professor aplica antes do merge).
+  - Migração `20261120150000_documentos.sql`: tabela `doc_documentos` como na proposta da seção 3 (só inclusão, gestor e admin incluem, quem lê a obra lê). Os limites de texto são os da tela, e o formulário passou a conferir os mesmos (título 300, revisão 20, responsável 200). Teste do banco em `supabase/testes/testes_x_documentos.sql`.
+  - App: a tabela está na lista sincronizada (`documentos/tabelas.ts` e `nucleo/tabelas.ts`, bloco à parte no fim). O módulo grava pelo `sincronizador.registrar` (o `gravar.ts` saiu) e sincroniza enquanto está aberto. O `soSemConta` saiu do `modulos.ts`.
+  - Arquivo: o PDF ou a foto vão antes da linha na fila, então chegam antes ao servidor. Depois do envio o núcleo tira os bytes do aparelho. Por isso, na tela do documento, o arquivo que está só no servidor mostra **"Baixar do servidor"** (precisa de internet), para não gastar dados com todas as revisões.
+  - *Suposições marcadas:*
+    - com conta, os exemplos da demonstração não entram. Um exemplo corrigido ou marcado "em revisão" apontaria para uma linha que o servidor não tem;
+    - os documentos do pacote da obra continuam só no modo sem conta;
+    - "levar para campo" (guardar o PDF no aparelho para abrir sem internet) continua pendente. É mudança do núcleo e precisa do ok do Nicolas.
+  - Testes:
+    - banco: 16 checagens;
+    - unidade: tabela na lista, gravação pela fila, baixar só quando a tela pede, limites do formulário;
+    - integração contra PostgREST (`app/testes/documentos.test.ts`, roda no CI): gestor envia PDF e revisão, leitura baixa e abre o PDF, campo e leitura não cadastram;
+    - tela com conta (`telas.e2e.test.ts`): o Documentos aparece no menu, abre sem exemplos e o gestor vê "Cadastrar";
+    - tela sem conta: 375 e 1280;
+    - "Baixar do servidor": 375 e 768;
+    - obra real (dado fora do repositório): os 48 PES da empresa, com o arquivo e a revisão de cada um, entram no Postgres de teste com a migração (teste temporário, fora do git).
 - **Pacote da obra:** o `exportar_bancada.py` e, desde 20/11 ("pode" do Nicolas), o `compactar_pacote.py` levam `documentos/` (indice.json + arquivos) e o app lê (`pacote.ts`). No compactar: `--documentos PASTA` (documentos.json, mesma conferência do exportar) ou, sem a opção, o `documentos/indice.json` que já estiver na pasta da obra, com cada arquivo conferido (tipo, 10 MB, SHA-256). Testes em `pipeline/testes/test_fvs_compactar.py`.
 
 ## Status (09/11/2026)
@@ -43,7 +58,8 @@ Não feito aqui: o núcleo não é deste chat, e a `app/fvs-espaco` mudou o `pac
 ### Próximo passo
 1. Nicolas ver no Chrome e no tablet e dizer o que muda.
 2. Ligar os documentos do pacote no `prepararObraLocal` (núcleo, com ok) e o link "abrir no módulo" (casca, com ok; e um pedido aos chats da FVS e do Concreto).
-3. Migração `doc_documentos` (com o "pode" do Nicolas) e então pôr a tabela em `nucleo/tabelas.ts` e trocar `gravarLinha` por `sincronizador.registrar`.
+3. ~~Migração `doc_documentos` e tabela na sincronização~~: feito em 20/11/2026 (branch `nucleo/documentos-login`). Falta o Professor aplicar a migração e fazer o merge.
+4. "Levar para campo": guardar no aparelho o PDF dos documentos marcados, para abrir sem internet com conta (núcleo, ok do Nicolas).
 
 ## Objetivo
 Guardar e controlar os documentos e registros que o PBQP-H (SiAC, Execução de Obras) pede, do jeito que o auditor confere: código, revisão, data, quem é o responsável, se está vigente e onde está o arquivo. Mostrar a **lista mestra** sozinha, avisar o que venceu e ligar o que já existe na FVS e no Concreto (eles já são registros da qualidade).
@@ -172,7 +188,7 @@ O banco só conhece obras: não existe tabela de empresa. Duas saídas:
 
 ## Pendências e decisões abertas
 1. O Nicolas ver a primeira versão (o ok foi do Professor).
-2. Migração `doc_documentos` no Supabase (não feita; só com o "pode" dele).
+2. Migração `doc_documentos` no Supabase: escrita e testada em 20/11/2026 (`20261120150000_documentos.sql`). Falta aplicar (o Professor aplica).
 3. Conferir no texto oficial do SiAC os itens marcados "conferir na norma".
 4. Núcleo: "levar para campo" (arquivo que fica no aparelho depois de enviado).
 5. Limite de tamanho e espaço num tablet de verdade; no Android, o PDF abre pelo leitor do aparelho (não testado).

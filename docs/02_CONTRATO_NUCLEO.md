@@ -174,7 +174,7 @@ import { ModuloFvs } from './fvs/telas/ModuloFvs'
 - FVS: `plantas`, `geometrias`, `detalhes`, `elemento_detalhe`, `fichas_modelo`, `fvs_eventos`, `fvs_fotos`
 - Projetos: `documentos`, `revisoes`, `distribuicoes`
 - Concreto: `concretagens`, `caminhoes`, `caminhao_elementos`
-- Documentos: `docs_obra`
+- Documentos: `doc_documentos` (desde 20/11/2026, migração `20261120150000_documentos.sql`; `docs_obra` era só o nome proposto)
 
 ## Ligações entre módulos
 - `plantas.revisao_id` aponta para `revisoes` (Projetos): planta nova nasce de revisão nova.

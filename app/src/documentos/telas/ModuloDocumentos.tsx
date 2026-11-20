@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import type { PropsModulo } from '../../modulos'
 import { dataLocal } from '../../concreto/cps'
 import { banco } from '../../nucleo/servicos'
+import { ehModoLocal } from '../../nucleo/local'
+import { usarSincronizacao } from '../../nucleo/usarSincronizacao'
 import type { Escopo } from '../categorias'
-import { carregar, moduloDisponivel, type DadosDocumentos } from '../dados'
+import { carregar, type DadosDocumentos } from '../dados'
 import { semearExemplos } from '../exemplos'
 import { TelaLista } from './TelaLista'
 import { TelaDocumento } from './TelaDocumento'
@@ -31,10 +33,11 @@ export interface ContextoDoc extends PropsModulo {
 }
 
 export function ModuloDocumentos(props: PropsModulo) {
-  const { obra, aoSair } = props
+  const { obra, usuario, aoSair, aoPerderObra } = props
+  // com conta: envia e baixa enquanto o módulo está aberto, e a lista relê quando chega coisa nova
+  const { estado } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
   const [tela, setTela] = useState<TelaDoc>(() => (history.state?.documentos as TelaDoc) ?? { nome: 'lista', escopo: 'obra' })
   const [dados, setDados] = useState<DadosDocumentos | null>(null)
-  const [disponivel, setDisponivel] = useState<boolean | null>(null)
   const [hoje] = useState(() => dataLocal(new Date()))
 
   const recarregar = useCallback(async () => {
@@ -43,17 +46,21 @@ export function ModuloDocumentos(props: PropsModulo) {
 
   useEffect(() => {
     let vivo = true
-    moduloDisponivel().then(async (ok) => {
-      if (!vivo) return
-      setDisponivel(ok)
-      if (!ok) return
-      await semearExemplos(banco, obra, hoje).catch(() => 0)
+    ;(async () => {
+      // Exemplos só no modo sem conta (demonstração). Com conta, a lista é a do servidor: um exemplo
+      // corrigido ou marcado "em revisão" apontaria para uma linha que o servidor não tem.
+      if (await ehModoLocal(banco)) await semearExemplos(banco, obra, hoje).catch(() => 0)
       if (vivo) await recarregar()
-    })
+    })()
     return () => {
       vivo = false
     }
   }, [obra.id])
+
+  // dados novos do servidor (outro aparelho cadastrou): relê
+  useEffect(() => {
+    if (estado.versaoDados > 0) recarregar()
+  }, [estado.versaoDados])
 
   useEffect(() => {
     const aoVoltar = (e: PopStateEvent) => {
@@ -80,17 +87,6 @@ export function ModuloDocumentos(props: PropsModulo) {
     else aoSair()
   }
 
-  if (disponivel === false) {
-    return (
-      <main class="tela">
-        <h1>Documentos</h1>
-        <p class="aviso">Por enquanto o módulo Documentos funciona só no modo sem conta (pacote da obra). A tabela do servidor ainda não foi criada.</p>
-        <button type="button" onClick={aoSair}>
-          Voltar ao menu
-        </button>
-      </main>
-    )
-  }
   if (!dados) return <main class="tela">Carregando…</main>
 
   const ctx: ContextoDoc = { ...props, dados, hoje, ir, trocar, voltar, recarregar }

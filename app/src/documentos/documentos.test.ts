@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BancoLocal } from '../nucleo/banco_local'
 import type { ObraLocal, UsuarioLocal } from '../nucleo/conta'
 import { gerarSalvamento, aplicarSalvamento } from '../nucleo/salvamento'
 import { idsDosExemplos, semearExemplos, pdfDeExemplo, tirarExemplos } from './exemplos'
-import { gravarLinha } from './gravar'
+import { Sincronizador } from '../nucleo/sincronizacao'
+import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
+import { banco as bancoDoApp } from '../nucleo/servicos'
+import { registrarDocumento, trocarBaixador, urlDoArquivo } from './dados'
 import {
   camposDoRascunho,
   conferirRascunho,
@@ -22,6 +25,10 @@ import {
 const OBRA: ObraLocal = { id: 'b0000000-0000-0000-0000-0000000000dd', codigo: 'EXE', nome: 'Obra Exemplo', empresa: null, papel: 'admin' }
 const USUARIO: UsuarioLocal = { id: 'c0000000-0000-0000-0000-000000000001', email: 'sem-conta@este-aparelho' }
 const HOJE = '2026-11-09'
+
+/** Grava como o módulo grava (sincronizador do núcleo), num banco só do teste. */
+const gravarLinha = (b: BancoLocal, obraId: string, usuarioId: string, campos: Record<string, unknown>) =>
+  new Sincronizador({ banco: b, cliente: {} as never, tabelas: TABELAS_SINCRONIZADAS }).registrar(TABELA_DOCUMENTOS, obraId, usuarioId, campos)
 
 let n = 0
 function linha(c: Partial<LinhaDocumento>): LinhaDocumento {
@@ -246,5 +253,52 @@ describe('exemplos', () => {
     const xref = Number(/startxref\n(\d+)/.exec(t)![1])
     expect(t.slice(xref, xref + 4)).toBe('xref')
     expect(t.trimEnd().endsWith('%%EOF')).toBe(true)
+  })
+})
+
+describe('com conta (item 3 do núcleo, 20/11)', () => {
+  it('doc_documentos está entre as sincronizadas, depois de arquivos (o PDF chega antes da linha)', () => {
+    expect(TABELAS_SINCRONIZADAS).toContain(TABELA_DOCUMENTOS)
+    expect(TABELAS_SINCRONIZADAS.indexOf(TABELA_DOCUMENTOS)).toBeGreaterThan(TABELAS_SINCRONIZADAS.indexOf('arquivos'))
+  })
+
+  it('registrar vai pelo sincronizador: registro pendente e fila, com as colunas do núcleo', async () => {
+    const obra = 'b0000000-0000-0000-0000-0000000000d7'
+    const l = await registrarDocumento(obra, USUARIO.id, camposDoRascunho(rascunho(), null))
+    const fila = (await bancoDoApp.fila.toArray()).filter((f) => f.obra_id === obra)
+    expect(fila.map((f) => [f.tabela, f.id])).toEqual([[TABELA_DOCUMENTOS, l.id]])
+    expect((await bancoDoApp.registros.get([TABELA_DOCUMENTOS, l.id]))?.pendente).toBe(1)
+    expect(l).toMatchObject({ obra_id: obra, usuario_id: USUARIO.id, apagado: false })
+    expect(typeof l.dispositivo_id).toBe('string')
+  })
+
+  it('o arquivo que já saiu do aparelho só vem do servidor quando a tela pede', async () => {
+    const pdf = pdfDeExemplo(['DOCUMENTO DE EXEMPLO'])
+    const pedidos: string[] = []
+    trocarBaixador(async (caminho) => {
+      pedidos.push(caminho)
+      return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer
+    })
+    const arquivo = { id: 'f0000000-0000-0000-0000-0000000000d7', caminho: `${OBRA.id}/documentos/x.pdf` }
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true })
+    expect(await urlDoArquivo(arquivo)).toBeNull()
+    expect(pedidos).toEqual([])
+    const u = await urlDoArquivo(arquivo, true)
+    expect(u).toMatchObject({ abrir: true, foto: false })
+    expect(pedidos).toEqual([arquivo.caminho])
+    // sem caminho (arquivo de exemplo ou do pacote, que mora só no aparelho): nem tenta
+    expect(await urlDoArquivo({ id: arquivo.id }, true)).toBeNull()
+    expect(pedidos).toHaveLength(1)
+    // sem internet: nem tenta
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: false })
+    expect(await urlDoArquivo(arquivo, true)).toBeNull()
+    expect(pedidos).toHaveLength(1)
+    vi.unstubAllGlobals()
+  })
+
+  it('o formulário recusa texto maior que o servidor aceita', () => {
+    const e = conferirRascunho({ ...rascunho(), titulo: 'T'.repeat(301), revisao: 'R'.repeat(21), responsavel: 'P'.repeat(201) }, [])
+    expect(Object.keys(e).sort()).toEqual(['responsavel', 'revisao', 'titulo'])
+    expect(conferirRascunho({ ...rascunho(), titulo: 'T'.repeat(300), revisao: 'R'.repeat(20), responsavel: 'P'.repeat(200) }, [])).toEqual({})
   })
 })

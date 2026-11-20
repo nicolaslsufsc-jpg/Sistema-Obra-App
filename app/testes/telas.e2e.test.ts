@@ -246,12 +246,22 @@ suite('telas no navegador', () => {
   it('menu abre o módulo pronto e o voltar do Android retorna ao menu', async () => {
     // Desde 18/11/2026 o Relatórios saiu do menu, com o código guardado.
     // Desde 20/11/2026 o IFC voltou, com e sem conta, sem o selo "beta"; o Projetos voltou só sem conta.
-    // Desde 20/11/2026 (teste com cabo) o Documentos só aparece sem conta: com conta não há tabela no servidor.
+    // Desde 20/11/2026 (teste com cabo) o Documentos só aparecia sem conta; desde o item 3 do núcleo (20/11, tabela
+    // doc_documentos no servidor) ele abre também com conta.
     const concreto = pagina.getByRole('button', { name: /^Concreto/ })
     expect(await concreto.isEnabled()).toBe(true)
     expect(await pagina.getByRole('button', { name: /^IFC/ }).count()).toBe(1)
     expect(await pagina.locator('.selo-beta').count()).toBe(0)
-    for (const beta of [/^Projetos/, /^Relatórios/, /^Documentos/]) expect(await pagina.getByRole('button', { name: beta }).count()).toBe(0)
+    for (const beta of [/^Projetos/, /^Relatórios/]) expect(await pagina.getByRole('button', { name: beta }).count()).toBe(0)
+
+    // Documentos com conta: abre a lista mestra da obra do servidor, sem os exemplos da demonstração; o gestor cadastra
+    await pagina.getByRole('button', { name: /^Documentos/ }).click()
+    await pagina.getByTestId('lista-mestra').waitFor()
+    expect(await pagina.evaluate(() => history.state?.tela)).toBe('documentos')
+    expect(await pagina.getByTestId('aviso-exemplos').count()).toBe(0)
+    expect(await pagina.getByTestId('cadastrar').count()).toBe(1)
+    await pagina.goBack()
+    await pagina.getByTestId('menu-obra').waitFor()
 
     await concreto.click()
     await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()

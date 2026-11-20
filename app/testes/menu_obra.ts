@@ -61,3 +61,19 @@ export async function fecharMenuObra(p: Page) {
   await p.keyboard.press('Escape')
   await p.getByTestId('painel-obra').waitFor({ state: 'detached' })
 }
+
+/** Escolhe o pacote .zip no campo "Pacote da obra (.zip)". No menu da obra o campo só existe com o menu aberto, e a
+ *  tela pode ser refeita logo depois de abrir (volta de um "Cancelar", fim de uma troca de obra), fechando o menu:
+ *  abre de novo e tenta outra vez. Na tela de entrada (sem menu da obra) o campo já está à vista. */
+export async function escolherPacote(p: Page, arquivo: string) {
+  const campo = p.getByLabel('Pacote da obra (.zip)')
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      if ((await campo.count()) === 0 && (await p.getByTestId('menu-obra').count()) > 0) await abrirMenuObra(p)
+      await campo.setInputFiles(arquivo, { timeout: 5_000 })
+      return
+    } catch (erro) {
+      if (tentativa >= 5) throw erro
+    }
+  }
+}

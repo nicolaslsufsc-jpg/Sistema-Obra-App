@@ -1,4 +1,4 @@
-# Abre o Sistema Obra num PC sem nada instalado: entrega os arquivos desta pasta ao navegador do
+﻿# Abre o Sistema Obra num PC sem nada instalado: entrega os arquivos desta pasta ao navegador do
 # próprio PC (localhost). Ninguém de fora alcança. Não instala nada e não altera o Windows.
 #   -Site app       o Sistema Obra. Com a pasta dados_obra (ou o dados_*.zip) ao lado, abre direto na
 #                   obra, sem login (modo sem conta); sem ela, pede o login por e-mail.

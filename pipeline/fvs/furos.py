@@ -15,6 +15,10 @@ Revit). Nele, cada furo é um IfcBuildingElementProxy com:
 O nome da viga não está no modelo. Ele sai da planta: os furos de um nível são encaixados na folha de forma
 do pavimento (rotação de 90 em 90 graus, espelho, escala da prancha e deslocamento) pela posição em que mais
 furos caem dentro de uma viga (votação). Furo que não cai em nenhuma viga vai para o relatório.
+Quando a votação não serve (poucos furos em viga, como no Térreo comercial da obra piloto, com os furos nas
+cortinas), o encaixe sai de outro pavimento do mesmo modelo, pelos pilares que passam pelos dois
+(encaixe_pela_referencia). Furo cuja peça tem 2 m ou mais de altura no modelo (ALTURA.VIGA) é de parede ou
+cortina: fica fora das vigas, no relatório com o motivo.
 
 Parte pura (encaixe, distribuição, nomes, leitura das propriedades) testada em
 pipeline/testes/test_fvs_furos.py; a leitura do IFC precisa de ifcopenshell.
@@ -32,6 +36,14 @@ PT_POR_CM_PAPEL = 72 / 2.54
 # Furo a até 10 cm de obra do contorno da viga conta como da viga (o desenho da forma e o modelo não
 # batem ao milímetro). Aprovado pelo Nicolas em 18/11: traz os furos de borda para a viga.
 FOLGA_CM = 10.0
+# Furo cuja peça, no modelo, tem 2 m ou mais de altura (ALTURA.VIGA) está numa parede ou cortina, não numa
+# viga: não vai para viga nenhuma, mesmo que caia em cima de uma na planta; fica no relatório com o motivo.
+# (Térreo comercial da obra piloto, 20/11: 22 de 28 furos "de viga" estão nas cortinas, com 310 cm.)
+ALTURA_PAREDE_CM = 200.0
+# Encaixe pelos pilares de outro pavimento (encaixe_pela_referencia): mínimo de pilares em comum e erro
+# máximo aceito, em cm de obra, depois de tirar os pilares que não batem (pilar que muda de lugar).
+MIN_PILARES_REFERENCIA = 5
+ERRO_MAX_REFERENCIA_CM = 10.0
 
 
 class ErroFuros(Exception):
@@ -104,7 +116,8 @@ def furo_das_propriedades(nome_familia: str, psets: dict, x_cm: float, y_cm: flo
             v = _num(dim.get(chave))
             if v:
                 furo[campo] = round(v, 1)
-    for campo, chave in (("topo", "DIST.TOPO.VIGA"), ("fundo", "DIST.FUNDO.VIGA"), ("largura_viga", "LARGURA.VIGA")):
+    for campo, chave in (("topo", "DIST.TOPO.VIGA"), ("fundo", "DIST.FUNDO.VIGA"), ("largura_viga", "LARGURA.VIGA"),
+                         ("altura_viga", "ALTURA.VIGA")):
         v = _num(dim.get(chave))
         if v is not None:
             furo[campo] = round(v, 1)
@@ -281,6 +294,85 @@ def encaixar(pontos_cm: list[tuple[float, float]], vigas: list[tuple[str, list]]
     return melhor
 
 
+def pilares_da_planta(pecas: list[dict]) -> dict[str, tuple[float, float]]:
+    """{nome do pilar: centro do contorno} (pontos da folha). Nome repetido na mesma folha fica de fora."""
+    vistos: dict[str, list[tuple[float, float]]] = {}
+    for p in pecas:
+        pts = [pt for poly in p.get("polys") or [] for pt in poly]
+        if p.get("tipo") != "P" or not pts:
+            continue
+        xs, ys = [pt[0] for pt in pts], [pt[1] for pt in pts]
+        vistos.setdefault(p["nome"], []).append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2))
+    return {n: c[0] for n, c in vistos.items() if len(c) == 1}
+
+
+def _vezes(m, n):
+    return [[m[0][0] * n[0][0] + m[0][1] * n[1][0], m[0][0] * n[0][1] + m[0][1] * n[1][1]],
+            [m[1][0] * n[0][0] + m[1][1] * n[1][0], m[1][0] * n[0][1] + m[1][1] * n[1][1]]]
+
+
+def _ajuste(pares, R):
+    """Escala e deslocamento (orientação R fixa) que levam os pontos a nos pontos b: (s, t, resíduos)."""
+    n = len(pares)
+    ra = [(R[0][0] * a[0] + R[0][1] * a[1], R[1][0] * a[0] + R[1][1] * a[1]) for a, _ in pares]
+    mx, my = sum(p[0] for p in ra) / n, sum(p[1] for p in ra) / n
+    bx, by = sum(b[0] for _, b in pares) / n, sum(b[1] for _, b in pares) / n
+    num = sum((p[0] - mx) * (b[0] - bx) + (p[1] - my) * (b[1] - by) for p, (_, b) in zip(ra, pares))
+    den = sum((p[0] - mx) ** 2 + (p[1] - my) ** 2 for p in ra)
+    s = num / den if den else 0.0
+    t = (bx - s * mx, by - s * my)
+    res = [math.hypot(s * p[0] + t[0] - b[0], s * p[1] + t[1] - b[1]) for p, (_, b) in zip(ra, pares)]
+    return s, t, res
+
+
+def encaixe_pela_referencia(enc_ref: dict, pilares_ref: dict, pilares_alvo: dict,
+                            min_pilares: int = MIN_PILARES_REFERENCIA, erro_max_cm: float = ERRO_MAX_REFERENCIA_CM) -> dict:
+    """O encaixe dos furos num pavimento a partir do encaixe de outro pavimento do mesmo modelo de furação.
+
+    O modelo é um só: o que muda de um pavimento para o outro é só onde a folha de forma foi desenhada. Os
+    pilares que passam pelos dois pavimentos (mesmo nome nas duas folhas) dão o caminho da folha de referência
+    para esta (orientação, escala e deslocamento); somado ao encaixe da referência (modelo -> folha de
+    referência), dá modelo -> esta folha. Serve quando a votação não acha o encaixe: poucos furos em viga
+    (o Térreo comercial da obra piloto, com os furos nas cortinas). Pilar que não bate (mudou de lugar ou de
+    nome) sai da conta. Devolve o encaixe com "metodo": "pilares", quantos pilares e o erro em cm de obra."""
+    comuns = sorted(set(pilares_ref) & set(pilares_alvo), key=_chave_natural)
+    if len(comuns) < min_pilares:
+        raise ErroFuros(f"só {len(comuns)} pilares em comum com o pavimento de referência (mínimo {min_pilares})")
+    pares = [(pilares_ref[n], pilares_alvo[n]) for n in comuns]
+    fator_ref = float(enc_ref["fator"])
+    melhor = None
+    for R in ROTACOES:
+        s, t, res = _ajuste(pares, R)
+        if s <= 0:
+            continue
+        mediana = sorted(res)[len(res) // 2]
+        if melhor is None or mediana < melhor[0]:
+            melhor = (mediana, R)
+    if melhor is None:
+        raise ErroFuros("os pilares do pavimento de referência não batem com os desta folha")
+    R = melhor[1]
+    usados = list(range(len(pares)))
+    for _ in range(3):  # tira os pilares que não batem e ajusta de novo
+        s, t, res = _ajuste([pares[i] for i in usados], R)
+        mediana = sorted(res)[len(res) // 2]
+        limite = max(3 * mediana, 0.5 * erro_max_cm * fator_ref * s)
+        novos = [i for i, r in zip(usados, res) if r <= limite]
+        if len(novos) == len(usados) or len(novos) < min_pilares:
+            break
+        usados = novos
+    s, t, res = _ajuste([pares[i] for i in usados], R)
+    if len(usados) < min_pilares or not 0.5 <= s <= 2.0:
+        raise ErroFuros("os pilares do pavimento de referência não batem com os desta folha")
+    erro_cm = max(res) / (s * fator_ref)
+    if erro_cm > erro_max_cm:
+        raise ErroFuros(f"os pilares em comum com o pavimento de referência só batem com {erro_cm:.0f} cm de erro (máximo {erro_max_cm:g})")
+    R1, t1 = enc_ref["rotacao"], enc_ref["t"]
+    rt1 = (R[0][0] * t1[0] + R[0][1] * t1[1], R[1][0] * t1[0] + R[1][1] * t1[1])
+    return {"rotacao": [[float(v) for v in linha] for linha in _vezes(R, R1)], "fator": s * fator_ref,
+            "t": [s * rt1[0] + t[0], s * rt1[1] + t[1]], "metodo": "pilares", "pilares": len(usados),
+            "erro_cm": round(erro_cm, 1), "pilares_fora": sorted((comuns[i] for i in set(range(len(pares))) - set(usados)), key=_chave_natural)}
+
+
 def _ordem_na_viga(polys, x: float, y: float) -> float:
     """Posição do furo ao longo da viga (da esquerda para a direita ou de cima para baixo)."""
     xs = [pt[0] for poly in polys for pt in poly]
@@ -305,15 +397,25 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
     sem_viga = []
     for f in furos:
         x, y = transformar(enc, f["x"], f["y"])
+        em_parede = (f.get("altura_viga") or 0) >= ALTURA_PAREDE_CM
         melhor = None
-        for v in vigas:
+        for v in [] if em_parede else vigas:
             if not any(_perto(x, y, poly, folga) for poly in v["polys"]):
                 continue
             d = min(dist_ao_poligono(x, y, poly) for poly in v["polys"])
             if d <= folga and (melhor is None or d < melhor[0] or (d == melhor[0] and v["nome"] < melhor[1]["nome"])):
                 melhor = (d, v)
         if melhor is None:
-            sem_viga.append({"id": f["id"], "x": round(x, 1), "y": round(y, 1), "secao": secao_do_furo(f), "disciplinas": f.get("disciplinas") or []})
+            fora = {"id": f["id"], "x": round(x, 1), "y": round(y, 1), "secao": secao_do_furo(f), "disciplinas": f.get("disciplinas") or []}
+            perto = min(((min(dist_ao_poligono(x, y, poly) for poly in v["polys"]), v["nome"]) for v in vigas), default=None)
+            if perto is not None:  # para conferir na prancha: a viga mais perto e a distância, em cm de obra
+                fora["viga_perto"] = perto[1]
+                fora["dist_cm"] = round(perto[0] / float(enc["fator"]))
+            if f.get("altura_viga") is not None:
+                fora["altura_viga"] = f["altura_viga"]
+            if em_parede:
+                fora["motivo"] = f"no modelo, a peça do furo tem {_cm(f['altura_viga'])} cm de altura: parede ou cortina, não viga"
+            sem_viga.append(fora)
             continue
         v = melhor[1]
         por_viga.setdefault(v["nome"], []).append((_ordem_na_viga(v["polys"], x, y), f, (x, y)))
@@ -337,10 +439,14 @@ def distribuir_furos(furos: list[dict], pecas: list[dict], enc: dict, folga_cm: 
         "em_viga": len(locais),
         "vigas_com_furo": len(por_viga),
         "sem_viga": sem_viga,
+        "em_parede": sum(1 for s in sem_viga if s.get("motivo")),
         "encaixe": {"dentro": enc.get("dentro"), "segundo": enc.get("segundo"), "total": enc.get("total"),
                     "fator": round(float(enc["fator"]), 5), "rotacao": enc["rotacao"], "t": [round(v, 1) for v in enc["t"]],
                     "duvidoso": encaixe_duvidoso(enc)},
     }
+    for campo in ("metodo", "referencia", "pilares", "erro_cm", "pilares_fora"):
+        if enc.get(campo) is not None:
+            rel["encaixe"][campo] = enc[campo]
     return locais, rel
 
 
@@ -373,7 +479,10 @@ def furos_de_laje(furos: list[dict], enc: dict) -> list[dict]:
 
 def encaixe_duvidoso(enc: dict) -> bool:
     """O encaixe automático não convence: menos da metade dos furos caiu em viga, ou outra orientação
-    chegou perto (até 30% a menos). Aí vale conferir na tela ou passar "encaixe" à mão no pavimento.json."""
+    chegou perto (até 30% a menos). Aí vale conferir na tela ou passar "encaixe" à mão no pavimento.json.
+    O encaixe pelos pilares de outro pavimento não depende de quantos furos caem em viga: não é duvidoso."""
+    if enc.get("metodo") == "pilares":
+        return False
     dentro, segundo, total = enc.get("dentro"), enc.get("segundo") or 0, enc.get("total") or 0
     if dentro is None:
         return False

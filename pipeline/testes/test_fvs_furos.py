@@ -373,5 +373,140 @@ class TestPublicarPlanta(unittest.TestCase):
             self.assertEqual(f["viga"], publicar_planta.id_local("EXE", "2º Pavimento", "V", "V1"))
 
 
+class TestParede(unittest.TestCase):
+    """Furo "de viga" cuja peça, no modelo, tem 2 m ou mais de altura: parede ou cortina (Térreo comercial, 20/11)."""
+
+    def test_furo_de_parede_fica_fora_da_viga_com_motivo(self):
+        pecas = [viga("V1", 0, 0, 200, 10)]
+        parede = furo("p", 50, 5)
+        parede["altura_viga"] = 310.0
+        locais, rel = furos.distribuir_furos([furo("a", 20, 5), parede], pecas, IDENT)
+        self.assertEqual([p["furo"]["modelo_id"] for p in locais], ["a"])
+        self.assertEqual(rel["em_parede"], 1)
+        s = rel["sem_viga"][0]
+        self.assertEqual((s["id"], s["viga_perto"], s["dist_cm"], s["altura_viga"]), ("p", "V1", 0, 310.0))
+        self.assertIn("parede ou cortina", s["motivo"])
+        self.assertNotIn("altura_viga", locais[0]["furo"])  # o pacote não muda
+
+    def test_viga_alta_ainda_e_viga(self):
+        f = furo("a", 20, 5)
+        f["altura_viga"] = 170.0  # viga parede de 170 cm: continua viga
+        locais, rel = furos.distribuir_furos([f], [viga("V1", 0, 0, 200, 10)], IDENT)
+        self.assertEqual(len(locais), 1)
+        self.assertEqual(rel["em_parede"], 0)
+
+    def test_altura_lida_do_modelo(self):
+        self.assertEqual(furo("a", 0, 0)["altura_viga"], 60.0)
+
+    def test_fora_de_viga_diz_a_viga_mais_perto(self):
+        fator = furos.PT_POR_CM_PAPEL / 50
+        enc = {"rotacao": [[1.0, 0.0], [0.0, 1.0]], "fator": fator, "t": [0.0, 0.0]}
+        _, rel = furos.distribuir_furos([furo("a", 100 / fator, (10 + 50 * fator) / fator)], [viga("V1", 0, 0, 200, 10)], enc)
+        self.assertEqual((rel["sem_viga"][0]["viga_perto"], rel["sem_viga"][0]["dist_cm"]), ("V1", 50))
+        self.assertNotIn("motivo", rel["sem_viga"][0])
+
+
+class TestReferencia(unittest.TestCase):
+    """Encaixe pelos pilares de outro pavimento do mesmo modelo (Térreo comercial, 20/11)."""
+
+    PILARES = {"P1": (100.0, 100.0), "P2": (700.0, 120.0), "P3": (400.0, 500.0), "P4": (90.0, 800.0),
+               "P5": (650.0, 760.0), "P6": (300.0, 300.0), "P7": (520.0, 260.0)}
+
+    def setUp(self):
+        self.enc_ref = {"rotacao": [[1.0, 0.0], [0.0, -1.0]], "fator": furos.PT_POR_CM_PAPEL / 50, "t": [812.0, 905.0]}
+
+    def alvo(self, R, s, t, pilares=None):
+        return {n: (s * (R[0][0] * x + R[0][1] * y) + t[0], s * (R[1][0] * x + R[1][1] * y) + t[1])
+                for n, (x, y) in (pilares or self.PILARES).items()}
+
+    def confere(self, enc, R, s, t):
+        for mx, my in ((0.0, 0.0), (1234.0, -567.0), (-300.0, 2000.0)):
+            rx, ry = furos.transformar(self.enc_ref, mx, my)
+            ex = s * (R[0][0] * rx + R[0][1] * ry) + t[0]
+            ey = s * (R[1][0] * rx + R[1][1] * ry) + t[1]
+            px, py = furos.transformar(enc, mx, my)
+            self.assertAlmostEqual(px, ex, places=6)
+            self.assertAlmostEqual(py, ey, places=6)
+
+    def test_so_deslocamento(self):
+        R = [[1.0, 0.0], [0.0, 1.0]]
+        enc = furos.encaixe_pela_referencia(self.enc_ref, self.PILARES, self.alvo(R, 1.0, (-32.7, -130.2)))
+        self.confere(enc, R, 1.0, (-32.7, -130.2))
+        self.assertEqual((enc["metodo"], enc["pilares"], enc["erro_cm"], enc["pilares_fora"]), ("pilares", 7, 0.0, []))
+        self.assertFalse(furos.encaixe_duvidoso(enc))
+
+    def test_giro_e_escala(self):
+        R = furos.ROTACOES[1]  # 90 graus
+        enc = furos.encaixe_pela_referencia(self.enc_ref, self.PILARES, self.alvo(R, 1.01, (5000.0, -20.0)))
+        self.confere(enc, R, 1.01, (5000.0, -20.0))
+        self.assertIn(enc["rotacao"], furos.ROTACOES)
+
+    def test_pilar_que_nao_bate_sai_da_conta(self):
+        R = [[1.0, 0.0], [0.0, 1.0]]
+        alvo = self.alvo(R, 1.0, (10.0, 20.0))
+        alvo["P3"] = (alvo["P3"][0] + 300, alvo["P3"][1])  # pilar trocado de lugar (ou de nome)
+        alvo["P99"] = (0.0, 0.0)  # só no alvo: não conta
+        enc = furos.encaixe_pela_referencia(self.enc_ref, self.PILARES, alvo)
+        self.confere(enc, R, 1.0, (10.0, 20.0))
+        self.assertEqual((enc["pilares"], enc["pilares_fora"]), (6, ["P3"]))
+
+    def test_poucos_pilares_ou_que_nao_batem(self):
+        R = [[1.0, 0.0], [0.0, 1.0]]
+        poucos = {n: c for n, c in self.PILARES.items() if n in ("P1", "P2", "P3")}
+        with self.assertRaises(furos.ErroFuros):
+            furos.encaixe_pela_referencia(self.enc_ref, poucos, self.alvo(R, 1.0, (0, 0), poucos))
+        baguncado = {n: (float(i * 997 % 800), float(i * 389 % 700)) for i, n in enumerate(self.PILARES, 1)}
+        with self.assertRaises(furos.ErroFuros):
+            furos.encaixe_pela_referencia(self.enc_ref, self.PILARES, baguncado)
+
+    def test_pilares_da_planta(self):
+        pecas = [pilar("P1", 0, 0, 20, 60), pilar("P2", 100, 0, 120, 60), pilar("P2", 300, 0, 320, 60), viga("V1", 0, 0, 1, 1)]
+        self.assertEqual(furos.pilares_da_planta(pecas), {"P1": (10.0, 30.0)})  # P2 repetido fica de fora
+
+    def test_publicar_com_referencia(self):
+        """A pasta gerada de um pavimento serve de referência para o outro (pavimento.json "referencia")."""
+        R = [[1.0, 0.0], [0.0, 1.0]]
+        # referência: só os pilares (o manifest) e o encaixe (o relatorio.json)
+        ref_pecas = [pilar(n, x - 10, y - 30, x + 10, y + 30) for n, (x, y) in self.PILARES.items()]
+        man_ref = {"elementos": {f"id{k}": p for k, p in enumerate(ref_pecas)}}
+        rel_ref = {"furos": {"encaixe": {**self.enc_ref, "duvidoso": False}}, "trechos": [{"pasta": "Planta_inteira"}]}
+        # esta folha: os mesmos pilares deslocados e uma viga onde o furo cai
+        alvo = self.alvo(R, 1.0, (40.0, -60.0))
+        pecas = [pilar(n, x - 10, y - 30, x + 10, y + 30) for n, (x, y) in alvo.items()]
+        rx, ry = furos.transformar(self.enc_ref, 300.0, -500.0)
+        fx, fy = rx + 40.0, ry - 60.0
+        pecas.append(viga("V9", fx - 50, fy - 5, fx + 50, fy + 5))
+        with tempfile.TemporaryDirectory() as d:
+            pasta = pathlib.Path(d) / "03_ref"
+            (pasta / "Planta_inteira").mkdir(parents=True)
+            (pasta / "relatorio.json").write_text(json.dumps(rel_ref), encoding="utf-8")
+            (pasta / "Planta_inteira" / "manifest.json").write_text(json.dumps(man_ref), encoding="utf-8")
+            cfg = {"furos": {"ifc": "m.ifc", "nivel": ["X"], "referencia": str(pasta)}}
+            rel = publicar_planta.por_furos(cfg, {"furos": [furo("a", 300.0, -500.0)]}, [{**TestPacote().forma(), "pecas": list(pecas)}])
+            self.assertEqual(rel["em_viga"], 1)
+            self.assertEqual((rel["encaixe"]["metodo"], rel["encaixe"]["referencia"], rel["encaixe"]["pilares"]), ("pilares", "03_ref", 7))
+            self.assertFalse(rel["encaixe"]["duvidoso"])
+            # referência com encaixe duvidoso: recusa
+            rel_ref["furos"]["encaixe"]["duvidoso"] = True
+            (pasta / "relatorio.json").write_text(json.dumps(rel_ref), encoding="utf-8")
+            with self.assertRaises(publicar_planta.ErroPublicacao):
+                publicar_planta.por_furos(cfg, {"furos": [furo("a", 300.0, -500.0)]}, [{**TestPacote().forma(), "pecas": list(pecas)}])
+
+    def test_config_da_referencia(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = pathlib.Path(d)
+            (base / "EXE_furacao.ifc").write_text("x")
+            (base / "f.pdf").write_text("x")
+            cfg = {"obra": "EXE", "pavimento": "Térreo", "formas": [{"trecho": "T1", "pdf": "f.pdf"}], "folha_unica": True,
+                   "furos": {"ifc": "EXE_furacao.ifc", "nivel": "TÉRREO (NO)", "referencia": "pacotes/03_pilotis"}}
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            with self.assertRaises(publicar_planta.ErroPublicacao):  # a pasta ainda não foi gerada
+                publicar_planta.ler_config(base / "pav.json")
+            (base / "pacotes" / "03_pilotis").mkdir(parents=True)
+            (base / "pacotes" / "03_pilotis" / "relatorio.json").write_text("{}", encoding="utf-8")
+            lido = publicar_planta.ler_config(base / "pav.json")
+            self.assertEqual(pathlib.Path(lido["furos"]["referencia"]), base / "pacotes" / "03_pilotis")
+
+
 if __name__ == "__main__":
     unittest.main()

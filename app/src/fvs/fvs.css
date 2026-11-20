@@ -1048,6 +1048,15 @@
 .fv-sem-peca {
   margin-top: 8px;
 }
+.fv-subgrupo {
+  margin: 8px 0 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.fv-grade-armadura + .fv-grade-armadura,
+.fv-trechos + .fv-grade-armadura {
+  margin-top: 8px;
+}
 /* armadura de laje: um botão grande por direção (20/11/2026); dois por linha a partir do tablet */
 .fv-grade-armadura {
   display: grid;

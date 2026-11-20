@@ -8,8 +8,9 @@ import { resumoDasAreas } from '../areas'
 import { baixarPlanta, ehDeAmbientes, ehDeArmadura, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
-import { limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
+import { abrirPacoteOuAnterior, limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
+import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
 import { resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { SEM_FILTRO } from '../reprovacoes'
@@ -50,6 +51,27 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
   useEffect(() => {
     atualizar()
   }, [dados])
+
+  // Menu do pavimento (20/11): as opções dos ambientes (alvenaria, reboco, piso...) saem do pacote da planta de
+  // ambientes que já está no aparelho (opcoes_ambientes.ts, da frente 05). Sem o pacote, fica só o Baixar.
+  const [opcoesAmb, setOpcoesAmb] = useState<Map<string, OpcaoDosAmbientes[]>>(new Map())
+  useEffect(() => {
+    if (!noAparelho) return
+    let vivo = true
+    ;(async () => {
+      const m = new Map<string, OpcaoDosAmbientes[]>()
+      for (const pls of dados.plantasDe.values())
+        for (const p of pls) {
+          if (!ehDeAmbientes(p)) continue
+          const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
+          if (pac) m.set(p.id, opcoesDosAmbientes(pac.manifest, dados.fichas))
+        }
+      if (vivo) setOpcoesAmb(m)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [noAparelho, dados])
 
   /** Baixa uma planta ou várias, uma depois da outra. Se uma falhar, o que já baixou fica no aparelho. */
   const baixar = async (lista: Planta[], pavimentoId?: string) => {
@@ -302,6 +324,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
         // só as direções que o pavimento tem publicadas, na ordem do app
         const armadura = plantas.filter(ehDeArmadura).sort((a, b) => ordemDaCamada(a.trecho) - ordemDaCamada(b.trecho))
         const ambientes = plantas.filter(ehDeAmbientes)
+        // disciplinas que vierem depois (instalações...) entram sozinhas, uma seção por disciplina
+        const outras = [...agrupar(plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && p.disciplina !== 'estrutura'), (p) => p.disciplina)]
+        const daEstrutura = estrutura.filter((p) => p.disciplina === 'estrutura')
         const { r, ra: resumoAmb, lajes } = resumos.get(pv.id)!
         const ra = ambientes.length ? resumoAmb : null
         const faltam = noAparelho ? plantas.filter((p) => !noAparelho.has(p.id)) : []
@@ -354,20 +379,31 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                 )}
               </div>
             )}
-            {estrutura.length > 0 && (
-              <>
-                {(ambientes.length > 0 || armadura.length > 0) && (
-                  <h3 class="fv-disciplina">{armadura.length > 0 ? 'Forma: pilares, vigas e lajes' : 'Estrutura'}</h3>
+            {daEstrutura.length > 0 && (
+              <div data-testid="fvs-secao-estrutura">
+                {(ambientes.length > 0 || armadura.length > 0 || outras.length > 0) && <h3 class="fv-disciplina">Estrutura</h3>}
+                {armadura.length > 0 && <p class="fv-subgrupo">Forma: pilares, vigas e lajes</p>}
+                <ul class="lista fv-trechos">{daEstrutura.map(linhaDaPlanta)}</ul>
+                {armadura.length > 0 && (
+                  <div data-testid="fvs-grupo-armadura">
+                    <p class="fv-subgrupo">Armadura de laje</p>
+                    <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
+                  </div>
                 )}
-                <ul class="lista fv-trechos">{estrutura.map(linhaDaPlanta)}</ul>
-              </>
+              </div>
             )}
-            {armadura.length > 0 && (
+            {daEstrutura.length === 0 && armadura.length > 0 && (
               <div data-testid="fvs-grupo-armadura">
                 <h3 class="fv-disciplina">Armadura de laje</h3>
                 <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
               </div>
             )}
+            {outras.map(([disc, lista]) => (
+              <div key={disc} data-testid="fvs-secao-outra">
+                <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>
+                <ul class="lista fv-trechos">{lista.map(linhaDaPlanta)}</ul>
+              </div>
+            ))}
             {ra && (
               <div data-testid="fvs-ambientes">
                 <h3 class="fv-disciplina">Ambientes</h3>
@@ -384,6 +420,29 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                   </ul>
                 )}
                 <ul class="lista fv-trechos">{ambientes.map(linhaDaPlanta)}</ul>
+                {ambientes.map((p) => {
+                  const ops = opcoesAmb.get(p.id) ?? []
+                  if (!ops.length) return null
+                  return (
+                    <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-ambientes">
+                      {ops.map((op) => (
+                        <button
+                          type="button"
+                          key={op.id}
+                          class="fv-bt-armadura"
+                          data-testid="fvs-opcao-ambiente"
+                          onClick={() => ir({ nome: 'planta', plantaId: p.id, servico: op.abre.servico, aba: op.abre.aba })}
+                        >
+                          <span class="fv-bt-texto">
+                            <b>{op.titulo}</b>
+                            {ambientes.length > 1 && <small>{p.trecho}</small>}
+                          </span>
+                          <span class="fv-bt-acao">Abrir</span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })}
               </div>
             )}
             {semRede && plantas.some((p) => !noAparelho?.has(p.id)) && (
@@ -492,4 +551,15 @@ function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
       </text>
     </svg>
   )
+}
+
+/** Título da seção de uma disciplina que o app ainda não conhece ("instalacoes" -> "Instalacoes"). */
+function nomeDaDisciplina(d: string): string {
+  return d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros'
+}
+
+function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>()
+  for (const i of itens) m.set(chave(i), [...(m.get(chave(i)) ?? []), i])
+  return m
 }

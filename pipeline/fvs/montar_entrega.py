@@ -25,7 +25,7 @@ MODELOS = AQUI / "pc_empresa"
 
 # o que nunca pode estar no pacote: dado de obra ou o que só existe com dado de obra
 SUFIXOS_PROIBIDOS = {".bin", ".pdf", ".dwg", ".dxf", ".ifc", ".csv", ".xlsx", ".xls", ".zip", ".jpg", ".jpeg"}
-NOMES_PROIBIDOS = {"indice.json", "fichas.json", "historico.json", "manifest.json", "relatorio.json", "itens_fvs.json"}
+NOMES_PROIBIDOS = {"indice.json", "fichas.json", "historico.json", "manifest.json", "relatorio.json", "itens_fvs.json", "config_fvs.json"}
 LIMITE_MB = 20
 # abrem em programas do Windows: fim de linha do Windows. Os com acento levam a marca de UTF-8,
 # sem a qual o PowerShell 5 e o Bloco de Notas antigo leem errado.

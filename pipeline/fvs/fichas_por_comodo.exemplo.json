@@ -1,0 +1,16 @@
+{
+ "_leia": "Fichas por tipo de cômodo da Obra Exemplo (EXE), fictício. O arquivo de verdade fica fora do repositório: é o respostas_fichas_por_comodo.json que a página de conferência gera. Tipo = nome do cômodo sem os números (\"Suíte 01\" -> \"Suíte\"). Lido por ambientes.ler_fichas_por_comodo.",
+ "formato": "fichas_por_comodo/1",
+ "fichas": {
+  "EXE-013": "Alvenaria",
+  "EXE-015": "Reboco interno",
+  "EXE-024": "Revestimento cerâmico de piso",
+  "EXE-027": "Pintura interna"
+ },
+ "classes": {
+  "Banho": {"EXE-013": "sim", "EXE-015": "sim", "EXE-024": "sim", "EXE-027": "sim"},
+  "Suíte": {"EXE-013": "sim", "EXE-015": "sim", "EXE-024": "nao", "EXE-027": "sim"},
+  "Living / Cozinha": {"EXE-013": "sim", "EXE-015": "sim", "EXE-024": "sim", "EXE-027": "sim"},
+  "Sacada": {"EXE-013": "nao", "EXE-015": "nao", "EXE-024": "sim", "EXE-027": "nao"}
+ }
+}

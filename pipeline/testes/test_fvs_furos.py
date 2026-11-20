@@ -72,9 +72,21 @@ class TestPropriedades(unittest.TestCase):
         g = furos.furo_das_propriedades("Furação circular viga", psets(diametro=7.5, topo=None), 0, 0)
         self.assertEqual(furos.secao_do_furo(g), "Ø 7,5 cm")
 
-    def test_furo_de_laje_e_outro_objeto_ficam_de_fora(self):
-        self.assertIsNone(furos.furo_das_propriedades("Furação circular laje:Furação laje Ø 50mm", psets(diametro=5.0), 0, 0))
+    def test_outro_objeto_fica_de_fora(self):
         self.assertIsNone(furos.furo_das_propriedades("Viga qualquer", psets(diametro=5.0), 0, 0))
+        self.assertIsNone(furos.furo_das_propriedades("Laje qualquer", psets(diametro=5.0), 0, 0))
+
+    def test_furo_de_laje(self):
+        """Item 4 (19/11): o furo de laje entra, sem viga; diâmetro em Other ou Dimensions, espessura da laje."""
+        ps = {"Dimensions": {"ALTURA.LAJE": 20.0}, "Other": {"FURO.DIAMETRO": 15.0}, "Constraints": {"Level": "2º PAVIMENTO (NO)"},
+              "Materials and Finishes": {"p.FURO.SAN": True, "p.FURO.HID": False}}
+        f = furos.furo_das_propriedades("FED_Furação circular laje-R01:Furação laje Ø 150mm:9", ps, 3, 4, "9")
+        self.assertEqual((f["forma"], f["laje"], f["diametro"], f["espessura"]), ("circular", True, 15.0, 20.0))
+        self.assertEqual(f["disciplinas"], ["Sanitário / drenagem"])
+        self.assertNotIn("topo", f)
+        self.assertEqual(furos.secao_do_furo(f), "Ø 15 cm")
+        r = furos.furo_das_propriedades("FED_Furação retangular laje-R01:x", {"Dimensions": {"FURO.LARGURA": 40.0, "FURO.ALTURA": 20.0}}, 0, 0, "r")
+        self.assertEqual((r["forma"], r["largura"], r["altura"], r["disciplinas"]), ("retangular", 40.0, 20.0, []))
 
     def test_nivel_sem_acento_e_com_letra_estragada(self):
         self.assertTrue(furos.mesmo_nivel("TÉRREO COMERCIAL (NO)", "Terreo comercial (NO)"))
@@ -145,6 +157,20 @@ class TestDistribuir(unittest.TestCase):
         self.assertEqual([p["viga"] for p in locais], ["V2"])
         locais, _ = furos.distribuir_furos([furo("a", 50, 12)], pecas, IDENT)
         self.assertEqual([p["viga"] for p in locais], ["V1"])
+
+    def test_furos_de_laje_entram_sem_viga(self):
+        forma = {"pecas": list(self.pecas)}
+        laje = lambda i, x, y, d=("p.FURO.SAN",): {**furo(i, x, y, disc=d), "laje": True}
+        rel = furos.juntar_furos(forma, [furo("a", 20, 5), laje("l2", 400, 300), laje("l1", 50, 300, ("p.FURO.ELT/TEL",)), laje("l3", 10, 900)], encaixe=IDENT)
+        fl = [p for p in forma["pecas"] if p["tipo"] == "F" and p["nome"].startswith("FL")]
+        # de cima para baixo, da esquerda para a direita
+        self.assertEqual([(p["nome"], p["furo"]["modelo_id"]) for p in fl], [("FL1", "l1"), ("FL2", "l2"), ("FL3", "l3")])
+        self.assertTrue(all(p["furo"]["laje"] is True and "viga" not in p for p in fl))
+        self.assertEqual((rel["furos"], rel["em_viga"], rel["em_laje"]), (1, 1, 3))
+        self.assertEqual(rel["laje_por_disciplina"], {"Sanitário / drenagem": 2, "Elétrica / telecom": 1})
+        self.assertEqual(rel["sem_viga"], [])  # furo de laje não conta como fora de viga
+        with self.assertRaises(furos.ErroFuros):  # só laje e sem encaixe: não dá para votar
+            furos.juntar_furos({"pecas": list(self.pecas)}, [laje("l1", 1, 1)])
 
     def test_juntar_furos_troca_os_furos_antigos(self):
         forma = {"pecas": list(self.pecas)}
@@ -268,6 +294,27 @@ class TestPacote(unittest.TestCase):
         p = pilar("P1", 0, 0, 1, 1)
         with self.assertRaises(pacote.ErroPacote):
             pacote.montar(self.CAB, {}, {"p": p, "f": {**f, "viga": "p"}}, {})
+
+    def test_pacote_com_furo_de_laje(self):
+        fm = self.forma()
+        furos.juntar_furos(fm, [furo("m1", 20, 5), {**furo("l1", 100, 300), "laje": True}], encaixe=IDENT)
+        detalhes = {"P": {"P1": {"chave": "P_P1", "titulo": "P1", "prancha": "EXE.PIL", "img": b"D", "aco": None, "situacao": "termina"}},
+                    "V": {"V1": {"chave": "V_V1", "titulo": "V1", "prancha": "EXE.VIG", "img": b"E", "aco": None}}}
+        ids = {("V", "V1"): "v1", ("P", "P1"): "p1", ("F", "V1-F1"): "f1", ("F", "FL1"): "fl1"}
+        man, binario, _ = publicar_planta.montar_trecho(fm, detalhes, ids, {"planta_id": "p", "trecho": "T"})
+        m, _ = pacote.ler(man, binario)
+        f = m["elementos"]["fl1"]
+        self.assertEqual((f["tipo"], f["nome"]), ("F", "FL1"))
+        self.assertNotIn("viga", f)
+        self.assertEqual((f["furo"]["laje"], f["furo"]["disciplinas"]), (True, ["Hidráulica"]))
+        # furo de laje com viga, ou laje que não é true: recusa / vira furo de viga comum
+        v = viga("V1", 0, 0, 1, 1)
+        fl = {"tipo": "F", "nome": "FL1", "secao": "", "rotulo": [0, 0, 1, 1], "polys": [], "furo": {"forma": "circular", "laje": True}}
+        pacote.montar(self.CAB, {}, {"f": fl}, {})
+        with self.assertRaises(pacote.ErroPacote):
+            pacote.montar(self.CAB, {}, {"v": v, "f": {**fl, "viga": "v"}}, {})
+        with self.assertRaises(pacote.ErroPacote):
+            pacote.montar(self.CAB, {}, {"f": {**fl, "furo": {"forma": "circular", "laje": "sim"}}}, {})
 
     def test_campo_estranho_do_furo_nao_entra(self):
         v = viga("V1", 0, 0, 1, 1)

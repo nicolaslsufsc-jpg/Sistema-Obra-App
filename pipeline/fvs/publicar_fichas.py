@@ -18,10 +18,13 @@ Aceita três formatos de arquivo:
      adivinha pelo nome da etapa).
      "rastreio_concreto": true (opcional, só em ficha de pilar ou de viga, um por ficha): o item que o
      módulo Concreto marca quando a peça tem caminhão lançado.
+     "instalacao": "esgoto", "agua" ou "eletrica" (opcional, só em ficha de laje, uma de cada por ficha): o
+     item dos pontos de instalação na laje. Esgoto e água são marcados pelos furos de laje (SAN e HID) da
+     área; a elétrica fica à mão, e furo elétrico errado deixa o item NC (item 4, 19/11/2026).
      "esquadrias": true (opcional, só em ficha de ambiente, um ou mais por ficha): item de vão ou esquadria
      ("eixos e vãos", "requadros", "recorte na porta"), que as esquadrias do ambiente marcam, uma a uma.
   2. o do HTML legado (exemplo: pipeline/legado/itens_fvs.exemplo.json): {"P": {"codigo", "titulo", "itens": [...]}, "V": {...}}
-     (as marcas "parte", "furos", "barras", "concretagem", "rastreio_concreto" e "esquadrias" passam como no formato 1)
+     (as marcas "parte", "furos", "barras", "concretagem", "rastreio_concreto", "instalacao" e "esquadrias" passam como no formato 1)
   3. o de um sistema oficial, quando o galho dele está em pipeline/integracoes/ (docs/modulos/integracoes.md):
      o galho reconhece o arquivo e converte para o formato 1.
 
@@ -56,6 +59,10 @@ TIPOS = ("P", "V", "L", "A")
 PARTES = ("consolo", "capitel")
 
 
+
+INSTALACOES = ("esgoto", "agua", "eletrica")
+
+
 class ErroFichas(Exception):
     pass
 
@@ -80,6 +87,7 @@ def de_legado(dados: dict) -> list[dict]:
                   **({"barras": i["barras"]} if i.get("barras") is not None else {}),
                   **({"concretagem": i["concretagem"]} if i.get("concretagem") is not None else {}),
                   **({"rastreio_concreto": i["rastreio_concreto"]} if i.get("rastreio_concreto") is not None else {}),
+                  **({"instalacao": i["instalacao"]} if i.get("instalacao") is not None else {}),
                   **({"esquadrias": i["esquadrias"]} if i.get("esquadrias") is not None else {})}
                  for i in dados[tipo]["itens"]]
         fichas.append({"codigo": codigo, "titulo": titulo, "revisao": "0", "tipo_modelo": "ESTRUTURA",
@@ -140,6 +148,20 @@ def normalizar(dados, aplica_a_padrao: list[str] | None = None) -> list[dict]:
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: o item do rastreio não pode ser também de furos, de barras ou de parte')
         if len(rastreio) > 1:
             raise ErroFichas(f'{f["codigo"]}: só um item do rastreio do concreto ("rastreio_concreto": true) por ficha')
+        vistas: set[str] = set()
+        for i in f["itens"]:
+            inst = i.get("instalacao")
+            if inst is None:
+                continue
+            if inst not in INSTALACOES:
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "instalacao" só aceita "esgoto", "agua" ou "eletrica"')
+            if "L" not in f["aplica_a"]:
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: item de instalação na laje só em ficha de laje ("aplica_a": ["L"])')
+            if i.get("furos") or i.get("barras") or i.get("parte") or i.get("rastreio_concreto"):
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: o item de instalação não pode ser também de furos, de barras, de parte ou do rastreio')
+            if inst in vistas:
+                raise ErroFichas(f'{f["codigo"]}: só um item de "instalacao": "{inst}" por ficha')
+            vistas.add(inst)
         for i in f["itens"]:
             if i.get("esquadrias") is None:
                 continue

@@ -21,6 +21,8 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                (pilar com consolo ou capitel: "partes": [{"tipo": "consolo", "polys": [[[x, y], ...]], "detalhe": "C_CONSOLO_P32"}])
                (furo de viga: "tipo": "F", "nome": "V12-F1", "viga": "<id da viga>", "furo": {"forma": "circular", "diametro": 10,
                 "topo": 25, "fundo": 273, "disciplinas": ["Hidráulica"]}, sem detalhe; pipeline/fvs/furos.py)
+               (furo de laje: "tipo": "F", "nome": "FL12", sem "viga", "furo": {"laje": true, "forma": "circular", "diametro": 20,
+                "espessura": 20, "disciplinas": ["Sanitário / drenagem"]}; a área de laje é achada no app)
                (esquadria do ambiente: "tipo": "E", "nome": "303-05-PM80", "secao": "PM80", "ambiente": "<id do ambiente>",
                 "esquadria": {"codigo": "PM80", "classe": "porta", "outro_lado": "303-04"}, sem detalhe; pipeline/fvs/esquadrias.py)
   "detalhes": {"P_P32": {"titulo": "P32", "prancha": "EXE.ES.LO.285.PIL3PAVTIP-R00", "aco": true}},
@@ -45,7 +47,7 @@ FORMATO = 1
 TIPOS = ("P", "V", "L", "A", "F", "E")
 # Partes do pilar concretadas com a laje (pipeline/fvs/partes.py): itens na ficha do pilar, toque próprio na planta.
 TIPOS_DE_PARTE = ("consolo", "capitel")
-CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "disciplinas", "modelo_id")
+CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id")
 CAMPOS_DA_ESQUADRIA = ("codigo", "classe", "modelo", "outro_lado")
 CLASSES_DE_ESQUADRIA = ("porta", "janela")
 # Barras de aço da laje (pipeline/fvs/barras_laje.py): as quatro camadas das pranchas de armação.
@@ -142,12 +144,19 @@ def montar(
         if e.get("detalhe_corrigido_em"):
             reg["detalhe_corrigido_em"] = str(e["detalhe_corrigido_em"])
         if e["tipo"] == "F":
-            if not e.get("viga") or not isinstance(e.get("furo"), dict):
-                raise ErroPacote(f"{e.get('nome')}: furo sem a viga ou sem as medidas")
-            if e["viga"] not in elementos or elementos[e["viga"]].get("tipo") != "V":
-                raise ErroPacote(f"{e.get('nome')}: a viga do furo não está no pacote")
-            reg["viga"] = e["viga"]
-            reg["furo"] = {k: v for k, v in e["furo"].items() if k in CAMPOS_DO_FURO}
+            if not isinstance(e.get("furo"), dict):
+                raise ErroPacote(f"{e.get('nome')}: furo sem as medidas")
+            if e["furo"].get("laje") is True:
+                # furo de laje: sem viga; a área de laje dele é achada no app
+                if e.get("viga"):
+                    raise ErroPacote(f"{e.get('nome')}: furo de laje não tem viga")
+            else:
+                if not e.get("viga"):
+                    raise ErroPacote(f"{e.get('nome')}: furo sem a viga ou sem as medidas")
+                if e["viga"] not in elementos or elementos[e["viga"]].get("tipo") != "V":
+                    raise ErroPacote(f"{e.get('nome')}: a viga do furo não está no pacote")
+                reg["viga"] = e["viga"]
+            reg["furo"] = {k: v for k, v in e["furo"].items() if k in CAMPOS_DO_FURO and (k != "laje" or v is True)}
         elif e.get("viga") or e.get("furo"):
             raise ErroPacote(f"{e.get('nome')}: só furo tem viga e medidas de furo")
         if e["tipo"] == "E":

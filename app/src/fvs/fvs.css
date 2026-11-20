@@ -1422,7 +1422,11 @@
    não encolhe abaixo do texto; o título cede um pouco (ainda cabe "Trecho 1" na caixa) */
 @media (min-width: 701px) and (max-width: 900px) {
   .fv-tit {
-    max-width: 138px;
+    max-width: 142px;
+  }
+  /* a fonte do Linux (CI do GitHub) é mais larga: em 14 px "Trecho 1" ficava 1 px maior que a caixa */
+  .fv-nomes select {
+    font-size: 13px;
   }
   .fv-planta .fv-busca {
     flex: none;

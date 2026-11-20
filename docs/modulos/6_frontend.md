@@ -1,6 +1,6 @@
 # Front end: aparência e componentes comuns (frente 06)
 
-Status em 20/11/2026: o menu foi refeito pelas heurísticas de Nielsen (pedido do Nicolas, aprovado pelo Professor) na branch `app/menu-heuristicas`, com commit local e esperando PR. Os testes de tela sem conta, os da Nova obra e os de unidade passam. Os testes com conta (telas e sincronização) só rodam no CI.
+Status em 20/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar.
 
 **O que esta frente cuida:** casca do app, menu, entrada, tema (escuro e modo sol), estilos comuns em `app/src/style.css` e `app/src/tema.css`, e a regra de 375 px e tablet.
 - Cada tela de módulo nasce e muda na frente do próprio módulo. A 06 só aponta o problema para a frente dona.
@@ -26,13 +26,20 @@ Status em 20/11/2026: o menu foi refeito pelas heurísticas de Nielsen (pedido d
   - caixas dos módulos com a mesma altura (a da maior da grade), descrição em até 2 linhas e "Abrir ›" sempre no mesmo lugar. O teste de tela confere isso em 375, 384, 768 e 800 px;
   - ícones em `app/src/telas/icones.tsx` (um por módulo, mais o de instalar), sempre com o texto junto. Foram desenhados no próprio código, sem biblioteca nem arquivo de fora, então não pedem crédito nem trazem licença de terceiros. O Flaticon ficou de fora porque os ícones grátis de lá exigem crédito ao autor.
 
+- **Faixa "Instale o app" com o app já instalado (20/11, branch `app/instalado`, achado do testador):**
+  - a faixa e a frase "Instale o app para proteger" não aparecem mais quando o app já está instalado, nem na aba do Chrome;
+  - o app se dá por instalado em três casos: quando está aberto como app; quando o Chrome responde que está instalado (`getInstalledRelatedApps`, com o manifesto listando a si mesmo); ou quando há a marca guardada no aparelho no momento em que o Chrome avisa que instalou;
+  - se o Chrome volta a oferecer a instalação, o app foi desinstalado: a marca sai e a faixa volta;
+  - o código fica em `app/src/telas/instalado.ts`, e o núcleo não mudou;
+  - o teste de tela confere os quatro casos em 375 px e no tablet (na main pelo #41).
+
 ## Pendências
 1. **Um estilo só para aviso, toast e tela vazia.**
    - As telas comuns já não têm cor solta.
    - As repetições estão em `fvs.css` e `concreto.css`.
    - Fica para quando as frentes 03 a 05 fecharem.
 2. **Abas dos passos da Nova obra.** No celular elas quebram em duas linhas (`nova_obra.css`). Fica junto com o item 1.
-3. **Projetos (#34):** a descrição nova já está em `modulos.ts`. Se o #34 mexer na mesma linha, fica com a descrição desta frente.
+3. **Projetos com conta (branch `app/projetos-com-conta`):** saiu o `soSemConta` só do Projetos em `modulos.ts`, e ele continua com o selo "beta". O teste de unidade e o teste de tela com conta (`telas.e2e`) foram ajustados. Esperando o #44.
 
 ## Próximo passo
 Uma barra comum em todas as telas, com "‹ Menu" à esquerda, inclusive na planta da FVS. Só depois que o #31 (topo da TelaPlanta, frente 02) entrar na main, e combinado com o Professor.

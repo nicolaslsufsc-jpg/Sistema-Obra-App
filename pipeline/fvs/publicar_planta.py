@@ -793,7 +793,16 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
     sb = Supabase(args.url, args.chave)
     entrar(sb, args.email)
     srv = Servidor(sb, sessao_local.dispositivo_id())
-    return publicar_no_servidor(srv, cfg, detalhes, formas, args.aceita_ambientes)
+    return publicar_no_servidor(srv, cfg, detalhes, so_armadura(formas) if getattr(args, "so_armadura", False) else formas, args.aceita_ambientes)
+
+
+def so_armadura(formas: list[dict]) -> list[dict]:
+    """--so-armadura: só as plantas de armadura de laje (uma por direção). A forma e os ambientes do pavimento
+    ficam como estão no servidor (nenhuma revisão nova, nenhuma peça criada)."""
+    arm = [fm for fm in formas if fm.get("disciplina") == "armadura"]
+    if not arm:
+        raise ErroPublicacao("--so-armadura: o pavimento.json não gerou nenhuma planta de armadura (falta \"barras_laje\"?)")
+    return arm
 
 
 def publicar_no_servidor(srv, cfg: dict, detalhes: dict, formas: list[dict], aceita_ambientes: bool = False) -> list[dict]:
@@ -841,6 +850,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--so-gerar", metavar="PASTA", help="só grava os pacotes nesta pasta, sem publicar")
     ap.add_argument("--folha-unica", action="store_true", help="o pavimento inteiro numa planta só, sem trechos")
     ap.add_argument("--aceita-ambientes", action="store_true", help="o servidor já aceita ambientes em elementos (migração do núcleo aplicada)")
+    ap.add_argument("--so-armadura", action="store_true",
+                    help="publica só as plantas de armadura de laje; a forma e os ambientes ficam como estão no servidor")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--chave", default=CHAVE_PADRAO)

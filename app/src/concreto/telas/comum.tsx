@@ -9,7 +9,10 @@ export function dataBR(data: string | null | undefined): string {
 
 export function horaBR(iso: string | null | undefined): string {
   if (!iso) return ''
-  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export function numBR(v: number | null | undefined, casas = 1): string {
@@ -60,11 +63,24 @@ export function Selo({ situacao, texto }: { situacao: SituacaoCP; texto?: string
   )
 }
 
-export function Topo({ titulo, sub, aoVoltar, children }: { titulo: string; sub?: string; aoVoltar: () => void; children?: ComponentChildren }) {
+/** `paraMenu`: na primeira tela do módulo o botão leva ao menu do app e diz isso ("‹ Menu", 20/11/2026). */
+export function Topo({
+  titulo,
+  sub,
+  aoVoltar,
+  paraMenu = false,
+  children,
+}: {
+  titulo: string
+  sub?: string
+  aoVoltar: () => void
+  paraMenu?: boolean
+  children?: ComponentChildren
+}) {
   return (
     <header class="cc-topo">
-      <button type="button" class="cc-voltar" onClick={aoVoltar} aria-label="Voltar">
-        ‹ Voltar
+      <button type="button" class="cc-voltar" onClick={aoVoltar} aria-label={paraMenu ? 'Voltar ao menu' : 'Voltar'}>
+        {paraMenu ? '‹ Menu' : '‹ Voltar'}
       </button>
       <div class="cc-titulo">
         <h1>{titulo}</h1>

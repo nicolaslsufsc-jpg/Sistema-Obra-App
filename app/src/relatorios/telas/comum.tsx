@@ -17,11 +17,24 @@ export function dataPorExtenso(data: string): string {
   return `${diaDaSemana(data)}, ${dataBR(data)}`
 }
 
-export function Topo({ titulo, sub, aoVoltar, children }: { titulo: string; sub?: string; aoVoltar: () => void; children?: ComponentChildren }) {
+/** `paraMenu`: na primeira tela do módulo o botão leva ao menu do app e diz isso ("‹ Menu", 20/11/2026). */
+export function Topo({
+  titulo,
+  sub,
+  aoVoltar,
+  paraMenu = false,
+  children,
+}: {
+  titulo: string
+  sub?: string
+  aoVoltar: () => void
+  paraMenu?: boolean
+  children?: ComponentChildren
+}) {
   return (
     <header class="rl-topo nao-imprimir">
-      <button type="button" class="rl-voltar" onClick={aoVoltar} aria-label="Voltar">
-        ‹ Voltar
+      <button type="button" class="rl-voltar" onClick={aoVoltar} aria-label={paraMenu ? 'Voltar ao menu' : 'Voltar'}>
+        {paraMenu ? '‹ Menu' : '‹ Voltar'}
       </button>
       <div class="rl-titulo">
         <h1>{titulo}</h1>

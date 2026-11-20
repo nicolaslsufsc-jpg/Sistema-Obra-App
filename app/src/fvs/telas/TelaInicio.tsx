@@ -169,8 +169,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
   return (
     <main class="tela fv-inicio">
       <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+        {/* Primeira tela do módulo: o botão leva ao menu do app e diz isso (20/11/2026) */}
+        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar ao menu">
+          ‹ Menu
         </button>
         <div>
           <h1>FVS</h1>

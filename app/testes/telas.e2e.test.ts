@@ -14,6 +14,7 @@ import { build, preview, type PreviewServer } from 'vite'
 type Browser = any
 type BrowserContext = any
 type Page = any
+import { abrirMenuObra, comPavimentosDoAparelho, noMenuObra } from './menu_obra'
 import { iniciarServidorTeste, type ServidorTeste } from './servidor_teste'
 import { CODIGO_TESTE, USUARIOS } from './dados'
 
@@ -44,12 +45,13 @@ async function entrar(email: string) {
   await pagina.getByRole('button', { name: 'Entrar' }).click()
 }
 
-/** Pavimentos da obra no menu: uma etiqueta por pavimento (front end, 19/11/2026). */
+/** Pavimentos baixados no aparelho: uma etiqueta por pavimento, nos "Detalhes técnicos" (saíram do menu em 20/11/2026). */
 async function pavimentosNaTela(nomes: string[]) {
-  const lista = pagina.getByTestId('pavimentos-obra').getByRole('listitem')
-  await lista.filter({ hasText: new RegExp(`^${nomes[nomes.length - 1]}$`) }).first().waitFor()
-  // outros testes de integração criam pavimentos nesta obra antes: confere que estes vêm primeiro, em ordem
-  expect((await lista.allInnerTexts()).slice(0, nomes.length)).toEqual(nomes)
+  await comPavimentosDoAparelho(pagina, async (lista: Page) => {
+    await lista.filter({ hasText: new RegExp(`^${nomes[nomes.length - 1]}$`) }).first().waitFor()
+    // outros testes de integração criam pavimentos nesta obra antes: confere que estes vêm primeiro, em ordem
+    expect((await lista.allInnerTexts()).slice(0, nomes.length)).toEqual(nomes)
+  })
 }
 
 suite('telas no navegador', () => {
@@ -142,7 +144,7 @@ suite('telas no navegador', () => {
   })
 
   it('sair pede confirmação e volta para a tela de e-mail', async () => {
-    await pagina.getByRole('button', { name: 'Sair' }).click()
+    await noMenuObra(pagina, 'Sair')
     await pagina.getByRole('button', { name: 'Enviar código' }).waitFor()
     expect(ultimoDialogo).toMatch(/Sair desta conta neste aparelho/)
   })
@@ -155,7 +157,7 @@ suite('telas no navegador', () => {
   })
 
   it('app fechado enquanto a pessoa lê o e-mail: volta direto na tela do código', async () => {
-    await pagina.getByRole('button', { name: 'Sair' }).click()
+    await noMenuObra(pagina, 'Sair')
     await pagina.getByLabel('E-mail').fill(USUARIOS.campo.email)
     await pagina.getByRole('button', { name: 'Enviar código' }).click()
     await pagina.getByRole('heading', { name: 'Digite o código' }).waitFor()
@@ -180,7 +182,7 @@ suite('telas no navegador', () => {
     await pagina.getByRole('button', { name: /OBRA1/ }).click()
     // O menu é longo: rola até o fim antes de abrir, para conferir que a tela nova começa no alto.
     await pagina.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-    await pagina.getByRole('button', { name: 'Pessoas da obra' }).click()
+    await noMenuObra(pagina, 'Pessoas da obra')
     await pagina.getByRole('heading', { name: 'Pessoas da obra OBRA1' }).waitFor()
     expect(await pagina.evaluate(() => window.scrollY)).toBe(0)
 
@@ -221,17 +223,19 @@ suite('telas no navegador', () => {
 
     // "Voltar" do navegador (ou do Android) volta ao menu em vez de sair do app.
     await pagina.goBack()
-    await pagina.getByRole('button', { name: 'Pessoas da obra' }).waitFor()
-    await pagina.getByRole('button', { name: 'Pessoas da obra' }).click()
+    await noMenuObra(pagina, 'Pessoas da obra')
     await pagina.getByRole('button', { name: 'Voltar para a obra' }).click()
-    await pagina.getByRole('button', { name: 'Pessoas da obra' }).waitFor()
+    await (await abrirMenuObra(pagina)).getByRole('button', { name: 'Pessoas da obra', exact: true }).waitFor()
   })
 
   it('quem não é admin não vê o botão Pessoas da obra', async () => {
-    await pagina.getByRole('button', { name: 'Sair' }).click()
+    await noMenuObra(pagina, 'Sair')
     await entrar(USUARIOS.gestor.email)
     await pagina.getByRole('button', { name: /OBRA1/ }).click()
-    await pagina.getByRole('button', { name: 'Trocar de obra' }).waitFor()
+    // o menu da obra aberto mostra Trocar de obra e Sair, mas não Pessoas da obra
+    const painel = await abrirMenuObra(pagina)
+    await painel.getByRole('button', { name: 'Trocar de obra', exact: true }).waitFor()
+    await painel.getByRole('button', { name: 'Sair', exact: true }).waitFor()
     expect(await pagina.getByRole('button', { name: 'Pessoas da obra' }).count()).toBe(0)
   })
 
@@ -249,13 +253,14 @@ suite('telas no navegador', () => {
     await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('concreto')
     await pagina.goBack()
-    await pagina.getByRole('button', { name: 'Trocar de obra' }).waitFor()
+    await pagina.getByTestId('menu-obra').waitFor()
 
-    // O "Voltar" da tela inicial do módulo também volta ao menu.
+    // O "‹ Menu" da tela inicial do módulo também volta ao menu (era "‹ Voltar" até 20/11/2026).
     await pagina.getByRole('button', { name: /^Concreto/ }).click()
     await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
-    await pagina.getByRole('button', { name: 'Voltar', exact: true }).click()
-    await pagina.getByRole('button', { name: 'Trocar de obra' }).waitFor()
+    expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹ Menu')
+    await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
+    await pagina.getByTestId('menu-obra').waitFor()
   })
 
   it('FVS abre pelo menu e o voltar retorna ao menu', async () => {
@@ -266,8 +271,9 @@ suite('telas no navegador', () => {
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('fvs')
     // obra de teste sem planta publicada: a tela explica como publicar
     await pagina.getByText('Nenhuma planta publicada nesta obra ainda', { exact: false }).waitFor()
-    await pagina.getByRole('button', { name: 'Voltar', exact: true }).click()
-    await pagina.getByRole('button', { name: 'Trocar de obra' }).waitFor()
+    expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹ Menu')
+    await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
+    await pagina.getByTestId('menu-obra').waitFor()
   })
 
   // Bug do teste no celular (18/11): reabrir o app voltava ao menu em vez do módulo aberto.
@@ -282,16 +288,16 @@ suite('telas no navegador', () => {
     await nova.goto(urlApp)
     await nova.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
     await nova.goBack() // o voltar do Android cai no menu
-    await nova.getByRole('button', { name: 'Trocar de obra' }).waitFor()
+    await nova.getByTestId('menu-obra').waitFor()
     await nova.close()
 
     // Sair: reabrir cai no login, não no módulo
-    await pagina.getByRole('button', { name: 'Voltar', exact: true }).click()
-    await pagina.getByRole('button', { name: 'Trocar de obra' }).waitFor()
+    await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
+    await pagina.getByTestId('menu-obra').waitFor()
     await pagina.getByRole('button', { name: /^Concreto/ }).click()
     await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
     await pagina.goBack()
-    await pagina.getByRole('button', { name: 'Sair' }).click()
+    await noMenuObra(pagina, 'Sair')
     await pagina.getByRole('button', { name: 'Enviar código' }).waitFor()
     await pagina.reload()
     await pagina.getByRole('button', { name: 'Enviar código' }).waitFor()

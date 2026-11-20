@@ -318,6 +318,11 @@ def modelo_da_tabela(nomeados: list[dict], aptos: dict[str, dict], ambientes, ta
             "area_comum": {n: ja_ac.get(n, "") for n in comum}}
 
 
+def area_comum(pecas: list[dict]) -> int:
+    """Quantos ambientes de área comum. Só os ambientes contam: as esquadrias (tipo "E") não têm grupo."""
+    return sum(1 for p in pecas if p.get("tipo") == "A" and p.get("grupo") == "Área comum")
+
+
 def area_br(m2: float) -> str:
     return f"{m2:.1f} m²".replace(".", ",")
 
@@ -573,7 +578,7 @@ def ler_planta(cfg: dict) -> dict:
         "pecas": pecas,
         "detalhes_a": dets_a,
         "resumo": {"ambientes": len(ambientes), "apartamentos": {n: len(a["ambientes"]) for n, a in sorted(aptos.items())},
-                   "area_comum": sum(1 for p in pecas if p["grupo"] == "Área comum"), "coincidencia": round(t["coincidencia"], 2),
+                   "area_comum": area_comum(pecas), "coincidencia": round(t["coincidencia"], 2),
                    "tipos": {n: a["tipo"] for n, a in sorted(aptos.items())},
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
                    **({"nomes": resumo_nomes} if resumo_nomes else {}),

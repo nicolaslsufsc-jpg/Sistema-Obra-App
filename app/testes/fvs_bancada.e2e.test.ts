@@ -337,6 +337,33 @@ suite('FVS na bancada (Chrome)', () => {
     })
   }
 
+  // Rodada com a obra piloto (20/11): a aba Pilares mostrava 385 e o início contava 445 (+60 arranques do
+  // pilar de cima, que estão na planta só para ver o detalhe). O arranque fica fora das contas e da planilha.
+  for (const [largura, altura] of [
+    [384, 832],
+    [800, 1280],
+  ] as const) {
+    it(`${largura}x${altura}: arranque só com detalhe fica fora da aba, do início e da planilha`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700, acceptDownloads: true })
+      const p: Page = await contexto.newPage()
+      await p.goto(`${url}?abrir=0&arranque=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      await p.getByText(/de 62 peças liberadas/).first().waitFor()
+      expect(await pavimento.innerText()).toContain('de 62 peças liberadas')
+      expect(await p.getByTestId('fvs-resumo-obra').innerText()).toContain('de 62 peças liberadas')
+      const [dl] = await Promise.all([p.waitForEvent('download'), p.getByTestId('fvs-planilha-situacao').click()])
+      const planilha = readFileSync(await dl.path(), 'utf8')
+      expect(planilha).toContain(';P7;')
+      expect(planilha).not.toContain(';P7a;')
+      // na planta, a aba Pilares continua com os 24 (o P7a aparece só para o detalhe)
+      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('/24 liberados')
+      await contexto.close()
+    })
+  }
+
   // Teste com cabo (20/11): no S23 (384 px) a caixa de trecho mostrava só "Trecho" (sem o número) e
   // "Lajes" saía cortado; no tablet (800 px) a caixa tinha 30 px de altura.
   for (const [largura, altura] of [

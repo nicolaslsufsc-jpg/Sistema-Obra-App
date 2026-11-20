@@ -251,6 +251,8 @@ const escalas = new Map<string, number>()
 
 /** Partes de cada pilar (id do elemento → consolo, capitel) pelos manifests que já passaram por aqui. */
 const partesPorElemento = new Map<string, TipoDeParte[]>()
+/** Peças que estão na planta só para ver o detalhe (arranque do pilar de cima, `so_detalhe`): sem ficha aqui. */
+const soDetalhe = new Set<string>()
 
 /** Uma parte de pilar com o contorno, para conferir as áreas de laje (areas.ts, travasDaArea). */
 export interface ParteDaPlanta {
@@ -277,6 +279,8 @@ function lembrarEscala(m: Manifest): void {
     const tipos = tiposDasPartes(e)
     if (tipos.length) partesPorElemento.set(id, tipos)
     else partesPorElemento.delete(id)
+    if (e.so_detalhe) soDetalhe.add(id)
+    else soDetalhe.delete(id)
   }
   partesPorPlanta.set(m.planta_id, partesDoManifest(m))
   for (const [id, e] of Object.entries(m.elementos ?? {})) if (e.tipo === 'A') lembrarComodo(id, e.comodo)
@@ -293,6 +297,14 @@ const SEM_PARTES: readonly TipoDeParte[] = []
 /** Consolo e capitel do pilar pelo pacote guardado no aparelho (vazio se não tem ou o pacote não passou). */
 export function partesGuardadas(elementoId: string): readonly TipoDeParte[] {
   return partesPorElemento.get(elementoId) ?? SEM_PARTES
+}
+
+/**
+ * A peça está na planta só para ver o detalhe (arranque do pilar de cima), pelo pacote guardado no aparelho.
+ * Não entra nas abas nem nas contagens: a ficha dela é do pavimento de cima (regra de 17/11, item 4).
+ */
+export function soDetalheGuardado(elementoId: string): boolean {
+  return soDetalhe.has(elementoId)
 }
 
 /** Escala da planta pelo manifest guardado no aparelho; undefined se o pacote não passou por aqui ou não diz. */

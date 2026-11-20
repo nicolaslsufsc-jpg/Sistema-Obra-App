@@ -8,7 +8,7 @@ import { resumoDasAreas } from '../areas'
 import { baixarPlanta, ehDeAmbientes, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
-import { limparPacotes, pacotesNoAparelho, removerPacotes, textoDoErroDeDownload } from '../pacote'
+import { limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
 import { resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { SEM_FILTRO } from '../reprovacoes'
@@ -154,6 +154,9 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
     for (const p of dados.pecaPorId.values()) {
       // área de laje tem resumo próprio: não é peça da forma
       if (dados.areaPorId.has(p.id)) continue
+      // arranque do pilar de cima (só detalhe): não tem ficha aqui e a aba Pilares não mostra. Antes contava, e o
+      // início dizia 844 liberáveis no Pilotis com 784 nas abas (rodada com a obra piloto, 20/11)
+      if (soDetalheGuardado(p.id)) continue
       const l = locaisDe.get(p.pavimento_id)
       if (l) l.push(p)
       else locaisDe.set(p.pavimento_id, [p])
@@ -171,7 +174,8 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
         ] as const
       }),
     )
-  }, [dados])
+    // noAparelho: ler os pacotes diz quais peças são só detalhe (pacotesNoAparelho)
+  }, [dados, noAparelho])
   const naObra = [...resumos.values()].reduce((s, { r }) => ({ total: s.total + r.total, liberadas: s.liberadas + r.liberadas }), { total: 0, liberadas: 0 })
   return (
     <main class="tela fv-inicio">

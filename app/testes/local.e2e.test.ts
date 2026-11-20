@@ -29,10 +29,11 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SAIDA = mkdtempSync(path.join(os.tmpdir(), 'sistema-obra-local-'))
 const PRINTS = process.env.SO_PRINTS
 const NO_BRASIL = { timezoneId: 'America/Sao_Paulo', locale: 'pt-BR' }
-// Projetos e Relatórios fora do menu desde 18/11/2026 (código guardado): os testes deles ficam parados até voltarem.
+// Relatórios fora do menu desde 18/11/2026 (código guardado): o roteiro dele fica parado até voltar.
 // O IFC voltou em 20/11/2026, sem o selo "beta", e o teste dele roda sempre.
 const BETAS_NO_MENU = false
-const itBeta = BETAS_NO_MENU ? it : it.skip
+// Projetos voltou ao menu em 20/11/2026 (beta): os testes dele rodam de novo.
+const itProjetos = it
 
 const PLANTA = 'a2000000-0000-0000-0000-0000000000f1'
 const PECA = 'e0000000-0000-0000-0000-000000000001'
@@ -237,10 +238,11 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('menu-obra').getAttribute('aria-expanded')).toBe('false')
       expect(await p.getByRole('button', { name: 'Nova obra' }).count()).toBe(0)
       expect(await p.getByRole('button', { name: 'Usar neste aparelho, sem conta' }).count()).toBe(0)
-      for (const m of ['FVS', 'Concreto', 'Documentos', 'IFC']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(1)
-      // Projetos e Relatórios fora do menu desde 18/11/2026; nenhum módulo do menu com o selo "beta" (20/11/2026)
-      expect(await p.locator('.selo-beta').count()).toBe(0)
-      for (const m of ['Projetos', 'Relatórios']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(BETAS_NO_MENU ? 1 : 0)
+      for (const m of ['FVS', 'Projetos', 'Concreto', 'Documentos', 'IFC']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(1)
+      // Relatórios fora do menu desde 18/11/2026; o único selo "beta" do menu é o do Projetos (de volta em 20/11, só sem conta)
+      expect(await p.locator('.selo-beta').count()).toBe(1)
+      expect(await p.getByRole('button', { name: /^Projetos/ }).locator('.selo-beta').count()).toBe(1)
+      for (const m of ['Relatórios']) expect(await p.getByRole('button', { name: new RegExp(`^${m}`) }).count()).toBe(BETAS_NO_MENU ? 1 : 0)
       // a lista de pavimentos saiu da tela do menu (20/11/2026)
       expect(await p.getByTestId('pavimentos-obra').isVisible()).toBe(false)
 
@@ -495,7 +497,8 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       try {
         await abrirNaObra(p)
         await p.getByRole('button', { name: /^IFC/ }).waitFor()
-        const caixas = await p.locator('.menu-modulos .modulo').evaluateAll((bs: HTMLElement[]) =>
+        type Caixa = { topo: number; altura: number; abrirAbaixo: number; abrirDireita: number; abrirAcima: number; linhas: number }
+        const caixas: Caixa[] = await p.locator('.menu-modulos .modulo').evaluateAll((bs: HTMLElement[]) =>
           bs.map((b) => {
             const r = b.getBoundingClientRect()
             const abrir = b.querySelector('.modulo-abrir')!.getBoundingClientRect()
@@ -540,7 +543,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     ['celular', 375, 812],
     ['tablet', 768, 1024],
   ] as const) {
-    itBeta(`${nome} ${largura}x${altura}: menu mostra Projetos beta, cadastra empresa sem aviso de envio`, async () => {
+    itProjetos(`${nome} ${largura}x${altura}: menu mostra Projetos beta, cadastra empresa sem aviso de envio`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       const erros: string[] = []
@@ -597,7 +600,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     ['celular', 375, 812],
     ['tablet', 768, 1024],
   ] as const) {
-    itBeta(`${nome} ${largura}x${altura}: Projetos importa a base e mostra o painel`, async () => {
+    itProjetos(`${nome} ${largura}x${altura}: Projetos importa a base e mostra o painel`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       const erros: string[] = []
@@ -669,7 +672,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     }, 120_000)
 
     // painel-2 (14/11/2026): abas Pranchas e Entregas, edição com histórico (nada se apaga) e escritório
-    itBeta(`${nome} ${largura}x${altura}: Projetos abas, edição com histórico e escritório, nos dois temas`, async () => {
+    itProjetos(`${nome} ${largura}x${altura}: Projetos abas, edição com histórico e escritório, nos dois temas`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       const erros: string[] = []
@@ -793,6 +796,129 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByTestId('prancha-em-campo').getByRole('button', { name: 'Corrigir' }).first().click()
       await print('10-edicao-claro')
       await contraste('claro, edição aberta')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 150_000)
+
+    // Distribuição e "A entregar" (20/11/2026): regra pelo formulário, lista importada, desativar sem apagar
+    itProjetos(`${nome} ${largura}x${altura}: Projetos lista de distribuição e a entregar, nos dois temas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const print = async (n: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-${n}.png`), fullPage: true })
+      }
+      const estouro = () => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      const contraste = async (onde: string) => {
+        await p.setViewportSize({ width: largura, height: 5000 })
+        expect(await contrasteBaixo(p), onde).toEqual([])
+        await p.setViewportSize({ width: largura, height: altura })
+      }
+      const vig = path.join(SAIDA, 'vigentes_exe_3.csv')
+      const dist = path.join(SAIDA, 'distribuicao_exe_3.csv')
+      const lista = path.join(SAIDA, 'lista_exe.csv')
+      writeFileSync(vig, VIGENTES_EXE)
+      writeFileSync(dist, DISTRIBUICAO_EXE)
+      writeFileSync(lista, ['disciplina;pasta;empresa;colaborador;copias;ativo', 'HIDRO;;Hidráulica Beta;;1;sim', 'ESTRUTURAL;LO/Pilares;Formas Delta;Ana;2;sim'].join('\n'))
+      await abrirNaObra(p)
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByTestId('painel-importar').waitFor()
+      await p.setInputFiles('[data-testid=arquivo-vigentes]', vig)
+      await p.setInputFiles('[data-testid=arquivo-distribuicao]', dist)
+      await p.getByRole('button', { name: 'Importar', exact: true }).click()
+      await p.getByTestId('painel-resumo').waitFor()
+      // sem lista ainda: o cartão manda montar
+      expect(await p.getByTestId('painel-a-entregar').innerText()).toBe('–')
+      await p.getByTestId('painel-a-entregar').click()
+      await p.getByRole('heading', { name: 'Lista de distribuição' }).waitFor()
+
+      // regra pelo formulário: ESTRUTURAL inteira → Empreiteira Alfa · João
+      await p.getByRole('button', { name: 'Adicionar quem recebe' }).click()
+      const form = p.getByTestId('form-regra')
+      await form.locator('select').first().selectOption('ESTRUTURAL')
+      await form.getByRole('combobox', { name: 'Empresa', exact: true }).fill('Empreiteira Alfa')
+      await form.getByLabel('Colaborador').fill('João')
+      await print('11-distribuicao-form')
+      await contraste('escuro, formulário da regra')
+      const dentroDoForm = await p.evaluate(() => {
+        const fr = document.querySelector('[data-testid=form-regra]')!.getBoundingClientRect()
+        return [...document.querySelectorAll('[data-testid=form-regra] input, [data-testid=form-regra] select')].every((f: Element) => {
+          const r = f.getBoundingClientRect()
+          return r.left >= fr.left - 1 && r.right <= fr.right + 1
+        })
+      })
+      expect(dentroDoForm).toBe(true)
+      await form.getByRole('button', { name: 'Salvar' }).click()
+      await p.getByText('Empreiteira Alfa · João recebe ESTRUTURAL.').waitFor()
+      // a mesma regra de novo: recusa
+      await p.getByRole('button', { name: 'Adicionar quem recebe' }).click()
+      await form.locator('select').first().selectOption('ESTRUTURAL')
+      await form.getByRole('combobox', { name: 'Empresa', exact: true }).fill('empreiteira alfa')
+      await form.getByLabel('Colaborador').fill('JOÃO')
+      await form.getByRole('button', { name: 'Salvar' }).click()
+      await form.getByText('Essa pessoa já recebe essa disciplina ou pasta.').waitFor()
+      await form.getByRole('button', { name: 'Cancelar' }).click()
+
+      // lista importada: HIDRO (empresa toda) e Pilares → Ana (a pasta vale mais que a disciplina)
+      await p.setInputFiles('[data-testid=arquivo-lista]', lista)
+      await p.getByText('Lista importada: 2 regras novas ou mudadas.').waitFor()
+      expect(await p.getByTestId('regra').count()).toBe(3)
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('12-distribuicao')
+      await contraste('escuro, distribuição')
+
+      // a entregar: João troca as Formas (linha 1), a Beta troca a Água fria (linha 5); Ana está em dia
+      await p.getByRole('button', { name: 'A entregar', exact: true }).click()
+      await p.getByTestId('a-entregar-resumo').waitFor()
+      expect(await p.getByTestId('a-entregar-resumo').innerText()).toContain('2 pranchas para 2 pessoas')
+      const blocos = p.getByTestId('a-entregar-pessoa')
+      expect(await blocos.count()).toBe(2)
+      const textos = (await blocos.allInnerTexts()).join('\n')
+      expect(textos).toContain('Empreiteira Alfa · João')
+      expect(textos).toContain('recolher LO R01 (linha 1)')
+      expect(textos).toContain('Hidráulica Beta (qualquer pessoa)')
+      expect(textos).toContain('linha 5')
+      expect(textos).not.toContain('Formas Delta')
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('13-a-entregar')
+      await contraste('escuro, a entregar')
+      // tocar abre a prancha
+      await blocos.first().locator('li').first().click()
+      await p.getByTestId('painel-prancha').waitFor()
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+
+      // o painel conta 2; desativar a Beta (nada se apaga) baixa para 1
+      await p.getByRole('button', { name: 'Painel', exact: true }).click()
+      expect(await p.getByTestId('painel-a-entregar').innerText()).toBe('2')
+      await p.getByRole('button', { name: 'Distribuição', exact: true }).click()
+      await p.getByTestId('regra').filter({ hasText: 'Hidráulica Beta' }).getByRole('button', { name: 'Desativar' }).click()
+      await p.getByText('Hidráulica Beta (qualquer pessoa): não recebe mais HIDRO.').waitFor()
+      expect(await p.getByTestId('regra').count()).toBe(2)
+      await p.getByRole('button', { name: 'Mostrar desativadas (1)' }).click()
+      expect(await p.getByTestId('regra').count()).toBe(3)
+      await p.getByRole('button', { name: 'Painel', exact: true }).click()
+      expect(await p.getByTestId('painel-a-entregar').innerText()).toBe('1')
+
+      // fica no aparelho: fechar e abrir mantém
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByTestId('painel-resumo').waitFor()
+      expect(await p.getByTestId('painel-a-entregar').innerText()).toBe('1')
+
+      // modo sol
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByTestId('botao-tema').click()
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByTestId('painel-resumo').waitFor()
+      await contraste('claro, painel com a entregar')
+      await p.getByRole('button', { name: 'A entregar', exact: true }).click()
+      await p.getByTestId('a-entregar-resumo').waitFor()
+      await contraste('claro, a entregar')
+      await p.getByRole('button', { name: 'Distribuição', exact: true }).click()
+      await p.getByRole('button', { name: 'Adicionar quem recebe' }).click()
+      await print('14-distribuicao-claro')
+      await contraste('claro, distribuição com formulário')
       expect(erros).toEqual([])
       await contexto.close()
     }, 150_000)
@@ -1101,6 +1227,10 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       const outra = zipDaPasta((i) => ({ ...i, obra: 'OUTRA2', nome: 'Outra Obra', gerado_em: '2026-11-09T11:30:00Z' }), 'OUTRA2.zip', pasta)
       const antigo = zipDaPasta((i) => ({ ...i, gerado_em: '2026-11-01T13:00:00Z' }), 'EXE_antigo.zip', pasta)
       const novo = zipDaPasta((i) => ({ ...i, gerado_em: '2026-11-10T13:00:00Z' }), 'EXE_novo.zip', pasta)
+      const semData = zipDaPasta((i) => {
+        const { gerado_em: _, ...sem } = i as typeof i & { gerado_em?: string }
+        return sem as typeof i
+      }, 'EXE_sem_data.zip', pasta)
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       await contexto.route('**/dados_obra/**', (r: any) => r.fulfill({ status: 404, body: '' }))
       const p: Page = await contexto.newPage()
@@ -1147,6 +1277,15 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByLabel('Pacote da obra (.zip)').setInputFiles(antigo)
         await p.getByRole('heading', { name: 'Abrir um pacote mais antigo?' }).waitFor()
         expect(await p.getByTestId('comparacao-pacote').innerText()).toContain('gerado em 01/11/2026 às 10:00')
+        await p.getByRole('button', { name: 'Cancelar' }).click()
+        await naLac()
+        expect(await banco()).toBe(antes)
+
+        // .zip sem data: o título diz "sem data", não "mais antigo" (testador, 08/11, T3)
+        await abrirMenuObra(p) // o pacote .zip fica no menu da obra (topo, 20/11/2026)
+        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(semData)
+        await p.getByRole('heading', { name: 'Abrir um pacote sem data?' }).waitFor()
+        expect(await p.getByRole('alert').innerText()).toContain('não tem data')
         await p.getByRole('button', { name: 'Cancelar' }).click()
         await naLac()
         expect(await banco()).toBe(antes)
@@ -1387,6 +1526,53 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       rmSync(path.dirname(zip), { recursive: true, force: true })
     }
   }, 150_000)
+
+  // Testador (08/11, Z2): no aparelho do .zip, "Tirar do aparelho" dizia "é só baixar de novo" e, sem
+  // internet, o Baixar ficava desligado ("Precisa de internet"), mesmo com a planta no pacote aberto.
+  for (const [nome, largura, altura] of [
+    ['celular', 375, 812],
+    ['tablet', 800, 1280],
+  ] as const) {
+    it(`${nome} ${largura}x${altura}: sem conta e sem internet, tirar do aparelho fala do pacote e o Baixar traz a planta do .zip`, async () => {
+      const zip = zipDaPasta()
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      await contexto.route('**/dados_obra/**', (r: any) => r.fulfill({ status: 404, body: '' }))
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      try {
+        await irAoApp(p)
+        await p.getByLabel('Pacote da obra (.zip)').setInputFiles(zip)
+        await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
+        await p.getByRole('button', { name: /^FVS/ }).click()
+        await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor()
+        await contexto.setOffline(true)
+
+        let pergunta = ''
+        p.once('dialog', (d: any) => {
+          pergunta = d.message()
+          return d.accept()
+        })
+        await p.getByTestId('fvs-mais-pavimento').first().click()
+        await p.getByTestId('fvs-tirar-pavimento').first().click()
+        const baixar = p.locator('.fv-baixar').first()
+        await baixar.waitFor()
+        expect(pergunta).toContain('pacote da obra (.zip)')
+        expect(pergunta).not.toContain('é só baixar de novo')
+        expect(pergunta).not.toContain('internet')
+        expect(await baixar.isEnabled(), 'Baixar sem internet, do pacote aberto').toBe(true)
+        expect(await p.getByText('precisa de internet uma vez').count()).toBe(0)
+        await baixar.click()
+        await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor({ timeout: 30_000 })
+        expect(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `zip-${nome}-tirar-e-baixar-sem-internet.png`), fullPage: true })
+        expect(erros).toEqual([])
+      } finally {
+        await contexto.close()
+        rmSync(path.dirname(zip), { recursive: true, force: true })
+      }
+    }, 150_000)
+  }
 
   it('o site compilado não lê ?dados= e não leva dado de obra; com dados_obra/ em public/, o build falha', async () => {
     // o build do beforeAll (o mesmo do Cloudflare): sem ?dados= e com o manifesto pedido com o cookie (Access)

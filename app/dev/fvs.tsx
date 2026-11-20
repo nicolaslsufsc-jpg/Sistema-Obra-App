@@ -148,6 +148,19 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     const [x, y] = pilares[5]
     elementos[uuid('e0000000', 99)] = { ...p6, nome: 'P6a', rotulo: [x + 14, y + 30, x + 60, y + 50], detalhe: 'P_P6' }
   }
+  if (params.get('arranque')) {
+    // P7a: arranque do pilar de cima, na planta só para ver o detalhe (so_detalhe, sem ficha neste pavimento)
+    const [x, y] = pilares[6]
+    elementos[uuid('e0000000', 98)] = {
+      tipo: 'P',
+      nome: 'P7a',
+      secao: '20x60',
+      rotulo: [x + 14, y + 30, x + 60, y + 50],
+      polys: [[[x + 20, y - 25], [x + 40, y - 25], [x + 40, y + 25], [x + 20, y + 25]]],
+      detalhe: 'P_P7',
+      so_detalhe: true,
+    }
+  }
   for (let l = 0; l < linhas; l++)
     for (let c = 0; c + 1 < colunas; c++) {
       const [x, y] = pilares[l * colunas + c]
@@ -942,6 +955,9 @@ if (pasta) {
   if (params.get('rastreio')) await semearRastreio()
   const abrir = params.get('abrir')
   const plantaId = abrir === 'ambientes' ? PLANTA_AMB : PLANTA
-  history.replaceState(abrir === '0' ? { tela: 'fvs' } : { tela: 'fvs', fvs: { nome: 'planta', plantaId } }, '')
+  // ?servico=CÓDIGO&aba=esquadrias: a planta de ambientes como o menu do pavimento abre (opcoes_ambientes.ts)
+  const servico = params.get('servico') ?? undefined
+  const aba = params.get('aba') === 'esquadrias' ? 'esquadrias' : params.get('aba') === 'ambientes' ? 'ambientes' : undefined
+  history.replaceState(abrir === '0' ? { tela: 'fvs' } : { tela: 'fvs', fvs: { nome: 'planta', plantaId, servico, aba } }, '')
   render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
 })

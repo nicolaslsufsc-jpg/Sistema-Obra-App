@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { espacoUsado, formatarBytes } from '../nucleo/aparelho'
 import { baixarQueFaltam, cabeNoAparelho, lerSituacao, textoDoErro, type SituacaoDasPlantas } from '../nucleo/plantas_offline'
+import { terminarBaixa } from './fim_da_baixa'
 
 export function PlantasSemInternet({
   obraId,
@@ -48,8 +49,8 @@ export function PlantasSemInternet({
       if (ativo.current) setErro(texto)
     } finally {
       rodando.current = false
-      if (ativo.current) setBaixando(null)
-      await reler()
+      // relê antes de tirar o "baixando": senão pisca a contagem de antes da baixa ("0 de 9")
+      await terminarBaixa(reler, () => ativo.current && setBaixando(null))
     }
   }
 

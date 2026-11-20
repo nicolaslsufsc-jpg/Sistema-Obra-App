@@ -279,6 +279,111 @@ suite('FVS na bancada (Chrome)', () => {
     })
   }
 
+  // Rodada com a obra piloto (20/11): com a quarta aba (Furos), em 384 px ela saía cortada ("Fu") e em 800 px
+  // o "Etapas" saía cortado e o contador "0/385 liberados" ia a 4 linhas.
+  for (const [largura, altura] of [
+    [384, 832],
+    [375, 812],
+    [768, 1024],
+    [800, 1280],
+    [1024, 768],
+  ] as const) {
+   // fonte larga: no Linux do CI a fonte do sistema é ~20% mais larga e o contador ia a 3 linhas em 375 px;
+   // a Verdana tem largura parecida, então a falta de folga aparece também no Windows
+   for (const larga of [false, true]) {
+    it(`${largura}x${altura}${larga ? ' (fonte larga)' : ''}: quatro abas inteiras, "Etapas" inteiro e contador em até 2 linhas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      await p.goto(`${url}?furos=1`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      if (larga) await p.addStyleTag({ content: 'body, button, input, select { font-family: Verdana, sans-serif !important; }' })
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
+      // contador de obra grande, como o Pilotis
+      await p.evaluate(() => {
+        const prog = document.querySelector('.fv-prog')!
+        while (prog.firstChild && prog.firstChild.nodeType === Node.TEXT_NODE) prog.firstChild.remove()
+        prog.prepend('0/385 liberados')
+      })
+      const m = await p.evaluate(() => {
+        const seg = document.querySelector('.fv-seg') as HTMLElement
+        const s = seg.getBoundingClientRect()
+        const etapa = document.querySelector('.fv-etapa') as HTMLSelectElement
+        const ce = getComputedStyle(etapa)
+        const cv = document.createElement('canvas').getContext('2d')!
+        cv.font = `${ce.fontWeight} ${ce.fontSize} ${ce.fontFamily}`
+        const prog = document.querySelector('.fv-prog') as HTMLElement
+        // linhas do texto do contador: cada pedaço de texto que começa numa altura nova
+        const r = document.createRange()
+        r.selectNodeContents(prog)
+        // (o link "1 com NC" tem a caixa um pouco deslocada do texto da mesma linha: junta o que fica a menos de 6 px)
+        const topos = [...r.getClientRects()].filter((x) => x.width > 0).map((x) => x.top).sort((a, b) => a - b)
+        const linhas = topos.filter((t, i) => i === 0 || t - topos[i - 1] > 6).length
+        // a folga do contador não pode vir da caixa do trecho nem da busca
+        const trecho = document.querySelector('.fv-nomes select') as HTMLSelectElement | null
+        const ct = trecho ? getComputedStyle(trecho) : null
+        const busca = document.querySelector('.fv-busca') as HTMLInputElement
+        const cb = getComputedStyle(busca)
+        const larguraDe = (texto: string, c: CSSStyleDeclaration) => {
+          cv.font = `${c.fontWeight} ${c.fontSize} ${c.fontFamily}`
+          return cv.measureText(texto).width
+        }
+        return {
+          trechoPrecisa: trecho && ct ? larguraDe(trecho.options[trecho.selectedIndex].text, ct) + 24 : 0,
+          trechoTem: trecho ? trecho.clientWidth : 0,
+          buscaPrecisa: larguraDe(busca.placeholder, cb) + parseFloat(cb.paddingLeft) + parseFloat(cb.paddingRight),
+          buscaTem: busca.clientWidth,
+          abasRolam: seg.scrollWidth > seg.clientWidth + 1,
+          abasFora: [...seg.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().right > s.right + 0.5).map((b) => b.textContent),
+          etapaPrecisa: larguraDe(etapa.options[etapa.selectedIndex].text, ce) + 24,
+          etapaTem: etapa.clientWidth,
+          linhasDoContador: linhas,
+        }
+      })
+      expect(m.abasRolam, 'as 4 abas cabem sem rolar').toBe(false)
+      expect(m.abasFora).toEqual([])
+      expect(m.etapaTem, '"Etapas" inteiro').toBeGreaterThanOrEqual(m.etapaPrecisa)
+      expect(m.linhasDoContador, 'contador em até 2 linhas').toBeLessThanOrEqual(2)
+      expect(m.trechoTem, '"Trecho 1" inteiro').toBeGreaterThanOrEqual(m.trechoPrecisa)
+      expect(m.buscaTem, '"Buscar" inteiro').toBeGreaterThanOrEqual(m.buscaPrecisa)
+      expect(await topoCabe(p)).toBe(true)
+      expect(await alvosPequenos(p)).toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // a planta começa embaixo do topo: o topo mais alto não cobre o mapa
+      const [topo, mapa] = await p.evaluate(() => [document.querySelector('.fv-topo')!.getBoundingClientRect().bottom, document.querySelector('.fv-mapa')!.getBoundingClientRect().top])
+      expect(mapa).toBeGreaterThanOrEqual(topo - 1)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_quatro_abas_${largura}${larga ? '_larga' : ''}.png`) })
+      await contexto.close()
+    })
+   }
+  }
+
+  // Rodada com a obra piloto (20/11): a aba Pilares mostrava 385 e o início contava 445 (+60 arranques do
+  // pilar de cima, que estão na planta só para ver o detalhe). O arranque fica fora das contas e da planilha.
+  for (const [largura, altura] of [
+    [384, 832],
+    [800, 1280],
+  ] as const) {
+    it(`${largura}x${altura}: arranque só com detalhe fica fora da aba, do início e da planilha`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700, acceptDownloads: true })
+      const p: Page = await contexto.newPage()
+      await p.goto(`${url}?abrir=0&arranque=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      await p.getByText(/de 62 peças liberadas/).first().waitFor()
+      expect(await pavimento.innerText()).toContain('de 62 peças liberadas')
+      expect(await p.getByTestId('fvs-resumo-obra').innerText()).toContain('de 62 peças liberadas')
+      const [dl] = await Promise.all([p.waitForEvent('download'), p.getByTestId('fvs-planilha-situacao').click()])
+      const planilha = readFileSync(await dl.path(), 'utf8')
+      expect(planilha).toContain(';P7;')
+      expect(planilha).not.toContain(';P7a;')
+      // na planta, a aba Pilares continua com os 24 (o P7a aparece só para o detalhe)
+      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('/24 liberados')
+      await contexto.close()
+    })
+  }
+
   // Teste com cabo (20/11): no S23 (384 px) a caixa de trecho mostrava só "Trecho" (sem o número) e
   // "Lajes" saía cortado; no tablet (800 px) a caixa tinha 30 px de altura.
   for (const [largura, altura] of [
@@ -567,6 +672,39 @@ suite('FVS na bancada (Chrome)', () => {
         if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_topo_${largura}_${tema}.png`) })
       }
       await p.evaluate(() => delete document.documentElement.dataset.tema)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
+  for (const [largura, altura] of [
+    [375, 812],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: planta de ambientes aberta pelo menu do pavimento, já no serviço e na aba escolhidos`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const abaAtiva = () => p.locator('.fv-seg button.on').textContent()
+      // opção "Reboco" (opcoes_ambientes.ts: abre { servico, aba: 'ambientes' })
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-servico').inputValue()).toBe('TESTE-PVS-REB')
+      expect(await abaAtiva()).toBe('Ambientes')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // opção "Esquadrias": a aba Esquadrias, com o item de esquadria da ficha escolhida
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&servico=TESTE-PVS-REB&aba=esquadrias`)
+      await p.getByTestId('fvs-item-esquadria').waitFor()
+      expect(await p.getByTestId('fvs-servico').inputValue()).toBe('TESTE-PVS-REB')
+      expect(await abaAtiva()).toBe('Esquadrias')
+      expect(await p.getByTestId('fvs-item-esquadria').locator('option').allTextContents()).toEqual(['5. Requadros dos vãos'])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_menu_${largura}_esquadrias.png`) })
+      // ficha que não existe: abre na primeira, sem erro
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&servico=NAO-EXISTE&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-servico').inputValue()).toBe('TESTE-PVS-ALV')
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)

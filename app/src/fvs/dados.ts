@@ -9,7 +9,7 @@ import { BUCKET_OBRAS } from '../config'
 import { areasVigentes, travasDaArea, type AreaDeLaje, type LinhaDeArea, type Ponto, type TravaDaArea } from './areas'
 import { dataHoraCompleta } from './formato'
 import { aoTocar, daFichaAberta, fichaDaPeca, fichaNaPeca, fichasPara, normalizarResultado, situacaoDaParteNoLocal, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo, type ItemFicha, type Resultado } from './situacao'
-import { baixarPacote, comPrazo, escalaGuardada, partesDaPlantaGuardadas, partesGuardadas, type ParteDaPlanta, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
+import { baixarPacote, comPrazo, escalaGuardada, partesDaPlantaGuardadas, partesGuardadas, soDetalheGuardado, type ParteDaPlanta, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
 import { listarParaLancar, type LinhaDeLancamento } from './lancamento'
 import { linhasDaSituacao, type LinhaDaSituacao } from './planilha'
 import { listarReprovacoes, type Reprovacao } from './reprovacoes'
@@ -189,7 +189,8 @@ export function paraLancarDaObra(d: DadosFvs, lancados?: ReadonlySet<string> | n
 /** Situação de todas as peças da obra, uma linha por peça e ficha, para a planilha do escritório. */
 export function situacaoDaObra(d: DadosFvs): LinhaDaSituacao[] {
   return linhasDaSituacao({
-    pecas: d.pecaPorId.values(),
+    // arranque do pilar de cima (só detalhe) fica de fora, como na aba Pilares e no início
+    pecas: [...d.pecaPorId.values()].filter((p) => !soDetalheGuardado(p.id)),
     pavimentos: d.pavimentos,
     fichas: d.fichas,
     fichaPorId: d.fichaPorId,

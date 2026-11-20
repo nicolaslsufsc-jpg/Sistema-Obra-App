@@ -5,6 +5,7 @@ import { useState } from 'preact/hooks'
 import { importarBase, type BaseProjetos } from '../base'
 import { chaveNumero, ErroDeArquivo, FAIXAS, rotuloRev, type Barra, type CopiaCruzada, type Resumo } from '../painel'
 import type { ResumoEscritorio } from '../edicoes'
+import type { GrupoAEntregar } from '../distribuicao'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { podeGerir } from '../dados'
 import type { Contexto } from './ModuloProjetos'
@@ -15,7 +16,7 @@ const LIMITE = 40
 
 export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: () => void; importar?: boolean }) {
   const { ir, trocar } = ctx
-  const { base, setBase, resumo, escritorio } = usarBase(ctx)
+  const { base, setBase, resumo, escritorio, regras, pendentes } = usarBase(ctx)
 
   if (base === undefined) return <main class="tela">Carregando…</main>
   const mostrarImportar = importar || !resumo
@@ -33,13 +34,28 @@ export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: (
           }}
         />
       ) : (
-        resumo && escritorio && <Painel resumo={resumo} escritorio={escritorio} ir={ir} />
+        resumo && escritorio && <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} />
       )}
     </main>
   )
 }
 
-function Painel({ resumo: r, escritorio: esc, ir }: { resumo: Resumo; escritorio: ResumoEscritorio; ir: Contexto['ir'] }) {
+function Painel({
+  resumo: r,
+  escritorio: esc,
+  ir,
+  trocar,
+  temLista,
+  pendentes,
+}: {
+  resumo: Resumo
+  escritorio: ResumoEscritorio
+  ir: Contexto['ir']
+  trocar: Contexto['trocar']
+  temLista: boolean
+  pendentes: GrupoAEntregar[]
+}) {
+  const aEntregar = pendentes.reduce((s, g) => s + g.pendencias.length, 0)
   const [todasDes, setTodasDes] = useState(false)
   const [todasConf, setTodasConf] = useState(false)
   const maxFaixa = Math.max(1, ...r.faixas)
@@ -66,6 +82,13 @@ function Painel({ resumo: r, escritorio: esc, ir }: { resumo: Resumo; escritorio
           <strong>escritório desatualizado</strong>
           <span class="discreto">
             pasta sem a vigente{esc.semRegistro ? ` · ${plural(esc.semRegistro, 'folha', 'folhas')} sem registro` : ''}
+          </span>
+        </li>
+        <li class={`largo pj-tocavel ${aEntregar ? 'ruim' : 'neutro'}`} {...tocavel(() => trocar({ nome: temLista ? 'a-entregar' : 'distribuicao' }))}>
+          <span class="numero" data-testid="painel-a-entregar">{temLista ? aEntregar : '–'}</span>
+          <strong>a entregar</strong>
+          <span class="discreto">
+            {!temLista ? 'monte a lista de distribuição' : aEntregar ? `para ${plural(pendentes.length, 'pessoa', 'pessoas')} da lista de distribuição` : 'todos da lista com a vigente'}
           </span>
         </li>
       </ul>

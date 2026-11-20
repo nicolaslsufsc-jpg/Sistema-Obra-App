@@ -11,6 +11,7 @@ import { TelaEmpresas } from './TelaEmpresas'
 import { TelaAcoes } from './TelaAcoes'
 import { TelaPainel } from './TelaPainel'
 import { TelaEntregasBase, TelaPranchasBase } from './TelaListasBase'
+import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
 import { TelaPranchaBase, type AlvoPrancha } from './TelaPranchaBase'
 import { Mensagem } from './comum'
 import { avisoDoEnvio } from '../aviso_sync'
@@ -20,6 +21,8 @@ export type TelaProjetos =
   | { nome: 'painel'; importar?: boolean }
   | { nome: 'pranchas-base' }
   | { nome: 'entregas-base' }
+  | { nome: 'a-entregar' }
+  | { nome: 'distribuicao' }
   | { nome: 'inicio' }
   | ({ nome: 'prancha-base' } & AlvoPrancha)
   | { nome: 'lista' }
@@ -115,6 +118,12 @@ export function ModuloProjetos({
       break
     case 'entregas-base':
       conteudo = <TelaEntregasBase ctx={ctx} aoSair={aoSair} />
+      break
+    case 'a-entregar':
+      conteudo = <TelaAEntregar ctx={ctx} aoSair={aoSair} />
+      break
+    case 'distribuicao':
+      conteudo = <TelaDistribuicao ctx={ctx} aoSair={aoSair} />
       break
     case 'prancha-base':
       conteudo = <TelaPranchaBase ctx={ctx} alvo={tela} />

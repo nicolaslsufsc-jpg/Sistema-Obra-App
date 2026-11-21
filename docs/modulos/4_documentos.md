@@ -11,7 +11,7 @@ Branch `app/documentos-com-conta` (saiu da `main` 192df40). Pedido do Nicolas, r
   - `offline.test.ts`: nada baixa sozinho; pasta com SHA-256, pular e erro isolado; o baixado abre sem internet; apagar;
   - bancada `app/dev/documentos.html` (com conta, obra EXE, servidor falso): baixar e apagar por documento e por pasta, em 375 e 768.
 - **Escopo por empresa:** a RLS do `doc_documentos` é por obra. Quem tem acesso à obra vê os documentos dela, tanto os "obra" quanto os "empresa", que são cópias por obra. Ver os da própria empresa em todas as obras precisa de vínculo pessoa→empresa no núcleo. A proposta foi para o Professor, sem código.
-- **Projetos:** foi avisado do mesmo jeito (`offline.ts`) para fazer a mesma opção nas pranchas.
+- **Projetos:** avisado em 21/11. Ainda não se aplica: hoje o Projetos não guarda PDF de prancha, só os dados da folha a partir de duas listas CSV. Quando tiver conta e PDF do servidor, segue o mesmo padrão: cache próprio `sistema-obra-projetos-offline`, conferência por SHA-256, botões por folha e por pasta.
 
 ## Status (20/11/2026)
 **Fora do beta (Nicolas, 20/11: "Documentos, tá funcionando também. Tira do beta").** O módulo não tem selo nem aviso de beta nas próprias telas. Quem põe os módulos de volta no menu é a 06 · FRONT (`app/src/modulos.ts`, não mexido aqui).

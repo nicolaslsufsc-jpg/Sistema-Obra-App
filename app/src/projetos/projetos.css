@@ -870,3 +870,54 @@ button.pj-pequeno {
   border-radius: 8px;
   border: 1px solid var(--borda);
 }
+
+/* Botão "Atualizar do Autodoc" e o estado do pedido (21/11/2026) */
+.pj-pedido {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+  overflow-wrap: anywhere;
+}
+.pj-pedido .principal {
+  width: 100%;
+}
+.pj-pedido.pronto {
+  background: var(--ok-fundo);
+  border-color: var(--ok-borda);
+}
+.pj-pedido.erro,
+.pj-pedido.parado {
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+  color: var(--atencao-texto);
+}
+.pj-pedido details ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+}
+.pj-girando {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.4em;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: pj-girar 0.9s linear infinite;
+}
+@keyframes pj-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (min-width: 700px) {
+  .pj-pedido .principal {
+    width: auto;
+  }
+}

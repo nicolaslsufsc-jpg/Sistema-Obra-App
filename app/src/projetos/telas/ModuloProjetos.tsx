@@ -49,6 +49,8 @@ export interface Contexto {
   voltar: () => void
   /** Relê o banco do aparelho (depois de registrar algo). */
   recarregar: () => Promise<void>
+  /** Sincroniza com o servidor agora (ex.: o pedido ao Autodoc ficou pronto). */
+  sincronizar: () => Promise<void>
   /** Mensagem no alto da próxima tela ("Entrega registrada."). */
   avisar: (texto: string, tipo?: 'ok' | 'erro') => void
   /** App sem conta (um usuário, sem servidor): nada chega pela sincronização. */
@@ -66,7 +68,7 @@ export function ModuloProjetos({
   aoSair: () => void
   aoPerderObra: () => void
 }) {
-  const { estado } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
+  const { estado, sincronizarAgora } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
   const [tela, setTela] = useState<TelaProjetos>(() => (history.state?.projetos as TelaProjetos) ?? { nome: 'obra' })
   const [dados, setDados] = useState<DadosProjetos | null>(null)
   const [mensagem, setMensagem] = useState<{ texto: string; tipo: 'ok' | 'erro' } | null>(null)
@@ -110,7 +112,7 @@ export function ModuloProjetos({
   const avisar = (texto: string, tipo: 'ok' | 'erro' = 'ok') => setMensagem({ texto, tipo })
 
   if (!dados) return <main class="tela">Carregando…</main>
-  const ctx: Contexto = { usuario, obra, dados, ir, trocar, voltar, recarregar, avisar, semConta: estado.local }
+  const ctx: Contexto = { usuario, obra, dados, ir, trocar, voltar, recarregar, sincronizar: async () => void (await sincronizarAgora()), avisar, semConta: estado.local }
 
   // sem conta (estado.local) não há servidor: nenhum aviso de envio (projetos/aviso_sync.ts)
   const avisoSync = avisoDoEnvio(estado)

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { atualizarDoServidor, faixaAutodoc, lerGuardado, type EstadoAutodoc } from '../autodoc'
 
 /** undefined = ainda lendo; null = nada guardado e sem resposta do servidor. */
-export function usarEstadoAutodoc(obraId: string, ativo = true): EstadoAutodoc | null | undefined {
+export function usarEstadoAutodoc(obraId: string, ativo = true, versao = 0): EstadoAutodoc | null | undefined {
   const [estado, setEstado] = useState<EstadoAutodoc | null | undefined>(undefined)
   useEffect(() => {
     if (!ativo) return
@@ -15,7 +15,7 @@ export function usarEstadoAutodoc(obraId: string, ativo = true): EstadoAutodoc |
     return () => {
       vivo = false
     }
-  }, [obraId, ativo])
+  }, [obraId, ativo, versao])
   return estado
 }
 

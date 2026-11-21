@@ -105,6 +105,15 @@ Item "Projetos" no menu da obra. Celular e tablet primeiro, depois o PC.
 ## Depende de
 Núcleo (banco, sincronização, `arquivos` para as fotos).
 
+## Status (21/11/2026, fim da noite): botão "Atualizar do Autodoc" (branch `projetos/canteiro`)
+
+Pedido do Nicolas (prioridade 1): "um botão para baixar os projetos e montar os dashboards".
+
+- **App**: no topo do painel da obra, só gestor e com conta, o botão "Atualizar do Autodoc". O toque grava um pedido no servidor e a tela acompanha: "Pedido às hh:mm" → "Buscando no Autodoc" → "Pronto às hh:mm: N revisões novas, N baixadas, N falharam" (com a lista das que falharam, pelo código) ou o erro. Ao ficar pronto, o app sincroniza e o painel se refaz. Pendente há mais de 15 min: "o PC do escritório não respondeu". Buscando há mais de 30 min: "interrompido", e o gestor pode pedir de novo. Código: `projetos/pedido_autodoc.ts` e `telas/PedidoAutodoc.tsx`; na bancada, `?pedido=ciclo|parado|erro|preso`.
+- **Servidor**: migração `20261121150000_projetos_pedidos_atualizacao.sql` (fora da sincronização; o app só insere a obra; o PC usa `projetos_pegar_pedido` e `projetos_concluir_pedido`; um pedido aberto por obra) e teste `testes_x_projetos_pedidos.sql`. **Não aplicada**: espera o "pode" do Nicolas.
+- **PC** (fora do repositório, junto do script do Autodoc): vigia a cada 5 min pela tarefa do Windows, sem janela. Pega o pedido e roda relatório → lista vigente → publicação → revisões novas para o CFL_Projetos (índice + md5). Usa o login do app já guardado e um perfil só do Autodoc (login feito uma vez na mão; fica a sessão, nunca a senha). A janela do Chrome abre fora da tela, porque escondida a página não carrega. A tarefa só é criada com o ok do Nicolas.
+- Falta: o ponta a ponta real (depois da migração, do login no perfil e da tarefa).
+
 ## Status (21/11/2026, noite, foco do Nicolas): revisão atual, filtros, downloads, pessoa por pavimento (branch `projetos/canteiro`)
 
 Pedido (21/11): "saber qual a revisão atual (da última att que foi manual); quais projetos estão no canteiro; quais precisam trocar; info possível de baixar; cadastro de projeto entregue com assinatura".

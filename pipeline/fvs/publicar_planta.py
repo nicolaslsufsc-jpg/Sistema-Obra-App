@@ -531,7 +531,8 @@ def por_instalacoes(cfg: dict, detalhes: dict, formas: list[dict], rel_furos: di
     for disc in mod_inst.DISCIPLINAS:
         if disc not in cfg["instalacoes"]["disciplinas"]:
             continue
-        pontos, fora = mod_inst.pontos_na_folha((detalhes.get("instalacoes") or {}).get(disc) or [], enc, disc, fm["largura"], fm["altura"])
+        pontos, fora = mod_inst.pontos_na_folha((detalhes.get("instalacoes") or {}).get(disc) or [], enc, disc, fm["largura"], fm["altura"],
+                                               cfg["obra"], cfg["pavimento"])
         formas.append(mod_inst.folha_da_disciplina(fm, disc, pontos))
         rel[disc] = mod_inst.resumo(pontos, fora)
         print(f"  {mod_inst.DISCIPLINAS[disc]}: {len(pontos)} pontos na folha"

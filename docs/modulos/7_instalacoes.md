@@ -5,7 +5,7 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
 ## Regras vigentes
 
 - **Ponto: opção B, decidida pelo Nicolas em 20/11 ("Sim, no ambiente", pelo Professor).**
-  - **Como fica:** o ponto (ralo, caixa, ponto de água, registro) não é peça em `elementos`. Vai no pacote da planta como sobreposição, em `"pontos"`, como as `"barras"`. O id é fixo, calculado da disciplina e do id do objeto no modelo.
+  - **Como fica:** o ponto (ralo, caixa, ponto de água, registro) não é peça em `elementos`. Vai no pacote da planta como sobreposição, em `"pontos"`, como as `"barras"`. O id é fixo, calculado da obra, do pavimento, da disciplina e do id do objeto no modelo (`id_do_ponto`). Obra, pavimento e disciplina identificam a planta da disciplina: o mesmo IFC usado em dois pavimentos ou em duas obras não repete id (correção do revisor, 21/11). Não usa o `planta_id` do servidor porque ele muda a cada publicação e o registro ficaria solto.
   - **A ficha:** é a PVS do serviço e fica no ambiente, porque o lote das PES 009 e 010 é por ambiente. O ponto conferido alimenta o item dela.
   - **Banco:** sem migração e sem mudança em `elementos.tipo` nem em `fvs_eventos`. O registro do ponto usa a coluna `barra_id`, que já existe: id do pacote, sem chave estrangeira, com `planta_id`.
   - **`barra_id` vale para "local de sobreposição (barra ou ponto)"** (aprovado pelo Professor em 20/11). Se um dia for preciso coluna nova, a frente para e avisa.
@@ -38,7 +38,7 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
                 "encaixe": {...}}
 ```
 
-## Status (20/11/2026)
+## Status (21/11/2026)
 
 - **Feito:**
   - levantamento do Autodoc: disciplinas, fases, pranchas e formatos;
@@ -46,7 +46,8 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - proposta, mandada ao Professor;
   - pipeline de `hidro` e `sanitario`, com os testes na EXE;
   - app: aba Pontos (toque OK, errado, sem conferir, Desfazer), testada na bancada em 375 px e em tablet com 40 pontos de teste;
-  - `eletrico` e `spda` no pipeline (`--so-eletrico`, `--so-spda`) e no app. Branch `instalacoes/eletrico-spda`, testada na EXE e na bancada.
+  - `eletrico` e `spda` no pipeline (`--so-eletrico`, `--so-spda`) e no app. Na `main` pelo #52.
+  - correção do revisor (21/11): o id do ponto leva obra e pavimento. Branch `instalacoes/id-ponto-planta`. Os pontos publicados antes mudam de id, mas nenhum foi publicado no servidor.
 - **Falta:**
   1. O download das pranchas e modelos vigentes. O Nicolas deu o ok no chat da frente em 20/11.
   2. O piloto no 2º pavimento real, fora do repositório. Depende do download e serve para conferir a classificação e o encaixe; no elétrico e no SPDA, também os nomes reais.

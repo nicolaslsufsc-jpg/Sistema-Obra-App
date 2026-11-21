@@ -165,16 +165,23 @@ class TestNaFolha(unittest.TestCase):
         pts = [{"modelo_id": "11", "tipo": "ralo", "nome": "Ralo seco", "x": 100.0, "y": 200.0},
                {"modelo_id": "99", "tipo": "caixa", "nome": "", "x": 5000.0, "y": 10.0}]
         enc = {"rotacao": [[1, 0], [0, -1]], "fator": 2.0, "t": [10.0, 700.0]}
-        dentro, fora = instalacoes.pontos_na_folha(pts, enc, "sanitario", 1000.0, 800.0)
-        pid = instalacoes.id_do_ponto("sanitario", "11")
+        dentro, fora = instalacoes.pontos_na_folha(pts, enc, "sanitario", 1000.0, 800.0, "EXE", "2º Pavimento")
+        pid = instalacoes.id_do_ponto("EXE", "2º Pavimento", "sanitario", "11")
         self.assertEqual(list(dentro), [pid])
         self.assertEqual(dentro[pid]["ponto"], [210.0, 300.0])
         self.assertEqual(fora, [{"modelo_id": "99", "tipo": "caixa", "nome": ""}])
-        self.assertEqual(pid, instalacoes.id_do_ponto("sanitario", "11"))
-        self.assertNotEqual(pid, instalacoes.id_do_ponto("hidro", "11"))
+        self.assertEqual(pid, instalacoes.id_do_ponto(" exe ", "2º Pavimento", "sanitario", "11"))
+        self.assertNotEqual(pid, instalacoes.id_do_ponto("EXE", "2º Pavimento", "hidro", "11"))
+
+    def test_mesmo_ifc_em_duas_plantas_nao_repete_id(self):
+        """Revisor (21/11): o mesmo IFC usado em dois pavimentos ou em duas obras não pode dar o mesmo barra_id."""
+        pts = [{"modelo_id": "11", "tipo": "ralo", "nome": "Ralo", "x": 1.0, "y": 1.0}]
+        ids = {next(iter(instalacoes.pontos_na_folha(pts, IDENT, "sanitario", 10, 10, o, pav)[0]))
+               for o, pav in (("EXE", "2º Pavimento"), ("EXE", "3º Pavimento"), ("EX2", "2º Pavimento"))}
+        self.assertEqual(len(ids), 3)
 
     def test_nome_padrao_e_resumo(self):
-        dentro, fora = instalacoes.pontos_na_folha([{"modelo_id": "1", "tipo": "registro", "nome": "", "x": 1, "y": 1}], IDENT, "hidro", 10, 10)
+        dentro, fora = instalacoes.pontos_na_folha([{"modelo_id": "1", "tipo": "registro", "nome": "", "x": 1, "y": 1}], IDENT, "hidro", 10, 10, "EXE", "2º Pavimento")
         self.assertEqual(next(iter(dentro.values()))["nome"], "Registro")
         self.assertEqual(instalacoes.resumo(dentro, fora), {"pontos": 1, "por_tipo": {"registro": 1}, "fora_da_folha": []})
 
@@ -210,7 +217,7 @@ class TestPublicador(unittest.TestCase):
     PONTOS = [{"modelo_id": "11", "tipo": "ralo", "nome": "Ralo", "x": 100.0, "y": 200.0}]
 
     def cfg(self, **inst):
-        return {"instalacoes": {"encaixe": None, "disciplinas": {"sanitario": {"ifc": ["x.ifc"], "nivel": ["2º"]}}, **inst}}
+        return {"obra": "EXE", "pavimento": "2º Pavimento", "instalacoes": {"encaixe": None, "disciplinas": {"sanitario": {"ifc": ["x.ifc"], "nivel": ["2º"]}}, **inst}}
 
     def test_folha_por_disciplina_com_encaixe_dos_furos(self):
         formas = [forma()]
@@ -218,6 +225,7 @@ class TestPublicador(unittest.TestCase):
         self.assertEqual(rel["sanitario"]["pontos"], 1)
         self.assertEqual(len(formas), 2)
         fl = formas[1]
+        self.assertEqual(list(fl["pontos"]), [instalacoes.id_do_ponto("EXE", "2º Pavimento", "sanitario", self.PONTOS[0]["modelo_id"])])
         self.assertEqual((fl["disciplina"], fl["trecho"], fl["pecas"]), ("sanitario", "Esgoto e pluvial", []))
         self.assertEqual(publicar_planta.quantos_locais(fl), 1)
         man, _, r = publicar_planta.montar_trecho(fl, {}, {}, {"planta_id": "p", "obra": "EXE", "pavimento": "2º", "trecho": fl["trecho"]})

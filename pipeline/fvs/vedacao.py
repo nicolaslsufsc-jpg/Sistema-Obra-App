@@ -23,7 +23,10 @@ supabase/migrations/20261120200000_nucleo_elementos_m.sql (núcleo, só com o "p
 
 No pavimento.json, dentro de "ambientes":
   "vedacao": true
-  ou "vedacao": {"prancha": "../Modulacao/*.VD.EX.0xx.*.pdf", "escala": 50, "materiais": ["BLOCO"], "trecho": "Modulação"}
+  ou "vedacao": {"paredes": "area_comum", "prancha": "../Modulacao/*.VD.EX.0xx.*.pdf", "escala": 50, "materiais": ["BLOCO"], "trecho": "Modulação"}
+"paredes" diz quais paredes viram local: "todas" (padrão, e o que vale com "vedacao": true), "area_comum" (só
+as de área comum: fachada, poços, corredor) ou "apartamentos" (só as de dentro dos apartamentos). É dado da obra:
+na obra piloto o Nicolas quis só as de área comum (20/11/2026).
 O IFC lido fica guardado ao lado dele (<arquivo>.andar<N>.paredes.json), como o dos ambientes.
 """
 
@@ -39,6 +42,7 @@ MATERIAIS = ("BLOCO",)
 ENCOSTO_M = 0.20  # a parede "encosta" no ambiente que fica a até 20 cm dela
 LINHA_M = 1.5  # ordem de leitura: paredes com o centro a menos de 1,5 m na vertical estão na mesma linha
 ROTULO_PT = (14, 5)  # meia largura e meia altura do rótulo, em pontos da folha
+PAREDES = ("todas", "area_comum", "apartamentos")  # "paredes" em "vedacao": quais viram local
 
 
 class ErroVedacao(Exception):
@@ -108,11 +112,28 @@ def nomear(paredes: list[dict]) -> list[dict]:
     return saida
 
 
-def pecas_das_paredes(paredes: list[dict], ambientes_nomeados, para_prancha) -> tuple[list[dict], dict]:
+def quais_paredes(cfg_vedacao) -> str:
+    """O valor de "paredes" em "vedacao" ("todas" se não houver, ou com "vedacao": true)."""
+    quais = (cfg_vedacao.get("paredes") if isinstance(cfg_vedacao, dict) else None) or "todas"
+    if quais not in PAREDES:
+        raise ErroVedacao(f"\"paredes\": \"{quais}\" não existe; use " + ", ".join(f'\"{p}\"' for p in PAREDES))
+    return quais
+
+
+def _entra(unidade: str, quais: str) -> bool:
+    if quais == "area_comum":
+        return unidade == "AC"
+    if quais == "apartamentos":
+        return unidade != "AC"
+    return True
+
+
+def pecas_das_paredes(paredes: list[dict], ambientes_nomeados, para_prancha, quais: str = "todas") -> tuple[list[dict], dict]:
     """As paredes do modelo (geometria shapely em metros, em "geom") viram locais "M" da planta, em pontos da
-    folha. Devolve (peças, resumo)."""
+    folha; só as que "quais" pede ("todas", "area_comum", "apartamentos"). Devolve (peças, resumo)."""
     lidas = []
     curtas = 0
+    fora = 0
     for p in paredes:
         g = p["geom"]
         comp, esp = medidas(g)
@@ -120,6 +141,9 @@ def pecas_das_paredes(paredes: list[dict], ambientes_nomeados, para_prancha) -> 
             curtas += 1
             continue
         u, grupo = unidade_da_parede(g, ambientes_nomeados)
+        if not _entra(u, quais):
+            fora += 1
+            continue
         c = g.representative_point()
         lidas.append({**p, "unidade": u, "grupo": grupo, "centro": (c.x, c.y), "comprimento": comp, "espessura": esp})
     pecas = []
@@ -141,6 +165,8 @@ def pecas_das_paredes(paredes: list[dict], ambientes_nomeados, para_prancha) -> 
         "por_apartamento": {u: n for u, n in sorted(_contar(pecas).items(), key=lambda kv: (kv[0] == "AC", len(kv[0]), kv[0]))},
         "metros": round(sum(p["comprimento"] for p in lidas), 1),
         **({"curtas_fora": curtas} if curtas else {}),
+        "quais": quais,
+        **({"fora_pela_escolha": fora} if fora else {}),
     }
     return pecas, resumo
 
@@ -270,7 +296,11 @@ def ler_planta(cfg_amb: dict, base: dict) -> dict:
     else:
         caminho, page, t, para_prancha = cfg_amb["prancha"], base["page"], base["t"], base["para_prancha"]
         fundo = "arquitetura"
-    pecas, resumo = pecas_das_paredes(paredes, nomeados, para_prancha)
+    quais = quais_paredes(cfg)
+    pecas, resumo = pecas_das_paredes(paredes, nomeados, para_prancha, quais)
+    if not pecas:
+        raise ErroVedacao(f"nenhuma parede de alvenaria com \"paredes\": \"{quais}\" neste pavimento "
+                          f"({resumo.get('fora_pela_escolha', 0)} ficaram fora pela escolha). Confira \"paredes\" em \"vedacao\".")
     prancha = nome_da_prancha(caminho)
     return {
         "trecho": cfg.get("trecho") or TRECHO, "disciplina": DISCIPLINA,

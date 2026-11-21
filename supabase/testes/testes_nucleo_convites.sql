@@ -3,7 +3,7 @@
 -- Roda depois de testes_nucleo.sql (mesmo banco: usa a1 admin, b1 gestor, c1 campo,
 -- e1 sem acesso, e as obras 1111.../2222...). No fim apaga tudo o que criou, porque
 -- testes_nucleo_pessoas.sql (depois deste) confere as listas de pessoas exatas.
--- Contas novas deste arquivo: ...f2, ...f3, ...f4.
+-- Contas novas deste arquivo: ...f2 a ...f5.
 -- =====================================================================
 
 \set ON_ERROR_STOP 1
@@ -111,6 +111,25 @@ insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f4
 select teste.ok((select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f4') = 0,
   'convites: convite apagado não dá acesso');
 
+-- Convite que dá erro ao virar acesso não impede a pessoa de criar a conta (entrar com o código)
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
+select public.convidar('22222222-2222-2222-2222-222222222222', 'Pessoa Cinco', 'campo', 'cinco@teste.local') as conv6 \gset
+reset role;
+create function teste.recusar_acesso() returns trigger language plpgsql as $$
+begin
+  raise exception 'erro de teste';
+end;
+$$;
+create trigger teste_recusar_acesso before insert on public.acessos for each row execute function teste.recusar_acesso();
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f5', 'cinco@teste.local');
+drop trigger teste_recusar_acesso on public.acessos;
+drop function teste.recusar_acesso();
+select teste.ok(exists (select 1 from public.perfis where id = '00000000-0000-0000-0000-0000000000f5')
+  and (select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f5') = 0
+  and (select aceito_em is null from public.convites where id = :'conv6'),
+  'convites: erro ao aceitar o convite não trava a criação da conta (convite fica aberto)');
+
 -- Convite para o próprio admin: resolve o convite sem linha em acessos
 set role authenticated;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
@@ -131,7 +150,7 @@ reset role;
 delete from public.convites;
 delete from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1';
 delete from auth.users where id in ('00000000-0000-0000-0000-0000000000f2',
-  '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f4');
+  '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f4', '00000000-0000-0000-0000-0000000000f5');
 select teste.ok((select count(*) from public.acessos where obra_id = '11111111-1111-1111-1111-111111111111') = 3
   and (select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1') = 0,
   'convites: limpeza deixou os acessos como estavam');

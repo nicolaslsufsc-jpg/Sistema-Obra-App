@@ -175,7 +175,14 @@ begin
     where email = v_email and aceito_em is null and not apagado
     order by criado_em
   loop
-    perform nucleo.aceitar_convite(c.id, new.id);
+    -- Este insert acontece dentro do cadastro da conta: erro aqui impediria a pessoa
+    -- de entrar com o código. Um convite com problema só gera aviso no log; o admin
+    -- dá o acesso pela tela Pessoas da obra.
+    begin
+      perform nucleo.aceitar_convite(c.id, new.id);
+    exception when others then
+      raise warning 'Sistema Obra: convite % não virou acesso: %', c.id, sqlerrm;
+    end;
   end loop;
   return new;
 end;

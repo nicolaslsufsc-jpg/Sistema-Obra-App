@@ -24,6 +24,10 @@ import exportar_obra as exp  # noqa: E402
 OBRA = "33333333-3333-3333-3333-333333333333"
 PESSOA = "00000000-0000-0000-0000-0000000000f1"
 NIL = "00000000-0000-0000-0000-000000000000"
+CONVITE = {"id": "c0000000-0000-0000-0000-0000000000c1", "obra_id": OBRA, "nome": "Pessoa Convidada", "email": None,
+           "papel": "campo", "usuario_id": None, "aceito_em": None, "criado_por": "00000000-0000-0000-0000-00000000dead",
+           "criado_em": "2026-11-21T09:00:00+00:00", "apagado": False}
+OUTRA_OBRA = "44444444-4444-4444-4444-444444444444"
 
 
 def tem_postgres_portatil() -> bool:
@@ -110,8 +114,18 @@ class TestLoginGuardado(unittest.TestCase):
 class ServidorDeMentira:
     """Faz o papel do exp.Supabase: login já renovado e a lista de obras."""
 
+    convites = None  # None = o servidor ainda não tem a tabela (404)
+
     def __init__(self, url, chave):
         self.url, self.refresh_token, self.renovacoes = url, "velho", 0
+
+    def pedir(self, metodo, caminho, *a, **k):
+        assert caminho.startswith("/rest/v1/convites"), caminho
+        return (404, b'{"code":"PGRST205"}') if self.convites is None else (200, b"[]")
+
+    def linhas(self, tabela, filtros):
+        assert tabela == "public.convites"
+        return list(self.convites)
 
     def renovar(self):
         self.refresh_token = "novo"
@@ -138,7 +152,8 @@ class TestBackupInteiro(unittest.TestCase):
                 situacao["final"] = pasta_exportada(pathlib.Path(args.saida))
                 return 0
 
-            argv = ["--destino", str(destino), "--sem-conferir"]
+            copia = pathlib.Path(t) / "Meu Drive" / "Backup Sistema Obra"
+            argv = ["--destino", str(destino), "--copia", str(copia), "--sem-conferir"]
             with mock.patch.object(bk.exp, "Supabase", ServidorDeMentira), mock.patch.object(bk.exp, "exportar", exportar), \
                     mock.patch.object(bk.sessao_local, "carregar_sessao", return_value={"refresh_token": "velho"}), \
                     mock.patch.object(bk.sessao_local, "guardar_sessao"):
@@ -154,6 +169,43 @@ class TestBackupInteiro(unittest.TestCase):
             self.assertTrue(status.startswith("FEITO COM AVISO"), status)
             self.assertIn("backup_2026-01-01_1230.zip", status)
             self.assertEqual([p.name for p in destino.iterdir() if p.is_dir()], [])  # a pasta de trabalho sai
+            # a cópia (Drive) recebe o mesmo zip e o resultado
+            self.assertEqual([p.name for p in bk.backups_na_pasta(copia)], [zips[-1].name])
+            self.assertTrue((copia / "ULTIMO_BACKUP.txt").read_text(encoding="utf-8").startswith("FEITO COM AVISO"))
+            self.assertFalse((copia / "backup.log").exists())
+            self.assertIn(f"Cópia em {copia.resolve()}.", status)
+            with zipfile.ZipFile(zips[-1]) as z:
+                self.assertFalse(any(n.startswith("convites/") for n in z.namelist()))  # servidor sem a tabela
+
+    def test_convites_das_obras_do_backup_entram_no_zip(self):
+        with tempfile.TemporaryDirectory() as t:
+            destino = pathlib.Path(t) / "Backup"
+
+            def exportar(args, situacao, sb=None, usuario=None):
+                situacao["final"] = pasta_exportada(pathlib.Path(args.saida))
+                return 0
+
+            class ComConvites(ServidorDeMentira):
+                convites = [CONVITE, dict(CONVITE, id="c0000000-0000-0000-0000-0000000000c2", obra_id=OUTRA_OBRA)]
+
+            with mock.patch.object(bk.exp, "Supabase", ComConvites), mock.patch.object(bk.exp, "exportar", exportar), \
+                    mock.patch.object(bk.sessao_local, "carregar_sessao", return_value={"refresh_token": "velho"}), \
+                    mock.patch.object(bk.sessao_local, "guardar_sessao"):
+                bk.main(["--destino", str(destino), "--sem-conferir"])
+            with zipfile.ZipFile(bk.backups_na_pasta(destino)[-1]) as z:
+                convites = json.loads(z.read("convites/convites.json"))
+                self.assertIn("convites/restaurar_convites.sql", z.namelist())
+            self.assertEqual([c["id"] for c in convites], [CONVITE["id"]])  # só os das obras do backup
+
+    def test_copia_que_falha_vira_aviso_e_o_backup_do_pc_fica(self):
+        with tempfile.TemporaryDirectory() as t:
+            final = pathlib.Path(t) / "backup_2026-11-21_1230.zip"
+            final.write_bytes(b"x")
+            ocupado = pathlib.Path(t) / "arquivo"
+            ocupado.write_text("não é pasta", encoding="utf-8")
+            with self.assertRaisesRegex(bk.ErroBackup, "não consegui copiar"):
+                bk.copiar_para(final, ocupado / "Backup", 8)
+            self.assertTrue(final.exists())
 
     def test_sem_login_nao_faz_e_deixa_o_motivo(self):
         with tempfile.TemporaryDirectory() as t:
@@ -185,6 +237,32 @@ class TestConferencia(unittest.TestCase):
 
     def test_backup_restaura_num_postgres_novo_com_todas_as_linhas(self):
         with tempfile.TemporaryDirectory() as t:
+            feito = bk.conferir_zip(self._zip(pathlib.Path(t)))
+            self.assertEqual(feito, ["EXE: 4 linha(s) restaurada(s) e conferida(s)"])
+
+    def test_convites_restauram_depois_das_obras(self):
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            zipado = self._zip(t)
+            pasta = t / "convites"
+            pasta.mkdir()
+            (pasta / "convites.json").write_text(json.dumps([CONVITE]), encoding="utf-8")
+            (pasta / "restaurar_convites.sql").write_text(bk.sql_dos_convites([CONVITE]), encoding="utf-8")
+            with zipfile.ZipFile(zipado, "a") as z:
+                for arq in pasta.iterdir():
+                    z.write(arq, f"convites/{arq.name}")
+            feito = bk.conferir_zip(zipado)
+            tem_migracao = any("convites" in m.name for m in (bk.REPO / "supabase" / "migrations").glob("*.sql"))
+            esperado = "convites: 1 restaurado(s) e conferido(s)" if tem_migracao else \
+                "convites: 1 no zip, não conferidos (a migração dos convites não está neste repositório)"
+            self.assertEqual(feito, ["EXE: 4 linha(s) restaurada(s) e conferida(s)", esperado])
+
+    def test_confere_mesmo_com_os_testes_do_banco_ocupando_a_porta_deles(self):
+        import socket  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as t, socket.socket() as ocupada:
+            ocupada.bind(("127.0.0.1", bk.postgres_portatil().PORTA))
+            ocupada.listen()
             feito = bk.conferir_zip(self._zip(pathlib.Path(t)))
             self.assertEqual(feito, ["EXE: 4 linha(s) restaurada(s) e conferida(s)"])
 

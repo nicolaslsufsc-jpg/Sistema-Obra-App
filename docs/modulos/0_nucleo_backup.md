@@ -2,7 +2,7 @@
 
 Pedido do Nicolas (21/11/2026): "um backup do programa pode ser físico, pode se manter em algum lugar". Frente 01 · NUC-SINC.
 
-**Combinado (estimado, até o Nicolas dizer o contrário):** uma vez por semana, numa pasta do PC dele, fora do repositório (`C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\`), mantendo os 8 últimos (dois meses).
+**Combinado:** toda segunda às 12:30 (confirmado pelo Nicolas em 21/11), numa pasta do PC dele, fora do repositório (`C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\`), com uma cópia no Google Drive dele (`C:\Users\nicol\Meu Drive\Backup Sistema Obra\`, a pasta que o Google Drive para computador espelha), mantendo os 8 últimos nas duas (dois meses).
 
 ## O que entra no backup
 
@@ -12,10 +12,14 @@ Pedido do Nicolas (21/11/2026): "um backup do programa pode ser físico, pode se
 - `restaurar.sql`: recria a obra num Postgres com as migrações do repositório;
 - `manifesto.json` e `LEIAME.txt`: contagens, quem exportou e quando.
 
+E, numa pasta `convites/` do zip, os convites das obras do backup (pessoas convidadas que ainda não entraram, que só o admin vê e não vão para os aparelhos), com o `restaurar_convites.sql`. Se o servidor ainda não tem a tabela de convites, essa parte é pulada.
+
 Depois de gerar o zip, o script **confere o backup**: cria um Postgres descartável neste PC (o portátil dos testes do banco), aplica as migrações, roda cada `restaurar.sql` e compara as linhas com o manifesto. Se faltar uma linha, o backup fica marcado com aviso.
 
+Com `--copia PASTA`, o zip é copiado também para essa pasta (a do Google Drive), que guarda os mesmos 8 últimos. Se a cópia falhar (Drive cheio, pasta sumida), o backup do PC fica e o resultado sai "FEITO COM AVISO".
+
 Na pasta de destino ficam também:
-- `ULTIMO_BACKUP.txt`: o resultado do último (DEU CERTO, FEITO COM AVISO ou NÃO FEITO, e o motivo);
+- `ULTIMO_BACKUP.txt`: o resultado do último (DEU CERTO, FEITO COM AVISO ou NÃO FEITO, e o motivo); vai também para a pasta da cópia, para ver pelo Drive no celular;
 - `backup.log`: uma linha por backup, para ver o histórico.
 
 O script só apaga arquivos com o nome `backup_AAAA-MM-DD_HHMM.zip`, e só os que passam dos 8 mais novos. Outros arquivos na pasta ficam.
@@ -32,7 +36,7 @@ O backup não usa chave secreta (service_role): entra com o login do administrad
 Na pasta do repositório:
 
 ```
-py pipeline\backup_semanal.py --destino "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra"
+py pipeline\backup_semanal.py --destino "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra" --copia "C:\Users\nicol\Meu Drive\Backup Sistema Obra"
 ```
 
 Opções: `--manter 8` (quantos guardar), `--obras EXE` (só algumas obras).
@@ -45,13 +49,13 @@ py pipeline\backup_semanal.py --conferir "C:\Users\nicol\Nicolas\09_ESTAGIO\Back
 
 ## Agendar toda semana (Agendador de Tarefas do Windows)
 
-Não registrado ainda: o Nicolas registra quando quiser. No PowerShell (sem ser administrador), um comando só:
+Registrar depois do merge (a pasta do repositório precisa ter a `main` com este script). No PowerShell (sem ser administrador), um comando só:
 
 ```
-$repo = "C:\Users\nicol\Nicolas\07_DESENVOLVIMENTO\03_Sistema_Obra"; $destino = "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra"; Register-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Description "Backup de todas as obras (docs/modulos/0_nucleo_backup.md)" -Action (New-ScheduledTaskAction -Execute "C:\Windows\py.exe" -Argument "-3 pipeline\backup_semanal.py --destino `"$destino`"" -WorkingDirectory $repo) -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 12:30) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2))
+$repo = "C:\Users\nicol\Nicolas\07_DESENVOLVIMENTO\03_Sistema_Obra"; $destino = "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra"; $copia = "C:\Users\nicol\Meu Drive\Backup Sistema Obra"; Register-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Description "Backup de todas as obras (docs/modulos/0_nucleo_backup.md)" -Action (New-ScheduledTaskAction -Execute "C:\Windows\py.exe" -Argument "-3 pipeline\backup_semanal.py --destino `"$destino`" --copia `"$copia`"" -WorkingDirectory $repo) -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 12:30) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2))
 ```
 
-- Segunda às 12:30 (estimado). Se o PC estiver desligado nessa hora, roda assim que ligar (`StartWhenAvailable`).
+- Segunda às 12:30 (confirmado). Se o PC estiver desligado nessa hora, roda assim que ligar (`StartWhenAvailable`).
 - Roda com o usuário do Windows logado, sem senha guardada no Agendador.
 - O `$repo` é a pasta do repositório no PC. Ela precisa estar com a `main` atualizada (com o `pipeline/backup_semanal.py`).
 - Ver se rodou: abrir `ULTIMO_BACKUP.txt` na pasta de destino, ou o Agendador de Tarefas > "Sistema Obra - backup semanal" > Último resultado (0 = deu certo, 2 = com aviso, 1 = não feito).
@@ -61,12 +65,12 @@ $repo = "C:\Users\nicol\Nicolas\07_DESENVOLVIMENTO\03_Sistema_Obra"; $destino = 
 ## Restaurar de verdade (se o servidor se perder)
 
 1. Criar o projeto novo no Supabase e aplicar as migrações (`supabase/README.md`).
-2. Abrir o zip; para cada obra, rodar o `restaurar.sql` no editor SQL (o `LEIAME.txt` de cada obra explica).
+2. Abrir o zip; para cada obra, rodar o `restaurar.sql` no editor SQL (o `LEIAME.txt` de cada obra explica). Depois de todas as obras, rodar `convites/restaurar_convites.sql` (se houver).
 3. Subir a pasta `arquivos/` de cada obra para o armazenamento `obras`, no mesmo caminho.
 4. As pessoas entram de novo no app com o e-mail (as contas voltam pelo `restaurar.sql`).
 
 ## Limites (o que este backup não faz)
 
-- Fica num disco só: se o PC se perder, o backup vai junto. Copiar de vez em quando a pasta para um HD externo ou para o Drive (decisão do Nicolas).
+- Cópia no Google Drive: depende do Google Drive para computador ligado e com espaço (cada backup tem uns 260 MB; 8 dão uns 2 GB). Se o Drive parar de sincronizar, a pasta do PC continua, mas a cópia na nuvem fica para trás: olhar de vez em quando no drive.google.com se o último zip chegou.
 - Não guarda o que está só nos aparelhos e ainda não sincronizou (a fila de cada celular).
 - O que foi marcado como apagado no app continua no backup (nada é apagado de fato no servidor).

@@ -29,16 +29,16 @@ select teste.deve_falhar($$
           '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23505', 'elementos: a mesma parede duas vezes no pavimento é recusada');
 
-insert into public.fichas_modelo (id, obra_id, codigo, titulo, revisao, aplica_a, itens, origem, dispositivo_id, criado_em_dispositivo)
+insert into public.fichas_modelo (id, obra_id, codigo, titulo, revisao, aplica_a, itens, origem, usuario_id, dispositivo_id, criado_em_dispositivo)
 values ('fb100000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'TESTE-PVS-ALV-M',
         'Alvenaria (ficha de teste)', '0', '{A,M}', '[{"n":1,"etapa":"MARCAÇÃO","titulo":"Primeira fiada"}]',
-        'teste', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
+        'teste', '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now());
 select teste.ok((select aplica_a from public.fichas_modelo where codigo = 'TESTE-PVS-ALV-M') = '{A,M}',
   'fichas_modelo: a ficha de alvenaria vale por ambiente e por parede (A e M)');
 select teste.deve_falhar($$
-  insert into public.fichas_modelo (obra_id, codigo, titulo, aplica_a, itens, dispositivo_id, criado_em_dispositivo)
+  insert into public.fichas_modelo (obra_id, codigo, titulo, aplica_a, itens, usuario_id, dispositivo_id, criado_em_dispositivo)
   values ('11111111-1111-1111-1111-111111111111', 'TESTE-PVS-X', 'Tipo errado', '{X}', '[{"n":1,"titulo":"a"}]',
-          'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+          '00000000-0000-0000-0000-0000000000a1', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23514', 'fichas_modelo: aplica_a fora de P, V, L, A e M é recusado');
 
 rollback;

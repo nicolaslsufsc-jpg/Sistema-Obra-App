@@ -2143,6 +2143,60 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: modulação de paredes: seção própria no pavimento, cada parede um local da ficha de alvenaria`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&vedacao=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      // a modulação vem antes dos ambientes (a alvenaria vem antes do reboco); as paredes não contam na estrutura
+      expect(await pavimento.locator('.fv-disciplina').allTextContents()).toEqual(['Estrutura', 'Modulação de paredes', 'Ambientes'])
+      const secao = p.getByTestId('fvs-secao-vedacao')
+      expect(await secao.getByTestId('fvs-resumo-paredes').innerText()).toBe('0 de 9 paredes liberadas')
+      expect(await secao.innerText()).toContain('TESTE.VD.EX.001.PAV-R00 · 9 paredes')
+      expect(await pavimento.locator('summary').first().innerText()).toContain('de 62 peças liberadas')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/vedacao_${nome}_inicio.png`, fullPage: true })
+
+      await secao.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.locator('.fv-seg').count()).toBe(0) // só paredes: sem abas, sem área de laje
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/9 liberados')
+      expect(await topoCabe(p)).toBe(true)
+      // a parede entre as duas suítes do 101 (x = 320, y de 100 a 290): o toque na linha fina abre a parede
+      await enquadrar(p, [-200, 320], 0)
+      await tocarNaPlanta(p, 321, 200)
+      await nomeNoPainel(p, '101-M02')
+      const info = await p.locator('.fv-inf').innerText()
+      expect(info).toContain('Parede')
+      expect(info).toContain('Apto 101')
+      expect(info).toContain('3,80 m · 14 cm')
+      expect(info).not.toContain('seção')
+      expect(await p.getByTestId('fvs-painel').innerText()).not.toContain('detalhe desta peça')
+      expect(await p.getByTestId('fvs-ficha-do-painel').textContent()).toContain('TESTE-PVS-ALV')
+      for (let n = 1; n <= 6; n++) await item(p, n, 'C').click()
+      await expect.poll(async () => (await registros(p)).length).toBe(6)
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('1/9 liberados')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/vedacao_${nome}_painel.png` })
+
+      // a busca pelo apartamento enquadra as paredes dele
+      await p.locator('.fv-cab button').click()
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+      await buscar(p, '102')
+      await p.locator('.fv-toast', { hasText: 'Apto 102: 4 paredes' }).waitFor()
+
+      // de volta ao início: a parede liberada conta na modulação, não na estrutura nem nos ambientes
+      await p.goto(`${url}?abrir=0&vedacao=1`)
+      await p.getByTestId('fvs-pavimento').waitFor()
+      expect(await p.getByTestId('fvs-resumo-paredes').innerText()).toBe('1 de 9 paredes liberadas')
+      expect(await p.getByTestId('fvs-ambientes').innerText()).toContain('nenhuma ficha começada')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: projetos no ambiente: modulação, paginação e impermeabilização, cada um nas fichas dele`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

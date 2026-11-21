@@ -277,6 +277,10 @@ export const ehDeAmbientes = (p: Pick<Planta, 'disciplina'>) => p.disciplina ===
  *  só as barras daquela direção, nas coordenadas da forma do pavimento (pipeline/fvs/armadura_laje.py). */
 export const ehDeArmadura = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'armadura'
 
+/** Planta de modulação do pavimento (20/11/2026): cada parede de alvenaria é um local "M", conferido pela ficha
+ *  de alvenaria; o fundo é a prancha de 1ª fiada ou a de arquitetura (pipeline/fvs/vedacao.py). */
+export const ehDeVedacao = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'vedacao'
+
 function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>()
   for (const i of itens) {

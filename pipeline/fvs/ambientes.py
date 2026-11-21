@@ -577,14 +577,13 @@ def rotulos_de_apartamento(page, re_apto=RE_APTO) -> list[tuple[str, str, float,
     return saida
 
 
-def ler_planta(cfg: dict) -> dict:
-    """Planta de ambientes no mesmo formato de estrutura.ler_forma (para publicar_planta.montar_trecho)."""
+def base_da_planta(cfg: dict) -> dict:
+    """O que a planta de ambientes e a de modulação (vedacao.py) têm em comum: o andar lido do IFC, a prancha
+    casada com ele e os ambientes numerados por apartamento. Devolve {page, t, escala, paredes, ambientes,
+    portas, para_prancha, para_modelo, aptos, nomeados}."""
     import pymupdf as fitz
     from shapely import wkt
     from shapely.geometry import Point
-
-    import gerador_fvs as legado
-    from estrutura import nome_da_prancha, revisao_da_prancha
 
     for campo in ("ifc", "andar", "prancha"):
         if not cfg.get(campo):
@@ -608,6 +607,19 @@ def ler_planta(cfg: dict) -> dict:
     rotulos = [(n, tp, Point(*para_modelo(x, y))) for n, tp, x, y in rotulos_de_apartamento(page)]
     aptos = agrupar_por_apartamento(ambientes, portas, rotulos, tuple(cfg.get("portas_de_entrada") or ("PM90", "PCF*")))
     nomeados = nomear(ambientes, aptos)
+    return {"page": page, "t": t, "escala": escala, "paredes": paredes, "ambientes": ambientes, "portas": portas,
+            "para_prancha": para_prancha, "para_modelo": para_modelo, "aptos": aptos, "nomeados": nomeados}
+
+
+def ler_planta(cfg: dict, base: dict | None = None) -> dict:
+    """Planta de ambientes no mesmo formato de estrutura.ler_forma (para publicar_planta.montar_trecho).
+    base: o de base_da_planta(cfg), se já calculado (a planta de modulação usa o mesmo)."""
+    import gerador_fvs as legado
+    from estrutura import nome_da_prancha, revisao_da_prancha
+
+    b = base or base_da_planta(cfg)
+    page, t, escala, paredes, ambientes, portas = b["page"], b["t"], b["escala"], b["paredes"], b["ambientes"], b["portas"]
+    para_prancha, aptos, nomeados = b["para_prancha"], b["aptos"], b["nomeados"]
     comodos, resumo_nomes = ({}, None)
     if cfg.get("nomes"):
         comodos, resumo_nomes = nomes_dos_comodos(nomeados, aptos, ler_tabela_de_nomes(cfg["nomes"]), ambientes)

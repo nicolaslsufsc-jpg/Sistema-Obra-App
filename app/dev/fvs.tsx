@@ -33,6 +33,8 @@ const PLANTA = 'a2000000-0000-0000-0000-0000000000f1'
 const SETOR_AMB = 'a1000000-0000-0000-0000-0000000000f2'
 const PLANTA_AMB = 'a2000000-0000-0000-0000-0000000000f2'
 const PLANTA_R01 = 'a2000000-0000-0000-0000-0000000000f3'
+const SETOR_VED = 'a1000000-0000-0000-0000-0000000000f4'
+const PLANTA_VED = 'a2000000-0000-0000-0000-0000000000f4'
 const params = new URLSearchParams(location.search)
 
 const FICHAS_TESTE: Record<'P' | 'V', ItemFicha[]> = {
@@ -672,13 +674,53 @@ function itensComEsquadrias(codigo: string, itens: ItemFicha[]): ItemFicha[] {
   return itens
 }
 
+/**
+ * ?vedacao=1: planta de modulação de teste (20/11), como o pipeline faz (pipeline/fvs/vedacao.py): o mesmo fundo da
+ * planta de ambientes, e cada parede dos aptos 101 e 102 e uma do corredor como local "M" ("101-M01"...). A ficha
+ * de alvenaria de teste passa a valer por ambiente e por parede.
+ */
+async function semearVedacao(base: Record<string, unknown>) {
+  const { manifest: amb, bin } = await pacoteDeAmbientesDeTeste()
+  const elementos: Manifest['elementos'] = {}
+  const meia = 3.5 // a linha das paredes no fundo tem 7 pontos
+  const porUnidade = new Map<string, number>()
+  const parede = (unidade: string, grupo: string, x0: number, y0: number, x1: number, y1: number) => {
+    const k = (porUnidade.get(unidade) ?? 0) + 1
+    porUnidade.set(unidade, k)
+    const [a, b, c, d] = y0 === y1 ? [x0, y0 - meia, x1, y0 + meia] : [x0 - meia, y0, x0 + meia, y1]
+    const cx = (a + c) / 2
+    const cy = (b + d) / 2
+    const m = Math.hypot(x1 - x0, y1 - y0) / 50 // 50 pontos por metro na planta de teste
+    elementos[uuid('e5000000', Object.keys(elementos).length + 1)] = {
+      tipo: 'M',
+      nome: `${unidade}-M${String(k).padStart(2, '0')}`,
+      secao: `${m.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m · 14 cm`,
+      grupo,
+      rotulo: [cx - 14, cy - 5, cx + 14, cy + 5],
+      polys: [[[a, b], [c, b], [c, d], [a, d]]],
+    }
+  }
+  // de cima para baixo, da esquerda para a direita, como o pipeline numera
+  for (const [numero, x0] of [[101, 100], [102, 550]] as const) {
+    const g = `Apto ${numero}`
+    parede(String(numero), g, x0, 100, x0 + 440, 100) // fachada
+    parede(String(numero), g, x0 + 220, 100, x0 + 220, 290) // entre as suítes
+    parede(String(numero), g, x0, 300, x0 + 440, 300) // suítes x sala
+    parede(String(numero), g, x0, 550, x0 + 440, 550) // sala x corredor
+  }
+  parede('AC', 'Área comum', 100, 700, 1890, 700) // fundo do corredor
+  const manifest: Manifest = { ...amb, planta_id: PLANTA_VED, trecho: 'Modulação', prancha: 'TESTE.VD.EX.001.PAV-R00', elementos, detalhes: {} }
+  await guardarPacote(JSON.stringify(manifest), bin)
+  await gravarCadastro(cadastroDaPlanta(base, manifest, bin, SETOR_VED, 'vedacao', 40))
+}
+
 /** Planta de ambientes e fichas por ambiente de teste (entra também em bancada já usada antes). */
 async function semearAmbientes(base: Record<string, unknown>) {
   const { manifest, bin } = await pacoteDeAmbientesDeTeste()
   await guardarPacote(JSON.stringify(manifest), bin)
   const linhas = cadastroDaPlanta(base, manifest, bin, SETOR_AMB, 'arquitetura', 3)
   FICHAS_AMBIENTE_TESTE.forEach((f, i) => {
-    linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 3 + i), codigo: f.codigo, titulo: f.titulo, revisao: '0', aplica_a: ['A'], itens: itensComEsquadrias(f.codigo, f.itens) } })
+    linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 3 + i), codigo: f.codigo, titulo: f.titulo, revisao: '0', aplica_a: params.get('vedacao') && f.codigo === 'TESTE-PVS-ALV' ? ['A', 'M'] : ['A'], itens: itensComEsquadrias(f.codigo, f.itens) } })
   })
   await gravarCadastro(linhas)
 }
@@ -730,6 +772,7 @@ async function semear() {
   const ja = new Set((await banco.registros.where('[tabela+obra_id]').equals(['plantas', OBRA]).toArray()).map((r) => r.id))
   // com ?pacote=... a bancada mostra só o pacote de verdade pedido
   if (!ja.has(PLANTA_AMB) && !params.get('pacote')) await semearAmbientes(base)
+  if (!ja.has(PLANTA_VED) && params.get('vedacao') && !params.get('pacote')) await semearVedacao(base)
   if (ja.has(PLANTA)) return
   if (!params.get('pacote')) await semearHistoricoDeTeste(base)
 

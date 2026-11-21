@@ -48,7 +48,7 @@ import re
 FORMATO = 1
 # P pilar, V viga, L laje, A ambiente (planta de arquitetura; pipeline/fvs/ambientes.py), F furo de viga
 # (furos.py), E esquadria do ambiente (esquadrias.py)
-TIPOS = ("P", "V", "L", "A", "F", "E")
+TIPOS = ("P", "V", "L", "A", "F", "E", "M")
 # Partes do pilar concretadas com a laje (pipeline/fvs/partes.py): itens na ficha do pilar, toque próprio na planta.
 TIPOS_DE_PARTE = ("consolo", "capitel")
 CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id")

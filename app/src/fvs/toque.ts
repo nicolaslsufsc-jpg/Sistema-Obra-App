@@ -23,7 +23,8 @@ export interface OpcoesDeToque {
 
 export function opcoesDeToque(tipo: string): OpcoesDeToque {
   if (tipo === 'consolo' || tipo === 'capitel') return { toqueDeParte: true }
-  if (tipo === 'V') return { margemToque: MARGEM_VIGA }
+  // a parede de alvenaria é fina como a viga (14 cm na planta de 1:200 dá 2 pt)
+  if (tipo === 'V' || tipo === 'M') return { margemToque: MARGEM_VIGA }
   if (tipo === 'L' || tipo === 'A') return { toqueDeFundo: true }
   return {}
 }

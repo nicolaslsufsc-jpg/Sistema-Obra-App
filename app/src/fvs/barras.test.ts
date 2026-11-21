@@ -12,6 +12,7 @@ import {
   resultadoPelasBarras,
   resumoDasBarras,
   situacaoDaBarra,
+  passoDoToque,
   type BarraPacote,
 } from './barras'
 import type { EventoFvs, Ficha, Resultado } from './situacao'
@@ -98,6 +99,17 @@ describe('toque na barra', () => {
 
   it('no meio de duas barras não escolhe: pede zoom', () => {
     expect(barraTocada([50, 5], paralelas, 'longitudinal_inferior', 6, 1)).toEqual({ ambiguo: true })
+  })
+})
+
+describe('ciclo do toque (21/11: 1 verde, 2 vermelho, 3 tira)', () => {
+  it('sem conferir, OK, errada e de volta', () => {
+    expect(passoDoToque('nada', false)).toBe('ok')
+    expect(passoDoToque('liberado', false)).toBe('abrir_nc')
+    expect(passoDoToque('reprovado', false)).toBe('tirar')
+  })
+  it('3º toque com a caixa do NC aberta tira a verificação', () => {
+    expect(passoDoToque('liberado', true)).toBe('tirar')
   })
 })
 

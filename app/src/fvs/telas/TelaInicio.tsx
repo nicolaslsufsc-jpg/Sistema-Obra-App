@@ -29,6 +29,7 @@ import { avisoDoSistemaOficial } from '../../integracoes/sistema_oficial'
 import type { ContextoFvs, TelaFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { quantosLocais } from '../locais'
+import '../../telas/cabecalho.css'
 
 const OBRA_INTEIRA = 'obra-inteira'
 
@@ -334,11 +335,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
 
   /** Topo dos níveis 2 e 3: o voltar sobe um nível (o voltar do Android também). */
   const topo = (voltarPara: string, titulo: string, sub: string) => (
-    <header class="fv-topo-inicio fv-topo-nivel">
-      <button type="button" class="fv-voltar" onClick={voltar} aria-label={`Voltar para ${voltarPara}`}>
-        ‹ {voltarPara}
+    <header class="so-cabecalho fv-topo-inicio fv-topo-nivel">
+      <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label={`Voltar para ${voltarPara}`}>
+        <span aria-hidden="true">‹</span>
       </button>
-      <div>
+      <div class="so-cab-titulo">
         <h1>{titulo}</h1>
         <p class="discreto">{sub}</p>
       </div>
@@ -577,12 +578,12 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // ---------- nível 1: pavimentos ----------
   return (
     <main class="tela fv-inicio">
-      <header class="fv-topo-inicio">
+      <header class="so-cabecalho fv-topo-inicio">
         {/* Primeira tela do módulo: o botão leva ao menu do app e diz isso (20/11/2026) */}
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar ao menu">
-          ‹ Menu
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar ao menu">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>FVS</h1>
           <p class="discreto" data-testid="fvs-resumo-obra">
             {props.obra.codigo}

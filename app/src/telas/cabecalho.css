@@ -1,0 +1,61 @@
+/* Cabeçalho comum (docs/DESIGN.md › Cabeçalho). Cores e tamanhos só pelas variáveis de tema.css. */
+.so-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--borda);
+}
+.so-cabecalho .so-cab-voltar {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+.so-cabecalho .so-cab-voltar span {
+  display: block;
+  margin-top: -3px;
+}
+.so-cabecalho .so-cab-titulo {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* título nunca cortado: quebra em até duas linhas (e mais, se a palavra não couber) */
+.so-cabecalho .so-cab-titulo h1,
+.so-cabecalho > h1 {
+  margin: 0;
+  font-size: var(--fs-titulo);
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--texto);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.so-cabecalho .so-cab-sub,
+.so-cabecalho .so-cab-titulo > p {
+  margin: 0.1rem 0 0;
+  font-size: var(--fs-texto);
+  color: var(--discreto);
+  overflow-wrap: anywhere;
+}
+.so-cab-acoes {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.so-cab-acoes > button,
+.so-cab-acoes > a {
+  min-height: 44px;
+}

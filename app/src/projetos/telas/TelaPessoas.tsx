@@ -8,6 +8,7 @@ import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
 import { alvoDaFolha, alvoDe, seloDe } from './TelaPranchaBase'
+import '../../telas/cabecalho.css'
 
 const nomeDa = (p: Pick<Pessoa, 'colaborador'>) => p.colaborador || 'sem nome (a empresa)'
 
@@ -199,11 +200,11 @@ export function TelaPessoa({ ctx, chave }: { ctx: Contexto; chave: string }) {
 
 function Topo({ ctx, titulo, subtitulo }: { ctx: Contexto; titulo: string; subtitulo: string }) {
   return (
-    <header class="pj-topo">
-      <button type="button" class="pj-voltar" onClick={ctx.voltar} aria-label="Voltar">
-        ‹ Voltar
+    <header class="so-cabecalho pj-topo">
+      <button type="button" class="pj-voltar so-cab-voltar" onClick={ctx.voltar} aria-label="Voltar">
+        <span aria-hidden="true">‹</span>
       </button>
-      <div class="pj-titulo">
+      <div class="pj-titulo so-cab-titulo">
         <h1>{titulo}</h1>
         <p class="discreto">{subtitulo}</p>
       </div>

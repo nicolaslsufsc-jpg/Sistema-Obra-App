@@ -1963,13 +1963,7 @@
 .fv-regras-lista {
   max-width: 720px;
 }
-/* celular: o Voltar numa linha e o título embaixo (ao lado, o título e o subtítulo iam para 3 linhas) */
-@media (max-width: 700px) {
-  .fv-regras .fv-topo-inicio {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+/* (21/11/2026) o voltar virou só a seta (cabeçalho comum): o título da tela de regras cabe ao lado */
 .fv-regras-lista li {
   display: flex;
   flex-direction: column;

@@ -329,11 +329,12 @@ suite('telas no navegador', () => {
     await passo('voltar do Concreto', () => pagina.goBack(PRAZO))
     await passo('menu depois do Concreto', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
 
-    // O "‹ Menu" da tela inicial do módulo também volta ao menu (era "‹ Voltar" até 20/11/2026).
+    // A seta da tela inicial do módulo também volta ao menu. Desde 21/11/2026 (guia de estilo) ela é só "‹",
+    // igual em toda tela; o leitor de tela lê "Voltar ao menu".
     await passo('clicar em Concreto de novo', () => pagina.getByRole('button', { name: /^Concreto/ }).click(PRAZO))
     await passo('título do Concreto de novo', () => pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor(PRAZO))
-    expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹ Menu')
-    await passo('‹ Menu do Concreto', () => pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click(PRAZO))
+    expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹')
+    await passo('seta do Concreto', () => pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click(PRAZO))
     await passo('menu no fim', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
   })
 
@@ -345,7 +346,7 @@ suite('telas no navegador', () => {
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('fvs')
     // obra de teste sem planta publicada: a tela explica como publicar
     await pagina.getByText('Nenhuma planta publicada nesta obra ainda', { exact: false }).waitFor()
-    expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹ Menu')
+    expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹')
     await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
     await pagina.getByTestId('menu-obra').waitFor()
   })

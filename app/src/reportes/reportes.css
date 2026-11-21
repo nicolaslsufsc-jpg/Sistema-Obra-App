@@ -26,7 +26,7 @@
   margin-right: 0.25rem;
 }
 /* o botão não cobre o fim da página: sobra espaço embaixo */
-body:has(.rp-botao:not(.rp-no-mapa)) .tela {
+body:has(.rp-botao:not(.rp-no-mapa):not(.rp-no-cabecalho)) .tela {
   padding-bottom: 5rem;
 }
 /* no mapa: na beira esquerda, no meio da altura (embaixo fica o painel; à direita, o zoom) */
@@ -43,6 +43,25 @@ body:has(.rp-botao:not(.rp-no-mapa)) .tela {
 }
 .rp-botao.rp-no-mapa span:first-child {
   margin: 0;
+}
+
+/* no cabeçalho (21/11/2026): botão comum, à direita do título */
+.rp-botao.rp-no-cabecalho {
+  position: static;
+  min-height: 44px;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--raio-max);
+  box-shadow: none;
+  opacity: 1;
+}
+/* celular: só o "!" (o nome fica no aria-label), para o título caber */
+@media (max-width: 480px) {
+  .rp-botao.rp-no-cabecalho .rp-texto {
+    display: none;
+  }
+  .rp-botao.rp-no-cabecalho {
+    min-width: 44px;
+  }
 }
 
 .rp-fundo {

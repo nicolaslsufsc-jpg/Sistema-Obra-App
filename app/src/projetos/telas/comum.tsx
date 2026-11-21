@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact'
 import type { Linha } from '../../nucleo/banco_local'
 import { ROTULO_SITUACAO, rotulo, type NomeSituacao } from '../regras'
+import { Cabecalho } from '../../telas/Cabecalho'
 
 export function dataBR(data: string | null | undefined): string {
   if (!data) return ''
@@ -38,16 +39,9 @@ export function Selo({ classe, children }: { classe: 'bom' | 'ruim' | 'neutro' |
 
 export function Topo({ titulo, sub, aoVoltar, children }: { titulo: string; sub?: string; aoVoltar: () => void; children?: ComponentChildren }) {
   return (
-    <header class="pj-topo">
-      <button type="button" class="pj-voltar" onClick={aoVoltar} aria-label="Voltar">
-        ‹ Voltar
-      </button>
-      <div class="pj-titulo">
-        <h1>{titulo}</h1>
-        {sub && <p class="discreto">{sub}</p>}
-      </div>
+    <Cabecalho titulo={titulo} sub={sub} aoVoltar={aoVoltar} classe="pj-topo">
       {children}
-    </header>
+    </Cabecalho>
   )
 }
 

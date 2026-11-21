@@ -806,6 +806,86 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await contexto.close()
     }, 150_000)
 
+    // Aba Pessoas (21/11/2026): empresas (menu), pessoas (submenu) e o painel de uma pessoa, nos dois temas
+    itProjetos(`${nome} ${largura}x${altura}: Projetos aba Pessoas e painel da pessoa, nos dois temas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const print = async (n: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-${n}.png`), fullPage: true })
+      }
+      const estouro = () => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      const contraste = async (onde: string) => {
+        await p.setViewportSize({ width: largura, height: 5000 })
+        expect(await contrasteBaixo(p), onde).toEqual([])
+        await p.setViewportSize({ width: largura, height: altura })
+      }
+      const vig = path.join(SAIDA, 'vigentes_exe_p.csv')
+      const dist = path.join(SAIDA, 'distribuicao_exe_p.csv')
+      writeFileSync(vig, VIGENTES_EXE)
+      writeFileSync(dist, DISTRIBUICAO_EXE)
+      await abrirNaObra(p)
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByTestId('painel-importar').waitFor()
+      await p.setInputFiles('[data-testid=arquivo-vigentes]', vig)
+      await p.setInputFiles('[data-testid=arquivo-distribuicao]', dist)
+      await p.getByRole('button', { name: 'Importar', exact: true }).click()
+      await p.getByTestId('painel-resumo').waitFor()
+      // sem conta, a faixa da última atualização do Autodoc não aparece (não há servidor)
+      expect(await p.getByTestId('projetos-autodoc').count()).toBe(0)
+
+      // menu: 4 empresas, a com mais atrasadas primeiro; tocar abre as pessoas dela
+      await p.getByRole('button', { name: 'Pessoas', exact: true }).click()
+      const empresas = p.getByTestId('pessoas-empresas')
+      await empresas.waitFor()
+      expect(await empresas.locator(':scope > li').count()).toBe(4)
+      expect(await empresas.locator(':scope > li').first().innerText()).toContain('Empreiteira Alfa')
+      await empresas.getByRole('button', { name: /Empreiteira Alfa/ }).click()
+      expect(await p.getByTestId('pessoas-da-empresa').locator('li').count()).toBe(3)
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('11-pessoas')
+      await contraste('escuro, pessoas')
+
+      // busca por pessoa abre a empresa sozinha
+      await p.getByPlaceholder('Buscar empresa ou pessoa').fill('maria')
+      expect(await empresas.locator(':scope > li').count()).toBe(1)
+      await p.getByPlaceholder('Buscar empresa ou pessoa').fill('')
+
+      // o painel do João: 2 em campo, 1 atrasada para recolher, separado por disciplina e pasta
+      await p.getByTestId('pessoas-da-empresa').getByText('João', { exact: true }).click()
+      await p.getByTestId('pessoa').waitFor()
+      expect(await p.getByTestId('pessoa-atrasadas').innerText()).toBe('1')
+      expect(await p.getByTestId('pessoa-tirar').innerText()).toContain('EXE.ES.LO.100.FORPILOTIS')
+      const tem = await p.getByTestId('pessoa-tem').innerText()
+      expect(tem).toContain('LO/Formas')
+      expect(tem).toContain('LO/Blocos')
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('12-pessoa')
+      await contraste('escuro, pessoa')
+
+      // tocar na prancha abre a prancha; voltar volta ao painel da pessoa
+      await p.getByTestId('pessoa-tirar').locator('li').first().click()
+      await p.getByTestId('painel-prancha').waitFor()
+      await p.goBack()
+      await p.getByTestId('pessoa').waitFor()
+
+      // modo sol (claro)
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByTestId('pessoas-empresas').waitFor()
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByTestId('botao-tema').click()
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByRole('button', { name: 'Pessoas', exact: true }).click()
+      await p.getByTestId('pessoas-empresas').getByRole('button', { name: /Empreiteira Alfa/ }).click()
+      await contraste('claro, pessoas')
+      await p.getByTestId('pessoas-da-empresa').getByText('João', { exact: true }).click()
+      await p.getByTestId('pessoa').waitFor()
+      await contraste('claro, pessoa')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 150_000)
+
     // Distribuição e "A entregar" (20/11/2026): regra pelo formulário, lista importada, desativar sem apagar
     itProjetos(`${nome} ${largura}x${altura}: Projetos lista de distribuição e a entregar, nos dois temas`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })

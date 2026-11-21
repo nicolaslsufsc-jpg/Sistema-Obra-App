@@ -22,6 +22,7 @@ import {
   juntarNumerosPerto,
   multiploDoQuadrado,
   observacaoDosFuros,
+  pecaDosFurosDeLaje,
   resultadoDaInstalacao,
   situacaoDoFuroDeLajeNaObra,
   situacaoDoFuroPeloUltimo,
@@ -333,5 +334,35 @@ describe('furos de laje em plantas próprias, uma por camada (21/11)', () => {
     expect([san, hid, elt, deViga].map((e) => furoDeOutraPlanta(e, { furos_laje_separados: true }))).toEqual([true, true, true, false])
     expect([san, hid, elt, deViga].map((e) => furoDeOutraPlanta(e, {}))).toEqual([false, false, false, false])
     expect(furoDeOutraPlanta(san, undefined)).toBe(false)
+  })
+})
+
+describe('furação igual à armadura (21/11): a peça do furo e a forma com os furos separados', () => {
+  const peca = (tipo: 'P' | 'V', nome: string, poly: Array<[number, number]>): ElementoPacote => ({ tipo, nome, secao: '', rotulo: [0, 0, 0, 0], polys: [poly] })
+  it('furo de laje com o centro em pilar ou viga passa a ser da peça (o pilar primeiro); o resto fica de laje', () => {
+    const m = {
+      elementos: {
+        p1: peca('P', 'P1', [[0, 0], [20, 0], [20, 20], [0, 20]]),
+        v1: peca('V', 'V1', [[0, 5], [200, 5], [200, 15], [0, 15]]),
+        a: furo('FL1', 10, 10, ['Sanitário / drenagem']), // no pilar (e na viga): pilar
+        b: furo('FL2', 100, 10, ['Hidráulica']), // na viga
+        c: furo('FL3', 100, 100, ['Hidráulica']), // na laje
+      } as Record<string, ElementoPacote>,
+    }
+    const n = pecaDosFurosDeLaje(m)
+    expect(n.elementos.a.pilar).toBe('p1')
+    expect(n.elementos.b.viga).toBe('v1')
+    expect(n.elementos.c.viga ?? n.elementos.c.pilar).toBeUndefined()
+    expect(ehFuroDeLaje(n.elementos.a)).toBe(false)
+    expect(ehFuroDeLaje(n.elementos.c)).toBe(true)
+    expect(m.elementos.a.pilar).toBeUndefined() // não mexe no original
+    const so = { elementos: { c: m.elementos.c } }
+    expect(pecaDosFurosDeLaje(so)).toBe(so) // nada muda: o mesmo manifest
+  })
+  it('forma com furos_separados esconde todos os furos, de viga e pilar também', () => {
+    const v = { ...furo('V1-F1', 0, 0, ['Hidráulica'], false), viga: 'v1' }
+    expect(furoDeOutraPlanta(v, { furos_separados: true })).toBe(true)
+    expect(furoDeOutraPlanta(v, { furos_laje_separados: true })).toBe(false)
+    expect(furoDeOutraPlanta(v, {})).toBe(false)
   })
 })

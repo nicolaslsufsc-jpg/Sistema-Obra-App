@@ -12,6 +12,12 @@ import type { Ficha, ItemFicha } from './situacao'
 export type DisciplinaDePontos = 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
 /** Na ordem do menu (pedido do Nicolas, 21/11/2026: hidráulico, esgoto, elétrico, preventivo, SPDA). */
 export const DISCIPLINAS_DE_PONTOS: readonly DisciplinaDePontos[] = ['hidro', 'sanitario', 'eletrico', 'preventivo', 'spda']
+
+/** A disciplina de pontos do manifest. A planta de furação também vem com "disciplina" ("furacao", pacote do
+ *  20 de 21/11/2026) e não é planta de pontos: devolve undefined. */
+export function disciplinaDePontos(d: string | undefined): DisciplinaDePontos | undefined {
+  return (DISCIPLINAS_DE_PONTOS as readonly string[]).includes(d ?? '') ? (d as DisciplinaDePontos) : undefined
+}
 export type TipoDePonto =
   | 'ponto_agua'
   | 'registro'

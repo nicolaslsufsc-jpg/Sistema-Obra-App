@@ -2033,11 +2033,11 @@ suite('FVS na bancada (Chrome)', () => {
       const pavimento = p.getByTestId('fvs-pavimento')
       await noInicio(p)
       expect(await pavimento.count()).toBe(1)
-      // Estrutura (nível 3, 21/11/2026): seção "Furação de laje" com as três camadas, na ordem da obra, e quantos furos cada uma tem
+      // Estrutura (nível 3, 21/11/2026): seção "Furação" com as três camadas, na ordem da obra, e quantos furos cada uma tem
       await naDisciplina(p, 'estrutura')
-      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação de laje' })
+      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação' })
       await secao.waitFor()
-      expect(await secao.locator('h3').textContent()).toBe('Furação de laje')
+      expect(await secao.locator('h3').textContent()).toBe('Furação')
       const linhas = (await secao.getByRole('button').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
       expect(linhas.map((t: string) => t.match(/Furos de [^ ]+/)?.[0])).toEqual(['Furos de esgoto', 'Furos de água', 'Furos de elétrica'])
       expect(linhas[0]).toContain('3 furos')
@@ -2176,6 +2176,77 @@ suite('FVS na bancada (Chrome)', () => {
       await nomeNoPainel(p, 'Laje dos furos')
       expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('1 de 1 OK')
       expect(await contrasteNosDoisTemas(p), 'contraste do painel da área').toEqual([])
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: furação numa planta só, igual à armadura: cada furo grava na ficha da peça (pilar, viga ou laje)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furos=1&furoslaje=1&furacaototal=1`)
+      await noInicio(p)
+      const FICHA_P = 'f0000000-0000-0000-0000-000000000001'
+      const FICHA_V = 'f0000000-0000-0000-0000-000000000002'
+      const FICHA_L = 'f0000000-0000-0000-0000-000000000009'
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
+      // o último registro de um local (pelo nome): a ficha, o item e o resultado
+      const ultimo = (nomeDoLocal: string) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const els = await sincronizador.linhas('elementos', '${OBRA}')
+          const ids = new Set(els.filter((e) => e.nome === '${nomeDoLocal}').map((e) => e.id))
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => ids.has(e.elemento_id))
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          const u = l.at(-1)
+          return u ? { ficha: u.ficha_id, item: u.item, r: u.resultado } : null
+        })()`)
+      const furo = async (x: number, y: number) => {
+        await enquadrar(p, [-y, x], 2)
+        await tocarNaPlanta(p, x, y)
+      }
+
+      // forma: sem a opção "Furos de viga" (todos os furos foram para a planta de furação)
+      await naDisciplina(p, 'estrutura')
+      await p.getByTestId('fvs-opcao-forma').first().waitFor()
+      expect(await p.locator('[data-testid=fvs-opcao-forma][data-tipo=F]').count()).toBe(0)
+      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação' })
+      const linha = () => secao.getByRole('button').first().innerText().then((t: string) => t.replace(/\s+/g, ' '))
+      expect(await linha()).toContain('Furação')
+      await secao.getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      // uma aba só; contam os 3 da V1, o FL7 (furo de laje em cima da V1: vai para a viga), a caixinha do P1
+      // e FL1 a FL5 (FL6, de Geral, fica de fora)
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual([])
+      expect(await progresso()).toBe('0/10 OK')
+
+      // caixinha no pilar: o item de furos da ficha do pilar
+      await furo(150, 150)
+      await aviso('P1-F1: OK')
+      expect(await ultimo('P1-F1')).toEqual({ ficha: FICHA_P, item: 8, r: 'C' })
+      await expect.poll(() => ultimo('P1'), { timeout: 5000 }).toEqual({ ficha: FICHA_P, item: 8, r: 'C' })
+      // furo de laje em cima da viga: o item de furação da ficha da viga
+      await furo(260, 150)
+      await aviso('FL7: OK')
+      expect(await ultimo('FL7')).toEqual({ ficha: FICHA_V, item: 5, r: 'C' })
+      // furo de laje fora de área: o item de esgoto da ficha de laje
+      await furo(520, 520)
+      await aviso('FL1: OK')
+      expect(await ultimo('FL1')).toEqual({ ficha: FICHA_L, item: 6, r: 'C' })
+      await expect.poll(progresso).toBe('3/10 OK')
+      // furo bem visível: bolinha de 20 px
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_planta.png` })
+
+      // no menu, o avanço da furação
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+      await naDisciplina(p, 'estrutura')
+      await expect.poll(linha).toContain('3 de 10 furos OK')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_menu.png`, fullPage: true })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)

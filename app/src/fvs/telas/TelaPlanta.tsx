@@ -106,7 +106,7 @@ import { guardarItem, itemGuardado, itemNaPeca, itensParaEscolher, nomeDoItem, p
 import type { Linha } from '../../nucleo/banco_local'
 import { AvisoHora } from './AvisoHora'
 import { pecasDoMesmoDesenho } from '../mesmo_desenho'
-import { fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
+import { disciplinaDePontos, fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import './escolha.css'
 import type { ContextoFvs } from './ModuloFvs'
@@ -357,7 +357,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [zoomDosNumeros, setZoomDosNumeros] = useState(0)
   // tipos de local que esta planta tem (forma: pilares, vigas e as lajes desenhadas; arquitetura: ambientes)
   // planta de instalações (hidro, sanitário; 20/11/2026): só os pontos da disciplina, sem áreas nem peças
-  const deInstalacoes = !!manifest?.disciplina
+  // só planta de pontos: a de furação também traz "disciplina" no manifest
+  const deInstalacoes = !!disciplinaDePontos(manifest?.disciplina)
   const pontos = manifest?.pontos
   // a modulação (paredes) não tem área de laje
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deFuracao && !deInstalacoes && (pode || areasDaPlanta.length > 0)
@@ -483,7 +484,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const numerosDasAreas = useMemo(() => {
     const escala = manifest?.escala ?? 50
     // só os furos desta planta (a forma com os de laje separados conta só os de viga; a planta de uma camada, os dela)
-    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados)
+    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados || manifest.furos_separados)
       ? Object.fromEntries(Object.entries(manifest.elementos).filter(([, e]) => !deOutraPlanta(e)))
       : manifest?.elementos
     const grupos = furosConferiveisPorArea(daqui, furosDeLaje, areasDaPlanta, escala, multiploDoQuadrado(zoomDosNumeros, escala))
@@ -540,6 +541,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const furoSemItem = (id: string): string => {
     const e = manifest?.elementos[id]
     if (e?.tipo === 'E') return `${fichaDe('A')?.titulo ?? 'A ficha'} não tem item de esquadria: a esquadria fica só para ver.`
+    if (e?.tipo === 'F' && e.pilar && !e.viga) return 'A ficha do pilar não tem item de furos: o furo fica só para ver.'
     if (!e || !ehFuroDeLaje(e)) return 'A ficha de viga não tem item de furação: o furo fica só para ver.'
     if (!instalacoesDoFuro(e).length) return `${e.nome} não é de esgoto, água nem elétrica: fica só para ver.`
     if (!furosDeLaje.get(id)) return 'Nenhuma ficha de laje tem o item desta instalação: o furo fica só para ver.'
@@ -571,8 +573,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const it = el && ficha ? itemDoFuroDeLaje(el, ficha) : undefined
       return ficha && it ? { vigaId: area.id, ficha, item: it.item, laje: true } : undefined
     }
-    const vigaId = el?.viga
-    const ficha = vigaId ? fichaDoLocal(vigaId, 'V') : undefined
+    // furo de viga: a ficha da viga; furo em pilar (21/11/2026): a ficha do pilar, no item de furos dela
+    const vigaId = el?.viga ?? el?.pilar
+    const ficha = vigaId ? fichaDoLocal(vigaId, el?.viga ? 'V' : 'P') : undefined
     const item = itemDosFuros(ficha)?.n
     return vigaId && ficha && item !== undefined ? { vigaId, ficha, item } : undefined
   }
@@ -1747,7 +1750,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
   // ------------------------------------------------------------------ pontos de instalação
   /** A ficha de ambiente com o item dos pontos desta disciplina (opção B: a ficha fica no ambiente). */
-  const fichaDoPonto = () => (manifest?.disciplina ? fichaDosPontos(fichasPara('A', dados.fichas), manifest.disciplina) : undefined)
+  const fichaDoPonto = () => {
+    const d = disciplinaDePontos(manifest?.disciplina)
+    return d ? fichaDosPontos(fichasPara('A', dados.fichas), d) : undefined
+  }
 
   /** Grava a situação nova do ponto (C OK, NC errado com observação, null sem conferir), em barra_id. */
   const gravarPonto = (pontoId: string, resultado: 'C' | 'NC' | null, obs: string | null) => {

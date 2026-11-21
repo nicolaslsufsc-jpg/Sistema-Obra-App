@@ -416,7 +416,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           )}
           {furacao.length > 0 && (
             <div data-testid="fvs-secao-outra">
-              <h3 class="fv-disciplina">Furação de laje</h3>
+              <h3 class="fv-disciplina">Furação</h3>
               <div class="fv-grade-armadura">{furacao.map((p) => {
                   const a = avancoDaFuracao.get(p.id)
                   return plantaNaLista(p, p.trecho, `${a?.total ? textoDoAvancoDosFuros(a) : `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'}`} · ${p.prancha}`)
@@ -495,7 +495,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       const ps = d.plantas
       const ops = (f: (op: OpcaoDosAmbientes) => boolean) => ps.filter(ehDeAmbientes).flatMap((p) => (opcoesAmb.get(p.id) ?? []).filter(f).map((o) => o.titulo))
       if (d.id === 'estrutura') {
-        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furos de laje'].filter(Boolean)
+        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furação'].filter(Boolean)
         return { tem: partes.join(', '), andamento: r.total > 0 ? `${r.liberadas} de ${r.total} peças liberadas${r.comR > 0 ? ` · ${r.comR} com NC` : ''}` : null }
       }
       if (d.id === 'alvenaria') {
@@ -821,7 +821,7 @@ const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', san
 /** Plantas de furos de laje na ordem da obra: esgoto, água, elétrica (o nome vem do pipeline/fvs/furos.py). */
 const ordemDoFuro = (trecho: string) => { const t = trecho.toLowerCase(); return t.includes('esgoto') ? 0 : t.includes('água') || t.includes('agua') ? 1 : t.includes('elétrica') || t.includes('eletrica') ? 2 : 3 }
 /** Seções depois da estrutura: os furos de laje por camada (21/11/2026), depois as instalações. */
-const SECOES: Record<string, string> = { furacao: 'Furação de laje', ...SECAO_DE_INSTALACOES }
+const SECOES: Record<string, string> = { furacao: 'Furação', ...SECAO_DE_INSTALACOES }
 /** Na ordem do menu (furação, hidro, esgoto, elétrico, preventivo, SPDA); disciplina que o app não conhece vem depois. */
 const ordemDaSecao = (d: string) => { const i = Object.keys(SECOES).indexOf(d); return i < 0 ? 99 : i }
 

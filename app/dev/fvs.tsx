@@ -13,7 +13,7 @@ import { guardarPacote, lerComProgresso, type Manifest } from '../src/fvs/pacote
 import { usarFonteDeArquivos } from '../src/fvs/dados'
 import type { ItemFicha } from '../src/fvs/situacao'
 import { camadasDoPacote, NOME_DA_CAMADA, type CamadaDeBarras } from '../src/fvs/barras'
-import { camadaDoFuro, ehFuroDeLaje } from '../src/fvs/furos_laje'
+import { camadaDoFuro, ehFuroDeLaje, pecaDosFurosDeLaje } from '../src/fvs/furos_laje'
 import { DISCIPLINAS_DE_PONTOS, NOME_DA_DISCIPLINA as NOME_DOS_PONTOS, type DisciplinaDePontos, type PontoPacote, type TipoDePonto } from '../src/fvs/pontos'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
@@ -236,6 +236,30 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
       }
     })
   }
+  if (params.get('furacaototal')) {
+    // 21/11 ("igual à armadura"): uma caixinha no P1 (o pipeline manda "pilar") e um furo de laje de esgoto com
+    // o centro em cima da V1 (pacote antigo: vira furo da V1 ao abrir, pecaDosFurosDeLaje)
+    const [px, py] = pilares[0]
+    const r = 3
+    elementos[uuid('e6000000', 1)] = {
+      tipo: 'F',
+      nome: 'P1-F1',
+      secao: 'Caixa 10×10 cm',
+      rotulo: [px - r, py - r, px + r, py + r],
+      polys: [[[px - r, py - r], [px + r, py - r], [px + r, py + r], [px - r, py + r]]],
+      pilar: uuid('e0000000', 1),
+      furo: { forma: 'retangular', largura: 10, altura: 10, disciplinas: ['ELT'] },
+    }
+    const [vx, vy] = [260, m0]
+    elementos[uuid('e6000000', 2)] = {
+      tipo: 'F',
+      nome: 'FL7',
+      secao: 'Ø 10 cm',
+      rotulo: [vx - r, vy - r, vx + r, vy + r],
+      polys: [[[vx - r, vy - r], [vx + r, vy - r], [vx + r, vy + r], [vx - r, vy + r]]],
+      furo: { forma: 'circular', diametro: 10, espessura: 12, disciplinas: ['Sanitário / drenagem'], laje: true },
+    }
+  }
   // desenho da "prancha": peças hachuradas e nomes, em tiles de 512 nos níveis -2..1
   const base = document.createElement('canvas')
   const escala = 2
@@ -328,6 +352,8 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     ...(params.get('barras') && params.get('armadura') ? { camadas_separadas: true } : {}),
     // ?furoslaje=1&furacao=1: os furos de laje vão para plantas próprias, uma por camada (21/11)
     ...(params.get('furoslaje') && params.get('furacao') ? { furos_laje_separados: true } : {}),
+    // ?furacaototal=1: todos os furos (laje, viga e pilar) numa planta de furação só, igual à armadura (21/11)
+    ...(params.get('furacaototal') ? { furos_separados: true } : {}),
   }
   return { manifest, bin: fechar() }
 }
@@ -787,6 +813,8 @@ async function semear() {
   let itens = params.get('partes') ? { ...FICHAS_TESTE, P: [...FICHAS_TESTE.P, ...ITENS_DAS_PARTES] } : FICHAS_TESTE
   // o item de furação entra antes da concretagem (depois do item 3, da execução)
   if (params.get('furos')) itens = { ...itens, V: [...itens.V.slice(0, 3), ITEM_DOS_FUROS, ...itens.V.slice(3)] }
+  // ?furacaototal=1: o furo no pilar marca o item de furos da ficha do pilar (21/11)
+  if (params.get('furacaototal')) itens = { ...itens, P: [...itens.P, { ...ITEM_DOS_FUROS, n: 8, titulo: 'Passagens no pilar' }] }
   const urlPacote = params.get('pacote')
   if (urlPacote) {
     const raiz = urlPacote.endsWith('/') ? urlPacote : urlPacote + '/'
@@ -822,6 +850,7 @@ async function semear() {
   await gravarCadastro(linhas)
   if (manifest.camadas_separadas) await semearArmadura(base, manifest, bin)
   if (manifest.furos_laje_separados) await semearFuracao(base, manifest, bin)
+  if (manifest.furos_separados) await semearFuracaoTotal(base, manifest, bin)
   if (params.get('instalacoes')) await semearInstalacoes(base, manifest, bin)
 }
 
@@ -882,6 +911,17 @@ async function semearFuracao(base: Record<string, unknown>, forma: Manifest, bin
     linhas.push(...cad)
   }
   await gravarCadastro(linhas)
+}
+
+/**
+ * ?furacaototal=1: uma planta de furação só (setor "Furação", disciplina "furacao") com todos os furos da forma,
+ * cada um com a peça dele (viga, pilar ou laje), os mesmos ids e o fundo da forma, como o pipeline do 20 faz.
+ */
+async function semearFuracaoTotal(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
+  const furos = Object.fromEntries(Object.entries(pecaDosFurosDeLaje(forma).elementos).filter(([, e]) => e.tipo === 'F'))
+  const manifest: Manifest = { ...forma, planta_id: uuid('a2000000', 0xe0), trecho: 'Furação', disciplina: 'furacao', elementos: furos, detalhes: {}, furos_separados: undefined, furos_laje_separados: undefined }
+  await guardarPacote(JSON.stringify(manifest), bin)
+  await gravarCadastro(cadastroDaPlanta(base, manifest, bin, uuid('a1000000', 0xe0), 'furacao', 70))
 }
 
 /**

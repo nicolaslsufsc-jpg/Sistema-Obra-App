@@ -15,26 +15,30 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('tema', () => {
-  it('sem escolha: escuro', () => {
-    expect(lerTema()).toBe('escuro')
-  })
-  it('modo sol fica guardado no aparelho e marca o html', () => {
-    definirTema('claro', raiz)
-    expect(guardado[CHAVE_TEMA]).toBe('claro')
+  it('sem escolha: claro (padrão desde 21/11/2026)', () => {
     expect(lerTema()).toBe('claro')
-    expect(raiz.dataset.tema).toBe('claro')
   })
-  it('voltar ao escuro tira a marca', () => {
-    definirTema('claro', raiz)
+  it('"claro" guardado antes de 21/11 continua claro', () => {
+    guardado[CHAVE_TEMA] = 'claro'
+    expect(lerTema()).toBe('claro')
+  })
+  it('tema escuro fica guardado no aparelho e marca o html', () => {
     definirTema('escuro', raiz)
+    expect(guardado[CHAVE_TEMA]).toBe('escuro')
     expect(lerTema()).toBe('escuro')
+    expect(raiz.dataset.tema).toBe('escuro')
+  })
+  it('voltar ao claro tira a marca', () => {
+    definirTema('escuro', raiz)
+    definirTema('claro', raiz)
+    expect(lerTema()).toBe('claro')
     expect(raiz.dataset.tema).toBeUndefined()
   })
   it('aplicar não grava nada', () => {
-    aplicarTema('claro', raiz)
+    aplicarTema('escuro', raiz)
     expect(guardado[CHAVE_TEMA]).toBeUndefined()
   })
-  it('sem armazenamento (aba anônima): escuro, sem quebrar', () => {
+  it('sem armazenamento (aba anônima): claro, sem quebrar', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => {
         throw new Error('bloqueado')
@@ -43,8 +47,8 @@ describe('tema', () => {
         throw new Error('bloqueado')
       },
     })
-    expect(lerTema()).toBe('escuro')
-    definirTema('claro', raiz)
-    expect(raiz.dataset.tema).toBe('claro')
+    expect(lerTema()).toBe('claro')
+    definirTema('escuro', raiz)
+    expect(raiz.dataset.tema).toBe('escuro')
   })
 })

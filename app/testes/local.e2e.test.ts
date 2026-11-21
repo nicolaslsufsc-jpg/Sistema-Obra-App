@@ -636,14 +636,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByText('a LO saiu depois da entrega').count()).toBe(2)
       expect(await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-3-painel.png`), fullPage: true })
-      // tema escuro (padrão): contraste de 4,5:1 no painel inteiro (janela alta para entrar tudo na conta)
+      // tema claro (padrão desde 21/11/2026): contraste de 4,5:1 no painel inteiro (janela alta para entrar tudo na conta)
       const contrasteDaTelaToda = async () => {
         await p.setViewportSize({ width: largura, height: 5000 })
         const ruins = await contrasteBaixo(p)
         await p.setViewportSize({ width: largura, height: altura })
         return ruins
       }
-      expect(await contrasteDaTelaToda(), 'escuro, painel').toEqual([])
+      expect(await contrasteDaTelaToda(), 'claro, painel').toEqual([])
 
       // tocar na linha abre a prancha: a vigente e todas as cópias da folha (linhas 5 e 7 em campo, 6 provavelmente recolhida)
       await p.getByTestId('painel-lista').locator('li').nth(3).click()
@@ -652,7 +652,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('prancha-fora').innerText()).toContain('provavelmente recolhida')
       expect(await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-4-prancha.png`), fullPage: true })
-      expect(await contrasteDaTelaToda(), 'escuro, prancha').toEqual([])
+      expect(await contrasteDaTelaToda(), 'claro, prancha').toEqual([])
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       await p.getByTestId('painel-resumo').waitFor()
 
@@ -662,17 +662,17 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByTestId('painel-resumo').waitFor()
       expect(await p.getByTestId('painel-datas').innerText()).toContain('Revisão vigente da lista importada em')
 
-      // modo sol (claro): o mesmo painel, também com 4,5:1
+      // tema escuro: o mesmo painel, também com 4,5:1
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       await p.getByTestId('botao-tema').click()
       await p.getByRole('button', { name: /^Projetos/ }).click()
       await p.getByTestId('painel-resumo').waitFor()
-      expect(await p.evaluate(() => document.documentElement.dataset.tema)).toBe('claro')
-      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-5-painel-claro.png`), fullPage: true })
-      expect(await contrasteDaTelaToda(), 'claro, painel').toEqual([])
+      expect(await p.evaluate(() => document.documentElement.dataset.tema)).toBe('escuro')
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-5-painel-escuro.png`), fullPage: true })
+      expect(await contrasteDaTelaToda(), 'escuro, painel').toEqual([])
       await p.getByTestId('painel-lista').locator('li').first().click()
       await p.getByTestId('painel-prancha').waitFor()
-      expect(await contrasteDaTelaToda(), 'claro, prancha').toEqual([])
+      expect(await contrasteDaTelaToda(), 'escuro, prancha').toEqual([])
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -714,7 +714,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('lista-pranchas').locator('li').count()).toBe(1)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('6-pranchas')
-      await contraste('escuro, pranchas')
+      await contraste('claro, pranchas')
 
       // aba Entregas: 10 em campo, 1 devolvida; busca por empresa
       await p.getByRole('button', { name: 'Entregas', exact: true }).click()
@@ -727,7 +727,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('lista-entregas').locator('li').count()).toBe(2)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('7-entregas')
-      await contraste('escuro, entregas')
+      await contraste('claro, entregas')
 
       // abre a prancha da HIDRO pelo painel
       await p.getByRole('button', { name: 'Painel', exact: true }).click()
@@ -759,7 +759,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         }).length
       })
       expect(foraDoForm).toBe(0)
-      await contraste('escuro, edição aberta')
+      await contraste('claro, edição aberta')
       await p.getByTestId('form-copia').getByRole('button', { name: 'Salvar correção' }).click()
       await p.getByText('Devolução registrada (linha 5).').waitFor()
       expect(await p.getByTestId('prancha-fora').innerText()).toMatch(/devolvida[\s\S]*linha 5 ·/)
@@ -785,23 +785,23 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByTestId('painel-resumo').waitFor()
       expect(await p.getByTestId('painel-escritorio').innerText()).toBe('1')
 
-      // modo sol (claro): abas e prancha com 4,5:1
+      // tema escuro: abas e prancha com 4,5:1
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       await p.getByTestId('botao-tema').click()
       await p.getByRole('button', { name: /^Projetos/ }).click()
       await p.getByTestId('painel-resumo').waitFor()
-      await contraste('claro, painel')
+      await contraste('escuro, painel')
       await p.getByRole('button', { name: 'Pranchas', exact: true }).click()
       await p.getByTestId('lista-pranchas').waitFor()
-      await contraste('claro, pranchas')
+      await contraste('escuro, pranchas')
       await p.getByRole('button', { name: 'Entregas', exact: true }).click()
       await p.getByTestId('lista-entregas').waitFor()
-      await contraste('claro, entregas')
+      await contraste('escuro, entregas')
       await p.getByTestId('lista-entregas').locator('li').first().click()
       await p.getByTestId('painel-prancha').waitFor()
       await p.getByTestId('prancha-em-campo').getByRole('button', { name: 'Corrigir' }).first().click()
-      await print('10-edicao-claro')
-      await contraste('claro, edição aberta')
+      await print('10-edicao-escuro')
+      await contraste('escuro, edição aberta')
       expect(erros).toEqual([])
       await contexto.close()
     }, 150_000)
@@ -845,7 +845,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('pessoas-da-empresa').locator('li').count()).toBe(3)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('11-pessoas')
-      await contraste('escuro, pessoas')
+      await contraste('claro, pessoas')
 
       // busca por pessoa abre a empresa sozinha
       await p.getByPlaceholder('Buscar empresa ou pessoa').fill('maria')
@@ -863,7 +863,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('pessoa-pavimento').count()).toBe(2)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('12-pessoa')
-      await contraste('escuro, pessoa')
+      await contraste('claro, pessoa')
 
       // tocar na prancha abre a prancha; voltar volta ao painel da pessoa
       await p.getByTestId('pessoa-tirar').locator('li').first().click()
@@ -871,7 +871,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.goBack()
       await p.getByTestId('pessoa').waitFor()
 
-      // modo sol (claro)
+      // tema escuro
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       await p.getByTestId('pessoas-empresas').waitFor()
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
@@ -879,10 +879,10 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: /^Projetos/ }).click()
       await p.getByRole('button', { name: 'Pessoas', exact: true }).click()
       await p.getByTestId('pessoas-empresas').getByRole('button', { name: /Empreiteira Alfa/ }).click()
-      await contraste('claro, pessoas')
+      await contraste('escuro, pessoas')
       await p.getByTestId('pessoas-da-empresa').getByText('João', { exact: true }).click()
       await p.getByTestId('pessoa').waitFor()
-      await contraste('claro, pessoa')
+      await contraste('escuro, pessoa')
       expect(erros).toEqual([])
       await contexto.close()
     }, 150_000)
@@ -927,7 +927,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await form.getByRole('combobox', { name: 'Empresa', exact: true }).fill('Empreiteira Alfa')
       await form.getByLabel('Colaborador').fill('João')
       await print('11-distribuicao-form')
-      await contraste('escuro, formulário da regra')
+      await contraste('claro, formulário da regra')
       const dentroDoForm = await p.evaluate(() => {
         const fr = document.querySelector('[data-testid=form-regra]')!.getBoundingClientRect()
         return [...document.querySelectorAll('[data-testid=form-regra] input, [data-testid=form-regra] select')].every((f: Element) => {
@@ -953,7 +953,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await p.getByTestId('regra').count()).toBe(3)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('12-distribuicao')
-      await contraste('escuro, distribuição')
+      await contraste('claro, distribuição')
 
       // a entregar: João troca as Formas (linha 1), a Beta troca a Água fria (linha 5); Ana está em dia
       await p.getByRole('button', { name: 'A entregar', exact: true }).click()
@@ -969,7 +969,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(textos).not.toContain('Formas Delta')
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('13-a-entregar')
-      await contraste('escuro, a entregar')
+      await contraste('claro, a entregar')
       // tocar abre a prancha
       await blocos.first().locator('li').first().click()
       await p.getByTestId('painel-prancha').waitFor()
@@ -993,19 +993,19 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByTestId('painel-resumo').waitFor()
       expect(await p.getByTestId('painel-a-entregar').innerText()).toBe('1')
 
-      // modo sol
+      // tema escuro
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       await p.getByTestId('botao-tema').click()
       await p.getByRole('button', { name: /^Projetos/ }).click()
       await p.getByTestId('painel-resumo').waitFor()
-      await contraste('claro, painel com a entregar')
+      await contraste('escuro, painel com a entregar')
       await p.getByRole('button', { name: 'A entregar', exact: true }).click()
       await p.getByTestId('a-entregar-resumo').waitFor()
-      await contraste('claro, a entregar')
+      await contraste('escuro, a entregar')
       await p.getByRole('button', { name: 'Distribuição', exact: true }).click()
       await p.getByRole('button', { name: 'Adicionar quem recebe' }).click()
-      await print('14-distribuicao-claro')
-      await contraste('claro, distribuição com formulário')
+      await print('14-distribuicao-escuro')
+      await contraste('escuro, distribuição com formulário')
       expect(erros).toEqual([])
       await contexto.close()
     }, 150_000)
@@ -1967,14 +1967,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     }
   }, 150_000)
 
-  // Tema (14/11/2026): escuro por padrão e "Modo sol (claro)" no menu, lembrado no aparelho.
+  // Tema (21/11/2026, guia de estilo): claro por padrão e "Tema escuro" no menu, lembrado no aparelho.
   // Nos dois temas, todo texto visível tem contraste de 4,5:1 ou mais (WCAG AA) no menu, na FVS,
   // na planta e na ficha.
   for (const [largura, altura] of [
     [375, 812],
     [768, 1024],
   ] as const) {
-    it(`${largura}x${altura}: tema escuro e modo sol, contraste ≥ 4,5:1 nos dois`, async () => {
+    it(`${largura}x${altura}: tema claro e tema escuro, contraste ≥ 4,5:1 nos dois`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       const erros: string[] = []
@@ -2003,24 +2003,24 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
           return fundo
         }
 
-        // sem escolha: escuro, com o botão do modo sol no menu
+        // sem escolha: claro (creme da paleta do app), com o botão do tema escuro no menu
         await abrirNaObra(p)
         const botao = p.getByTestId('botao-tema')
-        expect(await botao.getAttribute('aria-label')).toBe('Modo sol (claro)')
-        expect(await p.getByRole('button', { name: 'Modo sol (claro)', exact: true }).count()).toBe(1)
+        expect(await botao.getAttribute('aria-label')).toBe('Tema escuro')
+        expect(await p.getByRole('button', { name: 'Tema escuro', exact: true }).count()).toBe(1)
         expect((await botao.boundingBox()).height).toBeGreaterThanOrEqual(44)
         expect((await botao.boundingBox()).width).toBeGreaterThanOrEqual(44)
-        expect(await passar('escuro')).toBe('rgb(18, 20, 22)')
+        expect(await passar('claro')).toBe('rgb(249, 243, 227)')
 
-        // modo sol: claro de hoje, e continua claro depois de fechar e abrir o app
+        // tema escuro: continua escuro depois de fechar e abrir o app
         await abrirNaObra(p)
         await p.getByTestId('botao-tema').click()
-        expect(await p.getByTestId('botao-tema').getAttribute('aria-label')).toBe('Modo escuro')
+        expect(await p.getByTestId('botao-tema').getAttribute('aria-label')).toBe('Tema claro')
         await abrirNaObra(p)
-        expect(await p.evaluate(() => document.documentElement.dataset.tema)).toBe('claro')
-        expect(await passar('claro')).toBe('rgb(244, 246, 248)')
+        expect(await p.evaluate(() => document.documentElement.dataset.tema)).toBe('escuro')
+        expect(await passar('escuro')).toBe('rgb(14, 24, 36)')
 
-        // e volta ao escuro
+        // e volta ao claro
         await abrirNaObra(p)
         await p.getByTestId('botao-tema').click()
         await abrirNaObra(p)
@@ -2129,7 +2129,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     it(`${largura}x${altura}: telas comuns nos dois temas (contraste, toque de 44 px, sem rolagem lateral)`, async () => {
       for (const tema of ['escuro', 'claro'] as const) {
         const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
-        if (tema === 'claro') await contexto.addInitScript(() => localStorage.setItem('tema', 'claro'))
+        if (tema === 'escuro') await contexto.addInitScript(() => localStorage.setItem('tema', 'escuro'))
         const p: Page = await contexto.newPage()
         const erros: string[] = []
         p.on('pageerror', (e: Error) => erros.push(e.message))

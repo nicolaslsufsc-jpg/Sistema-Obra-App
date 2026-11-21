@@ -660,7 +660,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       await p.getByRole('button', { name: /^Projetos/ }).click()
       await p.getByTestId('painel-resumo').waitFor()
-      expect(await p.getByTestId('painel-datas').innerText()).toContain('Lista vigente importada em')
+      expect(await p.getByTestId('painel-datas').innerText()).toContain('Revisão vigente da lista importada em')
 
       // modo sol (claro): o mesmo painel, também com 4,5:1
       await p.getByRole('button', { name: 'Voltar', exact: true }).click()
@@ -852,14 +852,15 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       expect(await empresas.locator(':scope > li').count()).toBe(1)
       await p.getByPlaceholder('Buscar empresa ou pessoa').fill('')
 
-      // o painel do João: 2 em campo, 1 atrasada para recolher, separado por disciplina e pasta
+      // o painel do João: 2 em campo, 1 atrasada para recolher, separado por pavimento e disciplina
       await p.getByTestId('pessoas-da-empresa').getByText('João', { exact: true }).click()
       await p.getByTestId('pessoa').waitFor()
       expect(await p.getByTestId('pessoa-atrasadas').innerText()).toBe('1')
       expect(await p.getByTestId('pessoa-tirar').innerText()).toContain('EXE.ES.LO.100.FORPILOTIS')
       const tem = await p.getByTestId('pessoa-tem').innerText()
-      expect(tem).toContain('LO/Formas')
-      expect(tem).toContain('LO/Blocos')
+      expect(tem).toContain('Pilotis')
+      expect(tem).toContain('ESTRUTURAL')
+      expect(await p.getByTestId('pessoa-pavimento').count()).toBe(2)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('12-pessoa')
       await contraste('escuro, pessoa')

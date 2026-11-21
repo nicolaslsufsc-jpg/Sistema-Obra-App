@@ -11,7 +11,6 @@ import { podeGerir } from '../dados'
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural } from './comum'
 import { alvoDe } from './TelaPranchaBase'
-import { FaixaAutodoc } from './FaixaAutodoc'
 import { escritorioDasFolhas, situacaoFicha, SITUACOES_FICHA } from '../canteiro'
 import { fichaV2Xlsx, nomeFichaV2 } from '../ficha_v2'
 import type { RegistroEscritorio } from '../edicoes'
@@ -29,7 +28,6 @@ export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: (
   return (
     <main class="tela pj-painel">
       <CabecalhoBase ctx={ctx} aba={mostrarImportar ? 'importar' : 'painel'} aoSair={aoSair} base={base} temCruzamento={!!resumo} />
-      {!ctx.semConta && <FaixaAutodoc obraId={ctx.obra.id} />}
       {mostrarImportar ? (
         <Importar
           ctx={ctx}

@@ -1,13 +1,14 @@
 // Abas Pranchas e Entregas do painel (protótipo aprovado em 14/11/2026): a lista vigente e a distribuição
 // inteiras, com busca e filtros. Tocar numa linha abre a prancha.
 import { useMemo, useState } from 'preact/hooks'
-import { chaveFolha, type RegistroEscritorio } from '../edicoes'
-import { compararCopia, melhor, normalizar, rotuloRev, type Copia, type CopiaCruzada, type Vigente } from '../painel'
+import { chaveFolha, compararEscritorio, type RegistroEscritorio } from '../edicoes'
+import { melhor, normalizar, rotuloRev, type CopiaCruzada, type Vigente } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
 import { alvoDe, alvoDaFolha, seloDe } from './TelaPranchaBase'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import { abaFicha, baixarXlsx, type Aba } from '../ficha_v2'
 import type { FolhaPdf } from '../../telas/folha_pdf'
 
 const PAGINA = 60
@@ -64,12 +65,46 @@ interface LinhaPrancha {
   escritorioAtrasado: boolean
 }
 
-type FiltroPrancha = 'todas' | 'desatualizadas' | 'escritorio'
+/** A lista mestre como está na tela (com a busca e o filtro): a vigente de cada prancha, as cópias e o escritório. */
+function abaListaMestre(linhas: readonly LinhaPrancha[]): Aba {
+  const data = (d: string) => (/^\d{4}-\d{2}-\d{2}/.test(d) ? { data: d } : d || null)
+  return {
+    nome: 'LISTA MESTRE',
+    cabecalho: true,
+    larguras: [16, 22, 30, 50, 10, 12, 18, 9, 13, 13, 13],
+    linhas: [
+      ['Disciplina', 'Pasta', 'Código', 'Título', 'Vigente', 'Vigente desde', 'Status', 'Em campo', 'Precisa trocar', 'Escritório', 'Escritório em dia'],
+      ...linhas.map((l) => [
+        l.vigente.disciplina,
+        l.vigente.pasta,
+        l.vigente.codigo,
+        l.vigente.titulo,
+        rotuloRev(l.vigente.fase, l.vigente.revisao),
+        data(l.vigente.data),
+        l.vigente.status,
+        l.emCampo,
+        l.desatualizadas,
+        l.escritorio ? rotuloRev(l.escritorio.fase, l.escritorio.revisao) : 'sem registro',
+        l.escritorio ? (l.escritorioAtrasado ? 'NÃO' : 'SIM') : '',
+      ]),
+    ],
+  }
+}
 
-export function TelaPranchasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
+export type FiltroPrancha = 'todas' | 'canteiro' | 'trocar' | 'escritorio'
+
+/** Filtros da aba Pranchas: no canteiro = tem cópia em campo; precisa trocar = alguma cópia em campo desatualizada. */
+const PASSA_PRANCHA: Record<FiltroPrancha, (l: LinhaPrancha) => boolean> = {
+  todas: () => true,
+  canteiro: (l) => l.emCampo > 0,
+  trocar: (l) => l.desatualizadas > 0,
+  escritorio: (l) => l.escritorioAtrasado,
+}
+
+export function TelaPranchasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto; aoSair: () => void; filtroInicial?: FiltroPrancha }) {
   const { base, corrigida, cruzadas, resumo } = usarBase(ctx)
   const [busca, setBusca] = useState('')
-  const [filtro, setFiltro] = useState<FiltroPrancha>('todas')
+  const [filtro, setFiltro] = useState<FiltroPrancha>(filtroInicial ?? 'todas')
   const [quantas, setQuantas] = useState(PAGINA)
 
   const linhas = useMemo<LinhaPrancha[]>(() => {
@@ -89,7 +124,7 @@ export function TelaPranchasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
       .map(([k, vs]) => {
         const v = melhor(vs)
         const e = corrigida.escritorio.get(k)
-        const atrasado = !!e && compararCopia({ revisao: e.revisao, fase: e.fase, entrega: e.data } as Copia, v, ctx.dados.hoje).resultado === 'desatualizada'
+        const atrasado = !!e && compararEscritorio(e, v) === 'desatualizado'
         return { vigente: v, ...(contagem.get(k) ?? { emCampo: 0, desatualizadas: 0 }), escritorio: e, escritorioAtrasado: atrasado }
       })
       .sort((a, b) => a.vigente.disciplina.localeCompare(b.vigente.disciplina, 'pt-BR') || Number(a.vigente.de) - Number(b.vigente.de) || a.vigente.codigo.localeCompare(b.vigente.codigo))
@@ -97,12 +132,12 @@ export function TelaPranchasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
 
   if (base === undefined) return <main class="tela">Carregando…</main>
   const achadas = linhas.filter((l) => contem(busca, l.vigente.codigo, l.vigente.titulo, l.vigente.disciplina, l.vigente.de))
-  const filtradas = achadas.filter((l) => (filtro === 'desatualizadas' ? l.desatualizadas > 0 : filtro === 'escritorio' ? l.escritorioAtrasado : true))
+  const filtradas = achadas.filter(PASSA_PRANCHA[filtro])
   // a lista com a busca e o filtro, inteira (sem o "Mostrar mais"), em A4 (21/11/2026)
   const folha = (): FolhaPdf => ({
     modulo: 'Projetos',
     titulo: 'Pranchas da lista vigente',
-    sub: filtroDaFolha(busca, { todas: '', desatualizadas: 'com cópia desatualizada', escritorio: 'escritório desatualizado' }[filtro]),
+    sub: filtroDaFolha(busca, { todas: '', canteiro: 'no canteiro', trocar: 'precisa trocar', escritorio: 'escritório desatualizado' }[filtro]),
     resumo: [plural(filtradas.length, 'prancha', 'pranchas'), plural(filtradas.reduce((s, l) => s + l.desatualizadas, 0), 'cópia desatualizada', 'cópias desatualizadas')],
     tabelas: [
       {
@@ -129,15 +164,27 @@ export function TelaPranchasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
       <CabecalhoBase ctx={ctx} aba="pranchas" aoSair={aoSair} base={base} temCruzamento={!!resumo} />
       <section class="pj-bloco">
         <h2>Pranchas da lista vigente</h2>
-        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="projetos-pdf-pranchas" desativado={filtradas.length === 0} />
+        <div class="pj-baixar">
+          <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="projetos-pdf-pranchas" desativado={filtradas.length === 0} />
+          <button
+            type="button"
+            class="pj-pequeno"
+            data-testid="projetos-xlsx-pranchas"
+            disabled={filtradas.length === 0}
+            onClick={() => baixarXlsx(`${ctx.dados.hoje}_${ctx.obra.codigo}_lista_mestre.xlsx`, [abaListaMestre(filtradas)])}
+          >
+            Baixar lista mestre (.xlsx)
+          </button>
+        </div>
         <Busca valor={busca} mudar={setBusca} rotulo="Buscar código, título ou número" />
         <Filtros
           valor={filtro}
           mudar={setFiltro}
           opcoes={[
             { v: 'todas', rotulo: 'Todas', n: achadas.length },
-            { v: 'desatualizadas', rotulo: 'Com cópia desatualizada', n: achadas.filter((l) => l.desatualizadas > 0).length },
-            { v: 'escritorio', rotulo: 'Escritório desatualizado', n: achadas.filter((l) => l.escritorioAtrasado).length },
+            { v: 'canteiro', rotulo: 'No canteiro', n: achadas.filter(PASSA_PRANCHA.canteiro).length },
+            { v: 'trocar', rotulo: 'Precisa trocar', n: achadas.filter(PASSA_PRANCHA.trocar).length },
+            { v: 'escritorio', rotulo: 'Escritório desatualizado', n: achadas.filter(PASSA_PRANCHA.escritorio).length },
           ]}
         />
         {filtradas.length === 0 && <p class="discreto">Nenhuma prancha.</p>}
@@ -225,7 +272,18 @@ export function TelaEntregasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
       <CabecalhoBase ctx={ctx} aba="entregas" aoSair={aoSair} base={base} temCruzamento={!!resumo} />
       <section class="pj-bloco">
         <h2>Entregas de cópias</h2>
-        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="projetos-pdf-entregas" desativado={filtradas.length === 0} />
+        <div class="pj-baixar">
+          <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="projetos-pdf-entregas" desativado={filtradas.length === 0} />
+          <button
+            type="button"
+            class="pj-pequeno"
+            data-testid="projetos-xlsx-entregas"
+            disabled={filtradas.length === 0}
+            onClick={() => baixarXlsx(`${ctx.dados.hoje}_${ctx.obra.codigo}_distribuicao.xlsx`, [abaFicha(filtradas, 'DISTRIBUICAO')])}
+          >
+            Baixar distribuição (.xlsx)
+          </button>
+        </div>
         <Busca valor={busca} mudar={setBusca} rotulo="Buscar empresa, colaborador ou prancha" />
         <Filtros
           valor={filtro}

@@ -11,7 +11,7 @@ import { TelaEmpresas } from './TelaEmpresas'
 import { TelaAcoes } from './TelaAcoes'
 import { TelaPainel } from './TelaPainel'
 import { TelaObra } from './TelaObra'
-import { TelaEntregasBase, TelaPranchasBase } from './TelaListasBase'
+import { TelaEntregasBase, TelaPranchasBase, type FiltroPrancha } from './TelaListasBase'
 import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
 import { TelaPessoa, TelaPessoas } from './TelaPessoas'
 import { TelaPranchaBase, type AlvoPrancha } from './TelaPranchaBase'
@@ -22,7 +22,7 @@ import '../projetos.css'
 export type TelaProjetos =
   | { nome: 'obra' }
   | { nome: 'painel'; importar?: boolean }
-  | { nome: 'pranchas-base' }
+  | { nome: 'pranchas-base'; filtro?: FiltroPrancha }
   | { nome: 'entregas-base' }
   | { nome: 'a-entregar' }
   | { nome: 'pessoas' }
@@ -122,7 +122,7 @@ export function ModuloProjetos({
       conteudo = <TelaPainel ctx={ctx} aoSair={aoSair} importar={tela.importar} />
       break
     case 'pranchas-base':
-      conteudo = <TelaPranchasBase ctx={ctx} aoSair={aoSair} />
+      conteudo = <TelaPranchasBase ctx={ctx} aoSair={aoSair} filtroInicial={tela.filtro} />
       break
     case 'entregas-base':
       conteudo = <TelaEntregasBase ctx={ctx} aoSair={aoSair} />

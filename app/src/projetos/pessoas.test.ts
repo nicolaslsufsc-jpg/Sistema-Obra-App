@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cruzar, lerDistribuicao, lerVigentes } from './painel'
-import { gruposDaPessoa, pessoasDaObra, porEmpresa, chavePessoa } from './pessoas'
+import { gruposDaPessoa, pavimentosDaPessoa, pessoasDaObra, porEmpresa, chavePessoa } from './pessoas'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 import type { GrupoAEntregar } from './distribuicao'
 
@@ -49,6 +49,19 @@ describe('quem tem o quê (aba Pessoas)', () => {
     const g = gruposDaPessoa(de('Formas Delta', 'Ana'))
     expect(g.map((x) => x.disciplina)).toEqual(['ESTRUTURAL'])
     expect(g[0].pastas.map((p) => p.pasta)).toEqual(['LO/Formas', 'LO/Pilares', 'sem pasta'])
+  })
+
+  it('o painel da pessoa separa por pavimento e, dentro dele, por disciplina', () => {
+    for (const p of pessoas) {
+      const g = pavimentosDaPessoa(p)
+      // nenhuma cópia some nem se repete
+      expect(g.flatMap((x) => x.disciplinas.flatMap((d) => d.copias)).length).toBe(p.emCampo.length)
+      // atrasadas do pavimento = desatualizadas dele
+      for (const x of g) expect(x.atrasadas).toBe(x.disciplinas.flatMap((d) => d.copias).filter((c) => c.resultado === 'desatualizada').length)
+    }
+    const ana = pavimentosDaPessoa(de('Formas Delta', 'Ana'))
+    expect(ana.length).toBeGreaterThan(0)
+    expect(ana.every((x) => x.disciplinas.every((d) => d.disciplina === 'ESTRUTURAL'))).toBe(true)
   })
 
   it('quem só tem algo a receber também aparece (lista de distribuição)', () => {

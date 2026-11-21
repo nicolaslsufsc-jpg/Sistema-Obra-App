@@ -817,3 +817,11 @@ button.pj-pequeno {
 [data-testid='painel-canteiro'] .pj-pequeno {
   margin-top: 0.6rem;
 }
+/* PDF e .xlsx lado a lado (quebram para baixo no celular) */
+.pj-baixar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}

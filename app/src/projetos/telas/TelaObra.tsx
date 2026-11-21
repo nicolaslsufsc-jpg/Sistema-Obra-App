@@ -5,13 +5,14 @@ import { painelObra, type Contagem, type PainelObra } from '../obra'
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural, rotuloRevisao, Topo } from './comum'
 import { FaixaAutodoc, usarEstadoAutodoc } from './FaixaAutodoc'
-import { tocavel } from './baseComum'
+import { tocavel, usarBase } from './baseComum'
 
 const LIMITE_NOVAS = 40
 
 export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
   const { dados, obra, ir, trocar, semConta } = ctx
   const estado = usarEstadoAutodoc(obra.id, !semConta)
+  const { resumo, escritorio } = usarBase(ctx)
   // sem conta não há Autodoc nem servidor: a primeira tela é o painel da base
   useEffect(() => {
     if (semConta) trocar({ nome: 'painel' })
@@ -48,6 +49,40 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
           <span class="discreto">{t.escritorioSem ? `${t.escritorioSem} sem registro do escritório` : 'todas com registro'}</span>
         </li>
       </ul>
+
+      <section class="pj-bloco" data-testid="obra-canteiro-resumo">
+        <h2>No canteiro</h2>
+        {!resumo ? (
+          <p class="discreto">
+            Ainda sem a ficha de cópias neste aparelho. Importe em Controle do canteiro → Importar para ver o que está em campo e o que precisa trocar.
+          </p>
+        ) : (
+          <ul class="pj-cartoes" aria-label="Cópias no canteiro">
+            <li class="neutro pj-tocavel" {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'canteiro' }))}>
+              <span class="numero" data-testid="obra-em-campo">{resumo.emCampo}</span>
+              <strong>cópias em campo</strong>
+              <span class="discreto">{plural(resumo.emDia, 'em dia', 'em dia')}</span>
+            </li>
+            <li class={resumo.desatualizadas.length ? 'ruim pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'trocar' }))}>
+              <span class="numero" data-testid="obra-trocar">{resumo.desatualizadas.length}</span>
+              <strong>precisam trocar</strong>
+              <span class="discreto">cópia em campo com revisão antiga</span>
+            </li>
+            <li class={resumo.conferir.length ? 'atencao pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'painel' }))}>
+              <span class="numero">{resumo.conferir.length}</span>
+              <strong>conferir</strong>
+              <span class="discreto">o app não decidiu sozinho</span>
+            </li>
+            {escritorio && (
+              <li class={escritorio.desatualizados.length ? 'ruim pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'escritorio' }))}>
+                <span class="numero">{escritorio.desatualizados.length}</span>
+                <strong>escritório desatualizado</strong>
+                <span class="discreto">pasta do PC atrás da vigente</span>
+              </li>
+            )}
+          </ul>
+        )}
+      </section>
 
       <nav class="pj-menu" aria-label="Partes do módulo">
         <button type="button" onClick={() => ir({ nome: 'lista' })}>

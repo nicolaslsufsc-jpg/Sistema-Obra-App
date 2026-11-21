@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { casaComodo, textoDoComodo } from './busca'
-import { comodoGuardado, lembrarComodo, nomeComComodo, nomeDaPeca } from './comodos'
+import { comodoGuardado, fichaValeNoLocal, lembrarComodo, nomeComComodo, nomeDaPeca } from './comodos'
 import { listarReprovacoes } from './reprovacoes'
 
 describe('nome do cômodo do ambiente', () => {
@@ -42,5 +42,18 @@ describe('nome do cômodo do ambiente', () => {
       quem: () => 'você',
     })
     expect(linhas.map((l) => l.pecaNome)).toEqual(['303-01 · Suíte 01'])
+  })
+})
+
+describe('ficha × tipo de cômodo', () => {
+  const suite = { tipo: 'A', comodo: 'Suíte 01', sem_fichas: ['EXE-024'] }
+  it('a ficha que a tabela tirou do cômodo não vale nele; as outras valem', () => {
+    expect(fichaValeNoLocal(suite, 'EXE-024')).toBe(false)
+    expect(fichaValeNoLocal(suite, 'EXE-027')).toBe(true)
+  })
+  it('sem ficha escolhida, sem a lista ou fora do ambiente: vale, como antes', () => {
+    expect(fichaValeNoLocal(suite, undefined)).toBe(true)
+    expect(fichaValeNoLocal({ tipo: 'A' }, 'EXE-024')).toBe(true)
+    expect(fichaValeNoLocal({ tipo: 'P', sem_fichas: ['EXE-024'] }, 'EXE-024')).toBe(true)
   })
 })

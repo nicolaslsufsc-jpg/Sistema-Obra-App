@@ -33,6 +33,7 @@ create table auth.users (
   email              text unique,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   created_at         timestamptz not null default now(),
+  email_confirmed_at timestamptz, -- null = ainda não digitou o código (o Supabase preenche ao confirmar)
   last_sign_in_at    timestamptz  -- null = pediu o código e nunca entrou
 );
 

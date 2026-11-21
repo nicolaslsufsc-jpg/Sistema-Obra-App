@@ -22,7 +22,7 @@ import {
   type Ponto,
   type TravaDaArea,
 } from '../areas'
-import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, ehDeVedacao, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDasLigacoes } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
@@ -33,6 +33,7 @@ import {
   ehFuroDeLaje,
   furoConferivel,
   furoDeLajeEscondido,
+  furoDeOutraPlanta,
   furosConferiveisPorArea,
   juntarNumerosPerto,
   multiploDoQuadrado,
@@ -111,6 +112,7 @@ import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { recortesDoAmbiente } from '../projetos_ambiente'
 import { usarCamadas } from './usarCamadas'
 import type { AbaDosAmbientes } from '../opcoes_ambientes'
+import { fichaValeNoLocal } from '../comodos'
 import { esquadriasPorUnidade, pontosPorMetroDasEsquadrias, posicoesDasEsquadrias, zoomDasEsquadrias } from '../esquadrias_longe'
 
 const COR: Record<Situacao, [string, number]> = {
@@ -201,10 +203,12 @@ interface Props {
   servicoInicial?: string
   /** e a aba: "ambientes" ou "esquadrias" */
   abaInicial?: AbaDosAmbientes
+  /** aba da forma aberta por uma opção da Estrutura no início (P, V, L, F, B; 21/11/2026) */
+  tipoInicial?: string
   aviso: string
 }
 
-export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, servicoInicial, abaInicial, aviso }: Props) {
+export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, servicoInicial, abaInicial, tipoInicial, aviso }: Props) {
   const { dados, props, online, ir, voltar, recarregar, registrados, sistema } = ctx
   const { usuario, obra } = props
   const planta = dados.plantaPorId.get(plantaId)!
@@ -228,7 +232,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     // barra_id = local de sobreposição do pacote: barra de laje ou ponto de instalação (7_instalacoes.md)
     barras: { has: (id: string) => !!pacote?.manifest.barras?.[id] || !!pacote?.manifest.pontos?.[id] },
   }
-  const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : 'P')
+  const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : (tipoInicial ?? 'P'))
   /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
   const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string } | null>(null)
   /** A caixa que liga o polígono desenhado a uma ficha. */
@@ -322,9 +326,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // planta de armadura de laje (uma por direção, 20/11/2026): tem as coordenadas da forma do pavimento, então
   // as áreas de laje desenhadas na forma valem aqui (para o item de armadura de cada área)
   const deArmadura = ehDeArmadura(planta)
-  const setorDasAreas = deArmadura
-    ? (dados.plantasDe.get(planta.pavimento_id) ?? []).find((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p))?.setor_id ?? planta.setor_id
-    : planta.setor_id
+  // planta de furos de laje de uma camada (21/11/2026): também nas coordenadas da forma, com as áreas dela
+  const deFuracao = ehDeFuracao(planta)
+  const setorDasAreas =
+    deArmadura || deFuracao
+      ? (() => {
+          const doPav = (dados.plantasDe.get(planta.pavimento_id) ?? []).filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeFuracao(p) && !ehDeVedacao(p))
+          // a forma (estrutura) antes das plantas de instalações, que também têm o fundo dela
+          return (doPav.find((p) => p.disciplina === 'estrutura') ?? doPav[0])?.setor_id ?? planta.setor_id
+        })()
+      : planta.setor_id
   const areasDaPlanta = useMemo(() => (areasDoPavimento ?? []).filter((a) => a.setor_id === setorDasAreas), [areasDoPavimento, setorDasAreas])
   const chaveDasAreas = areasDaPlanta.map((a) => a.versao).join()
   const elementosDasAreas = useMemo(() => new Map(areasDaPlanta.map((a) => [a.id, areaComoElemento(a, manifest?.escala)])), [chaveDasAreas, manifest?.escala])
@@ -347,7 +358,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const deInstalacoes = !!manifest?.disciplina
   const pontos = manifest?.pontos
   // a modulação (paredes) não tem área de laje
-  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deInstalacoes && (pode || areasDaPlanta.length > 0)
+  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deFuracao && !deInstalacoes && (pode || areasDaPlanta.length > 0)
+  /** Furo de laje de outra planta (forma com os furos de laje separados, ou outra camada): fica escondido aqui. */
+  const deOutraPlanta = (e: ElementoPacote | undefined) => furoDeOutraPlanta(e, manifest)
   // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
   const barras = manifest?.barras
   // na planta de armadura, só a direção dela; na forma com a armadura em plantas próprias, nenhuma (sem aba Barras)
@@ -371,8 +384,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         ? (['B'] as const).filter(() => camadasDasBarras.length > 0)
         : deInstalacoes
           ? ['I']
-          : ORDEM_TIPOS.filter((t) => (t === 'L' && aceitaAreas) || (t === 'B' && camadasDasBarras.length > 0) || elementos.some(([, e]) => e.tipo === t)),
-    [elementos, aceitaAreas, camadasDasBarras, deArmadura, deInstalacoes],
+          : deFuracao
+            ? ['F']
+            : ORDEM_TIPOS.filter((t) => (t === 'L' && aceitaAreas) || (t === 'B' && camadasDasBarras.length > 0) || elementos.some(([, e]) => e.tipo === t && !deOutraPlanta(e))),
+    [elementos, aceitaAreas, camadasDasBarras, deArmadura, deFuracao, deInstalacoes],
   )
   const tipo = tipos.includes(tipoEscolhido) ? tipoEscolhido : (tipos[0] ?? 'P')
   // o modo "Por item" só vale na aba em que o item foi escolhido e fora do desenho de área
@@ -392,6 +407,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     fichaDoTipo.set(t, f)
     return f
   }
+  // ficha × tipo de cômodo (pacote, `sem_fichas`): com o serviço escolhido, o cômodo em que ele não vale fica
+  // apagado, sem marcação e fora da contagem (piso cerâmico no quarto, drywall na sacada...)
+  const codigoDoServico = fichaDe('A')?.codigo
+  const foraDoServico = (e: ElementoPacote) => !fichaValeNoLocal(e, codigoDoServico)
   const fichasTipo = fichasPara(tipoDaFicha(tipo), dados.fichas)
   const fichaTipo = fichaDe(tipoDaFicha(tipo))
   // aba Esquadrias: os itens de esquadria do serviço escolhido e o que as esquadrias marcam agora
@@ -461,7 +480,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Longe (zoom < ZOOM_DOS_FUROS_DE_LAJE): um número por área (laje + viga) ou por quadrado de 6 m (viga fora de área). */
   const numerosDasAreas = useMemo(() => {
     const escala = manifest?.escala ?? 50
-    const grupos = furosConferiveisPorArea(manifest?.elementos, furosDeLaje, areasDaPlanta, escala, multiploDoQuadrado(zoomDosNumeros, escala))
+    // só os furos desta planta (a forma com os de laje separados conta só os de viga; a planta de uma camada, os dela)
+    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados)
+      ? Object.fromEntries(Object.entries(manifest.elementos).filter(([, e]) => !deOutraPlanta(e)))
+      : manifest?.elementos
+    const grupos = furosConferiveisPorArea(daqui, furosDeLaje, areasDaPlanta, escala, multiploDoQuadrado(zoomDosNumeros, escala))
     // número de 44 px de altura e até ~100 px de largura ("110 furos"), convertido para pontos da folha
     const pt = 1 / 2 ** zoomDosNumeros
     return juntarNumerosPerto(grupos, 104 * pt, 48 * pt)
@@ -1079,7 +1102,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     for (const [id, e] of elementos) {
       // "Por item": a peça fica na cor daquele item (OK verde, NA verde-azulado, errado vermelho, sem conferir
       // cinza); a peça em que o item não se marca fica apagada
-      const doItem = porItemAtivo && e.tipo === porItemAtivo.tipo && !e.so_detalhe ? resultadoPorItem(id, porItemAtivo) : undefined
+      const doItem = porItemAtivo && e.tipo === porItemAtivo.tipo && !e.so_detalhe && !foraDoServico(e) ? resultadoPorItem(id, porItemAtivo) : undefined
       const s = doItem === undefined ? situacao(id, e) : doItem === 'C' || doItem === 'NA' ? 'liberado' : doItem === 'NC' ? 'reprovado' : 'nada'
       const [cor, f] = doItem === 'NA' ? [COR_NA, 0.45] : COR[s]
       const ativo = e.tipo === tipo && doItem !== 'fora'
@@ -1091,8 +1114,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // parede da modulação pendente (20/11): cinza claro e mais grossa, para aparecer em cima da parede preta da prancha
       const paredePendente = e.tipo === 'M' && s === 'nada' && doItem !== 'NA'
       const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
-      // arranque (só detalhe): tracejado e quase sem cor, para não parecer peça a marcar
-      const soDetalhe = !!e.so_detalhe
+      // arranque (só detalhe) e cômodo em que o serviço não vale: tracejado e quase sem cor, para não parecer peça a marcar
+      const soDetalhe = !!e.so_detalhe || foraDoServico(e)
       const fillOpacity = soDetalhe ? 0.02 : ehArea ? (ativo ? Math.min(f, OPACIDADE_MAX_AREA) : Math.min(f, OPACIDADE_MAX_AREA) * 0.5) : pendenteLeve ? 0.05 : ativo ? f : f * 0.25
       const opacity = ehArea ? (ativo ? 1 : 0.6) : !ativo ? 0.3 : soDetalhe && sel !== id ? 0.6 : pendenteLeve && sel !== id ? 0.6 : 1
       const weight = sel === id ? 4 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : e.tipo === 'M' ? 3 : 2
@@ -1106,7 +1129,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         // Esquadria (20/11, testador em 375 px): só na aba Esquadrias e só de perto (longe, o número do apartamento).
         const escondido =
           sel !== id &&
-          (e.tipo === 'F' ? tipo !== 'F' || furoDeLajeEscondido(e) || !furosPerto : e.tipo === 'E' && (tipo !== 'E' || !esquadriasPerto))
+          (e.tipo === 'F' ? tipo !== 'F' || furoDeLajeEscondido(e) || deOutraPlanta(e) || !furosPerto : e.tipo === 'E' && (tipo !== 'E' || !esquadriasPerto))
         // furo de laje fora de área de laje: apagado, não marca nada (o toque diz por quê)
         const vivo = ativo && !(ehFuroDeLaje(e) && !furosDeLaje.get(id))
         const fo = escondido ? 0 : vivo ? 0.95 : 0.25
@@ -1306,7 +1329,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       if (!m) return
       m.invalidateSize()
       const forma = sel ? camadas.current.get(sel)?.[0] : undefined
-      if (forma) m.panInside(limitesDaCamada(forma).getCenter(), { padding: [30, 30] })
+      // furo ou esquadria (bolinha pequena): no meio da faixa que sobra, para o aviso do toque ("FL2: errado"),
+      // no pé dela no celular, não cobrir; assim o 3º toque (sem conferir, painel aberto) chega a ela (21/11)
+      const filho = sel ? ehFilho(manifest?.elementos[sel]?.tipo ?? '') : false
+      if (forma && filho) m.panTo(limitesDaCamada(forma).getCenter(), { animate: false })
+      else if (forma) m.panInside(limitesDaCamada(forma).getCenter(), { padding: [30, 30] })
     }
     const t = window.setTimeout(() => {
       m = mapa.current
@@ -1332,6 +1359,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       if (!dados.areaPorId.has(id)) return
       setParteAberta(null)
       return abrirPainel(id)
+    }
+    // cômodo em que o serviço escolhido não vale (tabela ficha × tipo de cômodo): o pincel e o "Por item" não
+    // marcam nada; o toque comum abre o painel, que diz por quê
+    const semServico = foraDoServico(e) && e.tipo === tipo
+    if (semServico && (pincel || porItemAtivo) && pode) {
+      return avisar(`${fichaDe('A')?.codigo ?? 'Esta ficha'} não vale ${e.comodo ? `em ${e.comodo}` : 'neste cômodo'} (${e.nome}).`)
     }
     if (porItemAtivo && pode) {
       if (e.tipo !== porItemAtivo.tipo) return avisar(`No "Por item", toque ${porItemAtivo.tipo === 'P' ? 'nos pilares' : porItemAtivo.tipo === 'V' ? 'nas vigas' : porItemAtivo.tipo === 'M' ? 'nas paredes' : 'nos ambientes'}. Para abrir ${e.nome}, toque em Sair.`)
@@ -1466,8 +1499,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
 
   /**
-   * Toque no furo (gesto A do protótipo): sem conferir → OK; OK → errado (abre o painel para "O que
-   * fazer?" e a foto); errado → sem conferir. O aviso traz "Desfazer", que volta ao que estava.
+   * Toque no furo: o ciclo da barra e do ponto (passoDoToque, 21/11): 1 toque OK; 2 toques errado (abre o
+   * painel para "O que fazer?" e a foto); 3 toques sem conferir, também com o painel do NC aberto (fecha).
+   * O aviso traz "Desfazer", que volta ao que estava.
    */
   const tocarFuro = (id: string, e: ElementoPacote) => {
     const f = alvoDoFilho(id)
@@ -1479,12 +1513,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       return avisar(furoSemItem(id))
     }
     const { ficha, item } = f
+    // o painel deste furo aberto (o NC dele): o próximo toque tira a verificação e fecha o painel
+    const painelDoFuro = sel === id
     executar(async (evs) => {
       const eventos = daFichaAberta(evs(id), null)
       const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === ficha.id)).get(item)
       const r = anterior?.resultado ?? null
+      const passo = passoDoToque(r === 'C' ? 'liberado' : r === 'NC' ? 'reprovado' : 'nada', painelDoFuro && r === 'NC')
+      if (passo === 'tirar' && painelDoFuro) fecharPainel()
       const gravado =
-        r === 'NC' ? await desmarcarR(c, id, ficha, item, eventos) : await tocarItem(c, id, ficha, item, r === 'C' ? 'NC' : r === 'NA' ? 'NA' : 'C', eventos)
+        passo === 'tirar' ? await desmarcarR(c, id, ficha, item, eventos) : await tocarItem(c, id, ficha, item, passo === 'abrir_nc' ? 'NC' : r === 'NA' ? 'NA' : 'C', eventos)
       const novo = gravado.resultado as string | null
       avisar(`${e.nome}: ${novo === 'C' ? 'OK' : novo === 'NC' ? 'errado' : 'sem conferir'}`, () => {
         setMsg(null)
@@ -1885,8 +1923,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // arranque (só detalhe) não tem ficha: não conta no "x/y liberados"; na aba Furos, só os furos
   // conferíveis (o de laje fora de área ou de Geral, Climatização e Incêndio não marca nada; 20/11)
   const doTipo = useMemo(
-    () => elementos.filter(([id, e]) => e.tipo === tipo && !e.so_detalhe && (e.tipo !== 'F' || furoConferivel(e, furosDeLaje.get(id)))),
-    [elementos, tipo, furosDeLaje],
+    () =>
+      elementos.filter(
+        ([id, e]) => e.tipo === tipo && !e.so_detalhe && !foraDoServico(e) && (e.tipo !== 'F' || (furoConferivel(e, furosDeLaje.get(id)) && !deOutraPlanta(e))),
+      ),
+    [elementos, tipo, furosDeLaje, codigoDoServico],
   )
   let liberadas = 0
   let paraConcretar = 0
@@ -2608,6 +2649,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           c={c}
           pacote={pacote}
           ficha={ehFilho(pecaSel.tipo) ? fichaDoFuro(sel) : fichaDoLocal(sel, pecaSel.tipo)}
+          foraDaFicha={pecaSel.tipo === 'A' && !fichaValeNoLocal(pecaSel, fichaDoLocal(sel, 'A')?.codigo)}
           // a área tem a ficha dela: escolhida na caixa, não muda depois
           fichas={areaSel ? (fichaPorId(areaSel.ficha_id) ? [fichaPorId(areaSel.ficha_id)!] : []) : ehFilho(pecaSel.tipo) ? [] : fichasPara(pecaSel.tipo, dados.fichas)}
           aoGravar={
@@ -2672,6 +2714,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 // ---------------------------------------------------------------------- painel da peça
 
 interface PropsPainel {
+  /** ambiente em que a ficha escolhida não vale (tabela ficha × tipo de cômodo): sem itens para marcar */
+  foraDaFicha?: boolean
   id: string
   /** consolo e capitel do pilar nesta planta */
   partes: readonly string[]
@@ -3350,8 +3394,13 @@ function Painel(p: PropsPainel) {
             // furo e esquadria não têm ficha própria (usam a do pai): o aviso de cima já diz o que falta
             !ehFilho(peca.tipo) && <p class="aviso">Não há ficha (PVS) para {NOME_TIPO[peca.tipo] ?? peca.tipo} nesta obra.</p>
           )}
-          {!soDetalhe && !p.pode && <p class="discreto">Seu acesso nesta obra é só de leitura.</p>}
-          {!soDetalhe && linhas}
+          {!soDetalhe && p.foraDaFicha && (
+            <p class="aviso" data-testid="fvs-fora-da-ficha">
+              Esta ficha não vale {peca.comodo ? `em ${peca.comodo}` : 'neste cômodo'}, pela tabela de fichas por tipo de cômodo da obra. Escolha outra ficha.
+            </p>
+          )}
+          {!soDetalhe && !p.foraDaFicha && !p.pode && <p class="discreto">Seu acesso nesta obra é só de leitura.</p>}
+          {!soDetalhe && !p.foraDaFicha && linhas}
           {!soDetalhe && secoesDasPartes}
           {daFicha.length > 0 && (
             <details class="fv-hist-peca" data-testid="fvs-hist-peca">

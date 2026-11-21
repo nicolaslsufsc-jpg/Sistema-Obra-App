@@ -50,6 +50,25 @@ class TestFichasPorComodo(unittest.TestCase):
         self.assertTrue(ambientes.ficha_vale_no_comodo("EXE-024", "Hall", t))      # tipo que a tabela não tem
         self.assertTrue(ambientes.ficha_vale_no_comodo("EXE-024", None, t))        # cômodo sem nome
 
+    def test_marca_no_ambiente_as_fichas_que_nao_valem(self):
+        t = ambientes.ler_fichas_por_comodo(str(EXEMPLO))
+        pecas = [
+            {"tipo": "A", "nome": "301-01", "comodo": "Suíte 01"},
+            {"tipo": "A", "nome": "301-02", "comodo": "Banho 01"},       # tudo vale: fica sem o campo
+            {"tipo": "A", "nome": "AC-01", "comodo": "Hall"},            # tipo fora da tabela: sem regra
+            {"tipo": "A", "nome": "AC-02"},                              # sem nome: sem regra
+            {"tipo": "A", "nome": "301-03", "comodo": "Sacada", "sem_fichas": ["velho"]},
+            {"tipo": "E", "nome": "301-01-PM80", "comodo": "Suíte 01"},  # esquadria não entra
+        ]
+        rel = ambientes.marcar_fichas_do_comodo(pecas, t)
+        self.assertEqual(pecas[0]["sem_fichas"], ["EXE-024"])
+        self.assertNotIn("sem_fichas", pecas[1])
+        self.assertNotIn("sem_fichas", pecas[2])
+        self.assertNotIn("sem_fichas", pecas[3])
+        self.assertEqual(pecas[4]["sem_fichas"], ["EXE-013", "EXE-015", "EXE-027"])  # o antigo sai
+        self.assertNotIn("sem_fichas", pecas[5])
+        self.assertEqual(rel, {"com_regra": 3, "tipos_fora_da_tabela": {"Hall": 1}})
+
     def test_talvez_da_erro_com_a_lista(self):
         p = self.gravar({"classes": {"Banho": {"EXE-1": "sim", "EXE-2": "talvez"}}})
         with self.assertRaisesRegex(ambientes.ErroAmbientes, r"faltam conferir 1 casas \(Banho > EXE-2\)"):

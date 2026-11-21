@@ -59,6 +59,9 @@ export interface ElementoPacote {
   grupo?: string
   /** só ambiente: nome do cômodo ("Living", "Suíte 01"), da tabela por apartamento-tipo. O `nome` continua o número */
   comodo?: string
+  /** só ambiente: códigos das fichas que não valem neste cômodo (tabela ficha × tipo de cômodo da obra,
+   *  pipeline/fvs/ambientes.py). Sem o campo, todas valem */
+  sem_fichas?: string[]
   /** [x0, y0, x1, y1], pontos do PDF, y para baixo */
   rotulo: [number, number, number, number]
   polys: Array<Array<[number, number]>>
@@ -174,6 +177,11 @@ export interface Manifest {
   /** planta de armadura de uma direção: leva todas as barras do pavimento (o item da laje conta as quatro),
    *  mas só esta camada aparece e se toca */
   camada?: CamadaDeBarras
+  /** planta de furos de laje de uma camada (21/11/2026, pipeline/fvs/furos.py): leva todos os furos de laje
+   *  do pavimento (o item da área conta todos), mas só os desta camada aparecem e se tocam */
+  furos_laje?: 'esgoto' | 'agua' | 'eletrica'
+  /** forma com os furos de laje em plantas próprias: eles ficam no pacote, escondidos */
+  furos_laje_separados?: boolean
   /** planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela */
   disciplina?: DisciplinaDePontos
   /** pontos de instalações do modelo, já na folha (aba Pontos); chave = id do ponto (registro em barra_id) */

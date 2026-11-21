@@ -7,6 +7,8 @@ import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
 import { alvoDe, alvoDaFolha, seloDe } from './TelaPranchaBase'
+import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import type { FolhaPdf } from '../../telas/folha_pdf'
 
 const PAGINA = 60
 
@@ -28,6 +30,21 @@ function Filtros<T extends string>({ opcoes, valor, mudar }: { opcoes: { v: T; r
       ))}
     </div>
   )
+}
+
+const ROTULO_FILTRO: Record<FiltroEntregaDaFolha, string> = {
+  'em campo': 'em campo',
+  desatualizada: 'desatualizadas',
+  conferir: 'conferir',
+  recolhida: 'provavelmente recolhidas',
+  devolvida: 'devolvidas',
+}
+type FiltroEntregaDaFolha = 'em campo' | 'desatualizada' | 'conferir' | 'recolhida' | 'devolvida'
+
+/** Linha de baixo do título da folha: o filtro e a busca da tela, ou "Todas". */
+function filtroDaFolha(busca: string, filtro: string): string {
+  const partes = [filtro && `filtro ${filtro}`, busca.trim() && `busca "${busca.trim()}"`].filter(Boolean)
+  return partes.length ? `Com ${partes.join(' e ')}` : 'Todas'
 }
 
 const contem = (q: string, ...campos: string[]) => {
@@ -81,12 +98,38 @@ export function TelaPranchasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
   if (base === undefined) return <main class="tela">Carregando…</main>
   const achadas = linhas.filter((l) => contem(busca, l.vigente.codigo, l.vigente.titulo, l.vigente.disciplina, l.vigente.de))
   const filtradas = achadas.filter((l) => (filtro === 'desatualizadas' ? l.desatualizadas > 0 : filtro === 'escritorio' ? l.escritorioAtrasado : true))
+  // a lista com a busca e o filtro, inteira (sem o "Mostrar mais"), em A4 (21/11/2026)
+  const folha = (): FolhaPdf => ({
+    modulo: 'Projetos',
+    titulo: 'Pranchas da lista vigente',
+    sub: filtroDaFolha(busca, { todas: '', desatualizadas: 'com cópia desatualizada', escritorio: 'escritório desatualizado' }[filtro]),
+    resumo: [plural(filtradas.length, 'prancha', 'pranchas'), plural(filtradas.reduce((s, l) => s + l.desatualizadas, 0), 'cópia desatualizada', 'cópias desatualizadas')],
+    tabelas: [
+      {
+        colunas: ['Disciplina', 'Código', 'Título', 'Vigente', 'Data', 'Em campo', 'Desatualizadas', 'Escritório'],
+        curtas: [1, 3, 4, 5, 6],
+        linhas: filtradas.map((l) => [
+          l.vigente.disciplina,
+          l.vigente.codigo,
+          l.vigente.titulo,
+          rotuloRev(l.vigente.fase, l.vigente.revisao),
+          dataBR(l.vigente.data),
+          l.emCampo,
+          l.desatualizadas || '',
+          `${l.escritorio ? rotuloRev(l.escritorio.fase, l.escritorio.revisao) : 'sem registro'}${l.escritorioAtrasado ? ' (desatualizado)' : ''}`,
+        ]),
+        vazio: 'Nenhuma prancha.',
+      },
+    ],
+    deitada: true,
+  })
 
   return (
     <main class="tela pj-painel">
       <CabecalhoBase ctx={ctx} aba="pranchas" aoSair={aoSair} base={base} temCruzamento={!!resumo} />
       <section class="pj-bloco">
         <h2>Pranchas da lista vigente</h2>
+        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="projetos-pdf-pranchas" desativado={filtradas.length === 0} />
         <Busca valor={busca} mudar={setBusca} rotulo="Buscar código, título ou número" />
         <Filtros
           valor={filtro}
@@ -158,12 +201,31 @@ export function TelaEntregasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
   const achadas = ordenadas.filter((x) => contem(busca, x.copia.empresa, x.copia.colaborador, x.copia.codigo, x.copia.titulo, x.copia.disciplinaNome))
   const filtradas = achadas.filter(PASSA[filtro])
   const n = (f: FiltroEntrega) => achadas.filter(PASSA[f]).length
+  const folha = (): FolhaPdf => ({
+    modulo: 'Projetos',
+    titulo: 'Entregas de cópias',
+    sub: filtroDaFolha(busca, filtro === 'todas' ? '' : ROTULO_FILTRO[filtro]),
+    resumo: [plural(filtradas.length, 'entrega', 'entregas')],
+    tabelas: [
+      {
+        colunas: ['Situação', 'Disciplina', 'Código', 'Título', 'Revisão', 'Empresa', 'Colaborador', 'Entregue', 'Devolvida'],
+        curtas: [2, 4, 7, 8],
+        linhas: filtradas.map((x) => {
+          const c = x.copia
+          return [seloDe(x).texto, c.disciplinaNome, c.codigo, c.titulo, rotuloRev(c.fase, c.revisao), c.empresa, c.colaborador, c.entrega ? dataBR(c.entrega) : c.entregaTexto, c.devolucao ? dataBR(c.devolucao) : '']
+        }),
+        vazio: 'Nenhuma entrega.',
+      },
+    ],
+    deitada: true,
+  })
 
   return (
     <main class="tela pj-painel">
       <CabecalhoBase ctx={ctx} aba="entregas" aoSair={aoSair} base={base} temCruzamento={!!resumo} />
       <section class="pj-bloco">
         <h2>Entregas de cópias</h2>
+        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="projetos-pdf-entregas" desativado={filtradas.length === 0} />
         <Busca valor={busca} mudar={setBusca} rotulo="Buscar empresa, colaborador ou prancha" />
         <Filtros
           valor={filtro}

@@ -64,10 +64,45 @@ function naTela(p: Page, x: number, y: number): Promise<[number, number]> {
   )
 }
 
-/** Abre a planta de ambientes pela linha dela no cartão do pavimento (o "Abrir" da lista de trechos), e não
- *  pelos botões das opções do menu do pavimento (Alvenaria, Reboco...), que também abrem a planta. */
-function abrirPlantaDeAmbientes(p: Page) {
-  return p.getByTestId('fvs-ambientes').locator('.fv-trechos').getByRole('button', { name: 'Abrir', exact: true }).click()
+// Início da FVS em 3 níveis (21/11/2026): pavimentos → disciplinas do pavimento → opções da disciplina.
+
+/** Volta à lista de pavimentos (nível 1): da planta, o voltar passa pelas opções e pelas disciplinas. */
+async function noInicio(p: Page, timeout = 30_000) {
+  const fim = Date.now() + timeout
+  for (;;) {
+    if (await p.getByTestId('fvs-pavimento').first().isVisible().catch(() => false)) return
+    const nivel = await p.locator('[data-testid=fvs-nivel-disciplina], [data-testid=fvs-nivel-pavimento]').count().catch(() => 0)
+    if (nivel) {
+      await p.goBack()
+      continue
+    }
+    if (Date.now() > fim) throw new Error('não chegou à lista de pavimentos da FVS')
+    await p.waitForTimeout(200)
+  }
+}
+
+/** Do início, entra no pavimento (o primeiro, ou o de `nome`) e na disciplina ("estrutura", "alvenaria"...). */
+async function naDisciplina(p: Page, disciplina: string, nome?: string) {
+  await noInicio(p)
+  const cartoes = p.getByTestId('fvs-pavimento')
+  await (nome ? cartoes.filter({ hasText: nome }) : cartoes).first().click()
+  await p.locator(`[data-testid=fvs-disciplina][data-disciplina=${disciplina}]`).click()
+  await p.getByTestId('fvs-nivel-disciplina').waitFor()
+}
+
+/** Abre a planta de forma pela Estrutura: na aba `tipo` (opção da forma no aparelho) ou pelo botão da planta. */
+async function abrirForma(p: Page, tipo = 'P') {
+  await naDisciplina(p, 'estrutura')
+  const opcao = p.locator(`[data-testid=fvs-opcao-forma][data-tipo=${tipo}]`)
+  const planta = p.getByTestId('fvs-secao-estrutura').locator('[data-testid=fvs-planta], .fv-trechos .fv-abrir')
+  await opcao.or(planta).first().click()
+}
+
+/** Abre a planta de ambientes pelo botão "Todos os ambientes" de Acabamentos, e não pelas opções (Alvenaria,
+ *  Reboco...), que também abrem a planta. */
+async function abrirPlantaDeAmbientes(p: Page) {
+  await naDisciplina(p, 'acabamentos')
+  await p.getByTestId('fvs-ambientes').locator('[data-testid=fvs-planta], .fv-trechos .fv-abrir').first().click()
 }
 
 async function tocarNaPlanta(p: Page, x: number, y: number) {
@@ -416,7 +451,7 @@ suite('FVS na bancada (Chrome)', () => {
       const p: Page = await contexto.newPage()
       await p.goto(`${url}?abrir=0&arranque=1`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       await p.getByText(/de 62 peças liberadas/).first().waitFor()
       expect(await pavimento.innerText()).toContain('de 62 peças liberadas')
       expect(await p.getByTestId('fvs-resumo-obra').innerText()).toContain('de 62 peças liberadas')
@@ -425,7 +460,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(planilha).toContain(';P7;')
       expect(planilha).not.toContain(';P7a;')
       // na planta, a aba Pilares continua com os 24 (o P7a aparece só para o detalhe)
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await p.getByTestId('fvs-progresso').innerText()).toContain('/24 liberados')
       await contexto.close()
@@ -497,8 +532,7 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&regras=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       // tela só de leitura das regras, pelo início
       await p.getByTestId('fvs-entra-regras').click()
       expect(await p.getByTestId('fvs-regra-prazo').innerText()).toContain('Libera 3 dias depois da concretagem da peça')
@@ -518,8 +552,8 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_regras_${largura}.png`), fullPage: true })
       await p.locator('.fv-regras .fv-voltar').click()
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await buscar(p, 'P6')
       await nomeNoPainel(p, 'P6')
@@ -591,9 +625,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&rastreio=1&regras=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await buscar(p, 'P6')
       await nomeNoPainel(p, 'P6')
@@ -632,7 +665,7 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&esquadrias=1`)
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       /** Caixas do topo em que o texto escolhido (ou a dica) não cabe: texto + margens + a seta. */
@@ -729,6 +762,33 @@ suite('FVS na bancada (Chrome)', () => {
     [375, 812],
     [1024, 768],
   ] as const) {
+    it(`${largura}x${altura}: ficha que não vale no tipo de cômodo fica apagada, fora da contagem e sem itens`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      // ?comodos=1: o reboco de teste não vale nas 4 suítes com nome (aptos 103 e 104)
+      await p.goto(`${url}?abrir=ambientes&comodos=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/16 liberados')
+      await buscar(p, 'suite 01 103')
+      await nomeNoPainel(p, 'Suíte 01')
+      const aviso = p.getByTestId('fvs-fora-da-ficha')
+      await aviso.waitFor()
+      expect(await aviso.innerText()).toContain('não vale em Suíte 01')
+      expect(await p.locator('.fv-item').count()).toBe(0)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_fora_da_ficha_${largura}.png`) })
+      // na alvenaria a suíte vale: itens de volta e os 20 ambientes na conta
+      await p.getByTestId('fvs-servico').selectOption('TESTE-PVS-ALV')
+      await p.locator('.fv-ficha', { hasText: 'TESTE-PVS-ALV' }).waitFor()
+      expect(await aviso.count()).toBe(0)
+      expect(await p.locator('.fv-item').count()).toBeGreaterThan(0)
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/20 liberados')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${largura}x${altura}: planta de ambientes aberta pelo menu do pavimento, já no serviço e na aba escolhidos`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
@@ -774,12 +834,18 @@ suite('FVS na bancada (Chrome)', () => {
       // ------------------------------------------------------------ início: estrutura e ambientes
       await p.goto(`${url}?abrir=0`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      expect(await pavimento.locator('.fv-disciplina').allTextContents()).toEqual(['Estrutura', 'Ambientes'])
+      await noInicio(p)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('1_inicio')
+      // nível 2 (21/11/2026): as disciplinas do pavimento; a alvenaria dos ambientes vai para Alvenaria
+      await pavimento.first().click()
+      const disciplinas = () => p.getByTestId('fvs-disciplina').evaluateAll((l: HTMLElement[]) => l.map((e) => e.dataset.disciplina))
+      await expect.poll(disciplinas).toEqual(['estrutura', 'alvenaria', 'acabamentos'])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await naDisciplina(p, 'acabamentos')
       const cartaoAmbientes = p.getByTestId('fvs-ambientes')
       expect(await cartaoAmbientes.innerText()).toContain('20 ambientes · nenhuma ficha começada')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
-      await capturar('1_inicio')
 
       // ------------------------------------------------------------ planta de ambientes
       await abrirPlantaDeAmbientes(p)
@@ -868,12 +934,16 @@ suite('FVS na bancada (Chrome)', () => {
 
       // ------------------------------------------------------------ início resume a ficha começada
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
-      const resumo = await cartaoAmbientes.innerText()
-      expect(resumo).toContain('Alvenaria (ficha de teste): 1 de 20 liberados · 1 com NC')
-      expect(resumo).not.toContain('Reboco')
+      await noInicio(p)
       expect(await pavimento.innerText()).toContain('1 de 62 peças liberadas · 1 com NC · 1 com ficha duplicada')
       await capturar('5_inicio_depois')
+      await naDisciplina(p, 'acabamentos')
+      const resumo = await cartaoAmbientes.locator('.fv-servicos').innerText()
+      expect(resumo).toContain('Alvenaria (ficha de teste): 1 de 20 liberados · 1 com NC')
+      expect(resumo).not.toContain('Reboco')
+      // o "⋯ Mais" (tirar do aparelho) fica nas disciplinas do pavimento
+      await p.goBack()
+      await p.getByTestId('fvs-nivel-pavimento').waitFor()
 
       // falta de espaço: tira as plantas do pavimento do aparelho. Marcações ficam; depois é só baixar de novo
       const marcacoesAntes = (await registros(p)).length
@@ -889,7 +959,9 @@ suite('FVS na bancada (Chrome)', () => {
       await p.waitForTimeout(100)
       expect(textoDaConfirmacao).toContain('Tirar do aparelho as plantas de Pavimento de teste')
       expect(textoDaConfirmacao).toContain('As marcações não são afetadas')
-      expect(await pavimento.locator('.fv-trechos').getByRole('button', { name: 'Abrir', exact: true }).count()).toBe(2) // disse não: nada muda
+      // disse não: nada muda (o pavimento continua no aparelho)
+      await noInicio(p)
+      expect(await pavimento.innerText()).toContain('No aparelho')
 
       // ficha sem peça na planta: fica na lista, com a situação e as contagens
       const semPeca = p.getByTestId('fvs-sem-peca')
@@ -901,7 +973,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
 
       // ------------------------------------------------------------ planta de forma, mesmo pavimento
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(400)
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes'])
@@ -1039,15 +1111,20 @@ suite('FVS na bancada (Chrome)', () => {
 
       // agora diz sim: as plantas saem do aparelho e o botão vira "Baixar"; as marcações continuam
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
       const marcacoesDepois = (await registros(p)).length
       expect(marcacoesDepois).toBeGreaterThan(marcacoesAntes)
       p.once('dialog', (d: any) => d.accept())
+      await pavimento.first().click()
       if (!(await p.getByTestId('fvs-tirar-pavimento').isVisible())) await p.getByTestId('fvs-mais-pavimento').click()
       await p.getByTestId('fvs-tirar-pavimento').click()
-      await pavimento.getByRole('button', { name: /^Baixar/ }).first().waitFor()
-      expect(await pavimento.locator('.fv-trechos').getByRole('button', { name: 'Abrir', exact: true }).count()).toBe(0)
-      expect(await p.getByTestId('fvs-tirar-pavimento').count()).toBe(0)
+      await p.getByTestId('fvs-tirar-pavimento').waitFor({ state: 'detached' })
+      await noInicio(p)
+      expect(await pavimento.innerText()).toContain('Ainda não baixado')
+      // na Estrutura, a forma volta a ter o Baixar
+      await naDisciplina(p, 'estrutura')
+      await p.getByTestId('fvs-secao-estrutura').getByRole('button', { name: /Baixar/ }).first().waitFor()
+      expect(await p.getByTestId('fvs-opcao-forma').count()).toBe(0)
       expect((await registros(p)).length).toBe(marcacoesDepois)
 
       expect(erros).toEqual([])
@@ -1181,8 +1258,8 @@ suite('FVS na bancada (Chrome)', () => {
 
       // R novo no app com foto: entra na lista, com a miniatura
       await p.locator('.fv-voltar').first().click()
-      await p.getByTestId('fvs-pavimento').waitFor()
-      await p.getByTestId('fvs-pavimento').locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       await buscar(p, 'P4')
@@ -1205,7 +1282,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-zoom').waitFor({ state: 'detached' })
       await nomeNoPainel(p, 'P4')
       await p.locator('.fv-topo .fv-voltar').click()
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       await entrada.click()
       await linhas.first().waitFor()
       const comFoto = linhas.first()
@@ -1222,7 +1299,7 @@ suite('FVS na bancada (Chrome)', () => {
         await limparPacotes({ obraId: '${OBRA}', usuarioId: '00000000-0000-0000-0000-0000000000a1' }, new Set())
       })()`)
       await p.reload()
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       await entrada.click()
       await linhas.first().waitFor()
       await linhas.first().locator('button.fv-rep').click()
@@ -1247,11 +1324,11 @@ suite('FVS na bancada (Chrome)', () => {
 
       // o histórico veio do Construpoint: não há nada para lançar
       await p.goto(`${url}?abrir=0`)
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       expect(await p.getByTestId('fvs-entra-lancamento').count()).toBe(0)
 
       // marca no app: um item numa peça com ficha do Construpoint, um R com texto numa peça sem ficha
-      await p.getByTestId('fvs-pavimento').locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       await buscar(p, 'P3')
@@ -1267,6 +1344,7 @@ suite('FVS na bancada (Chrome)', () => {
       await campo.blur()
       await p.waitForTimeout(200)
       await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
 
       const entrada = p.getByTestId('fvs-entra-lancamento')
       await entrada.waitFor()
@@ -1306,7 +1384,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.getByTestId('fvs-lan-tudo').click()
       await p.getByTestId('fvs-lan-vazia').waitFor()
       await p.locator('.fv-lancamento .fv-voltar').click()
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       expect(await p.getByTestId('fvs-entra-lancamento').count()).toBe(0)
 
       // planilha da situação da obra: uma linha por peça e ficha, inclusive o que está pendente
@@ -1334,11 +1412,10 @@ suite('FVS na bancada (Chrome)', () => {
       // tablet comum: CPU 4x mais lenta, como na sonda do Testador
       const cdp = await contexto.newCDPSession(p)
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
-      const pavimento = p.getByTestId('fvs-pavimento')
       const abrirPeca = async (peca: string) => {
         await p.goto(`${url}?abrir=0`)
-        await pavimento.waitFor({ timeout: 60_000 })
-        await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+        await noInicio(p, 60_000)
+        await abrirForma(p)
         await p.locator('.fv-mapa .leaflet-tile').first().waitFor({ timeout: 60_000 })
         await buscar(p, peca)
         await nomeNoPainel(p, peca)
@@ -1379,9 +1456,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&gemeo=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       const painel = p.getByTestId('fvs-painel')
@@ -1486,9 +1562,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       const painel = p.getByTestId('fvs-painel')
       // zoom em que a V1 (14 pontos de altura) fica com 3,5 px na tela, como no celular com a folha toda
@@ -1525,9 +1600,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&partes=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       const painel = p.getByTestId('fvs-painel')
       const fechar = async () => {
@@ -1591,9 +1665,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&furos=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
       const painel = p.getByTestId('fvs-painel')
@@ -1706,6 +1779,7 @@ suite('FVS na bancada (Chrome)', () => {
       // a busca do início mostra o furo como a planta (bug do celular, 18/11: aparecia "Pendente")
       await fechar()
       await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
       await p.getByTestId('fvs-busca-obra').fill('V1-F1')
       const linhaDoFuro = p.getByTestId('fvs-busca-linha').first()
       await linhaDoFuro.waitFor()
@@ -1727,9 +1801,8 @@ suite('FVS na bancada (Chrome)', () => {
         void (aceitar ? d.accept() : d.dismiss())
       })
       await p.goto(`${url}?abrir=0&furoslaje=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
       const painel = p.getByTestId('fvs-painel')
@@ -1759,13 +1832,13 @@ suite('FVS na bancada (Chrome)', () => {
       // continua esmaece (revisão da 06, 20/11: "Pilares" aparecia como "ares", sem sinal de mais abas)
       const fila = () => p.locator('.fv-seg').evaluate((s: HTMLElement) => ({ esq: s.classList.contains('mais-esq'), dir: s.classList.contains('mais-dir'), cabe: s.scrollWidth <= s.clientWidth }))
       expect(await p.locator('.fv-bpincel, .fv-bitem').evaluateAll((l: Element[]) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 14).map((e) => e.textContent))).toEqual([])
-      const noInicio = await fila()
-      if (noInicio.cabe) expect(noInicio).toEqual({ esq: false, dir: false, cabe: true })
-      else expect(noInicio).toEqual({ esq: false, dir: true, cabe: false })
+      const filaNoInicio = await fila()
+      if (filaNoInicio.cabe) expect(filaNoInicio).toEqual({ esq: false, dir: false, cabe: true })
+      else expect(filaNoInicio).toEqual({ esq: false, dir: true, cabe: false })
 
       // antes da área: o furo fica fora de área de laje, não marca nada e diz por quê
       await aba('Furos')
-      if (!noInicio.cabe) await expect.poll(fila).toEqual({ esq: true, dir: false, cabe: false })
+      if (!filaNoInicio.cabe) await expect.poll(fila).toEqual({ esq: true, dir: false, cabe: false })
       // fora de área nenhum furo de laje conta (FL6, de Geral, nunca conta)
       expect(await progresso()).toBe('0/0 OK')
       // FL4 e FL5 a 8 pontos um do outro (32 px no zoom 2): o toque entre os dois pega os dois alvos e
@@ -1865,14 +1938,160 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: furos de laje em plantas próprias: uma por camada, só os furos dela, o item da área da forma`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furoslaje=1&furacao=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await noInicio(p)
+      expect(await pavimento.count()).toBe(1)
+      // Estrutura (nível 3, 21/11/2026): seção "Furação de laje" com as três camadas, na ordem da obra, e quantos furos cada uma tem
+      await naDisciplina(p, 'estrutura')
+      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação de laje' })
+      await secao.waitFor()
+      expect(await secao.locator('h3').textContent()).toBe('Furação de laje')
+      const linhas = (await secao.getByRole('button').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
+      expect(linhas.map((t: string) => t.match(/Furos de [^ ]+/)?.[0])).toEqual(['Furos de esgoto', 'Furos de água', 'Furos de elétrica'])
+      expect(linhas[0]).toContain('3 furos')
+      expect(linhas[1]).toContain('1 furo')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_menu.png`, fullPage: true })
+
+      const painel = p.getByTestId('fvs-painel')
+      const fechar = async () => {
+        await p.locator('.fv-cab button').click()
+        await painel.waitFor({ state: 'detached' })
+      }
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const itemDaArea = (n: number) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => e.area_id && e.item === ${n})
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          const u = l.at(-1)
+          return u ? { r: u.resultado, obs: u.observacao } : null
+        })()`)
+      const registrosDe = (nomeDoFuro: string) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const els = await sincronizador.linhas('elementos', '${OBRA}')
+          const ids = new Set(els.filter((e) => e.nome === '${nomeDoFuro}').map((e) => e.id))
+          return (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => ids.has(e.elemento_id)).length
+        })()`)
+      const furo = async (x: number, y: number) => {
+        await enquadrar(p, [-y, x], 2)
+        await tocarNaPlanta(p, x, y)
+      }
+      const abrir = async (trecho: string) => {
+        if (trecho === 'Trecho 1') await abrirForma(p)
+        else {
+          await naDisciplina(p, 'estrutura')
+          await p.getByTestId('fvs-secao-outra').getByRole('button', { name: new RegExp(trecho) }).click()
+        }
+        await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      }
+      const voltar = async () => {
+        await p.locator('.fv-topo .fv-voltar').click()
+        await noInicio(p)
+      }
+
+      // forma: sem aba Furos (os de laje foram para as plantas próprias); a área é desenhada aqui
+      await abrir('Trecho 1')
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes'])
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await enquadrar(p, [-600, 600], 0)
+      await p.getByTestId('fvs-nova-area').click()
+      await p.getByTestId('fvs-desenho').waitFor()
+      for (const [x, y] of [[470, 470], [730, 470], [730, 730], [470, 730]]) await tocarNaPlanta(p, x, y)
+      await p.getByTestId('fvs-concluir-area').click()
+      await p.getByTestId('fvs-caixa-nome').fill('Laje dos furos')
+      await p.getByTestId('fvs-caixa-criar').click()
+      await nomeNoPainel(p, 'Laje dos furos')
+      // o item de esgoto continua marcado pelos furos, mesmo com eles em outra planta
+      expect(await p.locator('.fv-item[data-item="6"] button[data-r]').count()).toBe(0)
+      expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('0 de 1 OK')
+      await fechar()
+      await voltar()
+
+      // planta de esgoto: só a aba Furos; longe, o número da área conta só o FL1 (FL4 e FL5 estão fora dela)
+      await abrir('Furos de esgoto')
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual([]) // uma aba só: sem a fila de abas, como na armadura
+      await enquadrar(p, [-600, 600], 0)
+      const numero = p.getByTestId('fvs-numero-furos')
+      await numero.waitFor()
+      expect(await numero.allTextContents()).toEqual(['1 furo'])
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/1 OK')
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_esgoto_longe.png` })
+      // o FL2 (água) não aparece aqui: o toque nele não grava nada
+      await furo(600, 640)
+      await p.waitForTimeout(600)
+      expect(await registrosDe('FL2')).toBe(0)
+      // FL1 OK: o item 6 da área (da forma) fica C
+      await furo(520, 520)
+      await aviso('FL1: OK')
+      await expect.poll(() => itemDaArea(6), { timeout: 5000 }).toEqual({ r: 'C', obs: null })
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_esgoto_ok.png` })
+      await voltar()
+
+      // planta de água: FL2 errado deixa o item 7 NC, com o furo na observação
+      await abrir('Furos de água')
+      await furo(600, 640)
+      await aviso('FL2: OK')
+      await furo(600, 640)
+      await aviso('FL2: errado')
+      await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: 'NC', obs: 'Furo errado: FL2' })
+      await nomeNoPainel(p, 'FL2')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // o painel abriu: o mapa encolhe e põe o furo no meio da faixa (60 ms depois); espera assentar
+      await p.waitForFunction(() => {
+        const m = (window as any).__fvMapa
+        const c = m.getContainer()
+        return m.getSize().y === c.clientHeight && !m._animatingZoom
+      })
+      await p.waitForTimeout(300)
+      // o furo está à vista, acima do painel e fora do aviso
+      const [xFuro, yFuro] = await naTela(p, 600, 640)
+      const caixa = (await painel.boundingBox())!
+      const sobOPainel = xFuro >= caixa.x && xFuro <= caixa.x + caixa.width && yFuro >= caixa.y - 50 && yFuro <= caixa.y + caixa.height
+      expect(sobOPainel).toBe(false)
+      expect(await p.evaluate(([x, y]: [number, number]) => !!document.elementFromPoint(x, y)?.closest('.fv-mapa'), [xFuro, yFuro] as [number, number])).toBe(true)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_agua_nc.png` })
+      // 3º toque com o painel do NC aberto (regra de 21/11, passoDoToque): sem conferir e o painel fecha
+      await tocarNaPlanta(p, 600, 640)
+      await aviso('FL2: sem conferir')
+      await painel.waitFor({ state: 'detached' })
+      await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: null, obs: null })
+      // e de novo: OK, errado
+      await furo(600, 640)
+      await aviso('FL2: OK')
+      await furo(600, 640)
+      await aviso('FL2: errado')
+      await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: 'NC', obs: 'Furo errado: FL2' })
+      await fechar()
+      await voltar()
+
+      // de volta na forma: o painel da área mostra o que as plantas de furação marcaram
+      await abrir('Trecho 1')
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await enquadrar(p, [-600, 600], 0)
+      await tocarNaPlanta(p, 700, 700)
+      await nomeNoPainel(p, 'Laje dos furos')
+      expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('1 de 1 OK')
+      expect(await contrasteNosDoisTemas(p), 'contraste do painel da área').toEqual([])
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: ligação entre peças: o C no item da área de laje marca os pilares e as vigas de dentro dela, mostra a origem e se desfaz`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&regras=pecas`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       // tela das regras: a ligação entre peças diz que vale para as peças de dentro da área
       await p.getByTestId('fvs-entra-regras').click()
       expect(await p.getByTestId('fvs-regra-ligacao').count()).toBe(3)
@@ -1884,8 +2103,8 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.locator('.fv-regras li *').evaluateAll((l: Element[]) => l.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 14).map((e) => e.textContent))).toEqual([])
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ligacao_pecas_${nome}_regras.png`), fullPage: true })
       await p.locator('.fv-regras .fv-voltar').click()
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       const painel = p.getByTestId('fvs-painel')
       const fechar = async () => {
@@ -1990,8 +2209,7 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&esquadrias=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       // com esquadrias, a planta de ambientes ganha abas, e o serviço continua no topo
@@ -2093,6 +2311,7 @@ suite('FVS na bancada (Chrome)', () => {
 
       // a busca do início mostra a esquadria pela marca dela (o pior dos serviços)
       await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
       await p.getByTestId('fvs-busca-obra').fill('101-01-JA120B')
       const linha = p.getByTestId('fvs-busca-linha').first()
       await linha.waitFor()
@@ -2108,7 +2327,7 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&modulacao=1`)
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       // a sala do 101: o recorte da modulação no lugar do detalhe, e os cômodos do apartamento logo abaixo.
@@ -2150,17 +2369,20 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&vedacao=1`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      // a modulação vem antes dos ambientes (a alvenaria vem antes do reboco); as paredes não contam na estrutura
-      expect(await pavimento.locator('.fv-disciplina').allTextContents()).toEqual(['Estrutura', 'Modulação de paredes', 'Ambientes'])
+      await noInicio(p)
+      // as paredes não contam na estrutura
+      expect(await pavimento.first().innerText()).toContain('de 62 peças liberadas')
+      // a Alvenaria (com a modulação) vem antes dos Acabamentos (a alvenaria vem antes do reboco)
+      await pavimento.first().click()
+      await expect.poll(() => p.getByTestId('fvs-disciplina').evaluateAll((l: HTMLElement[]) => l.map((e) => e.dataset.disciplina))).toEqual(['estrutura', 'alvenaria', 'acabamentos'])
+      await naDisciplina(p, 'alvenaria')
       const secao = p.getByTestId('fvs-secao-vedacao')
       expect(await secao.getByTestId('fvs-resumo-paredes').innerText()).toBe('0 de 9 paredes liberadas')
-      expect(await secao.innerText()).toContain('TESTE.VD.EX.001.PAV-R00 · 9 paredes')
-      expect(await pavimento.locator('summary').first().innerText()).toContain('de 62 peças liberadas')
+      expect((await secao.innerText()).replace(/\s+/g, ' ')).toContain('9 paredes · TESTE.VD.EX.001.PAV-R00')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/vedacao_${nome}_inicio.png`, fullPage: true })
 
-      await secao.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await secao.getByRole('button', { name: /Abrir/ }).click()
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await p.locator('.fv-seg').count()).toBe(0) // só paredes: sem abas, sem área de laje
       expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/9 liberados')
@@ -2190,8 +2412,9 @@ suite('FVS na bancada (Chrome)', () => {
 
       // de volta ao início: a parede liberada conta na modulação, não na estrutura nem nos ambientes
       await p.goto(`${url}?abrir=0&vedacao=1`)
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await naDisciplina(p, 'alvenaria')
       expect(await p.getByTestId('fvs-resumo-paredes').innerText()).toBe('1 de 9 paredes liberadas')
+      await naDisciplina(p, 'acabamentos')
       expect(await p.getByTestId('fvs-ambientes').innerText()).toContain('nenhuma ficha começada')
       expect(erros).toEqual([])
       await contexto.close()
@@ -2203,7 +2426,7 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&modulacao=1&projetos=1`)
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
       await abrirPlantaDeAmbientes(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await enquadrar(p, [-480, 320], 0)
@@ -2249,9 +2472,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&barras=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Barras'])
       const painel = p.getByTestId('fvs-painel')
@@ -2381,9 +2603,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&partes=1`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       const FICHA_P = 'f0000000-0000-0000-0000-000000000001'
       const pilar = (n: number) => `e0000000-0000-0000-0000-${String(n).padStart(12, '0')}`
@@ -2536,9 +2757,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       const FICHA_V = 'f0000000-0000-0000-0000-000000000002'
       const viga = (n: number) => `e1000000-0000-0000-0000-${String(n).padStart(12, '0')}`
@@ -2654,9 +2874,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       const painel = p.getByTestId('fvs-painel')
@@ -2697,16 +2916,16 @@ suite('FVS na bancada (Chrome)', () => {
       await p.waitForTimeout(100)
       expect(await p.locator('.fv-mapa').count()).toBe(1)
       await p.goBack()
-      await pavimento.waitFor()
+      await noInicio(p)
 
       // o "‹" do topo sai da planta de uma vez, com o painel aberto
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       await buscar(p, 'P4')
       await nomeNoPainel(p, 'P4')
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
 
       // veio da lista: a peça abre com o painel; voltar devolve à lista
       await p.getByTestId('fvs-entra-reprovacoes').click()
@@ -2727,8 +2946,7 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       const busca = p.getByTestId('fvs-busca-obra')
       const linhas = p.getByTestId('fvs-busca-linha')
 
@@ -2774,9 +2992,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       const desfazer = p.getByTestId('fvs-desfazer')
@@ -2894,7 +3111,7 @@ suite('FVS na bancada (Chrome)', () => {
 
       // o que foi marcado e desfeito não entra na lista para lançar: do P4 só fica o NA
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
       await p.getByTestId('fvs-entra-lancamento').click()
       const fichas = p.getByTestId('fvs-lan-ficha')
       await fichas.first().waitFor()
@@ -2914,8 +3131,10 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&revisao=1`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      const linha = pavimento.locator('li', { hasText: 'Trecho 1' })
+      await noInicio(p)
+      expect(await pavimento.count()).toBe(1)
+      await naDisciplina(p, 'estrutura')
+      const linha = p.getByTestId('fvs-secao-estrutura').locator('li', { hasText: 'Trecho 1' })
       await linha.getByRole('button', { name: 'Abrir R00' }).waitFor()
 
       await contexto.setOffline(true)
@@ -2952,7 +3171,7 @@ suite('FVS na bancada (Chrome)', () => {
 
       // listas e busca também
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
       await p.getByTestId('fvs-busca-obra').fill('P4')
       await p.getByTestId('fvs-busca-linha').first().waitFor()
       await p.getByTestId('fvs-busca-obra').fill('')
@@ -2962,11 +3181,12 @@ suite('FVS na bancada (Chrome)', () => {
       expect((await rep.first().textContent()) ?? '').toContain('Marcado sem internet')
       await rep.first().locator('.fv-rep-foto img').waitFor() // a foto ainda está no aparelho
       await p.locator('.fv-reprovacoes .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
 
       // a internet volta: a revisão nova pode ser baixada
       await contexto.setOffline(false)
       await p.waitForFunction(() => !document.querySelector('.faixa-aviso')?.textContent?.includes('Sem internet'))
+      await naDisciplina(p, 'estrutura')
       expect(await linha.getByRole('button', { name: /^Baixar R01/ }).isEnabled()).toBe(true)
 
       expect(erros).toEqual([])
@@ -2979,9 +3199,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       await buscar(p, 'P4')
@@ -3022,9 +3241,9 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       const abrirTrecho = async () => {
-        await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+        await abrirForma(p)
         await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
         await p.waitForTimeout(300)
       }
@@ -3041,7 +3260,7 @@ suite('FVS na bancada (Chrome)', () => {
       }
       await p.waitForFunction(() => document.querySelector('.fv-sit')?.textContent === 'Liberado')
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
       expect(await pavimento.innerText()).toContain('2 de 62 peças liberadas')
 
       // sai a rev. 1 da ficha, com outros itens. Chega também um registro do servidor, com hora "no futuro"
@@ -3053,7 +3272,7 @@ suite('FVS na bancada (Chrome)', () => {
         await banco.registros.put({ ...planta, linha: { ...planta.linha, criado_em_servidor: new Date(Date.now() + 3600000).toISOString() } })
       })()`)
       await p.goto(`${url}?abrir=0`)
-      await pavimento.waitFor()
+      await noInicio(p)
 
       // o que estava liberado continua liberado, na revisão em que foi marcado
       expect(await pavimento.innerText()).toContain('2 de 62 peças liberadas')
@@ -3086,7 +3305,7 @@ suite('FVS na bancada (Chrome)', () => {
         await banco.registros.put({ tabela: 'fvs_eventos', id: 'f9000000-0000-0000-0000-000000000999', obra_id: base.obra_id, pendente: 0, linha: { ...base, itens: undefined, id: 'f9000000-0000-0000-0000-000000000999', elemento_id: 'e0000000-0000-0000-0000-000000000006', ficha_id: 'f0000000-0000-0000-0000-000000000099', item: 1, resultado: 'A', rodada: 1, usuario_id: 'outra', criado_em_dispositivo: new Date(Date.now() + 86400000).toISOString() } })
       })()`)
       await p.goto(`${url}?abrir=0`)
-      await pavimento.waitFor()
+      await noInicio(p)
       // no início da FVS: há registro mais de 10 min à frente, com quem marcou e a data com o ano
       const naFrente = p.getByTestId('fvs-registro-na-frente')
       await naFrente.waitFor()
@@ -3133,8 +3352,10 @@ suite('FVS na bancada (Chrome)', () => {
       // a R01 foi publicada: o cadastro chegou, o pacote ainda não
       await p.goto(`${url}?abrir=0&revisao=1`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      const linha = pavimento.locator('li', { hasText: 'Trecho 1' })
+      await noInicio(p)
+      expect(await pavimento.count()).toBe(1)
+      await naDisciplina(p, 'estrutura')
+      const linha = p.getByTestId('fvs-secao-estrutura').locator('li', { hasText: 'Trecho 1' })
       await linha.getByRole('button', { name: 'Abrir R00' }).waitFor()
       expect(await linha.innerText()).toContain('no aparelho ainda está a R00')
       await linha.getByRole('button', { name: /^Baixar R01/ }).waitFor()
@@ -3157,7 +3378,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       await capturar('2_planta')
       await p.locator('.fv-topo .fv-voltar').click()
-      await pavimento.waitFor()
+      await noInicio(p)
 
       // pela lista também: a peça abre na revisão que está aqui, em vez de pedir para baixar
       await p.getByTestId('fvs-entra-reprovacoes').click()
@@ -3179,9 +3400,11 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-topo .fv-voltar').click()
       await p.getByTestId('fvs-rep').first().waitFor()
       await p.locator('.fv-reprovacoes .fv-voltar').click()
-      await pavimento.waitFor()
-      await linha.getByRole('button', { name: 'Abrir', exact: true }).waitFor()
-      expect(await linha.innerText()).not.toContain('no aparelho ainda')
+      await noInicio(p)
+      // com a R01 no aparelho, a forma vira as opções (Pilares, Vigas...), sem o aviso da revisão
+      await naDisciplina(p, 'estrutura')
+      await p.locator('[data-testid=fvs-opcao-forma][data-tipo=P]').waitFor()
+      expect(await p.getByTestId('fvs-secao-estrutura').innerText()).not.toContain('no aparelho ainda')
       await expect.poll(pacotes, { timeout: 5000 }).not.toContain(PLANTA_R00)
       expect(await pacotes()).toContain(PLANTA_R01)
 
@@ -3196,13 +3419,16 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&revisao=1`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
+      await pavimento.first().click()
       await p.getByTestId('fvs-mais-pavimento').click()
       await p.getByTestId('fvs-tirar-pavimento').waitFor()
       p.once('dialog', (d: any) => d.accept())
       await p.getByTestId('fvs-tirar-pavimento').click()
-      // "Baixar R01" já estava na linha: quem diz que a planta saiu é o "Abrir R00" sumir
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir R00' }).waitFor({ state: 'detached' })
+      // quem diz que as plantas saíram é o "⋯ Mais" sumir (não sobra nada no aparelho)
+      await p.getByTestId('fvs-tirar-pavimento').waitFor({ state: 'detached' })
+      await naDisciplina(p, 'estrutura')
+      expect(await p.getByTestId('fvs-secao-estrutura').getByRole('button', { name: 'Abrir R00' }).count()).toBe(0)
 
       // chega à planta por um caminho que não passa pelo início (o seletor de trecho, por exemplo)
       await p.goto(`${url}?revisao=1`)
@@ -3229,9 +3455,8 @@ suite('FVS na bancada (Chrome)', () => {
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0`)
-      const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
-      await pavimento.locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await noInicio(p)
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.waitForTimeout(300)
       await buscar(p, 'P4')
@@ -3287,10 +3512,10 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-topo .fv-voltar').click()
       await linhas.first().waitFor()
       await p.locator('.fv-duplicadas .fv-voltar').click()
-      await p.getByTestId('fvs-pavimento').waitFor()
+      await noInicio(p)
 
       // "1 com NC" na planta leva às reprovações daquele trecho, já filtradas
-      await p.getByTestId('fvs-pavimento').locator('li', { hasText: 'Trecho 1' }).getByRole('button', { name: 'Abrir' }).click()
+      await abrirForma(p)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       await p.getByTestId('fvs-ver-reprovacoes').click()
       await p.getByTestId('fvs-rep').first().waitFor()
@@ -3393,7 +3618,7 @@ suite('FVS na bancada (Chrome)', () => {
       // o início conta à parte
       await p.goto(`${url}?abrir=0`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       expect(await pavimento.innerText()).toContain('1 p/ concretar')
 
       expect(erros).toEqual([])
@@ -3585,7 +3810,7 @@ suite('FVS na bancada (Chrome)', () => {
       // o início mostra o quanto da laje está liberado, e a busca da obra acha
       await p.goto(`${url}?abrir=0`)
       const pavimento = p.getByTestId('fvs-pavimento')
-      await pavimento.waitFor()
+      await noInicio(p)
       expect(await p.getByTestId('fvs-resumo-lajes').innerText()).toContain('73 de 73 m²')
       // a área não entra na conta de peças da forma
       expect(await pavimento.innerText()).toContain('de 62 peças liberadas')

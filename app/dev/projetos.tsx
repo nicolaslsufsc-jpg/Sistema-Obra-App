@@ -10,6 +10,8 @@ import { banco } from '../src/nucleo/servicos'
 import type { ObraLocal, PapelNaObra, UsuarioLocal } from '../src/nucleo/conta'
 import { ModuloProjetos } from '../src/projetos/telas/ModuloProjetos'
 import { dataLocal, somarDias } from '../src/projetos/regras'
+import { importarBase } from '../src/projetos/base'
+import { DISTRIBUICAO_EXE, VIGENTES_EXE } from '../src/projetos/exemplo_exe'
 
 const OBRA = 'b0000000-0000-0000-0000-0000000000bb'
 const papel = (new URLSearchParams(location.search).get('papel') as PapelNaObra | null) ?? 'gestor'
@@ -122,7 +124,30 @@ async function semear() {
   await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.linha.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
 }
 
-semear().then(() => {
+// ?autodoc=ok|atrasada|nunca: a cópia guardada da última atualização do Autodoc (sem servidor na bancada,
+// a faixa mostra a cópia guardada). Sem o parâmetro: "ainda não consultada".
+async function semearAutodoc() {
+  const qual = new URLSearchParams(location.search).get('autodoc')
+  const chave = `projetos_autodoc:${OBRA}`
+  if (!qual) return banco.gravarMeta(chave, null)
+  const horas = qual === 'atrasada' ? 50 : 2
+  await banco.gravarMeta(chave, {
+    conferidoEm: new Date().toISOString(),
+    ultima:
+      qual === 'nunca'
+        ? null
+        : { dataLista: HOJE, publicadaEm: new Date(Date.now() - horas * 3600_000).toISOString(), quem: 'Ana Exemplo', revisoesNovas: 3, documentosNovos: 1, resultado: '' },
+  })
+}
+
+// ?base=exe: importa a base fictícia EXE (lista vigente + distribuição de exemplo) para ver o painel e a aba Pessoas.
+async function semearBase() {
+  if (new URLSearchParams(location.search).get('base') !== 'exe') return
+  const arquivo = (texto: string, nome: string) => new File([texto], nome, { type: 'text/csv' })
+  await importarBase(OBRA, { vigentes: arquivo(VIGENTES_EXE, 'vigentes_exe.csv'), distribuicao: arquivo(DISTRIBUICAO_EXE, 'distribuicao_exe.csv') })
+}
+
+Promise.all([semear(), semearAutodoc(), semearBase()]).then(() => {
   history.replaceState({ tela: 'projetos' }, '')
   render(<ModuloProjetos usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
 })

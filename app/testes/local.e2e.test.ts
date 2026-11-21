@@ -19,6 +19,7 @@ import { lerNomesProibidos, nomesNoTexto } from '../sem_dados_de_obra'
 import { amostraIfc } from './ifc/amostra'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from '../src/projetos/exemplo_exe'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
+import { abrirFormaFvs, naDisciplinaFvs, noInicioFvs, pavimentoNoAparelhoFvs } from './fvs_inicio'
 import { abrirMenuObra, comPavimentosDoAparelho, escolherPacote, fecharMenuObra } from './menu_obra'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Page = any
@@ -249,7 +250,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       // FVS: o pavimento da pasta, com a planta já guardada no aparelho (botão Abrir, não Baixar)
       await p.getByRole('button', { name: /^FVS/ }).click()
       await p.getByRole('heading', { name: 'FVS', exact: true }).waitFor()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).waitFor()
+      await pavimentoNoAparelhoFvs(p)
       expect(await p.locator('.fv-baixar').count()).toBe(0)
       await print('2-fvs')
       await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
@@ -406,7 +407,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         // um registro (C no P1, pela FVS) e de volta ao Concreto
         await abrirNaObra(p)
         await p.getByRole('button', { name: /^FVS/ }).click()
-        await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+        await abrirFormaFvs(p)
         await p.fill('.fv-busca', 'P1')
         await p.press('.fv-busca', 'Enter')
         await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
@@ -442,7 +443,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     }, 120_000)
   }
 
-  // IFC (de volta ao menu em 13/11/2026, como beta): o selo aparece, o leitor abre e lê a amostra
+  // IFC (no menu desde 20/11/2026, sem selo beta; confirmado pelo Nicolas em 21/11): o leitor abre e lê a amostra
   // (escrita à mão, sem dado de obra) com o app compilado e sem internet.
   for (const [nome, largura, altura] of [
     ['celular', 375, 812],
@@ -805,6 +806,86 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await contexto.close()
     }, 150_000)
 
+    // Aba Pessoas (21/11/2026): empresas (menu), pessoas (submenu) e o painel de uma pessoa, nos dois temas
+    itProjetos(`${nome} ${largura}x${altura}: Projetos aba Pessoas e painel da pessoa, nos dois temas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const print = async (n: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-${n}.png`), fullPage: true })
+      }
+      const estouro = () => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      const contraste = async (onde: string) => {
+        await p.setViewportSize({ width: largura, height: 5000 })
+        expect(await contrasteBaixo(p), onde).toEqual([])
+        await p.setViewportSize({ width: largura, height: altura })
+      }
+      const vig = path.join(SAIDA, 'vigentes_exe_p.csv')
+      const dist = path.join(SAIDA, 'distribuicao_exe_p.csv')
+      writeFileSync(vig, VIGENTES_EXE)
+      writeFileSync(dist, DISTRIBUICAO_EXE)
+      await abrirNaObra(p)
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByTestId('painel-importar').waitFor()
+      await p.setInputFiles('[data-testid=arquivo-vigentes]', vig)
+      await p.setInputFiles('[data-testid=arquivo-distribuicao]', dist)
+      await p.getByRole('button', { name: 'Importar', exact: true }).click()
+      await p.getByTestId('painel-resumo').waitFor()
+      // sem conta, a faixa da última atualização do Autodoc não aparece (não há servidor)
+      expect(await p.getByTestId('projetos-autodoc').count()).toBe(0)
+
+      // menu: 4 empresas, a com mais atrasadas primeiro; tocar abre as pessoas dela
+      await p.getByRole('button', { name: 'Pessoas', exact: true }).click()
+      const empresas = p.getByTestId('pessoas-empresas')
+      await empresas.waitFor()
+      expect(await empresas.locator(':scope > li').count()).toBe(4)
+      expect(await empresas.locator(':scope > li').first().innerText()).toContain('Empreiteira Alfa')
+      await empresas.getByRole('button', { name: /Empreiteira Alfa/ }).click()
+      expect(await p.getByTestId('pessoas-da-empresa').locator('li').count()).toBe(3)
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('11-pessoas')
+      await contraste('escuro, pessoas')
+
+      // busca por pessoa abre a empresa sozinha
+      await p.getByPlaceholder('Buscar empresa ou pessoa').fill('maria')
+      expect(await empresas.locator(':scope > li').count()).toBe(1)
+      await p.getByPlaceholder('Buscar empresa ou pessoa').fill('')
+
+      // o painel do João: 2 em campo, 1 atrasada para recolher, separado por disciplina e pasta
+      await p.getByTestId('pessoas-da-empresa').getByText('João', { exact: true }).click()
+      await p.getByTestId('pessoa').waitFor()
+      expect(await p.getByTestId('pessoa-atrasadas').innerText()).toBe('1')
+      expect(await p.getByTestId('pessoa-tirar').innerText()).toContain('EXE.ES.LO.100.FORPILOTIS')
+      const tem = await p.getByTestId('pessoa-tem').innerText()
+      expect(tem).toContain('LO/Formas')
+      expect(tem).toContain('LO/Blocos')
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('12-pessoa')
+      await contraste('escuro, pessoa')
+
+      // tocar na prancha abre a prancha; voltar volta ao painel da pessoa
+      await p.getByTestId('pessoa-tirar').locator('li').first().click()
+      await p.getByTestId('painel-prancha').waitFor()
+      await p.goBack()
+      await p.getByTestId('pessoa').waitFor()
+
+      // modo sol (claro)
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByTestId('pessoas-empresas').waitFor()
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByTestId('botao-tema').click()
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByRole('button', { name: 'Pessoas', exact: true }).click()
+      await p.getByTestId('pessoas-empresas').getByRole('button', { name: /Empreiteira Alfa/ }).click()
+      await contraste('claro, pessoas')
+      await p.getByTestId('pessoas-da-empresa').getByText('João', { exact: true }).click()
+      await p.getByTestId('pessoa').waitFor()
+      await contraste('claro, pessoa')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 150_000)
+
     // Distribuição e "A entregar" (20/11/2026): regra pelo formulário, lista importada, desativar sem apagar
     itProjetos(`${nome} ${largura}x${altura}: Projetos lista de distribuição e a entregar, nos dois temas`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
@@ -935,6 +1016,112 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     ['celular', 375, 812],
     ['tablet', 1280, 800],
   ] as const) {
+    it(`${nome} ${largura}x${altura}: Exportar PDF na FVS, no Concreto, no Projetos e no Documentos (folha A4 com obra, data e quem gerou)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      // o Imprimir do navegador não abre no teste: guarda a folha que ia sair
+      await contexto.addInitScript(() => {
+        const w = window as any
+        w.__folhas = []
+        window.print = () => {
+          const f = document.querySelector('.so-folha-pdf')
+          w.__folhas.push({ texto: (f?.textContent ?? '').replace(/\s+/g, ' '), so: document.body.classList.contains('so-imprimindo'), titulo: document.title })
+        }
+      })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const exportar = async (testid: string, arquivo: string) => {
+        const antes = await p.evaluate(() => (window as any).__folhas.length)
+        const bt = p.getByTestId(testid)
+        await bt.waitFor()
+        const caixa = await bt.boundingBox()
+        expect(caixa.height).toBeGreaterThanOrEqual(44)
+        expect(caixa.x + caixa.width).toBeLessThanOrEqual(largura)
+        expect(await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+        if (PRINTS) {
+          await bt.scrollIntoViewIfNeeded()
+          await p.screenshot({ path: path.join(PRINTS, `tela-${nome}-${arquivo}.png`) })
+        }
+        await bt.click()
+        await p.waitForFunction((n: number) => (window as any).__folhas.length > n, antes)
+        const f = await p.evaluate(() => (window as any).__folhas.at(-1))
+        // só a folha sai: o resto da página some na impressão
+        expect(f.so).toBe(true)
+        expect(f.texto).toContain('EXE · Obra Exemplo')
+        expect(f.texto).toMatch(/Gerado em \d\d\/\d\d\/\d{4} \d\d:\d\d/)
+        expect(f.texto).toContain('por este aparelho (sem conta)')
+        expect(f.titulo).toMatch(/_EXE_.*_\d{4}-\d\d-\d\d$/)
+        if (PRINTS) {
+          await p.emulateMedia({ media: 'print' })
+          await p.screenshot({ path: path.join(PRINTS, `pdf-${nome}-${arquivo}.png`), fullPage: true })
+          // null volta ao normal ("screen" faria o page.pdf sair como a tela)
+          await p.emulateMedia({ media: null })
+          if (nome === 'tablet') await p.pdf({ path: path.join(PRINTS, `pdf-${arquivo}.pdf`), preferCSSPageSize: true, printBackground: true })
+        }
+        // fechou o Imprimir (o "afterprint" do page.pdf não tira a folha): no próximo toque ou tecla, a folha
+        // sai da página e o título volta
+        await p.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+        expect(await p.locator('.so-folha-pdf').count()).toBe(1)
+        await p.keyboard.press('Shift')
+        expect(await p.locator('.so-folha-pdf').count()).toBe(0)
+        expect(await p.title()).not.toMatch(/_EXE_/)
+        return f.texto as string
+      }
+      try {
+        // FVS: o pavimento (nível 2) e a obra inteira (nível 1)
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^FVS/ }).click()
+        await p.getByTestId('fvs-pavimento').first().click()
+        let t = await exportar('fvs-pdf-pavimento', 'fvs-pavimento')
+        expect(t).toContain('FVS · 3º Pavimento')
+        expect(t).toContain('Fichas por peça')
+        expect(t).toContain('P1')
+        expect(t).toContain('Não conformidades')
+        await noInicioFvs(p)
+        t = await exportar('fvs-pdf-obra', 'fvs-obra')
+        expect(t).toContain('FVS · Obra inteira')
+
+        // Concreto: as concretagens do pavimento
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^Concreto/ }).click()
+        await p.locator('.cc-linha', { hasText: '3º Pavimento' }).first().click()
+        t = await exportar('concreto-pdf-pavimento', 'concreto-pavimento')
+        expect(t).toContain('Concreto · 3º Pavimento')
+        expect(t).toContain('Concretagens')
+
+        // Documentos: a lista mestra com os filtros da tela
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^Documentos/ }).click()
+        await p.getByTestId('lista-mestra').getByText('Certificado de calibração · trena 5 m').waitFor()
+        t = await exportar('documentos-pdf-lista', 'documentos-lista')
+        expect(t).toContain('Documentos · Lista mestra · Obra')
+        expect(t).toContain('EXEMPLO · Certificado de calibração · trena 5 m')
+
+        // Projetos: importa a base de exemplo; Pranchas e Entregas
+        const vig = path.join(SAIDA, `vigentes_pdf_${nome}.csv`)
+        const dist = path.join(SAIDA, `distribuicao_pdf_${nome}.csv`)
+        writeFileSync(vig, VIGENTES_EXE)
+        writeFileSync(dist, '﻿' + DISTRIBUICAO_EXE)
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^Projetos/ }).click()
+        await p.getByTestId('painel-importar').waitFor()
+        await p.setInputFiles('[data-testid=arquivo-vigentes]', vig)
+        await p.setInputFiles('[data-testid=arquivo-distribuicao]', dist)
+        await p.getByRole('button', { name: 'Importar', exact: true }).click()
+        await p.getByTestId('painel-resumo').waitFor()
+        await p.locator('.pj-abas').getByRole('button', { name: 'Pranchas', exact: true }).click()
+        t = await exportar('projetos-pdf-pranchas', 'projetos-pranchas')
+        expect(t).toContain('Projetos · Pranchas da lista vigente')
+        await p.locator('.pj-abas').getByRole('button', { name: 'Entregas', exact: true }).click()
+        t = await exportar('projetos-pdf-entregas', 'projetos-entregas')
+        expect(t).toContain('Projetos · Entregas de cópias')
+        expect(t).toContain('Com filtro em campo')
+        expect(erros).toEqual([])
+      } finally {
+        await contexto.close()
+      }
+    }, 180_000)
+
     it(`${nome} ${largura}x${altura}: Documentos (lista mestra, revisão nova, cadastro, imprimir, salvar e restaurar)`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700, acceptDownloads: true })
       const p: Page = await contexto.newPage()
@@ -1107,7 +1294,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.reload()
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await p.getByRole('button', { name: /^FVS/ }).click()
-        await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+        await abrirFormaFvs(p)
         await p.fill('.fv-busca', 'P1')
         await p.press('.fv-busca', 'Enter')
         await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
@@ -1347,7 +1534,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await p.getByRole('heading', { name: /EXE/ }).count()).toBe(0)
         // e a planta da obra escolhida abre (veio do .zip, guardada no aparelho)
         await p.getByRole('button', { name: /^FVS/ }).click()
-        await p.getByRole('button', { name: 'Abrir', exact: true }).first().click()
+        await abrirFormaFvs(p)
         await p.locator('.fv-mapa .leaflet-tile').first().waitFor({ timeout: 30_000 })
         if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `obra-escolhida-${nome}.png`) })
         expect(erros).toEqual([])
@@ -1395,13 +1582,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await abrirNaObra(p)
         // marca C no P1: algo para lançar, se a obra tivesse sistema oficial
         await p.getByRole('button', { name: /^FVS/ }).click()
-        await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+        await abrirFormaFvs(p)
         await p.fill('.fv-busca', 'P1')
         await p.press('.fv-busca', 'Enter')
         await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
         await p.locator('.fv-item[data-item="1"] button[data-r="C"]').click()
         await p.locator('.fv-sit', { hasText: /Liberad|Em andamento/ }).first().waitFor()
         await p.getByRole('button', { name: 'Voltar', exact: true }).first().click()
+        await noInicioFvs(p)
         await p.getByRole('heading', { name: 'FVS', exact: true }).waitFor()
         // sem conta não há servidor: a marcação não vira "esperando envio" (obra de demonstração, 13/11)
         expect(await p.getByText(/esperando envio|quando a internet voltar/).count()).toBe(0)
@@ -1487,7 +1675,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await escolherPacote(p, zip)
       await naObra()
       await p.getByRole('button', { name: /^FVS/ }).click()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await abrirFormaFvs(p)
       await p.fill('.fv-busca', 'P1')
       await p.press('.fv-busca', 'Enter')
       await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
@@ -1514,8 +1702,11 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await naObra()
       expect(await guardados()).toBe(antes)
       await p.getByRole('button', { name: /^FVS/ }).click()
-      await p.locator('.fv-baixar').first().click()
+      // o Baixar da planta fica na Estrutura do pavimento (3 níveis, 21/11/2026)
+      await naDisciplinaFvs(p, 'estrutura')
+      await p.getByTestId('fvs-secao-estrutura').getByRole('button', { name: /Baixar/ }).first().click()
       await p.getByRole('alert').filter({ hasText: 'abra o pacote da obra (.zip) no menu' }).waitFor()
+      await noInicioFvs(p)
       await p.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
       await naObra()
       expect(await guardados()).toBe(antes)
@@ -1525,7 +1716,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await naObra()
       expect(await guardados()).toBe(antes)
       await p.getByRole('button', { name: /^FVS/ }).click()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await abrirFormaFvs(p)
       await conferirP1()
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, 'zip-tablet-4-planta-de-volta.png'), fullPage: true })
       expect(erros).toEqual([])
@@ -1553,7 +1744,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await escolherPacote(p, zip)
         await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 30_000 })
         await p.getByRole('button', { name: /^FVS/ }).click()
-        await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor()
+        await pavimentoNoAparelhoFvs(p)
         await contexto.setOffline(true)
 
         let pergunta = ''
@@ -1561,9 +1752,13 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
           pergunta = d.message()
           return d.accept()
         })
+        // o "⋯ Mais" fica nas disciplinas do pavimento (nível 2, 21/11/2026); o Baixar, na Estrutura
+        await p.getByTestId('fvs-pavimento').first().click()
         await p.getByTestId('fvs-mais-pavimento').first().click()
         await p.getByTestId('fvs-tirar-pavimento').first().click()
-        const baixar = p.locator('.fv-baixar').first()
+        await p.getByTestId('fvs-tirar-pavimento').waitFor({ state: 'detached' })
+        await naDisciplinaFvs(p, 'estrutura')
+        const baixar = p.getByTestId('fvs-secao-estrutura').getByRole('button', { name: /Baixar/ }).first()
         await baixar.waitFor()
         expect(pergunta).toContain('pacote da obra (.zip)')
         expect(pergunta).not.toContain('é só baixar de novo')
@@ -1571,7 +1766,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await baixar.isEnabled(), 'Baixar sem internet, do pacote aberto').toBe(true)
         expect(await p.getByText('precisa de internet uma vez').count()).toBe(0)
         await baixar.click()
-        await p.getByRole('button', { name: 'Abrir', exact: true }).first().waitFor({ timeout: 30_000 })
+        await p.getByTestId('fvs-secao-estrutura').getByRole('button', { name: /Abrir$/ }).first().waitFor({ timeout: 30_000 })
         expect(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
         if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `zip-${nome}-tirar-e-baixar-sem-internet.png`), fullPage: true })
         expect(erros).toEqual([])
@@ -1624,7 +1819,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     p.on('pageerror', (e: Error) => erros.push(e.message))
     const abrirP1 = async () => {
       await p.getByRole('button', { name: /^FVS/ }).click()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await abrirFormaFvs(p)
       await p.fill('.fv-busca', 'P1')
       await p.press('.fv-busca', 'Enter')
       await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
@@ -1669,7 +1864,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     const erros: string[] = []
     const abrirP1 = async (p: Page) => {
       await p.getByRole('button', { name: /^FVS/ }).click()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await abrirFormaFvs(p)
       await p.fill('.fv-busca', 'P1')
       await p.press('.fv-busca', 'Enter')
       await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
@@ -1723,7 +1918,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     const erros: string[] = []
     const abrirP1 = async (p: Page) => {
       await p.getByRole('button', { name: /^FVS/ }).click()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+      await abrirFormaFvs(p)
       await p.fill('.fv-busca', 'P1')
       await p.press('.fv-busca', 'Enter')
       await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')
@@ -1790,10 +1985,10 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
             ['menu', async () => {}],
             ['fvs', async () => {
               await p.getByRole('button', { name: /^FVS/ }).click()
-              await p.getByRole('button', { name: 'Abrir', exact: true }).waitFor()
+              await pavimentoNoAparelhoFvs(p)
             }],
             ['planta e ficha', async () => {
-              await p.getByRole('button', { name: 'Abrir', exact: true }).click()
+              await abrirFormaFvs(p)
               await p.fill('.fv-busca', 'P1')
               await p.press('.fv-busca', 'Enter')
               await p.waitForFunction(() => document.querySelector('.fv-nm')?.textContent === 'P1')

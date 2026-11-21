@@ -18,6 +18,7 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                                    "rotulo": [x0, y0, x1, y1], "polys": [[[x, y], ...]],
                                    "detalhe": "P_P32"}},
                (ambiente: "tipo": "A", "nome": "303-04", "secao": "12,1 m²", "grupo": "Apto 303", opcional "comodo": "Suíte 01";
+                opcional "sem_fichas": ["EXE-024"] (fichas que não valem neste cômodo; ambientes.marcar_fichas_do_comodo);
                 opcional "detalhe" (modulação) e "projetos": ["PP_Apto_303", "I_Apto_303"] (paginação, impermeabilização...;
                 pipeline/fvs/modulacao.py))
                (pilar com consolo ou capitel: "partes": [{"tipo": "consolo", "polys": [[[x, y], ...]], "detalhe": "C_CONSOLO_P32"}])
@@ -40,6 +41,9 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
   "pontos": {"<id do ponto>": {"disciplina": "sanitario", "tipo": "ralo", "ponto": [x, y], "nome": "Ralo seco",
              "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py); o eletroduto tem também
              "linha": [[x, y], [x, y]] (o "ponto" é o meio dele)
+  "furos_laje": "esgoto",   opcional: planta de furos de laje de uma camada (esgoto, agua, eletrica; pipeline/fvs/furos.py):
+                            leva todos os furos de laje do pavimento, o app mostra e deixa tocar só os desta camada
+  "furos_laje_separados": true,   opcional: forma com os furos de laje em plantas próprias (escondidos aqui)
   "pedacos": {"t:0/1/2": [inicio, tamanho], "d:P_P32": [..], "a:P_P32": [..]}
 }
 "t:" = tile z/x/y (WebP), "d:" = imagem do detalhe (WebP), "a:" = tabela de aço (WebP).
@@ -62,6 +66,8 @@ TIPOS_DE_PARTE = ("consolo", "capitel")
 CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id")
 CAMPOS_DA_ESQUADRIA = ("codigo", "classe", "modelo", "outro_lado")
 CLASSES_DE_ESQUADRIA = ("porta", "janela")
+# Camadas das plantas de furos de laje (pipeline/fvs/furos.py, CAMADAS_DE_FURO)
+CAMADAS_DE_FURO = ("esgoto", "agua", "eletrica")
 # Barras de aço da laje (pipeline/fvs/barras_laje.py): as quatro camadas das pranchas de armação.
 CAMADAS_DE_BARRAS = ("transversal_superior", "transversal_inferior", "longitudinal_superior", "longitudinal_inferior")
 CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "espacamento", "prancha")
@@ -163,6 +169,12 @@ def montar(
             if e["tipo"] != "A":
                 raise ErroPacote(f"{e.get('nome')}: só ambiente tem nome de cômodo")
             reg["comodo"] = str(e["comodo"])
+        if e.get("sem_fichas"):
+            if e["tipo"] != "A":
+                raise ErroPacote(f"{e.get('nome')}: só ambiente tem \"sem_fichas\"")
+            if not isinstance(e["sem_fichas"], list) or not all(isinstance(c, str) and c for c in e["sem_fichas"]):
+                raise ErroPacote(f"{e.get('nome')}: \"sem_fichas\" tem que ser uma lista de códigos de ficha")
+            reg["sem_fichas"] = sorted(set(e["sem_fichas"]))
         if e.get("projetos"):
             if e["tipo"] != "A":
                 raise ErroPacote(f"{e.get('nome')}: só ambiente tem projetos")
@@ -302,6 +314,12 @@ def montar(
         # planta de armadura de uma direção: leva todas as barras do pavimento (o item da área de laje é
         # calculado pelas quatro direções), mas o app só mostra e deixa tocar as desta camada
         manifest["camada"] = cabecalho["camada"]
+    if cabecalho.get("furos_laje"):
+        if cabecalho["furos_laje"] not in CAMADAS_DE_FURO:
+            raise ErroPacote(f"camada de furos de laje desconhecida: {cabecalho['furos_laje']}")
+        manifest["furos_laje"] = cabecalho["furos_laje"]
+    if cabecalho.get("furos_laje_separados"):
+        manifest["furos_laje_separados"] = True
     texto = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return texto, b"".join(partes)
 

@@ -93,7 +93,15 @@ class TestEtiqueta(unittest.TestCase):
         self.assertEqual(bl.ler_etiqueta("N2-%%c8c/10 C=130")[0]["texto"], "N2 ø8 c/10 C=130")
         self.assertEqual(bl.ler_etiqueta("N26-1%%c12.5 C=850")[0]["texto"], "N26 1ø12,5 C=850")
         self.assertEqual(bl.ler_etiqueta("250"), [])
+        self.assertEqual(bl.ler_etiqueta("C=250 N3"), [])
         self.assertEqual(bl.ler_etiqueta("NOTA: ver detalhe"), [])
+
+    def test_quantidade_antes_do_n(self):
+        # pilotis, mezanino e térreo da obra piloto (21/11/2026)
+        self.assertEqual(bl.ler_etiqueta("35N5-%%c6.3c/10 C=1200")[0]["texto"], "N5 35ø6,3 c/10 C=1200")
+        partes = bl.ler_etiqueta("1N12-%%c20 C=600-615+1N13-%%c20 C=540")
+        self.assertEqual([(p["posicao"], p["quantidade"], p["comprimento"]) for p in partes], [("N12", 1, 600.0), ("N13", 1, 540.0)])
+        self.assertEqual(bl.ler_etiqueta("28N1-%%C8c/10 C=275")[0]["quantidade"], 28)
 
     def test_liga_pelo_comprimento(self):
         barras = [{"linha": [[0, 0], [710 * PT, 0]]}, {"linha": [[0, 8], [850 * PT, 8]]}, {"linha": [[0, 60], [850 * PT, 60]]}]
@@ -208,12 +216,13 @@ class TestPilarSemContorno(unittest.TestCase):
 
 
 class TestTamanhoDoPilar(unittest.TestCase):
-    def test_deitado_ou_em_pe_ate_5_cm(self):
-        folha = [bl.al.Ponto(0, 0, w=11, h=34)]
+    def test_deitado_ou_em_pe_ate_2_cm(self):
+        folha = [bl.al.Ponto(0, 0, w=11, h=34), bl.al.Ponto(0, 0, w=17, h=40)]
         P = bl.al.Ponto
         self.assertTrue(bl.do_tamanho_de_um_pilar(P(9, 9, w=34, h=11), folha))  # deitado
-        self.assertTrue(bl.do_tamanho_de_um_pilar(P(9, 9, w=11 + 2.5, h=34), folha))  # 4,4 cm a mais
-        self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9, w=11 + 3.5, h=34), folha))  # 6,2 cm a mais
+        self.assertTrue(bl.do_tamanho_de_um_pilar(P(9, 9, w=11 + 1.0, h=34), folha))  # 1,8 cm a mais
+        self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9, w=11 + 1.5, h=34), folha))  # 2,6 cm a mais
+        self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9, w=19, h=38), folha))  # meia cubeta perto do 17 x 40
         self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9, w=38, h=38), folha))  # cubeta
         self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9), folha))
 

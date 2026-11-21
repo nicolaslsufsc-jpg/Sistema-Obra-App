@@ -51,10 +51,11 @@ export function usarBase(ctx: Contexto) {
   return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras }
 }
 
-export type AbaBase = 'painel' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
+export type AbaBase = 'painel' | 'pessoas' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
 
 const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos }[] = [
   { aba: 'painel', rotulo: 'Painel', tela: { nome: 'painel' } },
+  { aba: 'pessoas', rotulo: 'Pessoas', tela: { nome: 'pessoas' } },
   { aba: 'pranchas', rotulo: 'Pranchas', tela: { nome: 'pranchas-base' } },
   { aba: 'entregas', rotulo: 'Entregas', tela: { nome: 'entregas-base' } },
   { aba: 'a-entregar', rotulo: 'A entregar', tela: { nome: 'a-entregar' } },

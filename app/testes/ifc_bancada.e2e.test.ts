@@ -280,5 +280,66 @@ suite('Leitor de IFC na bancada (Chrome)', () => {
       expect(erros).toEqual([])
       await contexto.close()
     }, 180_000)
+
+    it(`${nome} ${largura}x${altura}: IFCs da obra, baixar para usar sem internet, apagar e enviar`, async () => {
+      const contexto = await navegador.newContext({ viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const capturar = async (passo: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ifc_obra_${nome}_${passo}.png`) })
+      }
+      await p.goto(`${url}?obra=exe`)
+      // começa sem nada guardado (outro teste pode ter deixado)
+      await p.evaluate(async () => {
+        const raiz = await navigator.storage.getDirectory()
+        for await (const [n] of (raiz as any).entries()) await raiz.removeEntry(n, { recursive: true })
+        localStorage.clear()
+      })
+      await p.reload()
+      const lista = p.getByTestId('ifcs-da-obra').first()
+      await lista.waitFor()
+      const item = lista.getByTestId('ifc-da-obra').filter({ hasText: 'EXE_amostra.ifc' })
+      expect(await item.innerText()).toContain('para baixar')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('1_lista')
+
+      // baixar: barra de progresso, depois o modelo abre e fica guardado
+      await item.getByRole('button', { name: 'Baixar para usar offline' }).click()
+      await p.waitForFunction(() => (window as any).__ifc?.modelos.length === 1 && (window as any).__ifc.leituras.length === 0, null, { timeout: 60_000 })
+      expect(await p.evaluate(() => (window as any).__ifc.modelos[0].flags.length)).toBe(5)
+      await p.waitForFunction(() => (window as any).__ifc.guardados.length === 1, null, { timeout: 30_000 })
+
+      // no painel Modelos o IFC aparece como "neste aparelho", com Abrir e Apagar
+      await abrirAba(p, 'Modelos')
+      await item.getByRole('button', { name: 'Apagar EXE_amostra.ifc deste aparelho' }).waitFor()
+      expect(await item.innerText()).toContain('neste aparelho')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('2_baixado')
+
+      // depois de recarregar (sem servidor nenhum): continua guardado e abre pelo botão
+      await p.reload()
+      await item.getByRole('button', { name: 'Abrir' }).click()
+      await p.waitForFunction(() => (window as any).__ifc?.modelos.length === 1, null, { timeout: 60_000 })
+
+      // apagar do aparelho: fecha o modelo e volta a "Baixar"
+      await abrirAba(p, 'Modelos')
+      await item.getByRole('button', { name: 'Apagar EXE_amostra.ifc deste aparelho' }).click()
+      await item.getByRole('button', { name: 'Baixar para usar offline' }).waitFor()
+      await p.waitForFunction(() => (window as any).__ifc.guardados.length === 0)
+      expect(await p.evaluate(() => (window as any).__ifc.modelos.length)).toBe(0)
+
+      // gestor envia outro IFC: aparece na lista, em uma parte
+      await p.setInputFiles('[data-testid=ifc-enviar-arquivo]', est)
+      await lista.getByTestId('ifc-da-obra').filter({ hasText: 'amostra_EST.ifc' }).waitFor()
+      expect(await p.evaluate(() => (window as any).__ifcFonte.linhas.map((l: any) => l.nome_original).filter((n: string) => n.startsWith('amostra_EST.ifc')))).toEqual([
+        expect.stringMatching(/^amostra_EST\.ifc \(parte 1 de 1, envio [0-9a-f]{8}\)$/),
+      ])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('3_enviado')
+
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 180_000)
   }
 })

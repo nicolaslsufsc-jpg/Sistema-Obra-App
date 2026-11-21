@@ -2,7 +2,7 @@
 
 Dono do pedido: Nicolas, 06/11/2026. Branch: `modulo/ifc`.
 
-**Status (20/11/2026): reativado pelo Nicolas e pronto para sair do beta.** O módulo não tem aviso de beta próprio; o selo e o `foraDoMenu` ficam em `app/src/modulos.ts`, e quem tira os dois é a frente 06 · FRONT (num PR só com os outros módulos que voltam ao menu). Histórico abaixo, por data.
+**Status (21/11/2026): no menu do app, sem selo beta** (com e sem conta), com a lista "IFCs da obra" para baixar e usar sem internet (#53). Histórico abaixo, por data.
 
 ## O que ele faz
 
@@ -147,4 +147,45 @@ O Nicolas reativou o módulo e pediu para tirar do beta e otimizar ("arquivos gr
 3. `web-ifc` com várias threads: exige os cabeçalhos COOP/COEP no site (mexe na hospedagem e no núcleo).
 4. Ler o arquivo em mais de um worker, dividindo as peças.
 
-**Próximo passo:** a 06 · FRONT tira o `beta` e o `foraDoMenu` do IFC em `modulos.ts`; depois, abrir a torre guardada no SM-P620 de verdade.
+**Próximo passo:** abrir a torre guardada no SM-P620 de verdade.
+
+## 21/11/2026: IFCs da obra, baixar para usar sem internet (branch `ifc/baixar`)
+Pedido do Nicolas: "deixa uma opção da pessoa baixar os IFCs dentro do app pra ficar mais facil ai fica disponivel para ela offline". O Professor aprovou a proposta: sem tabela nova, sem migração e sem mudar o núcleo.
+
+**Como funciona**
+- **Onde fica no servidor:** no bucket `obras` e na tabela `arquivos`, que já existem, pelo `registrarArquivo` do núcleo (módulo `ifc`, caminho `{obra}/ifc/{id}`).
+- **Tamanho:** o plano gratuito aceita no máximo 50 MB por arquivo. Por isso o IFC sobe comprimido (gzip) e cortado em partes de até 40 MB, com no máximo 10 partes.
+  - A torre da obra piloto (298 MB) vira 49 MB, em 2 partes.
+  - O `nome_original` de cada parte diz o envio e a parte, por exemplo "Torre.ifc (parte 1 de 2, envio 3f2a9c1e)".
+- **Quem envia:** gestor e admin, com conta, pelo botão "Enviar IFC para a obra" (Modelos, ou a tela inicial do IFC). As partes entram na fila e sobem na próxima sincronização.
+- **Quem baixa:** todos com conta. A lista "IFCs da obra" mostra nome, tamanho, data e "Baixar para usar offline" com a barra de progresso.
+  - Cada parte é conferida pelo tamanho e pelo SHA-256 registrados.
+  - As partes se juntam, o gzip abre e o IFC passa pelo leitor de sempre.
+  - O modelo convertido fica guardado no aparelho (OPFS), o mesmo lugar do "Importar".
+  - Depois aparecem "Abrir" e "Apagar do aparelho". O aparelho lembra qual envio virou qual modelo (`localStorage`, `ifc.baixados.{obra}`).
+- **Sem conta** (pacote da obra), a lista não aparece. O "Importar IFC" continua igual.
+- **Versões:** arquivo do núcleo é imutável. De cada nome, a lista mostra só o envio completo mais novo, e mais o que ainda está subindo. O envio velho fica no servidor até alguém limpar pelo painel do Supabase.
+
+**Servidor em 20/11:** o bucket `obras` está em 174 MB de 1 GB e o plano dá 10 GB de saída por mês. Cabem uns 15 IFCs do tamanho da torre. **Nenhum IFC de obra foi enviado**: só os testes, com a amostra fictícia.
+
+**Arquivos**
+- `app/src/ifc/obra.ts`: lista, partes, baixar, apagar, enviar.
+- `obra_servidor.ts`: a fonte do servidor.
+- `telas/IfcsDaObra.tsx`: a tela.
+- `telas/ComObra.tsx`: a sincronização do módulo e a decisão "com conta / sem conta".
+- `ModuloIfc.tsx` e `PainelModelos.tsx`: onde a lista aparece.
+- `ifc.css`: a aparência.
+- **Bancada:** `dev/ifc.html?obra=exe` mostra a lista com uma fonte de mentira na memória (obra EXE, a amostra escrita à mão).
+
+**Testes**
+- `testes/ifc_obra.test.ts` (novo).
+- Em `testes/ifc_bancada.e2e.test.ts`, um passo novo em 375 px e no tablet: baixar, ver "neste aparelho", recarregar e abrir sem servidor, apagar e enviar.
+- Todos os testes do app, o build e o `local.e2e`.
+
+**Pendências**
+- Testar com conta de verdade: enviar um IFC fictício da EXE pelo PC e baixar no tablet.
+- A torre inteira no tablet ainda converte no próprio aparelho: deve levar alguns minutos e pede cerca de 1,2 GB de memória. Para o tablet, o melhor é enviar os IFCs por pavimento.
+- Se o Storage encher: o IFC grande vem do PC por .zip ou pasta, ou por `.obra3d` pelo "Importar".
+
+## 21/11/2026: no menu, fora do beta (confirmado)
+O Nicolas confirmou no chat do Professor: "O menu, o leitor de FC entra no menu? Sim, entra." A linha do IFC em `app/src/modulos.ts` já estava sem `beta` e sem `foraDoMenu` desde 20/11. Hoje só os textos foram acertados: a bancada (`dev/ifc.html`), o comentário do teste e este arquivo. Conferido de novo em 375 px e no tablet: o menu mostra "IFC" sem selo e o leitor abre a amostra sem internet (`local.e2e`), e a bancada passa nos dois tamanhos (`ifc_bancada.e2e`).

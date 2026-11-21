@@ -321,6 +321,24 @@ button.pj-pequeno {
   font-size: 1rem;
   margin: 0 0 0.5rem;
 }
+/* Última atualização do Autodoc (só com conta): neutra quando em dia, de atenção quando passou de 1 dia. */
+.pj-autodoc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: var(--raio);
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  border: 2px solid var(--borda);
+  overflow-wrap: anywhere;
+}
+.pj-autodoc.atrasada,
+.pj-autodoc.nunca {
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+  color: var(--atencao-texto);
+}
 .pj-aviso-base {
   background: var(--atencao-fundo);
   border: 2px solid var(--atencao-borda);
@@ -658,6 +676,91 @@ button.pj-pequeno {
 /* ---------- A entregar e Distribuição (20/11) ---------- */
 .pj-cartoes li.largo {
   grid-column: 1 / -1;
+}
+
+/* ---------- Aba Pessoas (21/11): empresas (menu) e pessoas (submenu) ---------- */
+.pj-empresas {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pj-empresas > li {
+  border: 2px solid var(--borda);
+  border-left-width: 6px;
+  border-radius: var(--raio);
+}
+.pj-empresas > li.ruim {
+  border-left-color: var(--erro);
+}
+.pj-empresas > li.atencao {
+  border-left-color: var(--atencao-borda);
+}
+.pj-empresas > li.bom {
+  border-left-color: var(--ok-borda);
+}
+.pj-empresa {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0.7rem 2.2rem 0.7rem 0.8rem;
+  min-height: 3rem;
+  position: relative;
+}
+/* a seta fica no canto, fora do fluxo: não cai sozinha numa linha no celular */
+.pj-empresa .pj-seta {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.8rem;
+}
+.pj-empresa-nome {
+  flex: 1 1 10rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.pj-seta {
+  flex: none;
+  font-size: 1.1rem;
+}
+.pj-contagens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.pj-pessoas {
+  margin: 0;
+  padding: 0 0.8rem 0.4rem;
+}
+.pj-pessoas .pj-linha-painel {
+  flex-wrap: wrap;
+  min-height: 2.75rem;
+}
+.pj-disc {
+  border-top: 1px solid var(--borda);
+  padding: 0.4rem 0;
+}
+.pj-disc > summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+  min-height: 2.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pj-subgrupo h3 {
+  font-size: 0.95rem;
+  margin: 0.6rem 0 0.2rem;
 }
 .pj-linha-painel > button {
   flex: none;

@@ -57,6 +57,25 @@ export function instalacoesDoFuro(e: ElementoPacote): Instalacao[] {
   return saida
 }
 
+/**
+ * A camada do furo de laje (21/11/2026, plantas próprias por camada): a primeira instalação dele. É a
+ * mesma regra do pipeline (pipeline/fvs/furos.py, camada_do_furo): o furo de esgoto e água fica no esgoto.
+ */
+export function camadaDoFuro(e: ElementoPacote): Instalacao | undefined {
+  return instalacoesDoFuro(e)[0]
+}
+
+/**
+ * Furo de laje que é de outra planta e fica escondido nesta: na forma com os furos de laje em plantas
+ * próprias, todos; na planta de uma camada, os das outras camadas. O furo continua no pacote, para o
+ * item da área ser calculado por todos os furos dela (como as barras nas plantas de armadura).
+ */
+export function furoDeOutraPlanta(e: ElementoPacote | undefined, m: { furos_laje?: Instalacao; furos_laje_separados?: boolean } | undefined): boolean {
+  if (!ehFuroDeLaje(e) || !m) return false
+  if (m.furos_laje_separados) return true
+  return !!m.furos_laje && camadaDoFuro(e!) !== m.furos_laje
+}
+
 /** Centro do furo na folha (o contorno é a bolinha que o pipeline desenha). */
 export function centroDoFuro(e: ElementoPacote): [number, number] {
   const [x0, y0, x1, y1] = e.rotulo

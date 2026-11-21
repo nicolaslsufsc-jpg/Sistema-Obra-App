@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- Bancada do módulo Documentos: só no servidor de desenvolvimento (npm run dev), nunca no app publicado.
+     Abre o módulo como se estivesse com conta: três documentos cujos arquivos já estão só no servidor
+     (o "servidor" é de mentira e responde com um PDF de exemplo), para ver o "Baixar para usar offline".
+     Uso: cd app && npm run dev  →  http://localhost:5173/dev/documentos.html
+     ?papel=campo ou ?papel=leitura abre com outro papel (o padrão é gestor). -->
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Bancada Documentos</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./documentos.tsx"></script>
+  </body>
+</html>

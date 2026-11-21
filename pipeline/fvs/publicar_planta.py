@@ -35,6 +35,8 @@ pavimento.json (fica fora do repositório, junto das pranchas):
                   "alinhamento": {"<prancha>": {"matriz": [a, b, c, d], "t": [tx, ty]}}}   opcional: encaixe à mão
   "camadas_separadas": false                       opcional: sem as plantas de armadura (uma por direção, o padrão
                                                    quando há barras_laje; armadura_laje.py); as barras ficam na aba da forma
+  "furos_laje_separados": false                     opcional: sem as plantas de furos de laje (uma por camada: esgoto, água,
+                                                   elétrica; o padrão quando há furos de laje); os furos ficam na aba Furos da forma
   "instalacoes": {"hidro": {"ifc": "../Hidro/modelo.ifc", "nivel": "2º PAVIMENTO"},   opcional: uma planta por disciplina
                   "sanitario", "eletrico", "spda": {"ifc": [...], "nivel": [...]},  com os pontos do modelo (instalacoes.py); só com a
                   "encaixe": {...}}                                 folha única; encaixe = o dos furos, ou este à mão
@@ -155,11 +157,14 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if len(achados) != 1:
                 raise ErroPublicacao(f"ambientes: \"{campo}\" tem que ser um arquivo só (achei {len(achados)})")
             amb[campo] = achados[0]
-        if amb.get("nomes"):
-            achados = arquivos(amb["nomes"])
-            if len(achados) != 1:
-                raise ErroPublicacao(f"ambientes: \"nomes\" tem que ser um arquivo só (achei {len(achados)})")
-            amb["nomes"] = achados[0]
+        for campo in ("nomes", "fichas_por_comodo"):
+            if amb.get(campo):
+                achados = arquivos(amb[campo])
+                if len(achados) != 1:
+                    raise ErroPublicacao(f"ambientes: \"{campo}\" tem que ser um arquivo só (achei {len(achados)})")
+                amb[campo] = achados[0]
+        if amb.get("fichas_por_comodo") and not amb.get("nomes"):
+            raise ErroPublicacao("ambientes: \"fichas_por_comodo\" precisa dos \"nomes\" dos cômodos")
         if amb.get("modulacao"):
             mod = dict(amb["modulacao"])
             mod["pranchas"] = arquivos(mod.get("pranchas"))
@@ -273,6 +278,7 @@ def ler_config(caminho: pathlib.Path) -> dict:
         "instalacoes": inst,
         "furacao": furacao,
         "camadas_separadas": cfg.get("camadas_separadas", True) is not False,
+        "furos_laje_separados": cfg.get("furos_laje_separados", True) is not False,
     }
 
 
@@ -357,6 +363,8 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
             reg["grupo"] = p["grupo"]
         if p.get("comodo"):
             reg["comodo"] = p["comodo"]
+        if p.get("sem_fichas"):
+            reg["sem_fichas"] = p["sem_fichas"]
         if p["tipo"] == "F":
             if p.get("viga"):
                 reg["viga"] = ids[("V", p["viga"])]
@@ -409,6 +417,10 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         cab["furos_separados"] = True
     if forma.get("disciplina") in (*mod_inst.DISCIPLINAS, "furacao"):
         cab["disciplina"] = forma["disciplina"]
+    if forma.get("furos_laje"):
+        cab["furos_laje"] = forma["furos_laje"]
+    if forma.get("furos_laje_separados"):
+        cab["furos_laje_separados"] = True
     manifest, binario = pacote.montar(cab, forma["tiles"], elementos, dets, forma.get("barras"), forma.get("pontos"))
     rel = {
         "trecho": cab.get("trecho"),
@@ -507,7 +519,27 @@ def quantos_locais(forma: dict) -> int:
         return sum(1 for b in (forma.get("barras") or {}).values() if b["camada"] == forma.get("camada"))
     if forma.get("disciplina") in mod_inst.DISCIPLINAS:
         return len(forma.get("pontos") or {})
+    if forma.get("furos_laje"):
+        return sum(1 for p in forma["pecas"] if mod_furos.camada_do_furo(p) == forma["furos_laje"])
     return len(forma["pecas"])
+
+
+def por_furos_de_laje(cfg: dict, formas: list[dict]) -> list[dict]:
+    """Uma planta por camada de furos de laje (esgoto, água, elétrica; furos.folhas_de_furos_de_laje),
+    acrescentada a formas. Por padrão sim quando há furos de laje; "furos_laje_separados": false no
+    pavimento.json deixa os furos só na aba Furos da forma."""
+    if not cfg.get("furos") or cfg.get("furos_laje_separados") is False:
+        return []
+    fm = next((f for f in formas if (f.get("disciplina") or DISCIPLINA) == DISCIPLINA), None)
+    if fm is None:
+        return []
+    folhas = mod_furos.folhas_de_furos_de_laje(fm)
+    if folhas:
+        print("Montando os furos de laje em plantas próprias, uma por camada:")
+        for f in folhas:
+            print(f"  {f['trecho']}: {quantos_locais(f)} furos")
+    formas.extend(folhas)
+    return folhas
 
 
 def por_armadura(cfg: dict, detalhes: dict, formas: list[dict], rel_barras: dict | None) -> list[dict]:
@@ -778,6 +810,11 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             n = r["nomes"]
             print(f"  nomes dos cômodos: {n['com_nome']} com nome, {sum(n['sem_nome'].values())} só com o número"
                   + (f"; {len(n['do_tipo_sem_par'])} cômodos do tipo sem par num apartamento (lista no relatorio.json)" if n["do_tipo_sem_par"] else ""))
+        if r.get("fichas_por_comodo"):
+            fc = r["fichas_por_comodo"]
+            fora = fc["tipos_fora_da_tabela"]
+            print(f"  fichas por cômodo: {fc['com_regra']} ambientes com regra"
+                  + (f"; tipos fora da tabela (todas as fichas valem): {', '.join(f'{k} ({v})' for k, v in fora.items())}" if fora else ""))
         if r.get("esquadrias"):
             e = r["esquadrias"]
             print(f"  esquadrias: {e['em_ambiente']} de {e['esquadrias']} em ambiente ({e['em_dois_ambientes']} entre dois), {e['locais']} locais"
@@ -882,6 +919,8 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
         print(f"  {len(fora)} peças não existem no pavimento e saíram da planta (lista no relatorio.json)")
     rel_furos = por_furos(cfg, detalhes, formas)
     rel_inst = por_instalacoes(cfg, detalhes, formas, rel_furos)
+    # a planta de furação única, com as pranchas de furação no fundo (pedido do Nicolas de 21/11: "aba separada,
+    # projeto dos furos completo"), substitui as plantas de furos de laje por camada (por_furos_de_laje)
     rel_furacao = por_furacao(cfg, formas)
     if args.so_gerar:
         saida = pathlib.Path(args.so_gerar).resolve()
@@ -960,7 +999,8 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
     return publicar_no_servidor(srv, cfg, detalhes, formas, args.aceita_ambientes, getattr(args, "aceita_paredes", False))
 
 
-FALTA_PARA_A_DISCIPLINA = {"armadura": "\"barras_laje\"", "furacao": "\"furacao\" e \"furos\"", "vedacao": "\"vedacao\" em \"ambientes\"",
+FALTA_PARA_A_DISCIPLINA = {"armadura": "\"barras_laje\"", "furacao": "\"furacao\" (as pranchas de furação) e \"furos\"",
+                           "vedacao": "\"vedacao\" em \"ambientes\"",
                            **{d: "\"instalacoes\"" for d in mod_inst.DISCIPLINAS}}
 
 

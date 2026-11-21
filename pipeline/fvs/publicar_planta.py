@@ -4,6 +4,7 @@ Uso (no PC, na raiz do repositório):
     py pipeline/fvs/publicar_planta.py pavimento.json
     py pipeline/fvs/publicar_planta.py pavimento.json --so-gerar "C:\\...\\saida"   (não publica: só grava os pacotes)
     py pipeline/fvs/publicar_planta.py pavimento.json --folha-unica                 (o pavimento inteiro numa planta só, sem trechos)
+    py pipeline/fvs/publicar_planta.py pavimento.json --folha-unica --so-instalacoes   (só as plantas de hidro, sanitário, elétrico e SPDA)
 
 pavimento.json (fica fora do repositório, junto das pranchas):
 {
@@ -903,6 +904,10 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
         if getattr(args, f"so_{disc}", False):
             formas = so_disciplina(formas, disc)
             break
+    if getattr(args, "so_instalacoes", False):
+        formas = [fm for d in mod_inst.DISCIPLINAS if any(f.get("disciplina") == d for f in formas) for fm in so_disciplina(formas, d)]
+        if not formas:
+            raise ErroPublicacao("--so-instalacoes: o pavimento.json não gerou nenhuma planta de instalações (falta \"instalacoes\"?)")
     return publicar_no_servidor(srv, cfg, detalhes, formas, args.aceita_ambientes, getattr(args, "aceita_paredes", False))
 
 
@@ -985,6 +990,8 @@ def main(argv: list[str] | None = None) -> int:
     for disc, nome in mod_inst.DISCIPLINAS.items():
         grupo_so.add_argument(f"--so-{disc}", action="store_true",
                               help=f"publica só a planta de {nome.lower()}; a forma e o resto do pavimento ficam como estão no servidor")
+    grupo_so.add_argument("--so-instalacoes", action="store_true",
+                          help="publica só as plantas de instalações (todas as disciplinas de \"instalacoes\"), lendo as pranchas uma vez")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--chave", default=CHAVE_PADRAO)

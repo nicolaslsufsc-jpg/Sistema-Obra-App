@@ -424,6 +424,7 @@ class TestListasIguais(unittest.TestCase):
             publicar_planta.main(["--help"])
         for disc in instalacoes.DISCIPLINAS:
             self.assertIn(f"--so-{disc}", saida.getvalue())
+        self.assertIn("--so-instalacoes", saida.getvalue())
 
 
 if __name__ == "__main__":

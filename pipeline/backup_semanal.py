@@ -18,8 +18,12 @@ O que faz, nesta ordem:
   4. Confere o .zip: cria um Postgres descartável (o portátil dos testes do banco), aplica as
      migrações do repositório, roda cada restaurar.sql e compara as linhas com o manifesto.
   5. Mantém só os últimos --manter backups (padrão 8). Só apaga arquivos com o nome backup_*.zip.
-  6. Escreve ULTIMO_BACKUP.txt na pasta de destino (deu certo ou o que falhou) e acrescenta uma
-     linha em backup.log.
+  6. Com --copia PASTA (ex.: a pasta do Google Drive no PC): copia o .zip para lá e mantém os
+     mesmos --manter backups lá também. Falha na cópia vira aviso; o backup do PC fica.
+  7. Escreve ULTIMO_BACKUP.txt na pasta de destino (e na cópia) e acrescenta uma linha em backup.log.
+
+Os convites (pessoas convidadas que ainda não entraram, só o admin vê) entram no zip na pasta
+convites/, com um restaurar_convites.sql. Se o servidor ainda não tem a tabela, essa parte é pulada.
 
 Não usa chave secreta (service_role): vê o que o login guardado vê. Para o backup ser completo, o login
 guardado tem de ser do administrador. O login guardado dá acesso ao que esse login vê: trate a pasta
@@ -38,7 +42,9 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -58,6 +64,7 @@ MANTER_PADRAO = 8
 PADRAO_ZIP = re.compile(r"^backup_\d{4}-\d{2}-\d{2}_\d{4}\.zip$")
 ARQUIVO_STATUS = "ULTIMO_BACKUP.txt"
 ARQUIVO_LOG = "backup.log"
+PASTA_CONVITES = "convites"
 
 
 class ErroBackup(Exception):
@@ -166,25 +173,32 @@ def conferir_zip(caminho_zip: pathlib.Path, repo: pathlib.Path = REPO) -> list[s
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+def porta_livre() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 def _restaurar_e_contar(r, psycopg, tmp: pathlib.Path, repo: pathlib.Path) -> list[str]:
     manifestos = sorted((tmp / "zip").glob("*/manifesto.json"))
     if not manifestos:
         raise ErroBackup("o zip não tem nenhuma obra (manifesto.json)")
     dados = tmp / "pg"
+    porta = porta_livre()  # nunca a dos testes do banco: com eles rodando, o backup cairia no Postgres deles
     subprocess.run([os.path.join(r.BIN, "initdb.exe"), "-D", str(dados), "-U", "postgres", "-A", "trust", "-E", "UTF8", "--no-locale"],
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.Popen([os.path.join(r.BIN, "pg_ctl.exe"), "-D", str(dados), "-l", str(tmp / "pg.log"),
-                      "-o", f"-p {r.PORTA} -c listen_addresses=127.0.0.1", "start"],
+                      "-o", f"-p {porta} -c listen_addresses=127.0.0.1", "start"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
     conn = None
     for _ in range(60):
         try:
-            conn = psycopg.connect(f"host=127.0.0.1 port={r.PORTA} user=postgres dbname=postgres", autocommit=True)
+            conn = psycopg.connect(f"host=127.0.0.1 port={porta} user=postgres dbname=postgres", autocommit=True)
             break
         except Exception:  # noqa: BLE001 — o Postgres ainda está subindo
             time.sleep(0.5)
     if conn is None:
-        raise ErroBackup("o Postgres local não subiu para conferir (porta ocupada? feche os testes do banco)")
+        raise ErroBackup(f"o Postgres local não subiu para conferir (porta {porta}; veja {tmp / 'pg.log'})")
     feito: list[str] = []
     try:
         try:
@@ -211,12 +225,33 @@ def _restaurar_e_contar(r, psycopg, tmp: pathlib.Path, repo: pathlib.Path) -> li
             if diferencas:
                 raise ErroBackup(f"obra {obra['codigo']}: restaurou com linhas faltando ({'; '.join(diferencas)})")
             feito.append(f"{obra['codigo']}: {sum(m['linhas'].values())} linha(s) restaurada(s) e conferida(s)")
+        feito += _conferir_convites(r, conn, tmp / "zip" / PASTA_CONVITES)
     finally:
         conn.close()
         subprocess.run([os.path.join(r.BIN, "pg_ctl.exe"), "-D", str(dados), "-m", "immediate", "stop"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
         time.sleep(1)
     return feito
+
+
+def _conferir_convites(r, conn, pasta: pathlib.Path) -> list[str]:
+    """Restaura os convites (depois das obras e das pessoas) e confere quantos voltaram."""
+    sql = pasta / "restaurar_convites.sql"
+    if not sql.exists():
+        return []
+    convites = json.loads((pasta / "convites.json").read_text(encoding="utf-8"))
+    existe = conn.execute("select to_regclass('public.convites') is not null").fetchone()[0]
+    if not existe:
+        return [f"convites: {len(convites)} no zip, não conferidos (a migração dos convites não está neste repositório)"]
+    try:
+        r.rodar_arquivo(conn, str(sql), {})
+    except SystemExit as e:
+        raise ErroBackup("o restaurar_convites.sql falhou no Postgres local (erro acima)") from e
+    ids = [c["id"] for c in convites]
+    achados = conn.execute("select count(*) from public.convites where id = any(%s::uuid[])", [ids]).fetchone()[0]
+    if achados != len(convites):
+        raise ErroBackup(f"convites: restaurou {achados} de {len(convites)}")
+    return [f"convites: {len(convites)} restaurado(s) e conferido(s)"]
 
 
 def _contar_restauradas(conn, tabela: str, obra_id: str, pasta_dados: pathlib.Path) -> int:
@@ -262,6 +297,60 @@ def exportar_obras(sb: exp.Supabase, usuario: dict, codigos: list[str], trabalho
     return pastas, avisos
 
 
+def exportar_convites(sb: exp.Supabase, pastas: list[pathlib.Path], trabalho: pathlib.Path) -> pathlib.Path | None:
+    """Convites das obras do backup em trabalho/convites/. None se o servidor ainda não tem a tabela."""
+    status, bruto = sb.pedir("GET", "/rest/v1/convites?select=id&limit=1")
+    if status == 404:  # PostgREST: tabela que não existe (a migração dos convites ainda não foi aplicada)
+        return None
+    if status >= 400:
+        raise exp.ErroExportacao(f"GET /rest/v1/convites -> HTTP {status}: {bruto[:300].decode('utf-8', 'replace')}")
+    obras = {json.loads((p / "manifesto.json").read_text(encoding="utf-8"))["obra"]["id"] for p in pastas}
+    convites = [c for c in sb.linhas("public.convites", {}) if c.get("obra_id") in obras]
+    pasta = trabalho / PASTA_CONVITES
+    pasta.mkdir()
+    (pasta / "convites.json").write_text(json.dumps(convites, ensure_ascii=False, indent=1), encoding="utf-8")
+    (pasta / "restaurar_convites.sql").write_text(sql_dos_convites(convites), encoding="utf-8")
+    return pasta
+
+
+def sql_dos_convites(convites: list[dict]) -> str:
+    """Recria os convites depois dos restaurar.sql das obras. Quem não voltou como pessoa fica em branco."""
+    marca = f"$so_{secrets.token_hex(6)}$"
+    return "\n".join([
+        "-- Convites do Sistema Obra (pessoas convidadas). Rode DEPOIS dos restaurar.sql das obras.",
+        "begin;",
+        "create temp table so_convites on commit drop as",
+        f"  select * from jsonb_populate_recordset(null::public.convites, {exp.literal_json(convites, marca)}::jsonb);",
+        "insert into public.convites (id, obra_id, nome, email, papel, usuario_id, aceito_em, criado_por, criado_em, apagado)",
+        "select c.id, c.obra_id, c.nome, c.email, c.papel,",
+        "  (select p.id from public.perfis p where p.id = c.usuario_id), c.aceito_em,",
+        "  (select p.id from public.perfis p where p.id = c.criado_por), c.criado_em, c.apagado",
+        "from so_convites c",
+        "where exists (select 1 from public.obras o where o.id = c.obra_id)",
+        "on conflict (id) do nothing;",
+        "commit;",
+        "",
+    ])
+
+
+def copiar_para(final: pathlib.Path, copia: pathlib.Path, manter: int) -> list[str]:
+    """Copia o .zip para a outra pasta (o Google Drive) e gira lá também. Erro = ErroBackup."""
+    if exp.dentro_de_repositorio(copia):
+        raise ErroBackup(f"a pasta da cópia {copia} fica dentro de um repositório git")
+    try:
+        copia.mkdir(parents=True, exist_ok=True)
+        parcial = copia / (final.name + ".incompleto")
+        shutil.copyfile(final, parcial)
+        os.replace(parcial, copia / final.name)
+        apagados = apagar_antigos(copia, manter)
+    except OSError as e:
+        raise ErroBackup(f"não consegui copiar para {copia}: {exp.descrever(e)}") from e
+    linhas = [f"Cópia em {copia}."]
+    if apagados:
+        linhas.append(f"Apagados da cópia por serem antigos: {', '.join(apagados)}.")
+    return linhas
+
+
 def codigos_das_obras(sb: exp.Supabase, pedidas: str | None) -> list[str]:
     obras = sb.json("GET", "/rest/v1/obras?select=codigo,apagado&order=codigo.asc")
     vistas = [o["codigo"] for o in obras if not o.get("apagado")]
@@ -274,6 +363,10 @@ def codigos_das_obras(sb: exp.Supabase, pedidas: str | None) -> list[str]:
     if faltam:
         raise ErroBackup(f"obra(s) que o login não vê: {', '.join(faltam)}")
     return quero
+
+
+def pasta_da_opcao(texto: str) -> pathlib.Path:
+    return pathlib.Path(texto.strip().rstrip('"')).expanduser().resolve()
 
 
 def fazer_backup(args) -> tuple[int, list[str]]:
@@ -292,7 +385,8 @@ def fazer_backup(args) -> tuple[int, list[str]]:
     trabalho = pathlib.Path(tempfile.mkdtemp(prefix="backup_trabalho_", dir=destino))
     try:
         pastas, avisos = exportar_obras(sb, usuario, codigos, trabalho, args.url, args.chave)
-        zipar(pastas, trabalho, final)
+        convites = exportar_convites(sb, pastas, trabalho)
+        zipar(pastas + ([convites] if convites else []), trabalho, final)
     finally:
         shutil.rmtree(trabalho, ignore_errors=True)
     linhas.append(f"Arquivo: {final.name} ({final.stat().st_size / 1024 / 1024:.1f} MB).")
@@ -306,11 +400,16 @@ def fazer_backup(args) -> tuple[int, list[str]]:
     apagados = apagar_antigos(destino, args.manter)
     if apagados:
         linhas.append(f"Apagados por serem antigos (mantém {args.manter}): {', '.join(apagados)}.")
+    if getattr(args, "copia", None):
+        try:
+            linhas += copiar_para(final, pasta_da_opcao(args.copia), args.manter)
+        except ErroBackup as e:
+            avisos.append(f"o backup ficou só no PC: {e}")
     linhas += [f"AVISO: {a}" for a in avisos]
     return (2 if avisos else 0), linhas
 
 
-def registrar(destino: str, codigo: int, linhas: list[str]) -> None:
+def registrar(destino: str, codigo: int, linhas: list[str], log: bool = True) -> None:
     """ULTIMO_BACKUP.txt (só o último) e backup.log (uma linha por vez). Falhar aqui não derruba o resto."""
     try:
         pasta = pathlib.Path(destino.strip().rstrip('"')).expanduser()
@@ -318,8 +417,10 @@ def registrar(destino: str, codigo: int, linhas: list[str]) -> None:
         situacao = {0: "DEU CERTO", 2: "FEITO COM AVISO", 1: "NÃO FEITO"}[codigo]
         texto = f"{situacao} ({dt.datetime.now():%d/%m/%Y %H:%M})\n" + "\n".join(linhas) + "\n"
         (pasta / ARQUIVO_STATUS).write_text(texto, encoding="utf-8")
-        with open(pasta / ARQUIVO_LOG, "a", encoding="utf-8") as log:
-            log.write(f"{dt.datetime.now():%Y-%m-%d %H:%M} {situacao}: " + " | ".join(linhas) + "\n")
+        if not log:
+            return
+        with open(pasta / ARQUIVO_LOG, "a", encoding="utf-8") as arq:
+            arq.write(f"{dt.datetime.now():%Y-%m-%d %H:%M} {situacao}: " + " | ".join(linhas) + "\n")
     except OSError as e:
         print(f"(não consegui escrever o {ARQUIVO_STATUS}: {e})", file=sys.stderr)
 
@@ -332,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
             pass
     p = argparse.ArgumentParser(description="Backup semanal do Sistema Obra (todas as obras num .zip conferido).")
     p.add_argument("--destino", help="pasta dos backups, fora do repositório")
+    p.add_argument("--copia", help="outra pasta que recebe uma cópia de cada backup (ex.: a do Google Drive no PC)")
     p.add_argument("--manter", type=int, default=MANTER_PADRAO, help=f"quantos backups manter (padrão {MANTER_PADRAO})")
     p.add_argument("--obras", help="só estas obras, separadas por vírgula (padrão: todas que o login vê)")
     p.add_argument("--entrar", action="store_true", help="pede e-mail e código e guarda o login neste PC")
@@ -370,6 +472,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # noqa: BLE001 — sem ninguém olhando, o motivo tem de ficar no ULTIMO_BACKUP.txt
         codigo, linhas = 1, [f"ERRO inesperado: {type(e).__name__}: {e}"]
     registrar(args.destino, codigo, linhas)
+    if args.copia:
+        registrar(args.copia, codigo, linhas, log=False)  # para ver o resultado pelo Drive, no celular
     for linha in linhas:
         print(linha, file=sys.stderr if codigo == 1 else sys.stdout)
     return codigo

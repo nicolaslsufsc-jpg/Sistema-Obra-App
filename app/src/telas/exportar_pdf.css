@@ -1,0 +1,166 @@
+/* "Exportar PDF" (frente 06, 21/11/2026): botão nas telas de consulta e folha padrão em A4.
+   A folha fica escondida na tela; na impressão (body.so-imprimindo) só ela aparece, em papel branco. */
+.so-bt-pdf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+}
+.so-bt-pdf svg {
+  flex: none;
+}
+.so-bt-pdf.so-bt-largo {
+  width: 100%;
+  margin: 0.6rem 0;
+}
+
+.so-folha-pdf {
+  display: none;
+}
+
+/* a folha: as mesmas regras servem para a prévia dos testes (media print) */
+.sf-folha {
+  /* folga para o texto alinhado à direita não encostar no corte do papel */
+  padding: 0 2px;
+  color: var(--papel-texto);
+  background: var(--papel-fundo);
+  font: 10pt/1.35 system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+.sf-cab {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1.5pt solid var(--papel-texto);
+}
+.sf-obra {
+  display: grid;
+}
+.sf-obra b {
+  font-size: 11pt;
+}
+.sf-obra span,
+.sf-meta {
+  color: var(--papel-discreto);
+  font-size: 8.5pt;
+}
+.sf-meta {
+  display: grid;
+  text-align: right;
+}
+.sf-titulo {
+  font-size: 15pt;
+  margin: 0.6rem 0 0.1rem;
+}
+.sf-sub {
+  margin: 0 0 0.3rem;
+  color: var(--papel-discreto);
+}
+.sf-resumo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+.sf-resumo li {
+  border: 1px solid var(--papel-borda);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-weight: 600;
+}
+.sf-secao {
+  margin-top: 0.8rem;
+}
+.sf-secao h2 {
+  font-size: 11.5pt;
+  margin: 0 0 0.3rem;
+  break-after: avoid;
+}
+.sf-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+}
+.sf-tabela th,
+.sf-tabela td {
+  border: 0.75pt solid var(--papel-linha);
+  padding: 0.18rem 0.3rem;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.sf-tabela th {
+  background: var(--papel-cabeca);
+  border-color: var(--papel-borda);
+  font-weight: 700;
+}
+.sf-tabela tbody tr:nth-child(even) td {
+  background: var(--papel-zebra);
+}
+.sf-tabela tr {
+  break-inside: avoid;
+}
+.sf-tabela .sf-curta {
+  white-space: nowrap;
+  width: 1%;
+}
+.sf-vazio,
+.sf-nota {
+  color: var(--papel-discreto);
+  font-size: 8.5pt;
+  margin: 0.2rem 0 0;
+}
+.sf-rodape {
+  margin-top: 1rem;
+  padding-top: 0.3rem;
+  border-top: 0.75pt solid var(--papel-borda);
+  color: var(--papel-discreto);
+  font-size: 7.5pt;
+}
+
+/* páginas com nome: o @page geral (e o da Ficha do Concreto) fica como está */
+@page folha {
+  size: A4 portrait;
+  margin: 12mm 11mm;
+}
+@page deitada {
+  size: A4 landscape;
+  margin: 10mm 11mm;
+}
+
+@media print {
+  /* o fundo escuro do tema não pode aparecer embaixo da folha */
+  /* no tema escuro o papel (e a margem dele) sairia escuro: o "color-scheme" pinta o fundo da página */
+  html:has(> body.so-imprimindo) {
+    color-scheme: light !important;
+    background: var(--papel-fundo) !important;
+  }
+  body.so-imprimindo {
+    background: var(--papel-fundo) !important;
+    color: var(--papel-texto);
+    margin: 0;
+    padding: 0;
+    /* fundo das linhas e do cabeçalho da tabela também no PDF */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body.so-imprimindo > :not(.so-folha-pdf) {
+    display: none !important;
+  }
+  body.so-imprimindo > .so-folha-pdf {
+    display: block;
+  }
+  .sf-folha {
+    page: folha;
+  }
+  .sf-folha.sf-deitada {
+    page: deitada;
+  }
+  .sf-tabela thead {
+    display: table-header-group;
+  }
+}

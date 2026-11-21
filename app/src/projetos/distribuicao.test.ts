@@ -3,6 +3,7 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import {
   aEntregar,
+  chaveAntiga,
   gravarDestinatarios,
   historicoDaRegra,
   lerDestinatarios,
@@ -15,6 +16,9 @@ import {
 } from './distribuicao'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 import { cruzar, ErroDeArquivo, lerDistribuicao, lerVigentes } from './painel'
+import { banco, sincronizador } from '../nucleo/servicos'
+import { TABELA_DESTINATARIOS } from './tabelas'
+import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 
 const HOJE = '2026-11-14'
 const OBRA = 'b0000000-0000-0000-0000-0000000000d1'
@@ -128,5 +132,51 @@ describe('lista importada e gravada', () => {
     expect(mescla[0].substitui_id).toBe(atual.id)
     expect(mescla[0].desde).toBe(atual.desde)
     expect(await lerDestinatarios(OBRA)).toHaveLength(3)
+  })
+})
+
+describe('lista de distribuição sincronizada (núcleo, 20/11)', () => {
+  const USUARIO = '00000000-0000-0000-0000-0000000000a1'
+  const regra = (pasta: string, ativo = true): DadosDestinatario => ({ disciplina: 'ESTRUTURAL', pasta, empresa: 'Empreiteira Alfa', colaborador: '', copias: 1, ativo, desde: HOJE })
+  const naFila = async (obra: string) => (await banco.fila.toArray()).filter((f) => f.obra_id === obra && f.tabela === TABELA_DESTINATARIOS)
+
+  it('a tabela está entre as sincronizadas (baixa com a obra; sobe pela fila)', () => {
+    expect(TABELAS_SINCRONIZADAS).toContain(TABELA_DESTINATARIOS)
+  })
+
+  it('gravar vai para a tabela e para a fila de envio, a regra antes da versão que a substitui', async () => {
+    const OBRA2 = 'b0000000-0000-0000-0000-0000000000d2'
+    let todas = await gravarDestinatarios(OBRA2, [regra('LO/Vigas')], USUARIO, (id) => (id === USUARIO ? 'eu' : 'outro'))
+    const vigas = todas[0]
+    todas = await gravarDestinatarios(OBRA2, [{ ...vigas, ativo: false, substitui_id: vigas.id }], USUARIO)
+    // a ordem da leitura: a regra antes da versão que a substitui (mesmo com a hora empatada)
+    expect((await lerDestinatarios(OBRA2)).map((l) => [l.pasta, l.ativo, l.substitui_id])).toEqual([
+      ['LO/Vigas', true, null],
+      ['LO/Vigas', false, vigas.id],
+    ])
+    expect((await sincronizador.linhas(TABELA_DESTINATARIOS, OBRA2)).every((l) => l.usuario_id === USUARIO)).toBe(true)
+    const fila = await naFila(OBRA2)
+    expect(fila.map((f) => f.id)).toEqual([vigas.id, todas.find((d) => d.substitui_id === vigas.id)!.id])
+    expect(regrasAtuais(todas).map((r) => r.ativo)).toEqual([false])
+    // quem gravou, pelo nome que o app dá
+    expect((await lerDestinatarios(OBRA2, USUARIO, (id) => (id === USUARIO ? 'eu' : 'outro')))[0].usuario).toBe('eu')
+    expect((await lerDestinatarios(OBRA2, '', () => 'outra pessoa da obra'))[0].usuario).toBe('outra pessoa da obra')
+  })
+
+  it('a lista antiga do navegador passa para a tabela uma vez, com os mesmos ids, e sai do navegador', async () => {
+    const OBRA3 = 'b0000000-0000-0000-0000-0000000000d3'
+    const a = { ...regra('LO/Pilares'), id: 'c0000000-0000-0000-0000-000000000001', substitui_id: null, em: '2026-11-19T10:00:00.000Z', usuario: 'neste aparelho' }
+    const b = { ...regra('LO/Pilares', false), id: 'c0000000-0000-0000-0000-000000000002', substitui_id: a.id, em: '2026-11-19T11:00:00.000Z', usuario: 'neste aparelho' }
+    await banco.gravarMeta(chaveAntiga(OBRA3), [a, b])
+    // duas leituras ao mesmo tempo (as telas abrem juntas): passa uma vez só
+    const [l1, l2] = await Promise.all([lerDestinatarios(OBRA3, USUARIO), lerDestinatarios(OBRA3, USUARIO)])
+    expect(l1.map((d) => d.id).sort()).toEqual([a.id, b.id])
+    expect(l2).toHaveLength(2)
+    expect((await naFila(OBRA3)).map((f) => f.id)).toEqual([a.id, b.id])
+    expect(await banco.lerMeta(chaveAntiga(OBRA3))).toBeUndefined()
+    expect(regrasAtuais(l1).map((r) => [r.id, r.ativo])).toEqual([[b.id, false]])
+    // ler de novo não grava nada
+    await lerDestinatarios(OBRA3, USUARIO)
+    expect(await naFila(OBRA3)).toHaveLength(2)
   })
 })

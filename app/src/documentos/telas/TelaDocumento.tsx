@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { Topo, erroEmTexto } from '../../relatorios/telas/comum'
 import { dataBR } from '../../relatorios/regras'
 import { nomeDaCategoria, NOME_DO_ESCOPO } from '../categorias'
-import { podeCadastrar, registrarDocumento, urlDoArquivo, type ArquivoDoc } from '../dados'
+import { ArquivoNaoConfere, podeCadastrar, registrarDocumento, urlDoArquivo, type ArquivoDoc } from '../dados'
 import { COLUNAS_DOCUMENTO, statusDaRevisao, tamanhoEmTexto, type ComoAbrir, type Revisao, nomeLimpo } from '../regras'
 import type { ContextoDoc } from './ModuloDocumentos'
 import { SeloExemplo, SeloStatus, SeloValidade, textoValidade } from './comum'
@@ -13,11 +13,16 @@ import { SeloExemplo, SeloStatus, SeloValidade, textoValidade } from './comum'
 function AbrirArquivo({ arquivo, rotulo, miniatura = false }: { arquivo: ArquivoDoc | undefined; rotulo: string; miniatura?: boolean }) {
   const [aberto, setAberto] = useState<({ url: string } & ComoAbrir) | null>(null)
   const [falta, setFalta] = useState(false)
+  // com conta, o arquivo já enviado fica só no servidor: baixa com um toque (doServidor)
+  const [doServidor, setDoServidor] = useState(false)
+  const [baixando, setBaixando] = useState(false)
+  const [naoConfere, setNaoConfere] = useState(false)
   useEffect(() => {
     if (!arquivo) return
     let vivo = true
     let criada: string | null = null
-    urlDoArquivo(arquivo).then((u) => {
+    if (doServidor) setBaixando(true)
+    urlDoArquivo(arquivo, doServidor).then((u) => {
       if (!vivo) {
         if (u) URL.revokeObjectURL(u.url)
         return
@@ -25,15 +30,36 @@ function AbrirArquivo({ arquivo, rotulo, miniatura = false }: { arquivo: Arquivo
       criada = u?.url ?? null
       setAberto(u)
       setFalta(!u)
+      setBaixando(false)
+    }).catch((e) => {
+      if (!vivo) return
+      setNaoConfere(e instanceof ArquivoNaoConfere)
+      setAberto(null)
+      setFalta(true)
+      setBaixando(false)
     })
     return () => {
       vivo = false
       if (criada) URL.revokeObjectURL(criada)
     }
-  }, [arquivo?.id])
+  }, [arquivo?.id, doServidor])
 
   if (!arquivo) return <p class="discreto">Sem arquivo.</p>
-  if (falta) return <p class="aviso">O arquivo não está neste aparelho.</p>
+  if (baixando) return <p class="discreto">Baixando o arquivo do servidor…</p>
+  if (falta && !doServidor && arquivo.caminho) {
+    return (
+      <div class="doc-arquivo">
+        <button type="button" class="botao" data-testid="baixar-do-servidor" onClick={() => setDoServidor(true)}>
+          Baixar do servidor
+        </button>
+        <span class="discreto">
+          {arquivo.nome_original} · {tamanhoEmTexto(arquivo.tamanho)} · precisa de internet
+        </span>
+      </div>
+    )
+  }
+  if (falta && naoConfere) return <p class="aviso" data-testid="arquivo-nao-confere">O arquivo que veio do servidor não é o que foi registrado. Não abri. Avise o gestor da obra.</p>
+  if (falta) return <p class="aviso">{doServidor ? 'Não consegui baixar o arquivo. Confira a internet e abra o documento de novo.' : 'O arquivo não está neste aparelho.'}</p>
   if (!aberto) return <p class="discreto">Abrindo o arquivo…</p>
   const { url, foto } = aberto
   // não é PDF nem foto de verdade: só baixa (numa aba, HTML ou SVG rodariam)

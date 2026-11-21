@@ -6,7 +6,9 @@ ao lado ("N25-1%%c10 C=850+N15-1%%c8 C=710": duas barras na nervura, uma de cada
 
 O que este módulo faz, por prancha:
   1. lê os traços da camada, as etiquetas e os contornos dos pilares (PILAR_CONCRETO), dentro da janela do
-     desenho (o maior recorte da folha; a planta chave fica de fora);
+     desenho (o maior recorte da folha; a planta chave fica de fora). Prancha sem esses contornos (as do 4º
+     pavimento da obra piloto desenham o pilar na camada das vigas) guarda os retângulos das camadas de
+     reserva (CAMADAS_DE_CONTORNO), e só os do tamanho de um pilar da forma entram no encaixe;
   2. liga cada etiqueta às barras dela: traço paralelo, encostado na etiqueta, com o comprimento do "C=";
   3. alinha a prancha na folha de forma pelos pilares (pipeline/alinhamento). Se não alinhar com segurança,
      a prancha inteira fica FORA do pacote e vai para o relatório de conflitos;
@@ -49,6 +51,10 @@ CAMADA_DO_PDF = {
     "transversal_superior": "ARR_TRANS_SUP",
 }
 CAMADAS_DE_PILAR = ("PILAR_CONCRETO",)
+# Reserva, quando a prancha não tem o contorno do pilar na camada dele (4º pavimento da obra piloto, 20/11/2026:
+# o pilar vem em VIG_FACES, junto das cubetas da nervurada). Desses retângulos, só os que têm o tamanho de um
+# pilar da folha de forma (até 5 cm, deitado ou em pé) entram no encaixe; as cubetas não têm e ficam de fora.
+CAMADAS_DE_CONTORNO = ("PILAR_BETAO", "VIG_FACES")
 
 PT_POR_CM = al.PT_POR_CM_1_50
 DIST_ETIQUETA = 14.0  # pontos: até onde a barra pode estar da etiqueta dela
@@ -165,6 +171,27 @@ def pontos_dos_pilares(pecas: list[dict]) -> list[al.Ponto]:
     return saida
 
 
+def do_tamanho_de_um_pilar(p: al.Ponto, destino: list[al.Ponto], tol: float | None = None) -> bool:
+    """O retângulo tem a largura e a altura de algum pilar da folha (deitado ou em pé), até a tolerância (5 cm)."""
+    tol = al.TOLERANCIA_CM * PT_POR_CM if tol is None else tol
+    if p.w is None or p.h is None:
+        return False
+    return any(d.w is not None and d.h is not None
+               and ((abs(p.w - d.w) <= tol and abs(p.h - d.h) <= tol) or (abs(p.w - d.h) <= tol and abs(p.h - d.w) <= tol))
+               for d in destino)
+
+
+def pilares_da_prancha(pr: dict, destino: list[al.Ponto]) -> tuple[list[al.Ponto], str]:
+    """Os pontos da prancha para o encaixe e de onde vieram. Os contornos de pilar (PILAR_CONCRETO) valem
+    primeiro; com menos que o mínimo do encaixe, entram os retângulos das camadas de reserva que têm o tamanho
+    de um pilar da folha de forma."""
+    pilares = pr.get("pilares") or []
+    reserva = pr.get("retangulos") or []
+    if len(pilares) >= al.MIN_PONTOS or not reserva:
+        return pilares, "contorno do pilar"
+    return [p for p in reserva if do_tamanho_de_um_pilar(p, destino)], "retângulo do tamanho do pilar"
+
+
 def levar_para_folha(barras: list[dict], T: dict) -> list[dict]:
     """As barras nas coordenadas da folha de forma."""
     saida = []
@@ -186,10 +213,11 @@ def juntar_barras(pecas: list[dict], pranchas: list[dict], manuais: dict | None 
     barras, conflitos, resumo = [], [], []
     for pr in pranchas:
         T = (manuais or {}).get(pr["nome"])
-        res = al.manual(T, pr["pilares"], destino) if T else al.alinhar(pr["pilares"], destino)
+        origem, por = pilares_da_prancha(pr, destino)
+        res = al.manual(T, origem, destino) if T else al.alinhar(origem, destino)
         d = res.como_dict()
         linha = {"prancha": pr["nome"], "camada": pr["camada"], "barras": len(pr["barras"]),
-                 "com_posicao": sum(1 for b in pr["barras"] if b.get("posicao")), "alinhamento": d}
+                 "com_posicao": sum(1 for b in pr["barras"] if b.get("posicao")), "alinhamento": d, "pilares_por": por}
         resumo.append(linha)
         if not res.ok:
             conflitos.append(relatorio.linha(pr["nome"], pr["camada"], d))
@@ -248,7 +276,7 @@ def ler_prancha(pdf: str, camada: str, camada_pdf: str | None = None) -> dict:
         def dentro(x, y):
             return j[0] <= x <= j[2] and j[1] <= y <= j[3]
 
-        barras, pilares = [], []
+        barras, pilares, retangulos = [], [], []
         for d in page.get_drawings():
             camada_d = d.get("layer")
             if camada_d == nome_pdf:
@@ -264,7 +292,8 @@ def ler_prancha(pdf: str, camada: str, camada_pdf: str | None = None) -> dict:
                     meio = pts[len(pts) // 2]
                     if dentro(*meio):
                         barras.append({"camada": camada, "linha": [[round(x, 2), round(y, 2)] for x, y in pts]})
-            elif camada_d in CAMADAS_DE_PILAR:
+            elif camada_d in CAMADAS_DE_PILAR or camada_d in CAMADAS_DE_CONTORNO:
+                destino_d = pilares if camada_d in CAMADAS_DE_PILAR else retangulos
                 for it in d["items"]:
                     if it[0] == "qu":
                         q = it[1].rect * M
@@ -273,7 +302,7 @@ def ler_prancha(pdf: str, camada: str, camada_pdf: str | None = None) -> dict:
                     else:
                         continue
                     if dentro((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2) and q.width > 2 and q.height > 2:
-                        pilares.append(al.Ponto((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2, w=q.width, h=q.height))
+                        destino_d.append(al.Ponto((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2, w=q.width, h=q.height))
         etiquetas = []
         for a in page.annots() or []:
             texto = (a.info.get("content") or "").strip()
@@ -290,13 +319,18 @@ def ler_prancha(pdf: str, camada: str, camada_pdf: str | None = None) -> dict:
         (x0, y0), (x1, y1) = b["linha"][0], b["linha"][-1]
         b["chave"] = f"{camada}|{base}|{x0:.0f},{y0:.0f},{x1:.0f},{y1:.0f}"
     return {"nome": nome, "pdf": pdf, "camada": camada, "janela": j,
-            "barras": barras, "etiquetas": len(etiquetas), "pilares": _sem_repetidos(pilares)}
+            "barras": barras, "etiquetas": len(etiquetas), "pilares": _sem_repetidos(pilares),
+            "retangulos": _sem_repetidos(retangulos)}
 
 
 def _sem_repetidos(pontos: list[al.Ponto], tol: float = 0.5) -> list[al.Ponto]:
     """O mesmo pilar desenhado duas vezes (contorno e hachura) conta uma vez."""
     saida: list[al.Ponto] = []
+    grade: dict[tuple[int, int], list[al.Ponto]] = {}  # por casa da grade: milhares de cubetas sem custo quadrático
     for p in pontos:
-        if not any(abs(p.x - q.x) <= tol and abs(p.y - q.y) <= tol for q in saida):
+        cx, cy = math.floor(p.x / tol), math.floor(p.y / tol)
+        perto = (q for i in (-1, 0, 1) for j in (-1, 0, 1) for q in grade.get((cx + i, cy + j), ()))
+        if not any(abs(p.x - q.x) <= tol and abs(p.y - q.y) <= tol for q in perto):
             saida.append(p)
+            grade.setdefault((cx, cy), []).append(p)
     return saida

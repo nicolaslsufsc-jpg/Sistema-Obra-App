@@ -507,6 +507,7 @@ def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
         estado = "ok" if a["ok"] else "FORA (conflito)"
         print(f"  {r['prancha']} ({r['camada']}): {r['barras']} barras, {r['com_posicao']} com posição; alinhamento {estado}: "
               f"{a['pontos']} de {a['total']} pilares, erro máx. {a['residuo_max_cm']} cm" + (f" — {a['motivo']}" if a.get("motivo") else "")
+              + (f"; pilares pelo {r['pilares_por']}" if r.get("pilares_por", "contorno do pilar") != "contorno do pilar" else "")
               + (f"; {r['repetidas']} já vinham de outra prancha (emenda)" if r.get("repetidas") else ""))
     if conflitos:
         print(f"  ATENÇÃO: {len(conflitos)} prancha(s) de armação não alinharam e ficaram fora (conflitos_de_alinhamento.csv)")

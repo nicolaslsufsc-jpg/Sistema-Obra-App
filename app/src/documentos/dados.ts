@@ -1,18 +1,17 @@
 // Leitura e registro do módulo Documentos no aparelho.
 //
-// Primeira versão (09/11/2026): só no modo sem conta. A tabela `doc_documentos` ainda não existe
-// no servidor (a migração é pendência do Nicolas), então ela não está na lista de tabelas
-// sincronizadas do núcleo e o módulo grava a linha do jeito do núcleo (registro local + fila de
-// pendentes), para o "Salvar arquivo" (.obra) levar e o "Restaurar" trazer de volta.
-// O arquivo (PDF ou foto) vai pelo próprio núcleo (`registrarArquivo`), como as fotos do Diário.
-// Quando a migração existir: pôr `doc_documentos` em nucleo/tabelas.ts e trocar `gravarLinha`
-// por `sincronizador.registrar`.
-import type { BancoLocal, Linha } from '../nucleo/banco_local'
+// Desde 20/11/2026 a tabela `doc_documentos` existe no servidor (20261120150000_documentos.sql) e está
+// na lista sincronizada do núcleo: o módulo grava pelo `sincronizador.registrar`, nos dois modos.
+// - Sem conta: a linha fica na fila do aparelho; o "Salvar arquivo" (.obra) leva e o "Restaurar" traz.
+// - Com conta: a linha sobe ao servidor e desce para os outros aparelhos da obra.
+// O arquivo (PDF ou foto) vai pelo próprio núcleo (`registrarArquivo`), como as fotos do Diário: antes
+// do documento na fila, então chega ao servidor antes da linha que aponta para ele.
+import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
-import { ehModoLocal } from '../nucleo/local'
-import { banco, sincronizador } from '../nucleo/servicos'
+import { banco, cliente, sincronizador } from '../nucleo/servicos'
+import { BUCKET_OBRAS } from '../config'
 import { reduzirFoto } from '../fvs/dados'
-import { gravarLinha } from './gravar'
+import { sha256Hex } from '../fvs/pacote'
 import { montarLigacoes, TABELAS_LIDAS, type Ligacoes, type LinhasLidas } from './ligacoes'
 import { idDaConcretagemDeExemplo } from '../concreto/exemplo'
 import { idsDosExemplos } from './exemplos'
@@ -20,9 +19,13 @@ import { comoAbrir, montarDocumentos, TABELA_DOCUMENTOS, type ComoAbrir, type Do
 
 export interface ArquivoDoc {
   id: string
+  /** Onde o arquivo está no servidor (bucket `obras`), para baixar quando já saiu do aparelho. */
+  caminho: string
   nome_original: string
   tipo: string
   tamanho: number
+  /** SHA-256 gravado pelo núcleo no envio: o arquivo baixado do servidor tem que bater com ele. */
+  hash: string
 }
 
 export interface DadosDocumentos {
@@ -37,10 +40,6 @@ export interface DadosDocumentos {
 /** Cadastrar e revisar: gestor e admin (como o "dados da obra" do Diário). */
 export function podeCadastrar(papel: PapelNaObra): boolean {
   return papel === 'admin' || papel === 'gestor'
-}
-
-export function moduloDisponivel(b: BancoLocal = banco): Promise<boolean> {
-  return ehModoLocal(b)
 }
 
 export async function carregar(obraId: string): Promise<DadosDocumentos> {
@@ -61,7 +60,7 @@ export async function carregar(obraId: string): Promise<DadosDocumentos> {
   let totalArquivos = 0
   for (const a of arquivos) {
     if (!usados.has(a.id)) continue
-    mapa.set(a.id, { id: a.id, nome_original: nomeLimpo(String(a.nome_original ?? '')), tipo: String(a.tipo ?? ''), tamanho: Number(a.tamanho ?? 0) })
+    mapa.set(a.id, { id: a.id, caminho: String(a.caminho ?? ''), nome_original: nomeLimpo(String(a.nome_original ?? '')), tipo: String(a.tipo ?? ''), tamanho: Number(a.tamanho ?? 0), hash: String(a.hash ?? '') })
     totalArquivos += Number(a.tamanho ?? 0)
   }
   return { documentos, arquivos: mapa, totalArquivos, ligacoes: montarLigacoes(t, idDoExemplo) }
@@ -81,16 +80,47 @@ export async function guardarArquivo(obraId: string, usuarioId: string, arquivo:
 }
 
 export function registrarDocumento(obraId: string, usuarioId: string, campos: Record<string, unknown>): Promise<Linha> {
-  return gravarLinha(banco, obraId, usuarioId, campos)
+  return sincronizador.registrar(TABELA_DOCUMENTOS, obraId, usuarioId, campos)
+}
+
+/** Baixa do servidor o arquivo que já saiu do aparelho (troca nos testes). */
+type Baixador = (caminho: string) => Promise<ArrayBuffer | null>
+let baixar: Baixador = async (caminho) => {
+  const { data, error } = await cliente.storage.from(BUCKET_OBRAS).download(caminho)
+  return error || !data ? null : data.arrayBuffer()
+}
+export function trocarBaixador(b: Baixador): void {
+  baixar = b
+}
+
+/** O arquivo baixado do servidor não tem o tamanho ou o SHA-256 registrados: não abre (revisor, 20/11). */
+export class ArquivoNaoConfere extends Error {
+  constructor() {
+    super('O arquivo baixado do servidor não é o que foi registrado (tamanho ou conferência diferentes). Não abri.')
+    this.name = 'ArquivoNaoConfere'
+  }
 }
 
 /**
- * Endereço do arquivo no aparelho (blob:) e se ele pode abrir no navegador. O tipo do blob sai dos
- * bytes (comoAbrir), nunca do tipo gravado no registro. Quem chama devolve com URL.revokeObjectURL.
+ * Endereço do arquivo (blob:) e se ele pode abrir no navegador. O tipo do blob sai dos bytes
+ * (comoAbrir), nunca do tipo gravado no registro. Quem chama devolve com URL.revokeObjectURL.
+ * Ainda não enviado (ou sem conta): vem do aparelho. Já enviado: o núcleo tira os bytes do aparelho
+ * depois do envio, então só vem do servidor com `doServidor` (a tela pede com um toque, para não gastar
+ * internet com todas as revisões) e com internet. Sem o arquivo: null.
+ * O que vem do servidor só abre se o tamanho e o SHA-256 baterem com a linha de `arquivos`
+ * (gravados pelo núcleo no envio); se não baterem, lança ArquivoNaoConfere.
  */
-export async function urlDoArquivo(arquivo: Pick<ArquivoDoc, 'id'>): Promise<({ url: string } & ComoAbrir) | null> {
+export async function urlDoArquivo(
+  arquivo: Pick<ArquivoDoc, 'id'> & Partial<Pick<ArquivoDoc, 'caminho' | 'tamanho' | 'hash'>>,
+  doServidor = false,
+): Promise<({ url: string } & ComoAbrir) | null> {
   const local = await banco.conteudos.get(arquivo.id)
-  if (!local) return null
-  const como = comoAbrir(new Uint8Array(local.bytes.slice(0, 16)))
-  return { url: URL.createObjectURL(new Blob([local.bytes], { type: como.tipo })), ...como }
+  let bytes: ArrayBuffer | null = local?.bytes ?? null
+  if (!bytes && doServidor && arquivo.caminho && navigator.onLine) {
+    bytes = await baixar(arquivo.caminho).catch(() => null)
+    if (bytes && (bytes.byteLength !== arquivo.tamanho || (await sha256Hex(bytes)) !== arquivo.hash)) throw new ArquivoNaoConfere()
+  }
+  if (!bytes) return null
+  const como = comoAbrir(new Uint8Array(bytes.slice(0, 16)))
+  return { url: URL.createObjectURL(new Blob([bytes], { type: como.tipo })), ...como }
 }

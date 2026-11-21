@@ -43,15 +43,25 @@ def forma_exe(desloc=DESLOC):
             for i, (x, y, w, h) in enumerate(PILARES, 1)]
 
 
-def prancha_exe(caminho):
+CUBETA = 38  # pontos: a fôrma da nervurada, desenhada na mesma camada das vigas em algumas pranchas
+
+
+def prancha_exe(caminho, camada_pilar="PILAR_CONCRETO", cubetas=False):
+    """Prancha de armação de exemplo. camada_pilar="VIG_FACES" e cubetas=True: como as do 4º pavimento da
+    obra piloto, sem o contorno do pilar na camada dele, e com as cubetas na mesma camada."""
     import pymupdf
 
     doc = pymupdf.open()
     page = doc.new_page(width=1200, height=900)
     arm = doc.add_ocg("ARR_LONG_INF")
-    pil = doc.add_ocg("PILAR_CONCRETO")
+    pil = doc.add_ocg(camada_pilar)
     for x, y, w, h in PILARES:
         page.draw_rect(pymupdf.Rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2), width=0.24, oc=pil)
+    if cubetas:
+        for i in range(6):
+            for j in range(4):
+                x, y = 250 + i * (CUBETA + 6), 230 + j * (CUBETA + 6)
+                page.draw_rect(pymupdf.Rect(x, y, x + CUBETA, y + CUBETA), width=0.24, oc=pil)
     # nervura com duas barras (N25 C=850 e N15 C=710) e a etiqueta logo abaixo
     page.draw_line((200, 400), (200 + 850 * PT, 400), width=1.08, oc=arm)
     page.draw_line((200, 408), (200 + 710 * PT, 408), width=1.08, oc=arm)
@@ -150,6 +160,62 @@ class TestPrancha(unittest.TestCase):
         self.assertEqual(conflitos, [])
         self.assertTrue(resumo[0]["alinhamento"]["manual"])
         self.assertEqual(len(barras), 4)
+
+
+@LE_PDF
+class TestPilarSemContorno(unittest.TestCase):
+    """Prancha sem o contorno do pilar na camada dele (4º pavimento da obra piloto, 20/11/2026): o pilar vem na
+    camada das vigas, junto das cubetas, e entra no encaixe pelo tamanho."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.pdf = str(pathlib.Path(self.tmp.name) / "EXE.ES.LO.910.LAJ4PAVTIP-R00.pdf")
+        prancha_exe(self.pdf, camada_pilar="VIG_FACES", cubetas=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_le_os_retangulos_da_camada_de_reserva(self):
+        pr = bl.ler_prancha(self.pdf, "longitudinal_inferior")
+        self.assertEqual(pr["pilares"], [])
+        self.assertEqual(len(pr["retangulos"]), len(PILARES) + 24)
+
+    def test_encaixa_pelos_retangulos_do_tamanho_do_pilar(self):
+        pr = bl.ler_prancha(self.pdf, "longitudinal_inferior")
+        barras, conflitos, resumo = bl.juntar_barras(forma_exe(), [pr])
+        self.assertEqual(conflitos, [])
+        a = resumo[0]["alinhamento"]
+        self.assertTrue(a["ok"])
+        self.assertEqual((a["pontos"], a["total"]), (len(PILARES), len(PILARES)))  # as cubetas ficaram de fora
+        self.assertLess(a["residuo_max_cm"], 1.0)
+        self.assertEqual(resumo[0]["pilares_por"], "retângulo do tamanho do pilar")
+        n25 = next(b for b in barras if b.get("posicao") == "N25")
+        self.assertAlmostEqual(n25["linha"][0][0], 200 + DESLOC[0], delta=0.5)
+        self.assertAlmostEqual(n25["linha"][0][1], 400 + DESLOC[1], delta=0.5)
+
+    def test_sem_pilar_do_mesmo_tamanho_na_folha_fica_fora(self):
+        pr = bl.ler_prancha(self.pdf, "longitudinal_inferior")
+        so_quadrados = [p for p in forma_exe() if p["nome"] == "P6"]  # só o pilar 20 x 20
+        barras, conflitos, _ = bl.juntar_barras(so_quadrados, [pr])
+        self.assertEqual(barras, [])
+        self.assertIn("poucos pontos", conflitos[0]["motivo"])
+
+    def test_contorno_do_pilar_vale_primeiro(self):
+        pr = {"pilares": [bl.al.Ponto(i, i, w=11, h=34) for i in range(4)],
+              "retangulos": [bl.al.Ponto(0, 0, w=11, h=34)]}
+        origem, por = bl.pilares_da_prancha(pr, [])
+        self.assertEqual((len(origem), por), (4, "contorno do pilar"))
+
+
+class TestTamanhoDoPilar(unittest.TestCase):
+    def test_deitado_ou_em_pe_ate_5_cm(self):
+        folha = [bl.al.Ponto(0, 0, w=11, h=34)]
+        P = bl.al.Ponto
+        self.assertTrue(bl.do_tamanho_de_um_pilar(P(9, 9, w=34, h=11), folha))  # deitado
+        self.assertTrue(bl.do_tamanho_de_um_pilar(P(9, 9, w=11 + 2.5, h=34), folha))  # 4,4 cm a mais
+        self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9, w=11 + 3.5, h=34), folha))  # 6,2 cm a mais
+        self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9, w=38, h=38), folha))  # cubeta
+        self.assertFalse(bl.do_tamanho_de_um_pilar(P(9, 9), folha))
 
 
 class TestMesmaBarra(unittest.TestCase):

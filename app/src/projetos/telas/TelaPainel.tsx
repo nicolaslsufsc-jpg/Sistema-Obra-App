@@ -285,7 +285,7 @@ function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos
       avisar(`Base importada: ${plural(b.vigentes.length, 'linha', 'linhas')} da lista vigente e ${plural(b.copias.length, 'cópia', 'cópias')} da distribuição.`)
       aoImportar(b)
     } catch (err) {
-      setErro(err instanceof ErroDeArquivo ? err.message : 'Não consegui ler o arquivo. Salve como CSV (separado por ";") no Excel e tente de novo.')
+      setErro(err instanceof ErroDeArquivo ? err.message : 'Não consegui ler o arquivo. Use a ficha .xlsx ou salve como CSV (separado por ";") no Excel e tente de novo.')
     } finally {
       setSalvando(false)
     }
@@ -306,10 +306,15 @@ function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos
         </span>
       </label>
       <label class="pj-campo">
-        <span>Distribuição de cópias (.csv)</span>
-        <input type="file" accept=".csv,text/csv" data-testid="arquivo-distribuicao" onChange={(e) => setDist(e.currentTarget.files?.[0] ?? null)} />
+        <span>Distribuição de cópias (ficha .xlsx ou .csv)</span>
+        <input
+          type="file"
+          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          data-testid="arquivo-distribuicao"
+          onChange={(e) => setDist(e.currentTarget.files?.[0] ?? null)}
+        />
         <span class="discreto">
-          Colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.
+          A ficha de controle do Excel entra como está (primeira aba). Em CSV, as colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.
           {base?.copiasArquivo ? ` Atual: ${base.copiasArquivo} (${base.copias.length} cópias).` : ''}
         </span>
       </label>

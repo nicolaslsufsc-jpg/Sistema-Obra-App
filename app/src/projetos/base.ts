@@ -2,7 +2,8 @@
 // Fica no banco do navegador (tabela meta), fora da fila e do .obra: é dado da obra que se reimporta
 // quando muda (o "atalho" aprovado pelo Nicolas em 14/11/2026, sem mexer no núcleo).
 import { banco } from '../nucleo/servicos'
-import { lerDistribuicao, lerVigentes, type Copia, type Vigente } from './painel'
+import { distribuicaoDeLinhas, ErroDeArquivo, lerDistribuicao, lerVigentes, type Copia, type Vigente } from './painel'
+import { linhasDaFichaXlsx } from './planilha_xlsx'
 
 export interface BaseProjetos {
   vigentes: Vigente[]
@@ -29,7 +30,7 @@ export async function importarBase(obraId: string, arquivos: { vigentes?: File |
     nova.vigentesImportadaEm = agora.toISOString()
   }
   if (arquivos.distribuicao) {
-    nova.copias = lerDistribuicao(await textoDe(arquivos.distribuicao))
+    nova.copias = await lerArquivoDistribuicao(arquivos.distribuicao)
     nova.copiasArquivo = arquivos.distribuicao.name
     nova.copiasImportadaEm = agora.toISOString()
   }
@@ -78,6 +79,21 @@ export async function baseDoPacote(obraId: string, buscar: typeof fetch = fetch,
 /** A base guardada; se ainda não há, a que veio com o pacote da obra (se veio). */
 export async function lerBaseOuDoPacote(obraId: string): Promise<BaseProjetos | null> {
   return (await lerBase(obraId)) ?? (await baseDoPacote(obraId))
+}
+
+/** A ficha de distribuição em CSV ou em .xlsx (a ficha do Excel como está, primeira aba). */
+export async function lerArquivoDistribuicao(f: Blob & { name?: string }): Promise<Copia[]> {
+  const bytes = new Uint8Array(await f.arrayBuffer())
+  const ehZip = bytes[0] === 0x50 && bytes[1] === 0x4b // "PK": .xlsx é um .zip
+  if (ehZip || /\.xlsx$/i.test(f.name ?? '')) {
+    try {
+      return distribuicaoDeLinhas(await linhasDaFichaXlsx(bytes))
+    } catch (e) {
+      if (e instanceof ErroDeArquivo) throw e
+      throw new ErroDeArquivo(`Não consegui ler a ficha .xlsx: ${(e as Error).message}`)
+    }
+  }
+  return lerDistribuicao(await textoDe(f))
 }
 
 /** UTF-8 (com ou sem BOM); se vier estragado, tenta o Windows-1252 do Excel. */

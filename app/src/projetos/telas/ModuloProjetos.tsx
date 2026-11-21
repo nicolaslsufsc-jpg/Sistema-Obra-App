@@ -11,6 +11,7 @@ import { TelaEmpresas } from './TelaEmpresas'
 import { TelaAcoes } from './TelaAcoes'
 import { TelaPainel } from './TelaPainel'
 import { TelaObra } from './TelaObra'
+import { TelaComprovante } from './TelaComprovante'
 import { TelaEntregasBase, TelaPranchasBase, type FiltroPrancha } from './TelaListasBase'
 import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
 import { TelaPessoa, TelaPessoas } from './TelaPessoas'
@@ -33,6 +34,7 @@ export type TelaProjetos =
   | { nome: 'lista' }
   | { nome: 'prancha'; documentoId: string }
   | { nome: 'entregar'; documentoId: string; empresaId?: string }
+  | { nome: 'comprovante'; assinaturaId: string }
   | { nome: 'recolher'; documentoId: string; entregaId?: string }
   | { nome: 'empresas' }
   | { nome: 'acoes' }
@@ -153,6 +155,9 @@ export function ModuloProjetos({
       break
     case 'entregar':
       conteudo = <FormEntrega ctx={ctx} documentoId={tela.documentoId} empresaId={tela.empresaId} />
+      break
+    case 'comprovante':
+      conteudo = <TelaComprovante ctx={ctx} assinaturaId={tela.assinaturaId} />
       break
     case 'recolher':
       conteudo = <FormDevolucao ctx={ctx} documentoId={tela.documentoId} entregaId={tela.entregaId} />

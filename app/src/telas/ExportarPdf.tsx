@@ -71,6 +71,12 @@ export function Folha({ folha, obra, quem, quando }: { folha: FolhaPdf; obra: Pi
           {t.nota && <p class="sf-nota">{t.nota}</p>}
         </section>
       ))}
+      {folha.imagens?.map((im, i) => (
+        <figure class="sf-imagem" key={`im${i}`}>
+          {im.src ? <img src={im.src} alt={im.legenda} /> : <div class="sf-linha-assinar" />}
+          <figcaption>{im.legenda}</figcaption>
+        </figure>
+      ))}
       <footer class="sf-rodape">Sistema Obra · {folha.modulo} · com o que estava neste aparelho na hora</footer>
     </article>
   )

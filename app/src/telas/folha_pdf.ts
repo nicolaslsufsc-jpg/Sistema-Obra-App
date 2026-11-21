@@ -27,6 +27,8 @@ export interface FolhaPdf {
   /** números principais, um por caixa: "12 de 40 liberadas" */
   resumo?: readonly string[]
   tabelas: readonly TabelaPdf[]
+  /** imagens depois das tabelas (ex.: assinatura de quem retirou); src vazio = linha para assinar à mão */
+  imagens?: readonly { legenda: string; src: string }[]
   /** deitada para tabela larga; o padrão é em pé */
   deitada?: boolean
 }

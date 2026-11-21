@@ -93,22 +93,111 @@ def ler_prancha(pdf: str, escala: float = ESCALA_PADRAO) -> dict:
     return {"pdf": pdf, "nome": pathlib.Path(pdf).stem, "pilares": pilares, "janela": janela, "escala": escala}
 
 
+def _cobertos(pr: dict, T: dict, destino: list, tol: float) -> set[int]:
+    """Índices dos pilares da folha que os pilares da prancha, levados por T, cobrem."""
+    import math
+
+    from alinhamento import alinhar as al
+
+    saida = set()
+    for o in pr["pilares"]:
+        x, y = al.transformar(T, o.x, o.y)
+        i, d = min(((i, math.hypot(p.x - x, p.y - y)) for i, p in enumerate(destino)), key=lambda t: t[1], default=(None, 1e9))
+        if i is not None and d <= tol:
+            saida.add(i)
+    return saida
+
+
+def orientacao(T: dict) -> tuple[tuple[float, float], tuple[float, float]]:
+    """O giro/espelho do encaixe (a matriz sem a escala), no formato de alinhamento.ORIENTACOES."""
+    a, b, c, d = T["matriz"]
+    s = max(abs(a), abs(b), abs(c), abs(d)) or 1.0
+    return ((float(round(a / s)), float(round(b / s))), (float(round(c / s)), float(round(d / s))))
+
+
+def contorno_na_folha(pr: dict, T: dict) -> tuple[float, float, float, float]:
+    """O retângulo da janela da prancha, levado à folha."""
+    from alinhamento import alinhar as al
+
+    x0, y0, x1, y1 = pr["janela"]
+    pts = [al.transformar(T, x, y) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
+    return (min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts))
+
+
+def _sobreposicao(r: tuple, outros: list[tuple]) -> float:
+    """Fração da área de r coberta pelos outros retângulos (soma; pode passar de 1 se eles se sobrepõem)."""
+    area = max(1e-9, (r[2] - r[0]) * (r[3] - r[1]))
+    soma = 0.0
+    for o in outros:
+        w = min(r[2], o[2]) - max(r[0], o[0])
+        h = min(r[3], o[3]) - max(r[1], o[1])
+        if w > 0 and h > 0:
+            soma += w * h
+    return soma / area
+
+
+def desempatar(pr: dict, ok: list[dict], destino: list, esperada: float, orient, tol: float) -> dict | None:
+    """Prancha com duas soluções parecidas (o prédio repete a malha de pilares): as duas melhores, na
+    orientação dos setores que já encaixaram; vale a que cai mais na parte do pavimento que os setores
+    encaixados não cobrem e tem pelo menos tantos pilares batendo quanto a outra. Os pilares da escolhida têm que bater (no mínimo
+    MIN_PONTOS, erro dentro da tolerância)."""
+    from alinhamento import alinhar as al
+
+    r1 = al.alinhar(pr["pilares"], destino, escala=esperada, orientacoes=orient)
+    if not r1.transformacao:
+        return None
+    cob = _cobertos(pr, r1.transformacao, destino, tol)
+    r2 = al.alinhar(pr["pilares"], [p for i, p in enumerate(destino) if i not in cob], escala=esperada, orientacoes=orient)
+    outros = [contorno_na_folha(o, o["transformacao"]) for o in ok]
+    cands = [(r, _sobreposicao(contorno_na_folha(pr, r.transformacao), outros)) for r in (r1, r2) if r.transformacao]
+    cands.sort(key=lambda c: c[1])
+    melhor, sob = cands[0]
+    # a escolhida tem que ganhar nas duas: cai mais na parte livre (10 pontos percentuais a menos, no mínimo)
+    # e tem pelo menos tantos pilares batendo quanto a outra
+    if len(cands) > 1 and not (cands[1][1] - sob >= 0.10 and melhor.pontos >= cands[1][0].pontos):
+        return None
+    if melhor.pontos < al.MIN_PONTOS or melhor.residuo_max is None or melhor.residuo_max > tol:
+        return None
+    return {"transformacao": melhor.transformacao,
+            "motivo": f"duas soluções; ficou a que cai na parte livre do pavimento ({sob:.0%} sobre os setores já encaixados"
+                      + (f", a outra {cands[1][1]:.0%})" if len(cands) > 1 else ")")}
+
+
 def alinhar_pranchas(pecas: list[dict], lidas: list[dict], manuais: dict | None = None) -> tuple[list[dict], list[dict]]:
     """Encaixa cada prancha lida na folha de forma pelos pilares. Devolve (as que alinharam, com
-    "transformacao"; resumo por prancha). A que não alinha fica de fora e o resumo diz por quê."""
+    "transformacao"; resumo por prancha). A que não alinha fica de fora e o resumo diz por quê.
+
+    Desempate pelos vizinhos: o prédio repete a malha de pilares, e aí a prancha de um setor pode encaixar
+    quase igual em dois lugares (na obra piloto, o segundo vinha girado e espelhado). As pranchas de um
+    pavimento saem do mesmo modelo, com a mesma orientação, e os setores não se repetem: para a que ficou em
+    dúvida, vale a solução na orientação dos setores já encaixados que cai na parte livre (desempatar)."""
     import barras_laje
     from alinhamento import alinhar as al
 
     destino = barras_laje.pontos_dos_pilares(pecas)
-    ok, resumo = [], []
+    tol = al.TOLERANCIA_CM * al.PT_POR_CM_1_50
+    ok, resumo, duvida = [], [], []
     for pr in lidas:
         T = (manuais or {}).get(pr["nome"])
         esperada = float(pr.get("escala") or ESCALA_PADRAO) / ESCALA_DA_FORMA
         res = al.manual(T, pr["pilares"], destino) if T else al.alinhar(pr["pilares"], destino, escala=esperada)
         d = res.como_dict()
-        resumo.append({"prancha": pr["nome"], "pilares": len(pr["pilares"]), "alinhamento": d})
+        linha = {"prancha": pr["nome"], "pilares": len(pr["pilares"]), "alinhamento": d}
+        resumo.append(linha)
         if res.ok:
             ok.append({**pr, "transformacao": res.transformacao})
+        elif not T and "parecidas" in (d.get("motivo") or ""):
+            duvida.append((pr, linha, esperada))
+    if duvida and ok:
+        orient = sorted({orientacao(pr["transformacao"]) for pr in ok})
+        for pr, linha, esperada in duvida:
+            T = desempatar(pr, ok, destino, esperada, orient, tol)
+            if T:
+                linha["alinhamento"] = {**linha["alinhamento"], "ok": True, "transformacao": T["transformacao"],
+                                        "desempate": T["motivo"]}
+                ok.append({**pr, "transformacao": T["transformacao"]})
+        ordem = {p["nome"]: i for i, p in enumerate(lidas)}
+        ok.sort(key=lambda p: ordem[p["nome"]])
     return ok, resumo
 
 

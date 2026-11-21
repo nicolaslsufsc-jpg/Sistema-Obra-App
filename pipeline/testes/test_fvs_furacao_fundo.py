@@ -76,6 +76,36 @@ class TestPilaresDaPrancha(unittest.TestCase):
         self.assertAlmostEqual(abs(d_), 1.5, places=2)
 
 
+class TestDesempate(unittest.TestCase):
+    def test_orientacao_sem_a_escala(self):
+        self.assertEqual(furacao_fundo.orientacao({"matriz": [1.5, 0, 0, 1.5], "t": [0, 0]}), ((1.0, 0.0), (0.0, 1.0)))
+        self.assertEqual(furacao_fundo.orientacao({"matriz": [0, -1.5, -1.5, 0], "t": [0, 0]}), ((0.0, -1.0), (-1.0, 0.0)))
+
+    def test_sobreposicao(self):
+        r = (0, 0, 10, 10)
+        self.assertEqual(furacao_fundo._sobreposicao(r, []), 0)
+        self.assertAlmostEqual(furacao_fundo._sobreposicao(r, [(5, 0, 20, 10)]), 0.5)
+        self.assertAlmostEqual(furacao_fundo._sobreposicao(r, [(20, 20, 30, 30)]), 0)
+
+    def test_contorno_na_folha(self):
+        pr = {"janela": (0, 0, 100, 50)}
+        self.assertEqual(furacao_fundo.contorno_na_folha(pr, {"matriz": [1.5, 0, 0, 1.5], "t": [10, 20]}), (10, 20, 160, 95))
+
+    def test_malha_repetida_fica_na_parte_livre(self):
+        """Duas torres iguais: a prancha da segunda encaixa nas duas; a primeira já está encaixada."""
+        from alinhamento import alinhar as al
+
+        torre = [(0, 0, 10.8, 34.0), (300, 20, 17.0, 39.7), (40, 400, 28.3, 10.8), (320, 380, 14.2, 45.4), (150, 200, 10.8, 22.7)]
+        destino = [al.Ponto(x + dx, y, w=w, h=h) for dx in (0, 1000) for x, y, w, h in torre]
+        k = 50 / 75
+        pr = {"nome": "B", "pilares": [al.Ponto(x * k, y * k, w=w * k, h=h * k) for x, y, w, h in torre], "janela": (-20, -20, 380 * k, 420 * k)}
+        ja = {"nome": "A", "pilares": pr["pilares"], "janela": pr["janela"], "transformacao": {"matriz": [1.5, 0, 0, 1.5], "t": [0, 0]}}
+        tol = al.TOLERANCIA_CM * al.PT_POR_CM_1_50
+        T = furacao_fundo.desempatar(pr, [ja], destino, 1.5, [((1.0, 0.0), (0.0, 1.0))], tol)
+        self.assertIsNotNone(T)
+        self.assertAlmostEqual(T["transformacao"]["t"][0], 1000, delta=1)
+
+
 class TestFurosComPeca(unittest.TestCase):
     def test_furo_de_laje_no_pilar_ganha_o_pilar(self):
         pecas = pecas_da_forma()

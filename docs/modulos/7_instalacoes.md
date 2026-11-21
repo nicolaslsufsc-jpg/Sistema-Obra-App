@@ -52,8 +52,18 @@ O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de laj
 - **Encaixe pelos pilares.**
   - Cada prancha é encaixada na folha de forma pelos centros dos pilares (o alinhamento das barras, `pipeline/alinhamento`).
   - As pranchas saem do Revit sem camadas, na escala 1:75. Os pilares são os retângulos cheios de cinza médio.
-  - Prancha que não encaixa fica fora do fundo, e o relatório diz por quê.
+  - Algumas pranchas desenham o pilar em outro tom (cinza claro, ou branco com contorno). Se o cinza médio não encaixa, o pipeline tenta os outros tons, só com retângulos do tamanho de um pilar (12 a 400 cm de lado). O relatório diz o tom usado.
+  - Prancha que não encaixa fica fora do fundo, e o relatório diz por quê. Isso não para os outros setores.
+  - **Desempate.** O prédio repete a malha de pilares (torres iguais), e um setor pode encaixar quase igual em dois lugares. O pipeline então fica com a solução que:
+    - está na mesma orientação dos setores já encaixados;
+    - cai na parte da folha ainda livre (pelo menos 10 pontos percentuais menos sobreposta);
+    - tem pelo menos tantos pilares batendo quanto a outra.
   - Na obra piloto, o setor A do subsolo encaixou com 64 de 66 pilares e erro de até 0,2 cm.
+- **A conferir (nada é apagado).** O relatório lista, sem tirar da planta:
+  - furos fora do contorno da forma: numa das quatro direções não há pilar nem viga a menos de 3 m;
+  - pilhas: furos no mesmo ponto (até 5 cm);
+  - filas: 5 ou mais furos na mesma linha, a até 50 cm um do outro.
+- **Limite do modelo de furação da obra piloto.** O IFC (R03, de 17/08) só tem furos até o 3º pavimento. No 4º, no 5º, no 6º e na cobertura dá 0 furo, e a cobertura também não tem prancha de forma. Para esses pavimentos é preciso decidir: ler os furos das pranchas em PDF, ou usar o 3º como tipo.
 - **Furos e peças.**
   - Os furos são os mesmos da forma, com os mesmos ids. Saem do modelo de furação, pelo `furos.py`.
   - Cada furo traz a peça: `viga` (furo de viga), `furo.laje` (furo de laje) e, novo, `pilar` (furo ou caixinha de laje que cai dentro do contorno de um pilar).

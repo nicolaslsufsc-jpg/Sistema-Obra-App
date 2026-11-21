@@ -321,6 +321,24 @@ button.pj-pequeno {
   font-size: 1rem;
   margin: 0 0 0.5rem;
 }
+/* Última atualização do Autodoc (só com conta): neutra quando em dia, de atenção quando passou de 1 dia. */
+.pj-autodoc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: var(--raio);
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  border: 2px solid var(--borda);
+  overflow-wrap: anywhere;
+}
+.pj-autodoc.atrasada,
+.pj-autodoc.nunca {
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+  color: var(--atencao-texto);
+}
 .pj-aviso-base {
   background: var(--atencao-fundo);
   border: 2px solid var(--atencao-borda);

@@ -122,7 +122,23 @@ async function semear() {
   await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.linha.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
 }
 
-semear().then(() => {
+// ?autodoc=ok|atrasada|nunca: a cópia guardada da última atualização do Autodoc (sem servidor na bancada,
+// a faixa mostra a cópia guardada). Sem o parâmetro: "ainda não consultada".
+async function semearAutodoc() {
+  const qual = new URLSearchParams(location.search).get('autodoc')
+  const chave = `projetos_autodoc:${OBRA}`
+  if (!qual) return banco.gravarMeta(chave, null)
+  const horas = qual === 'atrasada' ? 50 : 2
+  await banco.gravarMeta(chave, {
+    conferidoEm: new Date().toISOString(),
+    ultima:
+      qual === 'nunca'
+        ? null
+        : { dataLista: HOJE, publicadaEm: new Date(Date.now() - horas * 3600_000).toISOString(), quem: 'Ana Exemplo', revisoesNovas: 3, documentosNovos: 1, resultado: '' },
+  })
+}
+
+Promise.all([semear(), semearAutodoc()]).then(() => {
   history.replaceState({ tela: 'projetos' }, '')
   render(<ModuloProjetos usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
 })

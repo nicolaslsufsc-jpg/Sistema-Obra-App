@@ -70,7 +70,7 @@ Chaves estrangeiras compostas com `obra_id`, como manda o contrato; toda `revisa
 ## Script no PC (`pipeline/projetos/`)
 Python, como `pipeline/exportar_obra.py`. Sem chave secreta: login do app (código por e-mail), com a sessão guardada num arquivo local fora do repositório para não pedir código todo dia.
 
-- **Exportador automático do Autodoc:** existiu (`exportar_autodoc.py` e `rodar_revisoes.bat`, que entravam no Autodoc com o login do Nicolas) e saiu do repositório em 08/11/2026. A lista é exportada à mão.
+- **Exportador automático do Autodoc:** existiu (`exportar_autodoc.py` e `rodar_revisoes.bat`, que entravam no Autodoc com o login do Nicolas) e saiu do repositório em 08/11/2026. Desde 21/11/2026 volta a existir **só no PC**, fora do repositório, e publica pelo `importar_lista.py` (ver o status de 21/11).
 - **`importar_lista.py`**: confere as três linhas de cabeçalho e os nomes das colunas (relatório diferente → recusa e avisa); quebra o código pela máscara; junta `.dwg` e `.pdf` no mesmo documento; grava `documentos`, `revisoes`, `listas_autodoc`; imprime a lista de ações e salva o `relatorio_AAAA-MM-DD.txt`. Se o CSV do dia não existir, não conclui nada: avisa.
 
 - **`exportar_ficha.py`**: planilha no formato da ficha de controle v2 (CSV para Excel pt-BR, como a exportação de obra faz).
@@ -104,6 +104,21 @@ Item "Projetos" no menu da obra. Celular e tablet primeiro, depois o PC.
 
 ## Depende de
 Núcleo (banco, sincronização, `arquivos` para as fotos).
+
+## Status (21/11/2026): atualização automática do Autodoc (branch `projetos/autodoc-com-conta`)
+Pedido do Nicolas (21/11, pelo Professor): "coloca esse script no programa, a única coisa que a pessoa vai fazer é executar ele".
+- **Fora do repositório** (entra no Autodoc, regra do CLAUDE.md): um atalho na área de trabalho, "Atualizar projetos do Autodoc", roda o exportador.
+  1. Abre o Autodoc numa janela limpa; a pessoa faz o login nela. Nada da sessão fica gravado.
+  2. Exporta o CSV da página Relatórios (só leitura) e gera a lista vigente do dia e a comparação com a anterior.
+  3. Publica com o `importar_lista.py` deste repositório, com o login do app: grava `documentos`, `revisoes` e a linha de `listas_autodoc`.
+  - Um instalador simples (pasta + atalho) leva tudo para outro PC.
+- **No app, só leitura e só com conta:** uma faixa no alto do painel (`projetos/autodoc.ts` e `telas/FaixaAutodoc.tsx`).
+  - Mostra "Última atualização do Autodoc: data e hora, por quem" e as revisões e documentos novos.
+  - Com mais de 1 dia, diz "Rode o atalho ... no PC".
+  - Lê só a última linha de `listas_autodoc`, direto do servidor (a tabela não desce com a sincronização), e guarda uma cópia no aparelho para abrir sem internet.
+  - Sem migração nova.
+- Bancada: `app/dev/projetos.html?autodoc=ok|atrasada|nunca`.
+- Próximo passo: o teste ao vivo com o login do Nicolas no Autodoc e a primeira publicação de verdade da obra piloto.
 
 ## Status (20/11/2026): lista de distribuição e "A entregar" (branch `projetos/distribuicao`)
 Proposta aprovada pelo Nicolas em 20/11 (pelo Professor). O Projetos volta ao menu, com o selo "beta", só no app sem conta (como o Documentos): a base e a lista ainda ficam no aparelho.

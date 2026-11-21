@@ -57,6 +57,7 @@ listadas (paginação de piso no piso, impermeabilização no piso e no reboco..
 Modulação de paredes (vedacao.py, com "vedacao": true ou {"prancha": ..., "escala": 50} em "ambientes"): uma
 planta a mais do pavimento (setor "Modulação", disciplina "vedacao"), em que cada parede de alvenaria do IFC é
 um local "M" ("303-M01"), conferido pela ficha de alvenaria. O fundo é a prancha de 1ª fiada, ou a de arquitetura.
+"paredes" em "vedacao" escolhe quais entram: "todas" (padrão), "area_comum" ou "apartamentos".
 
 Furos de viga (fatia 1 da conferência por elemento, furos.py): cada furo do modelo de furação vira um
 local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga. Os furos
@@ -178,6 +179,8 @@ def ler_config(caminho: pathlib.Path) -> dict:
                 if len(achados) != 1:
                     raise ErroPublicacao(f"ambientes: \"vedacao\": \"prancha\" tem que ser um arquivo só, a 1ª fiada do pavimento inteiro (achei {len(achados)})")
                 ved["prancha"] = achados[0]
+            if ved.get("paredes", "todas") not in ("todas", "area_comum", "apartamentos"):
+                raise ErroPublicacao(f"ambientes: \"vedacao\": \"paredes\" é \"todas\", \"area_comum\" ou \"apartamentos\" (veio \"{ved['paredes']}\")")
             amb["vedacao"] = ved or True
     fur = None
     if cfg.get("furos"):
@@ -746,9 +749,11 @@ def ler_vedacao(cfg_amb: dict, base_amb: dict) -> dict:
     except vedacao.ErroVedacao as e:
         raise ErroPublicacao(f"vedação: {e}") from e
     r = lida["resumo"]
-    print(f"  modulação: {r['paredes']} paredes de alvenaria ({r['metros']:g} m) em {len(r['por_apartamento'])} unidades,"
+    escolha = {"area_comum": " (só área comum)", "apartamentos": " (só apartamentos)"}.get(r.get("quais"), "")
+    print(f"  modulação{escolha}: {r['paredes']} paredes de alvenaria ({r['metros']:g} m) em {len(r['por_apartamento'])} unidades,"
           f" fundo da prancha de {r['fundo']} (modelo x prancha: {r['coincidencia']:.0%})"
-          + (f"; {r['curtas_fora']} pedaços com menos de 10 cm ficaram fora" if r.get("curtas_fora") else ""))
+          + (f"; {r['curtas_fora']} pedaços com menos de 10 cm ficaram fora" if r.get("curtas_fora") else "")
+          + (f"; {r['fora_pela_escolha']} paredes ficaram fora pela escolha" if r.get("fora_pela_escolha") else ""))
     return lida
 
 

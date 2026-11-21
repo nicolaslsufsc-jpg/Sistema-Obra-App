@@ -543,7 +543,8 @@ Conferência
 # ---------------------------------------------------------------------------
 
 
-def exportar(args, situacao: dict) -> int:
+def exportar(args, situacao: dict, sb: "Supabase | None" = None, usuario: dict | None = None) -> int:
+    """Exporta a obra args.obra. `sb` + `usuario`: login já feito (backup_semanal.py, sem perguntar nada)."""
     codigo_obra = args.obra.strip().upper()
     base = pathlib.Path(args.saida.strip().rstrip('"')).expanduser()
     if dentro_de_repositorio(base.resolve()) and not args.permitir_repositorio:
@@ -553,12 +554,15 @@ def exportar(args, situacao: dict) -> int:
         )
     conferir_pasta_base(base)
     base = base.resolve()
-    sb = Supabase(args.url, args.chave)
     inicio = dt.datetime.now(dt.timezone.utc)
 
-    email = (args.email or input("Seu e-mail: ")).strip().lower()
-    print(f"Mandando código para {email}...")
-    usuario = sb.entrar(email, lambda: input("Código que chegou por e-mail (olhe também a caixa de spam): "))
+    if sb is None or usuario is None:
+        sb = Supabase(args.url, args.chave)
+        email = (args.email or input("Seu e-mail: ")).strip().lower()
+        print(f"Mandando código para {email}...")
+        usuario = sb.entrar(email, lambda: input("Código que chegou por e-mail (olhe também a caixa de spam): "))
+    else:
+        email = (usuario.get("email") or "").strip().lower()
 
     obras = sb.json("GET", f"/rest/v1/obras?select=*&codigo=eq.{urllib.parse.quote(codigo_obra)}")
     if not obras:
@@ -701,6 +705,7 @@ def exportar(args, situacao: dict) -> int:
     )
     os.replace(saida, final)
     situacao["pasta"] = None
+    situacao["final"] = final
 
     if args.zip:
         shutil.make_archive(str(final), "zip", root_dir=final.parent, base_dir=final.name)

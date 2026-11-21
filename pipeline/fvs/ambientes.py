@@ -20,7 +20,9 @@ Sala e cozinha sem parede entre elas ficam um ambiente só (decisão do Nicolas,
 
 No pavimento.json (ver publicar_planta.py):
   "ambientes": {"ifc": "...TORRESEMMO-R03.ifc", "andar": "3", "prancha": "...036.3PAVTOXXXX-R03.pdf", "escala": 200,
-                "nomes": "nomes_dos_comodos.json", "esquadrias": true}
+                "nomes": "nomes_dos_comodos.json", "esquadrias": true, "fichas_por_comodo": "fichas_por_comodo.json"}
+"fichas_por_comodo" (opcional, precisa dos "nomes") diz que ficha vale em que tipo de cômodo (ler_fichas_por_comodo):
+o ambiente ganha "sem_fichas" com as que não valem nele.
 "esquadrias": true (opcional) põe as portas e janelas do mesmo IFC como locais "E" dentro dos ambientes
 (esquadrias.py).
 "modulacao": {"pranchas": [...], "escala": 50} (opcional) põe o recorte da planta de 1ª fiada como detalhe
@@ -238,6 +240,27 @@ def ficha_vale_no_comodo(codigo: str, comodo: str | None, tabela: dict) -> bool:
     if codigo not in tabela["fichas"] or classe not in tabela["classes"]:
         return True
     return codigo in tabela["classes"][classe]
+
+
+def marcar_fichas_do_comodo(pecas: list[dict], tabela: dict) -> dict:
+    """Grava em cada ambiente com nome de cômodo o "sem_fichas": os códigos das fichas que a tabela diz que não
+    valem nele (no app, com essa ficha escolhida, o cômodo fica apagado e fora da contagem). Ambiente sem nome ou
+    de tipo que a tabela não tem fica sem o campo: todas as fichas valem nele, como antes.
+    Devolve o resumo: quantos ambientes ganharam regra e os tipos de cômodo que a tabela não tem."""
+    com_regra, sem_tipo = 0, collections.Counter()
+    for p in pecas:
+        if p.get("tipo") != "A" or not p.get("comodo"):
+            continue
+        p.pop("sem_fichas", None)
+        classe = classe_do_comodo(p["comodo"])
+        if classe not in tabela["classes"]:
+            sem_tipo[classe] += 1
+            continue
+        com_regra += 1
+        fora = sorted(c for c in tabela["fichas"] if not ficha_vale_no_comodo(c, p["comodo"], tabela))
+        if fora:
+            p["sem_fichas"] = fora
+    return {"com_regra": com_regra, "tipos_fora_da_tabela": dict(sorted(sem_tipo.items()))}
 
 
 def _girar(x: float, y: float, k: int) -> tuple[float, float]:
@@ -636,6 +659,10 @@ def ler_planta(cfg: dict, base: dict | None = None) -> dict:
         if a["nome"] in comodos:
             peca["comodo"] = comodos[a["nome"]]
         pecas.append(peca)
+    rel_fichas = None
+    if cfg.get("fichas_por_comodo"):
+        # que ficha vale em que tipo de cômodo: dado da obra, fora do repositório (exemplo em fichas_por_comodo.exemplo.json)
+        rel_fichas = marcar_fichas_do_comodo(pecas, ler_fichas_por_comodo(cfg["fichas_por_comodo"]))
     rel_esquadrias = None
     if cfg.get("esquadrias"):
         # portas e janelas do mesmo IFC viram locais "E" dentro dos ambientes (esquadrias.py)
@@ -685,6 +712,7 @@ def ler_planta(cfg: dict, base: dict | None = None) -> dict:
                    "tipos": {n: a["tipo"] for n, a in sorted(aptos.items())},
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
                    **({"nomes": resumo_nomes} if resumo_nomes else {}),
+                   **({"fichas_por_comodo": rel_fichas} if rel_fichas else {}),
                    **({"esquadrias": rel_esquadrias} if rel_esquadrias else {}),
                    **({"modulacao": rel_modulacao} if rel_modulacao else {}),
                    **({"projetos": rel_projetos} if rel_projetos else {})},

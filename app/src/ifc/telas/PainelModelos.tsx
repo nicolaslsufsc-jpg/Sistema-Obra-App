@@ -1,5 +1,6 @@
 // Modelos abertos: ligar, deixar transparente, alinhar, levar para outro aparelho.
 import { useEffect, useState } from 'preact/hooks'
+import type { ComponentChildren } from 'preact'
 import { qtdTriangulos } from '../motor/tipos'
 import { ajusteEhNeutro } from '../motor/alinhamento'
 import type { ModeloAberto, Sessao } from '../sessao'
@@ -133,7 +134,7 @@ function CartaoModelo({ sessao, m }: { sessao: Sessao; m: ModeloAberto }) {
   )
 }
 
-export function PainelModelos({ sessao, aoEscolher }: { sessao: Sessao; aoEscolher: () => void }) {
+export function PainelModelos({ sessao, aoEscolher, daObra }: { sessao: Sessao; aoEscolher: () => void; daObra?: ComponentChildren }) {
   useEffect(() => {
     void sessao.atualizarGuardados()
   }, [sessao])
@@ -145,6 +146,8 @@ export function PainelModelos({ sessao, aoEscolher }: { sessao: Sessao; aoEscolh
         <IcAbrir />
         Importar IFC
       </button>
+
+      {daObra}
 
       {sessao.modelos.length > 0 && (
         <ul class="ifc-lista-limpa ifc-pilha" aria-label="Modelos abertos">

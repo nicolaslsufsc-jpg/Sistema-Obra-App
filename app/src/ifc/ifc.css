@@ -1164,3 +1164,64 @@
     transition: none !important;
   }
 }
+
+/* ---------- IFCs da obra (baixar para usar sem internet) ---------- */
+
+.ifc-da-obra-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.ifc-da-obra-lista h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.ifc-da-obra-lista p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ifc-da-obra {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ifc-borda);
+}
+
+.ifc-da-obra-nome {
+  min-width: 0;
+}
+
+.ifc-da-obra-nome strong,
+.ifc-da-obra-nome small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ifc-da-obra-nome small {
+  color: var(--ifc-discreto);
+}
+
+.ifc-da-obra-progresso {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ifc-discreto);
+}
+
+.ifc-vazio-guardados .ifc-da-obra-lista .ifc-botao {
+  width: auto;
+  margin-bottom: 0;
+}
+
+.ifc-vazio-guardados .ifc-da-obra-lista .ifc-botao-largo {
+  width: 100%;
+}

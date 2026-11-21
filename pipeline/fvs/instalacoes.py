@@ -66,7 +66,8 @@ TIPOS_DE_LINHA = ("eletroduto",)
 # Trecho mais curto que isto na planta (cm) é vertical: fica fora (ver acima).
 LINHA_MINIMA_CM = 5.0
 
-# Namespace fixo dos ids dos pontos (uuid5): o mesmo objeto do modelo dá o mesmo id em toda geração.
+# Namespace fixo dos ids dos pontos (uuid5): o mesmo objeto do modelo, na mesma obra e pavimento, dá o mesmo id
+# em toda geração (id_do_ponto).
 _NS = uuid.UUID("6f1d3c2a-9b7e-4c51-8a40-1e2f3a4b5c6d")
 
 # Classes IFC que podem ser ponto (as que o Revit usa para aparelhos, ralos, registros e conexões).
@@ -140,8 +141,11 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     raise ErroInstalacoes(f"disciplina desconhecida: {disciplina} (use {', '.join(DISCIPLINAS)})")
 
 
-def id_do_ponto(disciplina: str, modelo_id: str) -> str:
-    return str(uuid.uuid5(_NS, f"{disciplina}|{modelo_id}"))
+def id_do_ponto(obra: str, pavimento: str, disciplina: str, modelo_id: str) -> str:
+    """Id do ponto (vai em fvs_eventos.barra_id). Leva a planta: obra, pavimento e disciplina (uma planta por
+    disciplina no pavimento). Assim o mesmo IFC usado em dois pavimentos ou em duas obras não repete id, e o id
+    não muda ao republicar (o planta_id do servidor muda a cada publicação; obra e pavimento, não)."""
+    return str(uuid.uuid5(_NS, f"{obra.strip().upper()}|{pavimento.strip()}|{disciplina}|{modelo_id}"))
 
 
 def _nivel_do(elemento, psets: dict) -> str:
@@ -252,7 +256,8 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
     return saida
 
 
-def pontos_na_folha(pontos: list[dict], enc: dict, disciplina: str, largura: float, altura: float) -> tuple[dict, list[dict]]:
+def pontos_na_folha(pontos: list[dict], enc: dict, disciplina: str, largura: float, altura: float,
+                    obra: str, pavimento: str) -> tuple[dict, list[dict]]:
     """Pontos do modelo na folha pelo encaixe. Devolve ({id: ponto do pacote}, fora da folha)."""
     from furos import transformar
 
@@ -272,7 +277,7 @@ def pontos_na_folha(pontos: list[dict], enc: dict, disciplina: str, largura: flo
                "nome": p["nome"] or TIPOS_DE_PONTO[p["tipo"]], "modelo_id": p["modelo_id"]}
         if linha:
             reg["linha"] = [[round(a, 2), round(b, 2)] for a, b in linha]
-        dentro[id_do_ponto(disciplina, p["modelo_id"])] = reg
+        dentro[id_do_ponto(obra, pavimento, disciplina, p["modelo_id"])] = reg
     return dentro, fora
 
 

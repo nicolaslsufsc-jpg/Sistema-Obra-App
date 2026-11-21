@@ -33,8 +33,29 @@ def forma(largura=1000.0, altura=800.0):
             "niveis": [0], "tiles": {}, "pecas": [], "trecho": "Planta inteira"}
 
 
-def ifc_de_teste(caminho: str) -> None:
-    """Um IFC4 em milímetros: 2º e 3º pavimento, ralo, caixa sifonada, vaso, registro, ponto de água e uma parede."""
+HIDROSSANITARIO = (
+    ("IfcWasteTerminal", "Ralo seco 100x100:RS:1", 1000.0, 2000.0, "2º PAVIMENTO", "11"),
+    ("IfcBuildingElementProxy", "Caixa Sifonada 150x150x50:CS:2", 3000.0, 2000.0, "2º PAVIMENTO", "12"),
+    ("IfcSanitaryTerminal", "Bacia sanitária:BS:3", 5000.0, 1000.0, "2º PAVIMENTO", "13"),
+    ("IfcValve", "Registro de gaveta:RG:4", 2000.0, 500.0, "2º PAVIMENTO", "14"),
+    ("IfcWasteTerminal", "Ralo do 3º:RS:5", 1000.0, 2000.0, "3º PAVIMENTO", "15"),
+    ("IfcWall", "Parede:P:6", 0.0, 0.0, "2º PAVIMENTO", "16"),
+)
+# elétrico e SPDA da obra EXE (nomes usuais do Revit; suposição até ver os IFC reais)
+ELETRICO_SPDA = (
+    ("IfcJunctionBox", "Caixa de passagem 4x4:CP:1", 1000.0, 1000.0, "2º PAVIMENTO", "21"),
+    ("IfcBuildingElementProxy", "Caixa octogonal 4x4 - Ponto de luz:PL:2", 2000.0, 1000.0, "2º PAVIMENTO", "22"),
+    ("IfcElectricDistributionBoard", "QDL-02:QD:3", 3000.0, 500.0, "2º PAVIMENTO", "23"),
+    ("IfcCableCarrierSegment", "Eletroduto corrugado 25:EL:4", 1500.0, 1000.0, "2º PAVIMENTO", "24"),
+    ("IfcBuildingElementProxy", "Captor Franklin:CF:5", 500.0, 500.0, "2º PAVIMENTO", "25"),
+    ("IfcCableSegment", "Descida SPDA cabo 35mm²:DS:6", 4000.0, 2000.0, "2º PAVIMENTO", "26"),
+    ("IfcBuildingElementProxy", "Caixa de inspeção SPDA:CI:7", 4000.0, 2100.0, "2º PAVIMENTO", "27"),
+)
+
+
+def ifc_de_teste(caminho: str, objetos=HIDROSSANITARIO) -> None:
+    """Um IFC4 em milímetros com 2º e 3º pavimento e os objetos pedidos (padrão: ralo, caixa sifonada, vaso,
+    registro, ralo do 3º e uma parede)."""
     f = ifcopenshell.file(schema="IFC4")
     g = lambda: ifcopenshell.guid.new()  # noqa: E731
     origem = f.createIfcCartesianPoint((0.0, 0.0, 0.0))
@@ -56,12 +77,8 @@ def ifc_de_teste(caminho: str) -> None:
         f.createIfcRelContainedInSpatialStructure(g(), None, None, None, [el], pavs[pav])
         return el
 
-    obj("IfcWasteTerminal", "Ralo seco 100x100:RS:1", 1000.0, 2000.0, "2º PAVIMENTO", "11")
-    obj("IfcBuildingElementProxy", "Caixa Sifonada 150x150x50:CS:2", 3000.0, 2000.0, "2º PAVIMENTO", "12")
-    obj("IfcSanitaryTerminal", "Bacia sanitária:BS:3", 5000.0, 1000.0, "2º PAVIMENTO", "13")
-    obj("IfcValve", "Registro de gaveta:RG:4", 2000.0, 500.0, "2º PAVIMENTO", "14")
-    obj("IfcWasteTerminal", "Ralo do 3º:RS:5", 1000.0, 2000.0, "3º PAVIMENTO", "15")
-    obj("IfcWall", "Parede:P:6", 0.0, 0.0, "2º PAVIMENTO", "16")
+    for o in objetos:
+        obj(*o)
     f.write(caminho)
 
 
@@ -85,6 +102,35 @@ class TestClassificar(unittest.TestCase):
         self.assertEqual(c("hidro", "IfcBuildingElementProxy", "Ponto de água fria"), "ponto_agua")
         self.assertIsNone(c("hidro", "IfcBuildingElementProxy", "Ralo seco"))
 
+    def test_eletrico(self):
+        c = instalacoes.classificar
+        self.assertEqual(c("eletrico", "IfcJunctionBox", "Caixa"), "caixa_passagem")
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "CAIXA DE PASSAGEM 30x30"), "caixa_passagem")
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "Cx 4x2 elétrica"), "caixa_passagem")
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "Caixa octogonal 4x4"), "ponto_luz")
+        self.assertEqual(c("eletrico", "IfcLightFixture", "Plafon"), "ponto_luz")
+        self.assertEqual(c("eletrico", "IfcElectricDistributionBoard", "x"), "quadro")
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "QDL-02"), "quadro")
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "Quadro de medição"), "quadro")
+        # eletroduto é linha: fica fora
+        self.assertIsNone(c("eletrico", "IfcCableCarrierSegment", "Eletroduto caixa 4x4"))
+        self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "Ralo seco"))
+
+    def test_spda(self):
+        c = instalacoes.classificar
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "Captor Franklin"), "captor")
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "Mastro do captor"), "captor")
+        self.assertEqual(c("spda", "IfcCableSegment", "Descida SPDA"), "descida")
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "Caixa de inspeção"), "caixa_inspecao")
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "CX INSP SPDA"), "caixa_inspecao")
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "Haste de aterramento 5/8"), "haste")
+        self.assertIsNone(c("spda", "IfcCableSegment", "Cabo de cobre nu"))
+
+    def test_trecho_de_tubo_nao_e_ponto(self):
+        c = instalacoes.classificar
+        self.assertIsNone(c("hidro", "IfcFlowSegment", "Saída tubo"))
+        self.assertIsNone(c("sanitario", "IfcFlowSegment", "Ralo tubo"))
+
     def test_disciplina_desconhecida(self):
         with self.assertRaises(instalacoes.ErroInstalacoes):
             instalacoes.classificar("gas", "IfcValve", "x")
@@ -103,6 +149,15 @@ class TestLerIfc(unittest.TestCase):
             self.assertEqual(san["11"]["nome"], "Ralo seco 100x100")
             hid = instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "hidro")
             self.assertEqual(sorted((p["modelo_id"], p["tipo"]) for p in hid), [("13", "ponto_agua"), ("14", "registro")])
+
+    def test_eletrico_e_spda(self):
+        with tempfile.TemporaryDirectory() as d:
+            arq = str(pathlib.Path(d) / "EXE_eletrico.ifc")
+            ifc_de_teste(arq, ELETRICO_SPDA)
+            ele = sorted((p["modelo_id"], p["tipo"]) for p in instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "eletrico"))
+            self.assertEqual(ele, [("21", "caixa_passagem"), ("22", "ponto_luz"), ("23", "quadro")])
+            spda = sorted((p["modelo_id"], p["tipo"]) for p in instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "spda"))
+            self.assertEqual(spda, [("25", "captor"), ("26", "descida"), ("27", "caixa_inspecao")])
 
 
 class TestNaFolha(unittest.TestCase):
@@ -224,6 +279,29 @@ class TestFichaComPontos(unittest.TestCase):
         for args in ((("A",), {"pontos": "gas"}), (("L",), {"pontos": "hidro"}), (("A",), {"pontos": "hidro", "esquadrias": True})):
             with self.assertRaises(publicar_fichas.ErroFichas):
                 publicar_fichas.normalizar(self.ficha(args[0], **args[1]))
+
+    def test_eletrico_e_spda(self):
+        for disc in ("eletrico", "spda"):
+            self.assertEqual(publicar_fichas.normalizar(self.ficha(pontos=disc))[0]["itens"][0]["pontos"], disc)
+
+
+class TestListasIguais(unittest.TestCase):
+    """As disciplinas e os tipos de ponto são os mesmos no instalacoes.py, no pacote e nas fichas."""
+
+    def test_iguais(self):
+        self.assertEqual(tuple(instalacoes.DISCIPLINAS), pacote.DISCIPLINAS_DE_PONTOS)
+        self.assertEqual(tuple(instalacoes.DISCIPLINAS), publicar_fichas.DISCIPLINAS_DOS_PONTOS)
+        self.assertEqual(tuple(instalacoes.TIPOS_DE_PONTO), pacote.TIPOS_DE_PONTO)
+
+    def test_so_disciplina_no_cli(self):
+        import contextlib
+        import io
+
+        saida = io.StringIO()
+        with contextlib.redirect_stdout(saida), self.assertRaises(SystemExit):
+            publicar_planta.main(["--help"])
+        for disc in instalacoes.DISCIPLINAS:
+            self.assertIn(f"--so-{disc}", saida.getvalue())
 
 
 if __name__ == "__main__":

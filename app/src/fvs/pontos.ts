@@ -9,8 +9,23 @@
 
 import type { Ficha, ItemFicha } from './situacao'
 
-export type DisciplinaDePontos = 'hidro' | 'sanitario'
-export type TipoDePonto = 'ponto_agua' | 'registro' | 'hidrometro' | 'ralo' | 'caixa_sifonada' | 'caixa' | 'ponto_esgoto'
+export type DisciplinaDePontos = 'hidro' | 'sanitario' | 'eletrico' | 'spda'
+export type TipoDePonto =
+  | 'ponto_agua'
+  | 'registro'
+  | 'hidrometro'
+  | 'ralo'
+  | 'caixa_sifonada'
+  | 'caixa'
+  | 'ponto_esgoto'
+  // elétrico (laje e quadros) e SPDA, 20/11/2026
+  | 'caixa_passagem'
+  | 'ponto_luz'
+  | 'quadro'
+  | 'captor'
+  | 'descida'
+  | 'caixa_inspecao'
+  | 'haste'
 
 export interface PontoPacote {
   disciplina: DisciplinaDePontos
@@ -25,6 +40,8 @@ export interface PontoPacote {
 export const NOME_DA_DISCIPLINA: Record<DisciplinaDePontos, string> = {
   hidro: 'Água fria e quente',
   sanitario: 'Esgoto e pluvial',
+  eletrico: 'Caixas e quadros',
+  spda: 'Captores e descidas',
 }
 
 export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
@@ -35,6 +52,13 @@ export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
   caixa_sifonada: 'Caixa sifonada',
   caixa: 'Caixa',
   ponto_esgoto: 'Ponto de esgoto',
+  caixa_passagem: 'Caixa de passagem',
+  ponto_luz: 'Ponto de luz',
+  quadro: 'Quadro',
+  captor: 'Captor',
+  descida: 'Descida',
+  caixa_inspecao: 'Caixa de inspeção',
+  haste: 'Haste de aterramento',
 }
 
 type Pt = readonly [number, number]

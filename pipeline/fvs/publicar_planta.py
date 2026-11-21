@@ -35,7 +35,7 @@ pavimento.json (fica fora do repositório, junto das pranchas):
   "camadas_separadas": false                       opcional: sem as plantas de armadura (uma por direção, o padrão
                                                    quando há barras_laje; armadura_laje.py); as barras ficam na aba da forma
   "instalacoes": {"hidro": {"ifc": "../Hidro/modelo.ifc", "nivel": "2º PAVIMENTO"},   opcional: uma planta por disciplina
-                  "sanitario": {"ifc": [...], "nivel": [...]},      com os pontos do modelo (instalacoes.py); só com a
+                  "sanitario", "eletrico", "spda": {"ifc": [...], "nivel": [...]},  com os pontos do modelo (instalacoes.py); só com a
                   "encaixe": {...}}                                 folha única; encaixe = o dos furos, ou este à mão
 }
 Caminhos relativos valem a partir da pasta do pavimento.json.

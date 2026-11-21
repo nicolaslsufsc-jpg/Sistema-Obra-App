@@ -330,7 +330,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
         const armadura = plantas.filter(ehDeArmadura).sort((a, b) => ordemDaCamada(a.trecho) - ordemDaCamada(b.trecho))
         const ambientes = plantas.filter(ehDeAmbientes)
         // disciplinas que vierem depois (instalações...) entram sozinhas, uma seção por disciplina
-        const outras = [...agrupar(plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p) && p.disciplina !== 'estrutura'), (p) => p.disciplina)]
+        const outras = [...agrupar(plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p) && p.disciplina !== 'estrutura'), (p) => p.disciplina)].sort(([a], [b]) => ordemDaSecao(a) - ordemDaSecao(b))
         const daEstrutura = estrutura.filter((p) => p.disciplina === 'estrutura')
         const { r, ra: resumoAmb, rm, lajes } = resumos.get(pv.id)!
         const ra = ambientes.length ? resumoAmb : null
@@ -572,7 +572,9 @@ function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
 }
 
 /** Seções das plantas de instalações (pontos, frente INSTALAÇÕES 20/11/2026), com acento. */
-const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Sanitário' }
+const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Sanitário', eletrico: 'Elétrico', spda: 'SPDA' }
+/** Instalações na ordem do menu (hidro, sanitário, elétrico, SPDA); disciplina que o app não conhece vem depois. */
+const ordemDaSecao = (d: string) => { const i = Object.keys(SECAO_DE_INSTALACOES).indexOf(d); return i < 0 ? 99 : i }
 
 /** Título da seção de uma disciplina que o app ainda não conhece ("instalacoes" -> "Instalacoes"). */
 function nomeDaDisciplina(d: string): string {

@@ -53,15 +53,19 @@ CAMADA_DO_PDF = {
 CAMADAS_DE_PILAR = ("PILAR_CONCRETO",)
 # Reserva, quando a prancha não tem o contorno do pilar na camada dele (4º pavimento da obra piloto, 20/11/2026:
 # o pilar vem em VIG_FACES, junto das cubetas da nervurada). Desses retângulos, só os que têm o tamanho de um
-# pilar da folha de forma (até 5 cm, deitado ou em pé) entram no encaixe; as cubetas não têm e ficam de fora.
+# pilar da folha de forma (até 2 cm, deitado ou em pé) entram no encaixe; as cubetas não têm e ficam de fora.
+# 2 cm e não 5: a meia cubeta (35 x 68 cm) do pilotis e do térreo cabia em 5 cm de um pilar de 30 x 70 (21/11/2026).
 CAMADAS_DE_CONTORNO = ("PILAR_BETAO", "VIG_FACES")
+TOLERANCIA_TAMANHO_CM = 2.0
 
 PT_POR_CM = al.PT_POR_CM_1_50
 DIST_ETIQUETA = 14.0  # pontos: até onde a barra pode estar da etiqueta dela
 TOLERANCIA_COMPRIMENTO = 0.08  # do "C=" da etiqueta (mínimo de 20 cm)
 TOLERANCIA_PT = al.TOLERANCIA_CM * PT_POR_CM  # 5 cm: a mesma barra em duas pranchas vizinhas
 
-RE_PARTE = re.compile(r"N\s*(?P<n>\d+)\s*-\s*(?P<qtd>\d*)\s*(?:%%[cC]|ø|Ø|∅)\s*(?P<bitola>\d+(?:[.,]\d+)?)"
+# A quantidade vem depois do traço ("N25-1%%c10") ou antes do N ("35N5-%%c6.3c/10 C=1200", pilotis, mezanino e
+# térreo da obra piloto, 21/11/2026).
+RE_PARTE = re.compile(r"(?:(?<![\w.=])(?P<qtd0>\d+)\s*)?N\s*(?P<n>\d+)\s*-\s*(?P<qtd>\d*)\s*(?:%%[cC]|ø|Ø|∅)\s*(?P<bitola>\d+(?:[.,]\d+)?)"
                       r"\s*(?:c\s*/\s*(?P<esp>\d+(?:[.,]\d+)?))?\s*C\s*=\s*(?P<c>\d+(?:[.,]\d+)?)", re.I)
 
 
@@ -87,8 +91,8 @@ def ler_etiqueta(texto: str) -> list[dict]:
     saida = []
     for m in RE_PARTE.finditer(texto or ""):
         parte = {"posicao": f"N{int(m.group('n'))}", "bitola": _num(m.group("bitola")), "comprimento": _num(m.group("c"))}
-        if m.group("qtd"):
-            parte["quantidade"] = int(m.group("qtd"))
+        if m.group("qtd") or m.group("qtd0"):
+            parte["quantidade"] = int(m.group("qtd") or m.group("qtd0"))
         if m.group("esp"):
             parte["espacamento"] = _num(m.group("esp"))
         qtd = f"{parte['quantidade']}" if "quantidade" in parte else ""
@@ -172,8 +176,8 @@ def pontos_dos_pilares(pecas: list[dict]) -> list[al.Ponto]:
 
 
 def do_tamanho_de_um_pilar(p: al.Ponto, destino: list[al.Ponto], tol: float | None = None) -> bool:
-    """O retângulo tem a largura e a altura de algum pilar da folha (deitado ou em pé), até a tolerância (5 cm)."""
-    tol = al.TOLERANCIA_CM * PT_POR_CM if tol is None else tol
+    """O retângulo tem a largura e a altura de algum pilar da folha (deitado ou em pé), até a tolerância (2 cm)."""
+    tol = TOLERANCIA_TAMANHO_CM * PT_POR_CM if tol is None else tol
     if p.w is None or p.h is None:
         return False
     return any(d.w is not None and d.h is not None
@@ -306,7 +310,7 @@ def ler_prancha(pdf: str, camada: str, camada_pdf: str | None = None) -> dict:
         etiquetas = []
         for a in page.annots() or []:
             texto = (a.info.get("content") or "").strip()
-            if texto.upper().startswith("N") and ler_etiqueta(texto):
+            if re.match(r"\d*\s*N", texto, re.I) and ler_etiqueta(texto):
                 q = a.rect * M
                 if dentro((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2):
                     etiquetas.append((texto, (q.x0, q.y0, q.x1, q.y1)))

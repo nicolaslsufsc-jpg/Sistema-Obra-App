@@ -42,6 +42,28 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
                 "encaixe": {...}}
 ```
 
+### Planta de furação (pedido do Nicolas de 21/11/2026, via Professor)
+
+O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de lajes".
+
+- **Planta.** Abrir os furos leva a uma planta só deles (setor "Furação", disciplina `furacao`). Os pontos não vão mais por cima da planta de forma.
+- **Fundo.** É a prancha de furação do Autodoc, na pasta **Furação > Modelagem > Projeto Executivo**. A pasta "Furação première" não vale, mesmo sendo mais nova.
+  - Uma prancha por setor, que o pipeline cola numa folha só (`pipeline/fvs/furacao_fundo.py`).
+- **Encaixe pelos pilares.**
+  - Cada prancha é encaixada na folha de forma pelos centros dos pilares (o alinhamento das barras, `pipeline/alinhamento`).
+  - As pranchas saem do Revit sem camadas, na escala 1:75. Os pilares são os retângulos cheios de cinza médio.
+  - Prancha que não encaixa fica fora do fundo, e o relatório diz por quê.
+  - Na obra piloto, o setor A do subsolo encaixou com 64 de 66 pilares e erro de até 0,2 cm.
+- **Furos e peças.**
+  - Os furos são os mesmos da forma, com os mesmos ids. Saem do modelo de furação, pelo `furos.py`.
+  - Cada furo traz a peça: `viga` (furo de viga), `furo.laje` (furo de laje) e, novo, `pilar` (furo ou caixinha de laje que cai dentro do contorno de um pilar).
+  - A forma continua com os furos (o item de furação da viga conta por eles), marcada com `furos_separados` para o app não mostrá-los lá.
+- **No pavimento.json:** `"furacao": {"pdf": "../04_Furacao/*.FR.EX.01[1-7].*.pdf", "escala": 75}`. Precisa de `"furos"` e da folha única. O `"alinhamento"` pode ser passado à mão, por prancha.
+- **Publicação:** `--so-furacao` publica só essa planta.
+- **App (com o chat 10, dono da tela):**
+  - o furo tocado grava na ficha da peça: viga (item dos furos), pilar ou laje (item `instalacao` da área de laje; sem área, a primeira ficha de laje com o item);
+  - a regra de que peça fica com um ponto está em `app/src/fvs/instalacao_no_elemento.ts`.
+
 ## Status (21/11/2026)
 
 - **Feito:**

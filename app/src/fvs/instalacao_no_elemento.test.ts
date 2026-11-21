@@ -22,10 +22,19 @@ describe('pecaDoPonto', () => {
     expect(pecaDoPonto([20, 5], vigas)).toEqual({ tipo: 'V', id: 'v1' })
     expect(pecaDoPonto([55, 50], vigas)).toEqual({ tipo: 'V', id: 'v2' })
   })
-  it('fora de viga fica na laje (pilar e viga só de detalhe não contam)', () => {
+  it('dentro do pilar conta no pilar', () => {
+    expect(pecaDoPonto([210, 210], vigas)).toEqual({ tipo: 'P', id: 'pilar' })
+  })
+  it('no encontro do pilar com a viga, vale o pilar', () => {
+    const els = { v: viga(0, 0, 100, 10), p: { tipo: 'P' as const, nome: 'P2', secao: '', rotulo: [0, 0, 10, 10] as [number, number, number, number], polys: [[[0, 0], [10, 0], [10, 10], [0, 10]] as Array<[number, number]>] } }
+    expect(pecaDoPonto([5, 5], vigasComContorno(els))).toEqual({ tipo: 'P', id: 'p' })
+  })
+  it('fora de pilar e de viga fica na laje (viga só de detalhe não conta)', () => {
     expect(pecaDoPonto([20, 50], vigas)).toEqual({ tipo: 'L' })
-    expect(pecaDoPonto([210, 210], vigas)).toEqual({ tipo: 'L' })
     expect(pecaDoPonto([350, 305], vigas)).toEqual({ tipo: 'L' })
+  })
+  it('furo que já veio com o pilar fica nele', () => {
+    expect(pecaDoPonto([20, 50], vigas, { pilar: 'pilar' })).toEqual({ tipo: 'P', id: 'pilar' })
   })
   it('no cruzamento, a primeira viga do manifest', () => {
     expect(pecaDoPonto([55, 5], vigas)).toEqual({ tipo: 'V', id: 'v1' })

@@ -32,7 +32,11 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                                "fichas": ["PVS-024"]}},   (fichas, opcional: só nessas fichas o app mostra o recorte)
   "barras": {"<id da barra>": {"camada": "longitudinal_inferior", "posicao": "N25", "texto": "N25 1ø10 C=850",
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
-  "disciplina": "sanitario",   opcional: planta de instalações (pipeline/fvs/instalacoes.py), com os pontos dela
+  "disciplina": "sanitario",   opcional: planta de instalações (pipeline/fvs/instalacoes.py), com os pontos dela;
+               "furacao": a planta de furação (pipeline/fvs/furacao_fundo.py): só os furos, com a prancha de
+               furação no fundo; o "viga" e o "pilar" do furo apontam para peças da forma
+  "furos_separados": true,     opcional: na forma, os furos estão na planta de furação (o app não os mostra aqui)
+  (furo de laje que cai num pilar: "pilar": "<id do pilar>")
   "pontos": {"<id do ponto>": {"disciplina": "sanitario", "tipo": "ralo", "ponto": [x, y], "nome": "Ralo seco",
              "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py); o eletroduto tem também
              "linha": [[x, y], [x, y]] (o "ponto" é o meio dele)
@@ -104,6 +108,7 @@ def montar(
     for campo in ("planta_id", "trecho", "prancha", "revisao", "largura", "altura", "tile", "niveis"):
         if campo not in cabecalho:
             raise ErroPacote(f"falta {campo} no cabeçalho do pacote")
+    so_furos = cabecalho.get("disciplina") == "furacao"
     pedacos: dict[str, list[int]] = {}
     partes: list[bytes] = []
     posicao = 0
@@ -181,11 +186,18 @@ def montar(
             else:
                 if not e.get("viga"):
                     raise ErroPacote(f"{e.get('nome')}: furo sem a viga ou sem as medidas")
-                if e["viga"] not in elementos or elementos[e["viga"]].get("tipo") != "V":
+                # na planta de furação (furacao_fundo.py) só vão os furos: a viga fica na forma
+                if not so_furos and (e["viga"] not in elementos or elementos[e["viga"]].get("tipo") != "V"):
                     raise ErroPacote(f"{e.get('nome')}: a viga do furo não está no pacote")
                 reg["viga"] = e["viga"]
+            if e.get("pilar"):
+                if e.get("viga"):
+                    raise ErroPacote(f"{e.get('nome')}: furo de viga não tem pilar")
+                if not so_furos and (e["pilar"] not in elementos or elementos[e["pilar"]].get("tipo") != "P"):
+                    raise ErroPacote(f"{e.get('nome')}: o pilar do furo não está no pacote")
+                reg["pilar"] = e["pilar"]
             reg["furo"] = {k: v for k, v in e["furo"].items() if k in CAMPOS_DO_FURO and (k != "laje" or v is True)}
-        elif e.get("viga") or e.get("furo"):
+        elif e.get("viga") or e.get("furo") or e.get("pilar"):
             raise ErroPacote(f"{e.get('nome')}: só furo tem viga e medidas de furo")
         if e["tipo"] == "E":
             esq = e.get("esquadria")
@@ -274,13 +286,18 @@ def montar(
         manifest["pontos"] = pontos_manifest
     if cabecalho.get("disciplina"):
         # planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela
-        if cabecalho["disciplina"] not in DISCIPLINAS_DE_PONTOS:
+        # ou "furacao": a planta de furação (pipeline/fvs/furacao_fundo.py), só com os furos
+        if cabecalho["disciplina"] not in (*DISCIPLINAS_DE_PONTOS, "furacao"):
             raise ErroPacote(f"disciplina de planta desconhecida: {cabecalho['disciplina']}")
         manifest["disciplina"] = cabecalho["disciplina"]
     if cabecalho.get("camadas_separadas"):
         # forma de pavimento com a armadura de laje em plantas próprias (pipeline/fvs/armadura_laje.py): as
         # barras ficam aqui para o item da área de laje, mas o app não mostra a aba Barras nesta planta
         manifest["camadas_separadas"] = True
+    if cabecalho.get("furos_separados"):
+        # forma de pavimento com os furos na planta de furação (pipeline/fvs/furacao_fundo.py): os furos
+        # ficam aqui para o item de furação da viga, mas o app não os mostra nesta planta
+        manifest["furos_separados"] = True
     if cabecalho.get("camada"):
         # planta de armadura de uma direção: leva todas as barras do pavimento (o item da área de laje é
         # calculado pelas quatro direções), mas o app só mostra e deixa tocar as desta camada

@@ -8,7 +8,7 @@
 // - Último registro vazio = o R foi desmarcado por engano: não é reprovação.
 
 import { nomeDaPeca } from './comodos'
-import { maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
+import { daFichaAberta, eventosDaFichaAberta, juntarFichasDoModelo, maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
 
 export interface Reinspecao {
   resultado: 'C' | 'NA'
@@ -73,12 +73,22 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
     const eventos = d.eventosDe.get(peca.id)
     if (!eventos?.some((e) => e.resultado === 'NC')) continue
     const abertas = d.fichasCampoDe.get(peca.id) ?? []
+    // duas fichas do mesmo modelo na viga contam como uma, como o painel mostra (21/11)
+    const daTela = juntarFichasDoModelo(abertas, (id) => d.fichaPorId.get(id), eventos)
+    const juntou = daTela.some((fc) => fc.juntas)
     const porItem = new Map<string, EventoFvs[]>()
-    for (const e of eventos) {
-      const k = `${e.ficha_id}|${e.ficha_campo_id ?? ''}|${e.item}`
-      const l = porItem.get(k)
-      if (l) l.push(e)
-      else porItem.set(k, [e])
+    const juntar = (evs: readonly EventoFvs[], fichaCampoId: string | null) => {
+      for (const e of evs) {
+        const k = `${e.ficha_id}|${fichaCampoId ?? ''}|${e.item}`
+        const l = porItem.get(k)
+        if (l) l.push(e)
+        else porItem.set(k, [e])
+      }
+    }
+    if (!juntou) for (const e of eventos) juntar([e], e.ficha_campo_id ?? null)
+    else {
+      juntar(daFichaAberta(eventos, null), null)
+      for (const fc of daTela) juntar(eventosDaFichaAberta(eventos, fc), fc.id)
     }
     for (const [k, lista] of porItem) {
       if (!lista.some((e) => e.resultado === 'NC')) continue

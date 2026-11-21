@@ -68,6 +68,9 @@ import {
 } from '../barras'
 import {
   daFichaAberta,
+  eventosDaFichaAberta,
+  fichaDaTela,
+  juntarFichasDoModelo,
   etapasDa,
   itensDasEsquadrias,
   resumoDasEsquadrias,
@@ -422,6 +425,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const eventosDe = (id: string): EventoFvs[] => dados.eventosDe.get(id) ?? SEM_EVENTOS
   const fichaPorId = (id: string) => dados.fichaPorId.get(id)
   const abertasDe = (id: string): FichaCampo[] => dados.fichasCampoDe.get(id) ?? SEM_FICHAS
+  /** Peça com fichas de modelos diferentes; duas do mesmo modelo na viga viram uma (21/11). */
+  const duplicadaDe = (id: string) => {
+    const a = abertasDe(id)
+    return a.length > 1 && juntarFichasDoModelo(a, fichaPorId, eventosDe(id)).length > 1
+  }
   /** A ficha desta peça: a vigente ou, se ela já foi marcada numa revisão anterior, essa. A área de laje tem a sua. */
   /** consolo e capitel que o pilar tem nesta planta (o pacote diz) */
   const partesDe = (id: string) => tiposDasPartes(manifest?.elementos[id])
@@ -1110,7 +1118,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // ambientes cobrem o pavimento inteiro, parede com parede: o ainda pendente fica com traço
       // fino e quase sem cor, para a prancha continuar legível; o que já tem marcação se destaca
       const pendenteLeve = e.tipo === 'A' && s === 'nada'
-      const duplicada = abertasDe(id).length > 1
+      const duplicada = duplicadaDe(id)
       // parede da modulação pendente (20/11): cinza claro e mais grossa, para aparecer em cima da parede preta da prancha
       const paredePendente = e.tipo === 'M' && s === 'nada' && doItem !== 'NA'
       const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
@@ -1951,7 +1959,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // aviso da sincronização em poucas palavras, no canto do topo (não cobre planta nem painel)
   const quantos = /^(\d+) registro/.exec(aviso)?.[1]
   const avisoCurto = aviso.startsWith('Sem internet') ? 'sem internet' : quantos ? `${quantos} ${aviso.includes('recusado') ? 'recusados' : 'a enviar'}` : ''
-  const temDuplicada = elementos.some(([id]) => abertasDe(id).length > 1)
+  const temDuplicada = elementos.some(([id]) => duplicadaDe(id))
   // a lista da busca não muda com o toque: refazer 800 opções a cada marcação pesa no celular
   const listaDaBusca = useMemo(
     () => (
@@ -2780,17 +2788,19 @@ function Painel(p: PropsPainel) {
   const fichaPorId = (id: string) => ctx.dados.fichaPorId.get(id)
   // Peça com ficha aberta: o painel mostra uma de cada vez, começando pela que pede atenção.
   // Marcação feita só no app antes de a ficha do sistema oficial chegar aparece como mais uma.
+  // Viga com duas fichas do mesmo modelo: uma aba só, mesclada item a item (NC prevalece, 21/11)
+  const juntadas = juntarFichasDoModelo(p.abertas, fichaPorId, p.eventos)
   const temDoApp = p.abertas.length > 0 && !!p.ficha && p.eventos.some((e) => !e.ficha_campo_id)
-  const todas = temDoApp ? [...p.abertas, fichaSoNoApp(p.ficha!)] : p.abertas
+  const todas = temDoApp ? [...juntadas, fichaSoNoApp(p.ficha!)] : juntadas
   // a ordem é decidida ao abrir o painel: não pode mudar sob o dedo enquanto a pessoa marca
   const [ordem] = useState(() => ordenarFichasAbertas(todas, fichaPorId, p.eventos).map((a) => a.id))
   const abertas = [...todas].sort((a, b) => ordem.indexOf(a.id) - ordem.indexOf(b.id))
-  const [idAberta, setIdAberta] = useState<string | null>(p.abertaInicial ?? abertas[0]?.id ?? null)
+  const [idAberta, setIdAberta] = useState<string | null>((p.abertaInicial === SO_NO_APP ? SO_NO_APP : fichaDaTela(abertas, p.abertaInicial)?.id) ?? abertas[0]?.id ?? null)
   const aberta = abertas.find((a) => a.id === idAberta) ?? abertas[0]
   const ficha = aberta ? fichaNaPeca(aberta.ficha_id ? fichaPorId(aberta.ficha_id) : undefined, p.partes) : p.ficha
   const vigente = p.fichas.find((f) => f.codigo === ficha?.codigo)
   const trilha = aberta && aberta.id !== SO_NO_APP ? aberta.id : null
-  const eventos = daFichaAberta(p.eventos, trilha)
+  const eventos = aberta ? eventosDaFichaAberta(p.eventos, aberta) : daFichaAberta(p.eventos, trilha)
   const c: Contexto = { ...p.c, fichaCampoId: trilha }
   const det = peca.detalhe ? pacote.manifest.detalhes[peca.detalhe] : undefined
   const imgDet = peca.detalhe ? pacote.url(`d:${peca.detalhe}`) : undefined
@@ -2839,7 +2849,7 @@ function Painel(p: PropsPainel) {
 
   // grava na fila da tela, com os registros mais novos desta peça
   const gravar = (op: (evs: EventoFvs[]) => Promise<Linha | Linha[] | void>) => {
-    const feito = p.executar((eventosDe) => op(daFichaAberta(eventosDe(p.id), trilha)))
+    const feito = p.executar((eventosDe) => op(aberta ? eventosDaFichaAberta(eventosDe(p.id), aberta) : daFichaAberta(eventosDe(p.id), trilha)))
     if (p.aoGravar) p.aoGravar()
     return feito
   }
@@ -3229,9 +3239,9 @@ function Painel(p: PropsPainel) {
         )}
         {abertas.length > 0 && (
           <div class="fv-sec fv-abertas" data-testid="fvs-fichas-abertas">
-            {p.abertas.length > 1 && (
+            {juntadas.length > 1 && (
               <h3 class="fv-dup">
-                <span>Ficha duplicada: {p.abertas.length} fichas nesta peça</span>
+                <span>Ficha duplicada: {juntadas.length} fichas nesta peça</span>
               </h3>
             )}
             {abertas.map((a) => {
@@ -3245,6 +3255,11 @@ function Painel(p: PropsPainel) {
                     {a.atualizada_em && ` · ${quando(a.atualizada_em)}`}
                   </span>
                   {a.ficha_codigo && a.ficha_codigo !== ficha?.codigo && <span>{a.ficha_codigo}</span>}
+                  {a.juntas?.length ? (
+                    <span class="fv-juntas" data-testid="fvs-fichas-juntas">
+                      Junto com {a.juntas.map((j) => j.codigo).join(', ')} (mesma ficha no sistema oficial): vale a mais completa, item a item; NC em qualquer uma aparece.
+                    </span>
+                  ) : null}
                 </>
               )
               return abertas.length > 1 ? (

@@ -274,6 +274,13 @@
   background: var(--fundo-ffffff);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
 }
+/* caixa do NC da barra ou do ponto embaixo: o toque foi na metade de cima e a caixa não pode cobrir o lugar
+   (o 3º toque no mesmo lugar tira a verificação, 21/11) */
+.fv-caixa-form.fv-caixa-embaixo {
+  top: auto;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  max-height: 45dvh;
+}
 .fv-caixa-form label {
   display: flex;
   flex-direction: column;

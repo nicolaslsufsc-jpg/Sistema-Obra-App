@@ -217,3 +217,29 @@ a.botao {
   gap: 0.3rem;
   justify-items: start;
 }
+
+/* Baixar para usar offline (opcional, por documento ou por pasta) */
+.doc-offline {
+  margin: 0.3rem 0 0.6rem;
+}
+.doc-offline-botoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.doc-offline-botoes button {
+  font-size: 0.9rem;
+  min-height: 2.5rem;
+  text-align: left;
+}
+/* na pasta, o botão é secundário: menor e com borda fina, para não competir com os documentos */
+.doc-offline-pasta {
+  margin: -0.2rem 0 0.4rem;
+}
+.doc-offline-pasta .doc-offline-botoes button {
+  width: auto;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-width: 1px;
+  padding: 0.3rem 0.7rem;
+}

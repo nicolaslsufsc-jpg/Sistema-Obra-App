@@ -26,12 +26,16 @@ export type TipoDePonto =
   | 'descida'
   | 'caixa_inspecao'
   | 'haste'
+  // eletroduto como linha (21/11/2026, "eletroduto como linha"): tem "linha" além de "ponto"
+  | 'eletroduto'
 
 export interface PontoPacote {
   disciplina: DisciplinaDePontos
   tipo: TipoDePonto
-  /** posição na folha, pontos do PDF, y para baixo */
+  /** posição na folha, pontos do PDF, y para baixo (no eletroduto, o meio da linha) */
   ponto: [number, number]
+  /** só no que é linha (eletroduto): começo e fim na folha */
+  linha?: Array<[number, number]>
   nome: string
   /** id do objeto no modelo IFC */
   modelo_id?: string
@@ -40,7 +44,7 @@ export interface PontoPacote {
 export const NOME_DA_DISCIPLINA: Record<DisciplinaDePontos, string> = {
   hidro: 'Água fria e quente',
   sanitario: 'Esgoto e pluvial',
-  eletrico: 'Caixas e quadros',
+  eletrico: 'Caixas, quadros e eletrodutos',
   spda: 'Captores e descidas',
 }
 
@@ -59,19 +63,46 @@ export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
   descida: 'Descida',
   caixa_inspecao: 'Caixa de inspeção',
   haste: 'Haste de aterramento',
+  eletroduto: 'Eletroduto',
 }
 
 type Pt = readonly [number, number]
 
+function distAoSegmento(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)))
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
+}
+
+/** Distância do toque ao ponto, ou à linha quando ele é linha (eletroduto). */
+export function distanciaAoPonto(p: Pt, q: PontoPacote): number {
+  if (q.linha && q.linha.length >= 2) {
+    let melhor = Infinity
+    for (let i = 0; i + 1 < q.linha.length; i++) melhor = Math.min(melhor, distAoSegmento(p, q.linha[i], q.linha[i + 1]))
+    return melhor
+  }
+  return Math.hypot(q.ponto[0] - p[0], q.ponto[1] - p[1])
+}
+
 /**
  * O ponto mais perto do toque, até `raio` (em pontos da folha). Dois pontos a menos de `folga` de
- * diferença: ambíguo (a pessoa aproxima a planta).
+ * diferença: ambíguo (a pessoa aproxima a planta). O círculo ganha da linha: o eletroduto termina na caixa,
+ * e o toque na caixa é da caixa; a linha só é escolhida quando não há círculo debaixo do dedo.
  */
 export function pontoTocado(p: Pt, pontos: Readonly<Record<string, PontoPacote>>, raio: number, folga: number): { id: string } | { ambiguo: true } | null {
+  const ehLinha = (q: PontoPacote) => !!q.linha && q.linha.length >= 2
+  return (
+    maisPerto(p, Object.entries(pontos).filter(([, q]) => !ehLinha(q)), raio, folga) ??
+    maisPerto(p, Object.entries(pontos).filter(([, q]) => ehLinha(q)), raio, folga)
+  )
+}
+
+function maisPerto(p: Pt, pontos: ReadonlyArray<[string, PontoPacote]>, raio: number, folga: number): { id: string } | { ambiguo: true } | null {
   let a: [number, string] | null = null
   let b: [number, string] | null = null
-  for (const [id, q] of Object.entries(pontos)) {
-    const d = Math.hypot(q.ponto[0] - p[0], q.ponto[1] - p[1])
+  for (const [id, q] of pontos) {
+    const d = distanciaAoPonto(p, q)
     if (d > raio) continue
     if (!a || d < a[0]) {
       b = a

@@ -125,7 +125,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             <strong>{p.trecho}</strong>
             <span class="discreto">
               {/* planta de ambientes: o número de ambientes já está no resumo acima (o da folha soma as esquadrias) */}
-              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${ehDeVedacao(p) ? 'paredes' : p.disciplina in SECAO_DE_INSTALACOES ? 'pontos' : 'peças'}`}
+              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${ehDeVedacao(p) ? 'paredes' : p.disciplina in SECAO_DE_INSTALACOES ? 'pontos' : p.disciplina === 'furacao' ? (p.elementos === 1 ? 'furo' : 'furos') : 'peças'}`}
             </span>
             {antiga && <span class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</span>}
           </span>
@@ -419,7 +419,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             {outras.map(([disc, lista]) => (
               <div key={disc} data-testid="fvs-secao-outra">
                 <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>
-                <ul class="lista fv-trechos">{lista.map(linhaDaPlanta)}</ul>
+                <ul class="lista fv-trechos">{(disc === 'furacao' ? [...lista].sort((a, b) => ordemDoFuro(a.trecho) - ordemDoFuro(b.trecho)) : lista).map(linhaDaPlanta)}</ul>
               </div>
             ))}
             {ra && (
@@ -573,12 +573,16 @@ function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
 
 /** Seções das plantas de instalações (pontos, frente INSTALAÇÕES 20/11/2026), com acento. */
 const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Sanitário', eletrico: 'Elétrico', spda: 'SPDA' }
-/** Instalações na ordem do menu (hidro, sanitário, elétrico, SPDA); disciplina que o app não conhece vem depois. */
-const ordemDaSecao = (d: string) => { const i = Object.keys(SECAO_DE_INSTALACOES).indexOf(d); return i < 0 ? 99 : i }
+/** Plantas de furos de laje na ordem da obra: esgoto, água, elétrica (o nome vem do pipeline/fvs/furos.py). */
+const ordemDoFuro = (trecho: string) => { const t = trecho.toLowerCase(); return t.includes('esgoto') ? 0 : t.includes('água') || t.includes('agua') ? 1 : t.includes('elétrica') || t.includes('eletrica') ? 2 : 3 }
+/** Seções depois da estrutura: os furos de laje por camada (21/11/2026), depois as instalações. */
+const SECOES: Record<string, string> = { furacao: 'Furação de laje', ...SECAO_DE_INSTALACOES }
+/** Na ordem do menu (furação, hidro, sanitário, elétrico, SPDA); disciplina que o app não conhece vem depois. */
+const ordemDaSecao = (d: string) => { const i = Object.keys(SECOES).indexOf(d); return i < 0 ? 99 : i }
 
 /** Título da seção de uma disciplina que o app ainda não conhece ("instalacoes" -> "Instalacoes"). */
 function nomeDaDisciplina(d: string): string {
-  return SECAO_DE_INSTALACOES[d] ?? (d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros')
+  return SECOES[d] ?? (d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros')
 }
 
 function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T[]> {

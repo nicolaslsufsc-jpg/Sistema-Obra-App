@@ -174,6 +174,11 @@ export interface Manifest {
   /** planta de armadura de uma direção: leva todas as barras do pavimento (o item da laje conta as quatro),
    *  mas só esta camada aparece e se toca */
   camada?: CamadaDeBarras
+  /** planta de furos de laje de uma camada (21/11/2026, pipeline/fvs/furos.py): leva todos os furos de laje
+   *  do pavimento (o item da área conta todos), mas só os desta camada aparecem e se tocam */
+  furos_laje?: 'esgoto' | 'agua' | 'eletrica'
+  /** forma com os furos de laje em plantas próprias: eles ficam no pacote, escondidos */
+  furos_laje_separados?: boolean
   /** planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela */
   disciplina?: DisciplinaDePontos
   /** pontos de instalações do modelo, já na folha (aba Pontos); chave = id do ponto (registro em barra_id) */

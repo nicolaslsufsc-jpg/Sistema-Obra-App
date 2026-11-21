@@ -34,7 +34,11 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
   "disciplina": "sanitario",   opcional: planta de instalações (pipeline/fvs/instalacoes.py), com os pontos dela
   "pontos": {"<id do ponto>": {"disciplina": "sanitario", "tipo": "ralo", "ponto": [x, y], "nome": "Ralo seco",
-             "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py)
+             "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py); o eletroduto tem também
+             "linha": [[x, y], [x, y]] (o "ponto" é o meio dele)
+  "furos_laje": "esgoto",   opcional: planta de furos de laje de uma camada (esgoto, agua, eletrica; pipeline/fvs/furos.py):
+                            leva todos os furos de laje do pavimento, o app mostra e deixa tocar só os desta camada
+  "furos_laje_separados": true,   opcional: forma com os furos de laje em plantas próprias (escondidos aqui)
   "pedacos": {"t:0/1/2": [inicio, tamanho], "d:P_P32": [..], "a:P_P32": [..]}
 }
 "t:" = tile z/x/y (WebP), "d:" = imagem do detalhe (WebP), "a:" = tabela de aço (WebP).
@@ -57,6 +61,8 @@ TIPOS_DE_PARTE = ("consolo", "capitel")
 CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id")
 CAMPOS_DA_ESQUADRIA = ("codigo", "classe", "modelo", "outro_lado")
 CLASSES_DE_ESQUADRIA = ("porta", "janela")
+# Camadas das plantas de furos de laje (pipeline/fvs/furos.py, CAMADAS_DE_FURO)
+CAMADAS_DE_FURO = ("esgoto", "agua", "eletrica")
 # Barras de aço da laje (pipeline/fvs/barras_laje.py): as quatro camadas das pranchas de armação.
 CAMADAS_DE_BARRAS = ("transversal_superior", "transversal_inferior", "longitudinal_superior", "longitudinal_inferior")
 CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "espacamento", "prancha")
@@ -64,7 +70,7 @@ CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "e
 # (não são peças em "elementos"; a ficha fica no ambiente).
 DISCIPLINAS_DE_PONTOS = ("hidro", "sanitario", "eletrico", "spda")
 TIPOS_DE_PONTO = ("ponto_agua", "registro", "hidrometro", "ralo", "caixa_sifonada", "caixa", "ponto_esgoto",
-                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste")
+                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste", "eletroduto")
 # Chave de detalhe vira nome de pedaço: só letras, números, _ e -.
 CHAVE_SEGURA = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 RE_TILE = re.compile(r"^-?\d+/\d+/\d+$")
@@ -249,6 +255,11 @@ def montar(
                "nome": str(p.get("nome") or "")}
         if p.get("modelo_id"):
             reg["modelo_id"] = str(p["modelo_id"])
+        if p.get("linha") is not None:
+            linha = [[round(float(x), 2), round(float(y), 2)] for x, y in p["linha"]]
+            if len(linha) < 2:
+                raise ErroPacote(f"ponto {pid}: a linha precisa de pelo menos dois pontos")
+            reg["linha"] = linha
         pontos_manifest[pid] = reg
 
     manifest = {
@@ -279,6 +290,12 @@ def montar(
         # planta de armadura de uma direção: leva todas as barras do pavimento (o item da área de laje é
         # calculado pelas quatro direções), mas o app só mostra e deixa tocar as desta camada
         manifest["camada"] = cabecalho["camada"]
+    if cabecalho.get("furos_laje"):
+        if cabecalho["furos_laje"] not in CAMADAS_DE_FURO:
+            raise ErroPacote(f"camada de furos de laje desconhecida: {cabecalho['furos_laje']}")
+        manifest["furos_laje"] = cabecalho["furos_laje"]
+    if cabecalho.get("furos_laje_separados"):
+        manifest["furos_laje_separados"] = True
     texto = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return texto, b"".join(partes)
 

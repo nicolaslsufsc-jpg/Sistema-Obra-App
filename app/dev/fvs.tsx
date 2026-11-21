@@ -13,6 +13,7 @@ import { guardarPacote, lerComProgresso, type Manifest } from '../src/fvs/pacote
 import { usarFonteDeArquivos } from '../src/fvs/dados'
 import type { ItemFicha } from '../src/fvs/situacao'
 import { camadasDoPacote, NOME_DA_CAMADA, type CamadaDeBarras } from '../src/fvs/barras'
+import { camadaDoFuro, ehFuroDeLaje } from '../src/fvs/furos_laje'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
 
@@ -324,6 +325,8 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     ...(params.get('barras') ? { barras: barrasDeTeste() } : {}),
     // ?armadura=1: a armadura de laje vai para plantas próprias, uma por direção (20/11)
     ...(params.get('barras') && params.get('armadura') ? { camadas_separadas: true } : {}),
+    // ?furoslaje=1&furacao=1: os furos de laje vão para plantas próprias, uma por camada (21/11)
+    ...(params.get('furoslaje') && params.get('furacao') ? { furos_laje_separados: true } : {}),
   }
   return { manifest, bin: fechar() }
 }
@@ -815,6 +818,25 @@ async function semear() {
   ]
   await gravarCadastro(linhas)
   if (manifest.camadas_separadas) await semearArmadura(base, manifest, bin)
+  if (manifest.furos_laje_separados) await semearFuracao(base, manifest, bin)
+}
+
+/**
+ * ?furoslaje=1&furacao=1: uma planta de furos de laje por camada (esgoto, água, elétrica; setor "Furos de ...",
+ * disciplina "furacao"), com todos os furos de laje e o fundo da forma, como o pipeline/fvs/furos.py faz.
+ */
+async function semearFuracao(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
+  const deLaje = Object.fromEntries(Object.entries(forma.elementos).filter(([, e]) => ehFuroDeLaje(e)))
+  const linhas: LinhaDeCadastro[] = []
+  const camadas = [['esgoto', 'Furos de esgoto'], ['agua', 'Furos de água'], ['eletrica', 'Furos de elétrica']] as const
+  for (const [i, [camada, trecho]] of camadas.entries()) {
+    const manifest: Manifest = { ...forma, planta_id: uuid('a2000000', 0xc0 + i), trecho, elementos: deLaje, detalhes: {}, furos_laje: camada, furos_laje_separados: undefined }
+    await guardarPacote(JSON.stringify(manifest), bin)
+    const cad = cadastroDaPlanta(base, manifest, bin, uuid('a1000000', 0xc0 + i), 'furacao', 60 + 2 * i)
+    for (const l of cad) if (l.tabela === 'plantas') l.linha.elementos = Object.values(deLaje).filter((e) => camadaDoFuro(e) === camada).length
+    linhas.push(...cad)
+  }
+  await gravarCadastro(linhas)
 }
 
 /**

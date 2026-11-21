@@ -495,6 +495,55 @@ def furos_de_laje(furos: list[dict], enc: dict) -> list[dict]:
     return locais
 
 
+# ---------------------------------------------------------------------------
+# Furos de laje em plantas próprias (21/11/2026, pedido do Nicolas: "no mesmo esquema do de viga e
+# funcionando o check no mesmo esquema do de laje (layer e tals)"): como a armadura de laje, uma planta
+# por camada, com o fundo da forma. A prancha de furação é um PDF achatado, sem layers; a camada sai da
+# disciplina do furo no modelo: esgoto (SAN), água (HID) e elétrica (ELT/TEL). As outras (incêndio, gás,
+# climatização, geral) não têm item na ficha da laje e ficam fora, como no app.
+# ---------------------------------------------------------------------------
+
+# instalação -> (siglas da disciplina no modelo, nome da planta). A ordem é a do menu e a do app
+# (app/src/fvs/furos_laje.ts, instalacaoDaDisciplina): o furo de duas disciplinas fica na primeira.
+CAMADAS_DE_FURO = {
+    "esgoto": (("SAN",), "Furos de esgoto"),
+    "agua": (("HID",), "Furos de água"),
+    "eletrica": (("ELT", "ELE", "TEL"), "Furos de elétrica"),
+}
+
+
+def camada_do_furo(peca: dict) -> str | None:
+    """A camada (planta) do furo de laje: a primeira disciplina dele que é esgoto, água ou elétrica."""
+    for d in (peca.get("furo") or {}).get("disciplinas") or []:
+        t = _so_letras(d)
+        for camada, (siglas, _) in CAMADAS_DE_FURO.items():
+            if t.startswith(siglas):
+                return camada
+    return None
+
+
+def eh_furo_de_laje(peca: dict) -> bool:
+    return peca.get("tipo") == "F" and bool((peca.get("furo") or {}).get("laje")) and not peca.get("viga")
+
+
+def folhas_de_furos_de_laje(forma: dict) -> list[dict]:
+    """Uma planta por camada que tem furo, com o fundo da forma. Cada uma leva TODOS os furos de laje do
+    pavimento, com os mesmos ids da forma (o item da área de laje é calculado por todos, como as quatro
+    direções da armadura), e o app só mostra e deixa tocar os da camada dela ("furos_laje"). A forma
+    continua com os furos, escondidos ("furos_laje_separados")."""
+    de_laje = [p for p in forma["pecas"] if eh_furo_de_laje(p)]
+    folhas = []
+    for camada, (_, trecho) in CAMADAS_DE_FURO.items():
+        if not any(camada_do_furo(p) == camada for p in de_laje):
+            continue
+        folhas.append({"prancha": forma["prancha"], "revisao": forma["revisao"], "largura": forma["largura"], "altura": forma["altura"],
+                       "tile": forma["tile"], "niveis": forma["niveis"], "tiles": forma["tiles"],
+                       "pecas": [dict(p) for p in de_laje], "trecho": trecho, "disciplina": "furacao", "furos_laje": camada})
+    if folhas:
+        forma["furos_laje_separados"] = True
+    return folhas
+
+
 def encaixe_duvidoso(enc: dict) -> bool:
     """O encaixe automático não convence: menos da metade dos furos caiu em viga, ou outra orientação
     chegou perto (até 30% a menos). Aí vale conferir na tela ou passar "encaixe" à mão no pavimento.json.

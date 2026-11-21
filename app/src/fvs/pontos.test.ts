@@ -1,6 +1,6 @@
 // Pontos de instalações (frente INSTALAÇÕES, 20/11/2026). Ficha e pontos fictícios da obra EXE.
 import { describe, expect, it } from 'vitest'
-import { fichaDosPontos, itemDosPontos, nomeDoPonto, pontoTocado, resumoDosPontos, type PontoPacote } from './pontos'
+import { distanciaAoPonto, fichaDosPontos, itemDosPontos, nomeDoPonto, pontoTocado, resumoDosPontos, type PontoPacote } from './pontos'
 import type { Ficha } from './situacao'
 
 const AMB: Ficha = {
@@ -16,6 +16,25 @@ const AMB: Ficha = {
 }
 
 const p = (x: number, y: number, tipo: PontoPacote['tipo'] = 'ralo', nome = ''): PontoPacote => ({ disciplina: 'sanitario', tipo, ponto: [x, y], nome })
+
+describe('eletroduto como linha (21/11)', () => {
+  const e: PontoPacote = { disciplina: 'eletrico', tipo: 'eletroduto', ponto: [50, 10], nome: 'Eletroduto', linha: [[0, 10], [100, 10]] }
+  it('o toque perto de qualquer parte da linha pega o eletroduto', () => {
+    expect(distanciaAoPonto([5, 13], e)).toBeCloseTo(3)
+    expect(pontoTocado([95, 12], { e }, 5, 1)).toEqual({ id: 'e' })
+    expect(pontoTocado([120, 10], { e }, 5, 1)).toBeNull()
+  })
+  it('caixa no meio do eletroduto: a mais perto ganha', () => {
+    const cx: PontoPacote = { disciplina: 'eletrico', tipo: 'caixa_passagem', ponto: [50, 14], nome: '' }
+    expect(pontoTocado([50, 14], { e, cx }, 5, 1)).toEqual({ id: 'cx' })
+    expect(pontoTocado([20, 10], { e, cx }, 5, 1)).toEqual({ id: 'e' })
+  })
+  it('caixa na ponta do eletroduto: o toque na caixa é da caixa, não ambíguo', () => {
+    const cx: PontoPacote = { disciplina: 'eletrico', tipo: 'caixa_passagem', ponto: [100, 10], nome: '' }
+    expect(pontoTocado([100, 10], { e, cx }, 5, 1)).toEqual({ id: 'cx' })
+    expect(pontoTocado([90, 10], { e, cx }, 5, 1)).toEqual({ id: 'e' })
+  })
+})
 
 describe('pontoTocado', () => {
   const pontos = { a: p(10, 10), b: p(30, 10), c: p(31, 10) }

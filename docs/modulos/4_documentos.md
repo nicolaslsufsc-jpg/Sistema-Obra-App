@@ -2,6 +2,17 @@
 
 Branch: `claude/app-documentos-112f59` (parte do PR #42).
 
+## Status (21/11/2026): baixar para usar offline, opcional
+Branch `app/documentos-com-conta` (saiu da `main` 192df40). Pedido do Nicolas, repassado pelo Professor: "quero q seja opcional baixar projetos e ifcs docs e tals". Documentos e Projetos já aparecem no menu com conta desde a 192df40.
+- **Com conta, nada baixa sozinho.** Na tela do documento há o botão **"Baixar para usar offline (X KB)"**. Em cada pasta (categoria) da lista há o **"Baixar a pasta para usar offline · N arquivos, X KB"**. Quem já baixou vê **"Apagar do aparelho"** (ou "Apagar a pasta do aparelho"), que pede confirmação e avisa que o arquivo continua no servidor. Na lista, o documento baixado ganha o selo "No aparelho" e o rodapé mostra quanto está baixado. Sem internet, o botão avisa "Sem internet agora. Baixe quando tiver sinal."
+- **Onde fica:** no Cache Storage do navegador, num cache só do módulo (`sistema-obra-documentos-offline`, arquivo `app/src/documentos/offline.ts`). **O núcleo não foi mexido:** não é o banco local nem o cache do service worker. Cada arquivo baixado é conferido por tamanho e SHA-256 com a linha de `arquivos`, como no IFC (#53); se não conferir, não guarda e a tela manda avisar o gestor. A pasta é baixada um arquivo de cada vez, pula o que já está no aparelho, e um erro não para os outros.
+- **Sem conta:** nada muda. Os arquivos já estão no aparelho, e os botões não aparecem.
+- **Testes:**
+  - `offline.test.ts`: nada baixa sozinho; pasta com SHA-256, pular e erro isolado; o baixado abre sem internet; apagar;
+  - bancada `app/dev/documentos.html` (com conta, obra EXE, servidor falso): baixar e apagar por documento e por pasta, em 375 e 768.
+- **Escopo por empresa:** a RLS do `doc_documentos` é por obra. Quem tem acesso à obra vê os documentos dela, tanto os "obra" quanto os "empresa", que são cópias por obra. Ver os da própria empresa em todas as obras precisa de vínculo pessoa→empresa no núcleo. A proposta foi para o Professor, sem código.
+- **Projetos:** avisado em 21/11. Ainda não se aplica: hoje o Projetos não guarda PDF de prancha, só os dados da folha a partir de duas listas CSV. Quando tiver conta e PDF do servidor, segue o mesmo padrão: cache próprio `sistema-obra-projetos-offline`, conferência por SHA-256, botões por folha e por pasta.
+
 ## Status (20/11/2026)
 **Fora do beta (Nicolas, 20/11: "Documentos, tá funcionando também. Tira do beta").** O módulo não tem selo nem aviso de beta nas próprias telas. Quem põe os módulos de volta no menu é a 06 · FRONT (`app/src/modulos.ts`, não mexido aqui).
 - **Sem conta:** funciona (lista mestra, revisão, validade, impressão, registros dos módulos, exemplos), conferido na main 806adec em 375 px e tablet.
@@ -15,7 +26,7 @@ Branch: `claude/app-documentos-112f59` (parte do PR #42).
   - *Suposições marcadas:*
     - com conta, os exemplos da demonstração não entram. Um exemplo corrigido ou marcado "em revisão" apontaria para uma linha que o servidor não tem;
     - os documentos do pacote da obra continuam só no modo sem conta;
-    - "levar para campo" (guardar o PDF no aparelho para abrir sem internet) continua pendente. É mudança do núcleo e precisa do ok do Nicolas.
+    - "levar para campo" (guardar o PDF no aparelho para abrir sem internet) continua pendente. É mudança do núcleo e precisa do ok do Nicolas. *(Feito em 21/11 sem mexer no núcleo: ver o status de 21/11.)*
   - Testes:
     - banco: 16 checagens;
     - unidade: tabela na lista, gravação pela fila, baixar só quando a tela pede, limites do formulário;

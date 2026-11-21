@@ -2027,3 +2027,75 @@
 .fv-num-esq span {
   transform: translate(-50%, -50%);
 }
+
+/* Início em 3 níveis (21/11/2026): pavimentos → disciplinas → opções. Cada um é um botão grande, com o nome,
+   o andamento embaixo e a seta à direita. */
+.fv-titulo-lista {
+  margin: 12px 0 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texto-5b5d61);
+}
+.fv-lista-pavimentos {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+@media (min-width: 700px) {
+  .fv-lista-pavimentos {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.fv-bt-pavimento {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 72px;
+  margin: 0;
+  color: var(--texto);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fv-bt-pavimento .discreto {
+  font-size: 0.85rem;
+}
+.fv-pav-nome {
+  font-size: 1.1rem;
+}
+.fv-no-aparelho {
+  color: var(--discreto);
+  font-size: 0.8rem;
+}
+.fv-seta {
+  flex: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--texto-5b5d61);
+}
+.fv-grade-disciplinas {
+  margin-top: 4px;
+}
+.fv-bt-disciplina b {
+  font-size: 1.1rem;
+}
+.fv-txt-andamento {
+  font-weight: 600;
+}
+.fv-disciplina-aberta {
+  margin-top: 0;
+}
+.fv-disciplina-aberta > div:first-child > .fv-disciplina:first-child {
+  margin-top: 0;
+}
+.fv-topo-nivel {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.fv-topo-nivel > div {
+  min-width: 0;
+}

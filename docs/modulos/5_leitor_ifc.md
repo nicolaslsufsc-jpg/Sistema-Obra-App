@@ -2,7 +2,7 @@
 
 Dono do pedido: Nicolas, 06/11/2026. Branch: `modulo/ifc`.
 
-**Status (21/11/2026): no menu, sem selo beta, com a lista "IFCs da obra" para baixar e usar sem internet** (branch `ifc/baixar`, commit local, falta PR). Histórico abaixo, por data.
+**Status (21/11/2026): no menu do app, sem selo beta** (com e sem conta), com a lista "IFCs da obra" para baixar e usar sem internet (#53). Histórico abaixo, por data.
 
 ## O que ele faz
 
@@ -147,7 +147,7 @@ O Nicolas reativou o módulo e pediu para tirar do beta e otimizar ("arquivos gr
 3. `web-ifc` com várias threads: exige os cabeçalhos COOP/COEP no site (mexe na hospedagem e no núcleo).
 4. Ler o arquivo em mais de um worker, dividindo as peças.
 
-**Próximo passo:** a 06 · FRONT tira o `beta` e o `foraDoMenu` do IFC em `modulos.ts`; depois, abrir a torre guardada no SM-P620 de verdade.
+**Próximo passo:** abrir a torre guardada no SM-P620 de verdade.
 
 ## 21/11/2026: IFCs da obra, baixar para usar sem internet (branch `ifc/baixar`)
 Pedido do Nicolas: "deixa uma opção da pessoa baixar os IFCs dentro do app pra ficar mais facil ai fica disponivel para ela offline". O Professor aprovou a proposta: sem tabela nova, sem migração e sem mudar o núcleo.
@@ -186,3 +186,6 @@ Pedido do Nicolas: "deixa uma opção da pessoa baixar os IFCs dentro do app pra
 - Testar com conta de verdade: enviar um IFC fictício da EXE pelo PC e baixar no tablet.
 - A torre inteira no tablet ainda converte no próprio aparelho: deve levar alguns minutos e pede cerca de 1,2 GB de memória. Para o tablet, o melhor é enviar os IFCs por pavimento.
 - Se o Storage encher: o IFC grande vem do PC por .zip ou pasta, ou por `.obra3d` pelo "Importar".
+
+## 21/11/2026: no menu, fora do beta (confirmado)
+O Nicolas confirmou no chat do Professor: "O menu, o leitor de FC entra no menu? Sim, entra." A linha do IFC em `app/src/modulos.ts` já estava sem `beta` e sem `foraDoMenu` desde 20/11. Hoje só os textos foram acertados: a bancada (`dev/ifc.html`), o comentário do teste e este arquivo. Conferido de novo em 375 px e no tablet: o menu mostra "IFC" sem selo e o leitor abre a amostra sem internet (`local.e2e`), e a bancada passa nos dois tamanhos (`ifc_bancada.e2e`).

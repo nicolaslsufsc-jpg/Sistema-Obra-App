@@ -1,30 +1,41 @@
-// Início da FVS: pavimentos com planta publicada. Em cada pavimento, primeiro os trechos da
-// estrutura (planta de forma: pilares e vigas), depois a planta de ambientes (fichas por
-// ambiente: alvenaria, reboco, pintura...). Cada planta mostra se já está no aparelho (abre sem
-// internet) e o andamento das fichas.
+// Início da FVS em 3 níveis (pedido do Nicolas, 21/11/2026; agrupamento em ../navegacao.ts):
+//   1. os pavimentos com planta publicada, na ordem da obra, com o andamento de cada um;
+//   2. ao tocar no pavimento, as disciplinas que ele tem (Estrutura, Alvenaria, Acabamentos, Instalações);
+//   3. ao tocar na disciplina, as opções (Pilares, Vigas, Lajes, armadura de laje, furos...), cada uma abrindo a
+//      planta que já existe. Cada planta mostra se já está no aparelho (abre sem internet) ou o Baixar.
+// Os três níveis são esta mesma tela (o download continua ao trocar de nível); o voltar sobe um nível.
 import { resumoDasRegras } from '../regras_tela'
 import { useEffect, useMemo, useState } from 'preact/hooks'
+import type { ComponentChildren } from 'preact'
 import { resumoDasAreas } from '../areas'
-import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
+import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { abrirPacoteOuAnterior, limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
-import { resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
+import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
+import { furoDeOutraPlanta } from '../furos_laje'
+import { disciplinasDoPavimento, ehOpcaoDeAlvenaria, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
 import { BuscaNaObra } from './BuscaNaObra'
 import { banco } from '../../nucleo/servicos'
 import { dataDoPacoteGuardado } from '../../nucleo/pacote_obra'
 import { avisoDoSistemaOficial } from '../../integracoes/sistema_oficial'
-import type { ContextoFvs } from './ModuloFvs'
+import type { ContextoFvs, TelaFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
 
 const OBRA_INTEIRA = 'obra-inteira'
 
-export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) {
+/** Onde a pessoa está: nada = lista de pavimentos; pavimentoId = as disciplinas dele; e disciplina = as opções dela. */
+export interface NivelDoInicio {
+  pavimentoId: string
+  disciplina?: string
+}
+
+export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: string; nivel?: NivelDoInicio }) {
   const { dados, props, online, ir, voltar, sistema } = ctx
   // sem conta, a planta vem do pacote da obra (.zip ou pasta), não da internet: o Baixar não espera a rede
   // (testador, 08/11: no aparelho do .zip a pergunta dizia "é só baixar de novo" e o Baixar pedia internet)
@@ -161,38 +172,63 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
     )
   }
 
-  /** Botão grande de uma direção da armadura de laje (planta própria, 20/11/2026): abre se está no aparelho,
-   *  senão baixa. A direção sai do nome do trecho ("Armadura longitudinal inferior"). */
-  const botaoDaArmadura = (p: Planta) => {
+  /** Botão grande de uma planta (nível 3, 21/11/2026): abre se está no aparelho (ou a revisão anterior), senão baixa.
+   *  `abrir` diz como abre (a aba da forma, por exemplo); sem ele, abre a planta como está. */
+  const botaoDaPlanta = (
+    p: Planta,
+    o: { chave?: string; titulo: string; sub?: string | null; icone?: ComponentChildren; abrir?: TelaFvs; testid?: string; extra?: Record<string, string> },
+  ) => {
     const guardado = noAparelho?.get(p.id)
     const antiga = !guardado && noAparelho ? dados.anterioresDe.get(p.id)?.find((a) => noAparelho.has(a.id)) : undefined
-    const camada = camadaDoTrecho(p.trecho)
-    const nome = camada ? NOME_DA_CAMADA[camada] : p.trecho
     const abre = !!guardado || !!antiga
     const tamanho = tamanhoDe(p)
     const acao = noAparelho === null ? '…' : abre ? (antiga ? `Abrir ${antiga.revisao}` : 'Abrir') : baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `Baixar ${tamanho ? mb(tamanho) : ''}`
     return (
       <button
         type="button"
-        key={p.id}
+        key={o.chave ?? p.id}
         class="fv-bt-armadura"
-        data-testid="fvs-armadura"
-        data-camada={camada ?? ''}
+        data-testid={o.testid ?? 'fvs-planta'}
+        data-planta={p.id}
+        {...(o.extra ?? {})}
         disabled={noAparelho === null || (!abre && (semRede || baixando !== null))}
-        onClick={() => (abre ? ir({ nome: 'planta', plantaId: p.id }) : baixar([p]))}
+        onClick={() => (abre ? ir(o.abrir ?? { nome: 'planta', plantaId: p.id }) : baixar([p]))}
         title={!abre && semRede ? 'Precisa de internet para baixar' : ''}
       >
-        <IconeDaCamada camada={camada} />
+        {o.icone}
         <span class="fv-bt-texto">
-          <b>{nome}</b>
-          <small>
-            {p.elementos} {p.elementos === 1 ? 'barra' : 'barras'} · {p.prancha}
-          </small>
+          <b>{o.titulo}</b>
+          {o.sub && <small>{o.sub}</small>}
           {antiga && <small class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</small>}
         </span>
         <span class={abre ? 'fv-bt-acao' : 'fv-bt-acao fv-bt-baixar'}>{acao}</span>
       </button>
     )
+  }
+
+  /** Planta com revisão nova a baixar e a anterior no aparelho: a linha com os dois botões (Abrir R13 e Baixar R14). */
+  const temRevisaoParaBaixar = (p: Planta) => !!noAparelho && !noAparelho.get(p.id) && !!dados.anterioresDe.get(p.id)?.some((a) => noAparelho.has(a.id))
+  /** Botão da planta ou, com revisão nova a baixar, a linha de antes (com os dois botões). */
+  const plantaNaLista = (p: Planta, titulo: string, sub: string | null) =>
+    temRevisaoParaBaixar(p) ? (
+      <ul key={p.id} class="lista fv-trechos">
+        {linhaDaPlanta(p)}
+      </ul>
+    ) : (
+      botaoDaPlanta(p, { titulo, sub })
+    )
+
+  /** Botão grande de uma direção da armadura de laje (planta própria, 20/11/2026). A direção sai do nome do
+   *  trecho ("Armadura longitudinal inferior"). */
+  const botaoDaArmadura = (p: Planta) => {
+    const camada = camadaDoTrecho(p.trecho)
+    return botaoDaPlanta(p, {
+      titulo: camada ? NOME_DA_CAMADA[camada] : p.trecho,
+      sub: `${p.elementos} ${p.elementos === 1 ? 'barra' : 'barras'} · ${p.prancha}`,
+      icone: <IconeDaCamada camada={camada} />,
+      testid: 'fvs-armadura',
+      extra: { 'data-camada': camada ?? '' },
+    })
   }
 
   const comPlanta = dados.pavimentos.filter((pv) => dados.plantasDe.has(pv.id))
@@ -236,6 +272,280 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
     // noAparelho: ler os pacotes diz quais peças são só detalhe (pacotesNoAparelho)
   }, [dados, noAparelho])
   const naObra = [...resumos.values()].reduce((s, { r }) => ({ total: s.total + r.total, liberadas: s.liberadas + r.liberadas }), { total: 0, liberadas: 0 })
+
+  // Nível da navegação (21/11/2026): pavimentos → disciplinas do pavimento → opções da disciplina.
+  // Pavimento que sumiu (planta apagada, outra obra) volta à lista de pavimentos.
+  const pvAberto = nivel ? comPlanta.find((pv) => pv.id === nivel.pavimentoId) : undefined
+  const plantasDoPv = pvAberto ? dados.plantasDe.get(pvAberto.id)! : []
+  const disciplinas = useMemo(() => disciplinasDoPavimento(plantasDoPv, opcoesAmb), [plantasDoPv, opcoesAmb])
+  const discAberta = pvAberto && nivel?.disciplina ? disciplinas.find((d) => d.id === nivel.disciplina) : undefined
+
+  // Estrutura com a forma no aparelho: uma opção por aba da forma (Pilares, Vigas, Lajes, Furos de viga),
+  // lida do pacote (só as abas que a planta tem). Sem o pacote, a forma aparece como linha, com o Baixar.
+  const [abasDaForma, setAbasDaForma] = useState<Map<string, Array<{ tipo: string; n: number }>>>(new Map())
+  const formasAbertas = discAberta?.id === 'estrutura' ? discAberta.plantas.filter((p) => p.disciplina === 'estrutura') : []
+  useEffect(() => {
+    if (!formasAbertas.length || !noAparelho) return
+    let vivo = true
+    ;(async () => {
+      const m = new Map<string, Array<{ tipo: string; n: number }>>()
+      const temArmaduraPropria = plantasDoPv.some(ehDeArmadura)
+      const temLaje = fichasPara('L', dados.fichas).length > 0 || (dados.areasDe.get(pvAberto!.id) ?? []).length > 0
+      for (const p of formasAbertas) {
+        const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
+        if (!pac) continue
+        const els = Object.values(pac.manifest.elementos)
+        const quantos = (t: string) => els.filter((e) => e.tipo === t && !furoDeOutraPlanta(e, pac.manifest) && !e.so_detalhe).length
+        const nBarras = Object.keys(pac.manifest.barras ?? {}).length
+        const abas = OPCOES_DA_FORMA.map(({ tipo }) => ({
+          tipo,
+          n: tipo === 'L' ? (dados.areasDe.get(pvAberto!.id) ?? []).length : tipo === 'B' ? (temArmaduraPropria ? 0 : nBarras) : quantos(tipo),
+        })).filter(({ tipo, n }) => n > 0 || (tipo === 'L' && (temLaje || quantos('L') > 0)))
+        m.set(p.id, abas)
+      }
+      if (vivo) setAbasDaForma(m)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [formasAbertas.map((p) => p.id).join(','), noAparelho, dados])
+
+  // no aparelho: a planta ou a revisão anterior dela, que é o que abre até a nova chegar
+  const pacoteDe = (p: Planta) => (noAparelho ? noAparelho.get(p.id) ?? (dados.anterioresDe.get(p.id) ?? []).map((a) => noAparelho.get(a.id)).find(Boolean) : undefined)
+
+  /** Opções dos ambientes (alvenaria, reboco, piso...) de uma planta de ambientes, filtradas. */
+  const opcoesDeAmbientes = (ambientes: readonly Planta[], filtro: (op: OpcaoDosAmbientes) => boolean) =>
+    ambientes.map((p) => {
+      const ops = (opcoesAmb.get(p.id) ?? []).filter(filtro)
+      if (!ops.length) return null
+      return (
+        <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-ambientes">
+          {ops.map((op) =>
+            botaoDaPlanta(p, { chave: op.id, titulo: op.titulo, sub: ambientes.length > 1 ? p.trecho : null, abrir: { nome: 'planta', plantaId: p.id, servico: op.abre.servico, aba: op.abre.aba }, testid: 'fvs-opcao-ambiente' }),
+          )}
+        </div>
+      )
+    })
+
+  /** Topo dos níveis 2 e 3: o voltar sobe um nível (o voltar do Android também). */
+  const topo = (voltarPara: string, titulo: string, sub: string) => (
+    <header class="fv-topo-inicio fv-topo-nivel">
+      <button type="button" class="fv-voltar" onClick={voltar} aria-label={`Voltar para ${voltarPara}`}>
+        ‹ {voltarPara}
+      </button>
+      <div>
+        <h1>{titulo}</h1>
+        <p class="discreto">{sub}</p>
+      </div>
+    </header>
+  )
+
+  // ---------- nível 3: opções da disciplina ----------
+  if (pvAberto && discAberta) {
+    const pv = pvAberto
+    const plantas = discAberta.plantas
+    const { r, ra: resumoAmb, rm } = resumos.get(pv.id)!
+    const daForma = plantas.filter((p) => p.disciplina === 'estrutura')
+    const armadura = plantas.filter(ehDeArmadura).sort((a, b) => ordemDaCamada(a.trecho) - ordemDaCamada(b.trecho))
+    const furacao = plantas.filter(ehDeFuracao).sort((a, b) => ordemDoFuro(a.trecho) - ordemDoFuro(b.trecho))
+    const vedacao = plantas.filter(ehDeVedacao)
+    const ambientes = plantas.filter(ehDeAmbientes)
+    const conhecidas = (p: Planta) => p.disciplina === 'estrutura' || ehDeArmadura(p) || ehDeFuracao(p) || ehDeVedacao(p) || ehDeAmbientes(p)
+    const outras = [...agrupar(plantas.filter((p) => !conhecidas(p)), (p) => p.disciplina)].sort(([a], [b]) => ordemDaSecao(a) - ordemDaSecao(b))
+    // a forma vira opções só quando está no aparelho na revisão vigente (com revisão nova, a linha mostra o Abrir e o Baixar)
+    const formaEmOpcoes = (p: Planta) => !!noAparelho?.get(p.id) && (abasDaForma.get(p.id)?.length ?? 0) > 0
+    const sub = discAberta.id === 'estrutura' && r.total > 0 ? `${pv.nome} · ${r.liberadas} de ${r.total} peças liberadas` : pv.nome
+    return (
+      <main class="tela fv-inicio" data-testid="fvs-nivel-disciplina">
+        {topo(pv.nome, discAberta.nome, sub)}
+        {aviso && <p class="faixa-aviso">{aviso}</p>}
+        {erro && <p class="erro" role="alert">{erro}</p>}
+        <section class="cartao fv-pavimento fv-disciplina-aberta" data-testid="fvs-opcoes" data-disciplina={discAberta.id}>
+          {daForma.length > 0 && (
+            <div data-testid="fvs-secao-estrutura">
+              {(armadura.length > 0 || furacao.length > 0) && <h3 class="fv-disciplina">Forma</h3>}
+              {daForma.map((p) =>
+                formaEmOpcoes(p) ? (
+                  <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-forma">
+                    {abasDaForma.get(p.id)!.map(({ tipo, n }) =>
+                      botaoDaPlanta(p, {
+                        chave: `${p.id}:${tipo}`,
+                        titulo: OPCOES_DA_FORMA.find((o) => o.tipo === tipo)!.nome,
+                        sub: [daForma.length > 1 ? p.trecho : '', tipo === 'L' ? (n ? `${n} ${n === 1 ? 'área desenhada' : 'áreas desenhadas'}` : 'Desenhe a área na planta') : tipo === 'F' ? `${n} ${n === 1 ? 'furo' : 'furos'}` : tipo === 'B' ? `${n} ${n === 1 ? 'barra' : 'barras'}` : `${n} ${n === 1 ? 'peça' : 'peças'}`].filter(Boolean).join(' · '),
+                        abrir: { nome: 'planta', plantaId: p.id, tipo },
+                        testid: 'fvs-opcao-forma',
+                        extra: { 'data-tipo': tipo },
+                      }),
+                    )}
+                  </div>
+                ) : (
+                  <div key={p.id} class="fv-grade-armadura">
+                    {plantaNaLista(p, daForma.length > 1 ? `Forma · ${p.trecho}` : 'Forma: pilares, vigas e lajes', `${p.elementos} peças · ${p.prancha}`)}
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+          {armadura.length > 0 && (
+            <div data-testid="fvs-grupo-armadura">
+              <h3 class="fv-disciplina">Armadura de laje</h3>
+              <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
+            </div>
+          )}
+          {furacao.length > 0 && (
+            <div data-testid="fvs-secao-outra">
+              <h3 class="fv-disciplina">Furação de laje</h3>
+              <div class="fv-grade-armadura">{furacao.map((p) => plantaNaLista(p, p.trecho, `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'} · ${p.prancha}`))}</div>
+            </div>
+          )}
+          {vedacao.length > 0 && (
+            <div data-testid="fvs-secao-vedacao">
+              <h3 class="fv-disciplina">Modulação de paredes</h3>
+              {rm.total > 0 && (
+                <p class="discreto" data-testid="fvs-resumo-paredes">
+                  {rm.liberadas} de {rm.total} paredes liberadas
+                  {rm.comR > 0 && <span class="fv-txt-r"> · {rm.comR} com NC</span>}
+                </p>
+              )}
+              <div class="fv-grade-armadura">{vedacao.map((p) => plantaNaLista(p, vedacao.length > 1 ? p.trecho : 'Paredes do pavimento', `${p.elementos} paredes · ${p.prancha}`))}</div>
+            </div>
+          )}
+          {ambientes.length > 0 && discAberta.id === 'alvenaria' && (
+            <div data-testid="fvs-ambientes-alvenaria">
+              <h3 class="fv-disciplina">Por ambiente</h3>
+              {opcoesDeAmbientes(ambientes, ehOpcaoDeAlvenaria)}
+            </div>
+          )}
+          {ambientes.length > 0 && discAberta.id !== 'alvenaria' && (
+            <div data-testid="fvs-ambientes">
+              <h3 class="fv-disciplina">Ambientes</h3>
+              {resumoAmb.servicos.length === 0 ? (
+                <p class="discreto">{resumoAmb.total} ambientes · nenhuma ficha começada</p>
+              ) : (
+                <ul class="fv-servicos">
+                  {resumoAmb.servicos.map((s) => (
+                    <li key={s.ficha.id}>
+                      <b>{s.ficha.titulo}:</b> {s.liberados} de {resumoAmb.total} liberados
+                      {s.comR > 0 && <span class="fv-txt-r"> · {s.comR} com NC</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {opcoesDeAmbientes(ambientes, (op) => !ehOpcaoDeAlvenaria(op))}
+              <p class="fv-subgrupo">Planta com todos os ambientes</p>
+              <div class="fv-grade-armadura">{ambientes.map((p) => plantaNaLista(p, ambientes.length > 1 ? p.trecho : 'Todos os ambientes', p.prancha))}</div>
+            </div>
+          )}
+          {/* instalações (hidro, sanitário, elétrico, SPDA) e disciplinas que o app não conhece: uma seção cada */}
+          {outras.map(([disc, lista]) => (
+            <div key={disc} data-testid="fvs-secao-outra">
+              {(outras.length > 1 || discAberta.id === 'instalacoes') && <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>}
+              <div class="fv-grade-armadura">{lista.map((p) => plantaNaLista(p, p.trecho, `${p.elementos} ${disc in SECAO_DE_INSTALACOES ? 'pontos' : 'locais'} · ${p.prancha}`))}</div>
+            </div>
+          ))}
+          {semRede && plantas.some((p) => !noAparelho?.has(p.id)) && <p class="discreto">Planta que ainda não foi baixada precisa de internet uma vez.</p>}
+        </section>
+      </main>
+    )
+  }
+
+  // ---------- nível 2: disciplinas do pavimento ----------
+  if (pvAberto) {
+    const pv = pvAberto
+    const plantas = plantasDoPv
+    const { r, ra, rm } = resumos.get(pv.id)!
+    const faltam = noAparelho ? plantas.filter((p) => !noAparelho.has(p.id)) : []
+    const baixandoAqui = baixando?.pavimentoId === pv.id ? baixando : null
+    const guardadas = plantas.filter((p) => pacoteDe(p))
+    const tamanhoGuardado = guardadas.reduce((s, p) => s + (pacoteDe(p)?.tamanho ?? 0), 0)
+    /** O que a disciplina tem, numa linha, e o andamento dela. */
+    const descricao = (d: (typeof disciplinas)[number]): { tem: string; andamento: string | null } => {
+      const ps = d.plantas
+      const ops = (f: (op: OpcaoDosAmbientes) => boolean) => ps.filter(ehDeAmbientes).flatMap((p) => (opcoesAmb.get(p.id) ?? []).filter(f).map((o) => o.titulo))
+      if (d.id === 'estrutura') {
+        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furos de laje'].filter(Boolean)
+        return { tem: partes.join(', '), andamento: r.total > 0 ? `${r.liberadas} de ${r.total} peças liberadas${r.comR > 0 ? ` · ${r.comR} com NC` : ''}` : null }
+      }
+      if (d.id === 'alvenaria') {
+        const partes = [ps.some(ehDeVedacao) ? 'Modulação de paredes' : '', ...ops(ehOpcaoDeAlvenaria)].filter(Boolean)
+        return { tem: partes.join(', '), andamento: rm.total > 0 ? `${rm.liberadas} de ${rm.total} paredes liberadas` : null }
+      }
+      if (d.id === 'acabamentos') {
+        const partes = ops((op) => !ehOpcaoDeAlvenaria(op))
+        return { tem: partes.length ? partes.join(', ') : `${ra.total} ambientes`, andamento: null }
+      }
+      const secoes = [...new Set(ps.map((p) => nomeDaDisciplina(p.disciplina)))]
+      return { tem: secoes.join(', '), andamento: null }
+    }
+    return (
+      <main class="tela fv-inicio" data-testid="fvs-nivel-pavimento">
+        {topo('Pavimentos', pv.nome, `${props.obra.codigo} · escolha o que vai conferir`)}
+        {aviso && <p class="faixa-aviso">{aviso}</p>}
+        {erro && <p class="erro" role="alert">{erro}</p>}
+        <div class="fv-grade-armadura fv-grade-disciplinas">
+          {disciplinas.map((d) => {
+            const { tem, andamento } = descricao(d)
+            return (
+              <button
+                type="button"
+                key={d.id}
+                class="fv-bt-armadura fv-bt-disciplina"
+                data-testid="fvs-disciplina"
+                data-disciplina={d.id}
+                onClick={() => ir({ nome: 'disciplina', pavimentoId: pv.id, disciplina: d.id })}
+              >
+                <span class="fv-bt-texto">
+                  <b>{d.nome}</b>
+                  {tem && <small>{tem}</small>}
+                  {andamento && <small class="fv-txt-andamento">{andamento}</small>}
+                </span>
+                <span class="fv-seta" aria-hidden="true">
+                  ›
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        {(faltam.length > 1 || baixandoAqui) && (
+          <div class="fv-baixar-pav">
+            <button
+              type="button"
+              class="fv-baixar"
+              data-testid="fvs-baixar-pavimento"
+              disabled={semRede || baixando !== null}
+              onClick={() => baixar(faltam, pv.id)}
+              title={semRede ? 'Precisa de internet para baixar' : ''}
+            >
+              {baixandoAqui
+                ? `Baixando ${baixandoAqui.feitas + 1} de ${baixandoAqui.total}…`
+                : `Baixar o pavimento (${faltam.length} plantas, ${mb(faltam.reduce((s, p) => s + tamanhoDe(p), 0))})`}
+            </button>
+            {baixandoAqui && (
+              <progress
+                max={100}
+                value={Math.round(((baixandoAqui.feitas + baixandoAqui.pct / 100) / baixandoAqui.total) * 100)}
+                aria-label={`Download do pavimento ${pv.nome}`}
+              />
+            )}
+          </div>
+        )}
+        {semRede && plantas.some((p) => !noAparelho?.has(p.id)) && <p class="discreto">Planta que ainda não foi baixada precisa de internet uma vez.</p>}
+        {guardadas.length > 0 && !baixando && (
+          // recolhido num "⋯ Mais": ao lado do Abrir, um toque errado apagava a planta (demonstração, 14/11)
+          <details class="fv-mais-pav">
+            <summary data-testid="fvs-mais-pavimento" aria-label={`Mais opções de ${pv.nome}`}>
+              ⋯ Mais
+            </summary>
+            <button type="button" class="fv-link-lan" data-testid="fvs-tirar-pavimento" onClick={() => tirarDoAparelho(pv.nome, guardadas, tamanhoGuardado)}>
+              Tirar do aparelho ({mb(tamanhoGuardado)})
+            </button>
+          </details>
+        )}
+      </main>
+    )
+  }
+
+  // ---------- nível 1: pavimentos ----------
   return (
     <main class="tela fv-inicio">
       <header class="fv-topo-inicio">
@@ -321,32 +631,19 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
         </p>
       )}
 
-      {comPlanta.map((pv) => {
-        const plantas = dados.plantasDe.get(pv.id)!
-        const estrutura = plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p))
-        // modulação de paredes (20/11): seção própria, antes dos ambientes (a alvenaria vem antes do reboco)
-        const vedacao = plantas.filter(ehDeVedacao)
-        // só as direções que o pavimento tem publicadas, na ordem do app
-        const armadura = plantas.filter(ehDeArmadura).sort((a, b) => ordemDaCamada(a.trecho) - ordemDaCamada(b.trecho))
-        const ambientes = plantas.filter(ehDeAmbientes)
-        // disciplinas que vierem depois (instalações...) entram sozinhas, uma seção por disciplina
-        const outras = [...agrupar(plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p) && p.disciplina !== 'estrutura'), (p) => p.disciplina)].sort(([a], [b]) => ordemDaSecao(a) - ordemDaSecao(b))
-        const daEstrutura = estrutura.filter((p) => p.disciplina === 'estrutura')
-        const { r, ra: resumoAmb, rm, lajes } = resumos.get(pv.id)!
-        const ra = ambientes.length ? resumoAmb : null
-        const faltam = noAparelho ? plantas.filter((p) => !noAparelho.has(p.id)) : []
-        const baixandoAqui = baixando?.pavimentoId === pv.id ? baixando : null
-        // no aparelho: a planta ou a revisão anterior dela, que é o que abre até a nova chegar
-        const pacoteDe = (p: Planta) => (noAparelho ? noAparelho.get(p.id) ?? (dados.anterioresDe.get(p.id) ?? []).map((a) => noAparelho.get(a.id)).find(Boolean) : undefined)
-        const guardadas = plantas.filter((p) => pacoteDe(p))
-        const tamanhoGuardado = guardadas.reduce((s, p) => s + (pacoteDe(p)?.tamanho ?? 0), 0)
-        return (
-          <section class="cartao fv-pavimento" key={pv.id} data-testid="fvs-pavimento">
-            {/* obra com muitos pavimentos: no celular seriam metros de rolagem. Abre o que já está no aparelho. */}
-            <details class="fv-pav-corpo" open={comPlanta.length <= 2 || guardadas.length > 0 || !!baixandoAqui}>
-              <summary>
-                <h2>{pv.nome}</h2>
-                {estrutura.length > 0 && (
+      {comPlanta.length > 0 && <h2 class="fv-titulo-lista">Pavimentos</h2>}
+      <div class="fv-lista-pavimentos">
+        {comPlanta.map((pv) => {
+          const plantas = dados.plantasDe.get(pv.id)!
+          const temEstrutura = plantas.some((p) => p.disciplina === 'estrutura')
+          const { r, lajes } = resumos.get(pv.id)!
+          const guardadas = plantas.filter((p) => pacoteDe(p)).length
+          const baixandoAqui = baixando?.pavimentoId === pv.id
+          return (
+            <button type="button" key={pv.id} class="cartao fv-pavimento fv-bt-pavimento" data-testid="fvs-pavimento" onClick={() => ir({ nome: 'pavimento', pavimentoId: pv.id })}>
+              <span class="fv-bt-texto">
+                <b class="fv-pav-nome">{pv.nome}</b>
+                {temEstrutura && (
                   <span class="discreto">
                     {r.liberadas} de {r.total} peças liberadas
                     {r.paraConcretar > 0 && <span class="fv-txt-concretar"> · {r.paraConcretar} p/ concretar</span>}
@@ -360,132 +657,17 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                     {lajes.comR > 0 && <span class="fv-txt-r"> · {lajes.comR} com NC</span>}
                   </span>
                 )}
-              </summary>
-            {(faltam.length > 1 || baixandoAqui) && (
-              <div class="fv-baixar-pav">
-                <button
-                  type="button"
-                  class="fv-baixar"
-                  data-testid="fvs-baixar-pavimento"
-                  disabled={semRede || baixando !== null}
-                  onClick={() => baixar(faltam, pv.id)}
-                  title={semRede ? 'Precisa de internet para baixar' : ''}
-                >
-                  {baixandoAqui
-                    ? `Baixando ${baixandoAqui.feitas + 1} de ${baixandoAqui.total}…`
-                    : `Baixar o pavimento (${faltam.length} plantas, ${mb(faltam.reduce((s, p) => s + tamanhoDe(p), 0))})`}
-                </button>
-                {baixandoAqui && (
-                  <progress
-                    max={100}
-                    value={Math.round(((baixandoAqui.feitas + baixandoAqui.pct / 100) / baixandoAqui.total) * 100)}
-                    aria-label={`Download do pavimento ${pv.nome}`}
-                  />
-                )}
-              </div>
-            )}
-            {daEstrutura.length > 0 && (
-              <div data-testid="fvs-secao-estrutura">
-                {(ambientes.length > 0 || armadura.length > 0 || outras.length > 0 || vedacao.length > 0) && <h3 class="fv-disciplina">Estrutura</h3>}
-                {armadura.length > 0 && <p class="fv-subgrupo">Forma: pilares, vigas e lajes</p>}
-                <ul class="lista fv-trechos">{daEstrutura.map(linhaDaPlanta)}</ul>
-                {armadura.length > 0 && (
-                  <div data-testid="fvs-grupo-armadura">
-                    <p class="fv-subgrupo">Armadura de laje</p>
-                    <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
-                  </div>
-                )}
-              </div>
-            )}
-            {daEstrutura.length === 0 && armadura.length > 0 && (
-              <div data-testid="fvs-grupo-armadura">
-                <h3 class="fv-disciplina">Armadura de laje</h3>
-                <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
-              </div>
-            )}
-            {vedacao.length > 0 && (
-              <div data-testid="fvs-secao-vedacao">
-                <h3 class="fv-disciplina">Modulação de paredes</h3>
-                {rm.total > 0 && (
-                  <p class="discreto" data-testid="fvs-resumo-paredes">
-                    {rm.liberadas} de {rm.total} paredes liberadas
-                    {rm.comR > 0 && <span class="fv-txt-r"> · {rm.comR} com NC</span>}
-                  </p>
-                )}
-                <ul class="lista fv-trechos">{vedacao.map(linhaDaPlanta)}</ul>
-              </div>
-            )}
-            {/* instalações (hidro, sanitário...) depois da modulação e antes dos ambientes (Professor, 20/11) */}
-            {outras.map(([disc, lista]) => (
-              <div key={disc} data-testid="fvs-secao-outra">
-                <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>
-                <ul class="lista fv-trechos">{(disc === 'furacao' ? [...lista].sort((a, b) => ordemDoFuro(a.trecho) - ordemDoFuro(b.trecho)) : lista).map(linhaDaPlanta)}</ul>
-              </div>
-            ))}
-            {ra && (
-              <div data-testid="fvs-ambientes">
-                <h3 class="fv-disciplina">Ambientes</h3>
-                {ra.servicos.length === 0 ? (
-                  <p class="discreto">{ra.total} ambientes · nenhuma ficha começada</p>
-                ) : (
-                  <ul class="fv-servicos">
-                    {ra.servicos.map((s) => (
-                      <li key={s.ficha.id}>
-                        <b>{s.ficha.titulo}:</b> {s.liberados} de {ra.total} liberados
-                        {s.comR > 0 && <span class="fv-txt-r"> · {s.comR} com NC</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <ul class="lista fv-trechos">{ambientes.map(linhaDaPlanta)}</ul>
-                {ambientes.map((p) => {
-                  const ops = opcoesAmb.get(p.id) ?? []
-                  if (!ops.length) return null
-                  return (
-                    <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-ambientes">
-                      {ops.map((op) => (
-                        <button
-                          type="button"
-                          key={op.id}
-                          class="fv-bt-armadura"
-                          data-testid="fvs-opcao-ambiente"
-                          onClick={() => ir({ nome: 'planta', plantaId: p.id, servico: op.abre.servico, aba: op.abre.aba })}
-                        >
-                          <span class="fv-bt-texto">
-                            <b>{op.titulo}</b>
-                            {ambientes.length > 1 && <small>{p.trecho}</small>}
-                          </span>
-                          <span class="fv-bt-acao">Abrir</span>
-                        </button>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {semRede && plantas.some((p) => !noAparelho?.has(p.id)) && (
-              <p class="discreto">Planta que ainda não foi baixada precisa de internet uma vez.</p>
-            )}
-            {guardadas.length > 0 && !baixando && (
-              // recolhido num "⋯ Mais": ao lado do Abrir, um toque errado apagava a planta (demonstração, 14/11)
-              <details class="fv-mais-pav">
-                <summary data-testid="fvs-mais-pavimento" aria-label={`Mais opções de ${pv.nome}`}>
-                  ⋯ Mais
-                </summary>
-                <button
-                  type="button"
-                  class="fv-link-lan"
-                  data-testid="fvs-tirar-pavimento"
-                  onClick={() => tirarDoAparelho(pv.nome, guardadas, tamanhoGuardado)}
-                >
-                  Tirar do aparelho ({mb(tamanhoGuardado)})
-                </button>
-              </details>
-            )}
-            </details>
-          </section>
-        )
-      })}
+                <small class="fv-no-aparelho">
+                  {baixandoAqui ? 'Baixando…' : guardadas === plantas.length ? 'No aparelho' : guardadas > 0 ? `${guardadas} de ${plantas.length} plantas no aparelho` : 'Ainda não baixado'}
+                </small>
+              </span>
+              <span class="fv-seta" aria-hidden="true">
+                ›
+              </span>
+            </button>
+          )
+        })}
+      </div>
 
       {((faltamNaObra.length > 1 && comPlanta.length > 1) || baixandoObra) && (
         <div class="fv-baixar-pav">

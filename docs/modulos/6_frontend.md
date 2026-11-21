@@ -1,6 +1,6 @@
 # Front end: aparência e componentes comuns (frente 06)
 
-Status em 20/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar.
+Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar. Na branch `app/fvs-navegacao`, com commit local, a FVS abre em 3 níveis: pavimento, disciplina e opção.
 
 **O que esta frente cuida:** casca do app, menu, entrada, tema (escuro e modo sol), estilos comuns em `app/src/style.css` e `app/src/tema.css`, e a regra de 375 px e tablet.
 - Cada tela de módulo nasce e muda na frente do próprio módulo. A 06 só aponta o problema para a frente dona.
@@ -33,6 +33,15 @@ Status em 20/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
   - o código fica em `app/src/telas/instalado.ts`, e o núcleo não mudou;
   - o teste de tela confere os quatro casos em 375 px e no tablet (na main pelo #41).
 
+- **FVS em 3 níveis (21/11, branch `app/fvs-navegacao`, pedido do Nicolas):**
+  - nível 1: a lista de pavimentos na ordem da obra, com o andamento e se já está no aparelho ("No aparelho", "Ainda não baixado"). Busca, reprovações, avisos e "Baixar a obra" continuam nesta tela;
+  - nível 2: as disciplinas daquele pavimento (Estrutura, Alvenaria, Acabamentos, Instalações), só as que têm dados. "Baixar este pavimento" e "⋯ Mais" (tirar do aparelho) ficam aqui;
+  - nível 3: as opções da disciplina. Na Estrutura são Pilares, Vigas, Lajes, Furos de viga, Barras de laje, a armadura e a furação de laje. Cada opção abre a planta que já existia, na aba certa;
+  - cada nível tem o botão de voltar, e o voltar do celular passa pelos três;
+  - o agrupamento vem dos dados (`disciplina` da planta e o título das opções de ambientes), em `app/src/fvs/navegacao.ts`, sem nada fixo de obra;
+  - o menu principal e a tela da planta não mudaram;
+  - os testes de tela da FVS (`fvs_bancada`, `local`, `nova_obra`) passaram a entrar pelos 3 níveis, com os ajudantes em `app/testes/fvs_inicio.ts`.
+
 ## Pendências
 1. **Um estilo só para aviso, toast e tela vazia.**
    - As telas comuns já não têm cor solta.
@@ -45,4 +54,4 @@ Status em 20/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
 Uma barra comum em todas as telas, com "‹ Menu" à esquerda, inclusive na planta da FVS. Só depois que o #31 (topo da TelaPlanta, frente 02) entrar na main, e combinado com o Professor.
 
 ## Onde ficam os prints
-Ficam fora do git, na pasta "Frontend" do PC do Nicolas: o levantamento de 18/11, os prints de `menu_pr1`, `menu_ifc_doc_2026-11-20` e `menu_heuristicas_2026-11-20` (com a proposta).
+Ficam fora do git, na pasta "Frontend" do PC do Nicolas: o levantamento de 18/11, os prints de `menu_pr1`, `menu_ifc_doc_2026-11-20` e `menu_heuristicas_2026-11-20` (com a proposta) e `fvs_niveis_2026-11-21` (os 3 níveis da FVS em 375 px e tablet).

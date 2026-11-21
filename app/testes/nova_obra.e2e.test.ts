@@ -12,6 +12,7 @@ import { createServer, type ViteDevServer } from 'vite'
 import { abrirZip } from '../src/nucleo/zip'
 import { FICHAS_PARA_COLAR, gerarObraExemplo2, pdfMuitasPaginas, pdfPaginaGigante } from './obra_exemplo2'
 import { comPavimentosDoAparelho, escolherPacote } from './menu_obra'
+import { abrirFormaFvs } from './fvs_inicio'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Page = any
 
@@ -315,7 +316,7 @@ suite('Nova obra (telas)', () => {
       await p.getByText('Sem conta: tudo fica guardado neste aparelho.').waitFor({ timeout: 60_000 })
       await p.getByRole('button', { name: /FVS/ }).click()
       await p.getByRole('heading', { name: 'FVS', exact: true }).waitFor()
-      await p.getByRole('button', { name: 'Abrir', exact: true }).first().click()
+      await abrirFormaFvs(p)
       await p.waitForFunction(() => document.querySelectorAll('.leaflet-tile-container img').length > 0, null, { timeout: 30_000 })
       await p.waitForTimeout(800)
       await print(p, `${nome}_p4_fvs`)

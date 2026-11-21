@@ -1700,7 +1700,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
   // ------------------------------------------------------------------ pontos de instalação
   /** A ficha de ambiente com o item dos pontos desta disciplina (opção B: a ficha fica no ambiente). */
-  const fichaDoPonto = () => (manifest?.disciplina ? fichaDosPontos(fichasPara('A', dados.fichas), manifest.disciplina) : undefined)
+  const fichaDoPonto = () => (manifest?.disciplina ? fichaDosPontos(fichasPara('A', dados.fichas), manifest.disciplina, fichasPara('L', dados.fichas)) : undefined)
 
   /** Grava a situação nova do ponto (C OK, NC errado com observação, null sem conferir), em barra_id. */
   const gravarPonto = (pontoId: string, resultado: 'C' | 'NC' | null, obs: string | null) => {
@@ -1737,7 +1737,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const pt = pontos[r.id]
     const s = situacaoDaBarra(eventosDe(r.id))
     if (!pode) return avisar(`${nomeDoPonto(pt)}: ${s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errado' : 'sem conferir'}`)
-    if (!fichaDoPonto()) return avisar('Nenhuma ficha de ambiente tem o item destes pontos: os pontos ficam só para ver.')
+    if (!fichaDoPonto()) return avisar('Nenhuma ficha (de ambiente ou de laje) tem o item destes pontos: os pontos ficam só para ver.')
     cicloDoToque(r.id, gravarPonto, pos)
   }
 

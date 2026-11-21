@@ -119,10 +119,31 @@ export function itemDosPontos(ficha: Ficha | undefined, disciplina: DisciplinaDe
   return ficha?.itens.find((i) => i.pontos === disciplina)
 }
 
-/** A primeira ficha (das de ambiente) com o item dos pontos da disciplina, e o número do item. */
-export function fichaDosPontos(fichas: readonly Ficha[], disciplina: DisciplinaDePontos): { ficha: Ficha; item: number } | undefined {
+/** O item da ficha de laje que é da instalação da disciplina (`"instalacao"` no item; o SPDA não tem). */
+const INSTALACAO_DA_DISCIPLINA: Partial<Record<DisciplinaDePontos, NonNullable<ItemFicha['instalacao']>>> = {
+  hidro: 'agua',
+  sanitario: 'esgoto',
+  eletrico: 'eletrica',
+}
+
+/**
+ * A ficha e o item que os pontos da disciplina marcam: a primeira ficha de ambiente com `"pontos"`; sem ela, a
+ * primeira ficha de laje com o item da instalação (`"instalacao": "agua"`, `"esgoto"` ou `"eletrica"`, os
+ * mesmos itens dos furos de laje), porque ralo, caixa e ponto de água ficam na laje (21/11/2026).
+ */
+export function fichaDosPontos(
+  fichas: readonly Ficha[],
+  disciplina: DisciplinaDePontos,
+  fichasDeLaje: readonly Ficha[] = [],
+): { ficha: Ficha; item: number } | undefined {
   for (const f of fichas) {
     const it = itemDosPontos(f, disciplina)
+    if (it) return { ficha: f, item: it.n }
+  }
+  const inst = INSTALACAO_DA_DISCIPLINA[disciplina]
+  if (!inst) return undefined
+  for (const f of fichasDeLaje) {
+    const it = f.itens.find((i) => i.instalacao === inst)
     if (it) return { ficha: f, item: it.n }
   }
   return undefined

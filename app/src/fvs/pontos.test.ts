@@ -55,6 +55,14 @@ describe('ficha dos pontos', () => {
     expect(itemDosPontos(AMB, 'hidro')).toBeUndefined()
     expect(fichaDosPontos([AMB], 'sanitario')).toEqual({ ficha: AMB, item: 2 })
     expect(fichaDosPontos([AMB], 'hidro')).toBeUndefined()
+    // sem ficha de ambiente com "pontos": o item da instalação na ficha de laje (21/11)
+    const LAJE = { ...AMB, codigo: 'LAJE', aplica_a: ['L'], itens: [
+      { n: 12, etapa: 'INSTALAÇÕES', titulo: 'Pontos de esgoto', instalacao: 'esgoto' as const },
+      { n: 13, etapa: 'INSTALAÇÕES', titulo: 'Pontos de AF/AQ', instalacao: 'agua' as const },
+    ] }
+    expect(fichaDosPontos([], 'hidro', [LAJE])).toEqual({ ficha: LAJE, item: 13 })
+    expect(fichaDosPontos([AMB], 'sanitario', [LAJE])).toEqual({ ficha: AMB, item: 2 })
+    expect(fichaDosPontos([], 'spda', [LAJE])).toBeUndefined()
   })
 })
 

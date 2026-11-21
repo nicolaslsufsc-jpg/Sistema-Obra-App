@@ -67,12 +67,14 @@ def ifc_de_teste(caminho: str, objetos=HIDROSSANITARIO) -> None:
     predio = f.createIfcBuilding(g(), None, "Obra Exemplo", None, None, lp_raiz, None, None, None, None, None, None)
     f.createIfcRelAggregates(g(), None, None, None, proj, [predio])
     pavs = {}
+    cota = {"2º PAVIMENTO": 0.0, "3º PAVIMENTO": 3000.0}
     for nome in ("2º PAVIMENTO", "3º PAVIMENTO"):
-        pavs[nome] = f.createIfcBuildingStorey(g(), None, nome, None, None, f.createIfcLocalPlacement(lp_raiz, eixo), None, None, None, None)
+        no_nivel = f.createIfcAxis2Placement3D(f.createIfcCartesianPoint((0.0, 0.0, cota[nome])), None, None)
+        pavs[nome] = f.createIfcBuildingStorey(g(), None, nome, None, None, f.createIfcLocalPlacement(lp_raiz, no_nivel), None, None, None, None)
     f.createIfcRelAggregates(g(), None, None, None, predio, list(pavs.values()))
 
     def obj(classe, nome, x_mm, y_mm, pav, tag):
-        lp = f.createIfcLocalPlacement(None, f.createIfcAxis2Placement3D(f.createIfcCartesianPoint((x_mm, y_mm, 0.0)), None, None))
+        lp = f.createIfcLocalPlacement(None, f.createIfcAxis2Placement3D(f.createIfcCartesianPoint((x_mm, y_mm, cota[pav])), None, None))
         el = f.create_entity(classe, GlobalId=g(), Name=nome, ObjectPlacement=lp, Tag=tag)
         f.createIfcRelContainedInSpatialStructure(g(), None, None, None, [el], pavs[pav])
         return el
@@ -132,6 +134,11 @@ class TestClassificar(unittest.TestCase):
         self.assertEqual(c("eletrico", "IfcFlowSegment", "ELETRODUTO PVC RIGIDO"), "eletroduto")
         self.assertEqual(c("eletrico", "IfcCableCarrierSegment", "Conduite 3/4"), "eletroduto")
         self.assertIsNone(c("eletrico", "IfcCableCarrierSegment", "Eletrocalha perfurada 100x50"))
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "3.a_1 Tomada de Teto 2P+T_Conjunto 4x2"), "caixa_passagem")
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "3.c_2 Tomadas de Piso 2P+T_Conjunto 4x4"), "caixa_passagem")
+        self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "1.a_1 Tomada 2P+T_Conjunto 4x2"))
+        self.assertEqual(c("eletrico", "IfcFlowSegment", "Conduit without Fittings"), "eletroduto")
+        self.assertIsNone(c("eletrico", "IfcFlowSegment", "Cable Tray with Fittings"))
         self.assertIsNone(c("eletrico", "IfcCableSegment", "Cabo 2,5mm²"))
         self.assertIsNone(c("eletrico", "IfcFlowSegment", "Tubo PVC"))
         self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "Ralo seco"))
@@ -197,6 +204,23 @@ class TestLerIfc(unittest.TestCase):
                 f.createIfcRelContainedInSpatialStructure(ifcopenshell.guid.new(), None, None, None, [el], copia if tag == "2" else pav2)
             f.write(arq)
             self.assertEqual(sorted(p["modelo_id"] for p in instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "hidro")), ["1", "3"])
+            # o 3º do tipo vinculado vem num nível chamado "2º PAVIMENTO": entra no 3º pela altura
+            self.assertEqual([p["modelo_id"] for p in instalacoes.ler_ifc(arq, ["3º PAVIMENTO"], "hidro")], ["2"])
+
+    def test_eletrico_pela_laje(self):
+        """No elétrico entra o que está na laje do pavimento: a caixa do teto do 2º (no nível do 3º) é do 3º."""
+        with tempfile.TemporaryDirectory() as d:
+            arq = str(pathlib.Path(d) / "EXE_eletrico.ifc")
+            ifc_de_teste(arq, (("IfcBuildingElementProxy", "Tomada de Teto 4x2:EL:1", 1000.0, 1000.0, "2º PAVIMENTO", "41"),
+                               ("IfcBuildingElementProxy", "Tomada de Piso 4x2:EL:2", 2000.0, 1000.0, "2º PAVIMENTO", "42"),
+                               # o mesmo objeto de outra cópia vinculada, no mesmo lugar: entra uma vez
+                               ("IfcBuildingElementProxy", "Tomada de Piso 4x2:EL:2", 2000.0, 1000.0, "2º PAVIMENTO", "42")))
+            f = ifcopenshell.open(arq)
+            teto = [e for e in f.by_type("IfcBuildingElementProxy") if e.Tag == "41"][0]
+            teto.ObjectPlacement.RelativePlacement.Location.Coordinates = (1000.0, 1000.0, 3000.0)  # no nível do 3º
+            f.write(arq)
+            self.assertEqual([p["modelo_id"] for p in instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "eletrico")], ["42"])
+            self.assertEqual([p["modelo_id"] for p in instalacoes.ler_ifc(arq, ["3º PAVIMENTO"], "eletrico")], ["41"])
 
     def test_eletroduto_como_linha(self):
         """O eletroduto vem com a linha do corpo extrudado (ou do eixo); o vertical e o sem forma ficam fora."""

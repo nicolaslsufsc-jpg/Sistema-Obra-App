@@ -179,6 +179,8 @@ export interface EventoFvs {
 export interface FichaCampo {
   id: string
   elemento_id: string | null
+  /** local do sistema oficial (locais_sistema), também quando não é peça da planta */
+  local_id?: string | null
   ficha_id: string | null
   codigo: string
   local: string

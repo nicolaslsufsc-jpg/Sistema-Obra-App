@@ -440,6 +440,54 @@ suite('FVS na bancada (Chrome)', () => {
     })
   }
 
+  // Locais fora da planta (21/11): blocos, cortinas e paredes do sistema oficial (locais_sistema). A lista
+  // agrupa pelo local pai; o local abre com a ficha aberta e os itens; o C reinspeciona o NC (V02) e a
+  // marcação vai em local_id, sem planta.
+  for (const [largura, altura] of [
+    [375, 812],
+    [800, 1280],
+  ] as const) {
+    it(`${largura}x${altura}: locais fora da planta, lista e marcação no local`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&locais=1`)
+      await noInicio(p)
+      expect(await p.getByTestId('fvs-entra-locais').innerText()).toContain('3 locais fora da planta')
+      await p.getByTestId('fvs-entra-locais').click()
+      await p.getByRole('heading', { name: 'Locais fora da planta' }).waitFor()
+      const lista = await p.getByTestId('fvs-local').allInnerTexts()
+      expect(lista.map((l: string) => l.split('\n')[0])).toEqual(['Cortina trecho 1', 'Bloco B2', 'Bloco B10 (com nome comprido para ver a quebra de linha no celular)'])
+      expect(lista[2]).toContain('Com NC')
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
+      await p.getByTestId('fvs-local').filter({ hasText: 'Bloco B10' }).click()
+      await p.getByTestId('fvs-tela-local').waitFor()
+      expect(await p.getByTestId('fvs-local-fichas').innerText()).toContain('Pendente Reinspeção')
+      expect(await p.getByTestId('fvs-local-resultado').innerText()).toContain('NC em 02/10')
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await p.locator('.fv-item[data-item="3"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="3"] .fv-hr', { hasText: 'V02' }).waitFor()
+      await p.getByTestId('fvs-hist').waitFor()
+      const gravados = await p.evaluate(async () => {
+        const req = indexedDB.open('sistema-obra')
+        return await new Promise<unknown[]>((ok) => {
+          req.onsuccess = () => {
+            const t = req.result.transaction('registros').objectStore('registros').getAll()
+            t.onsuccess = () => ok(t.result.filter((x: any) => x.tabela === 'fvs_eventos' && x.pendente).map((x: any) => [x.linha.item, x.linha.resultado, x.linha.rodada, !!x.linha.local_id, x.linha.elemento_id ?? null, x.linha.planta_id]))
+          }
+        })
+      })
+      expect(gravados).toEqual([[3, 'C', 2, true, null, null]])
+      await p.goBack()
+      await p.getByRole('heading', { name: 'Locais fora da planta' }).waitFor()
+      expect((await p.getByTestId('fvs-local').allInnerTexts())[2]).toContain('Em andamento')
+      expect(erros).toEqual([])
+      await contexto.close()
+    })
+  }
+
   // Rodada com a obra piloto (20/11): a aba Pilares mostrava 385 e o início contava 445 (+60 arranques do
   // pilar de cima, que estão na planta só para ver o detalhe). O arranque fica fora das contas e da planilha.
   for (const [largura, altura] of [

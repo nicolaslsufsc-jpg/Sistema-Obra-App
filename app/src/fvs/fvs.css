@@ -2099,3 +2099,82 @@
 .fv-topo-nivel > div {
   min-width: 0;
 }
+
+/* Locais fora da planta (21/11/2026): blocos, cortinas, paredes do sistema oficial. Os itens usam as
+   mesmas cores e botões do painel da planta. */
+.fv-locais,
+.fv-local {
+  --fv-ok: var(--texto-21751a);
+  --fv-okbg: var(--fundo-e2f1da);
+  --fv-nc: var(--texto-b3261e);
+  --fv-ncbg: var(--fundo-fbe3e1);
+  --fv-na: var(--texto-5d5f63);
+  --fv-nabg: var(--fundo-ebebe8);
+  --fv-pe: var(--texto-9a5d00);
+  --fv-ln: var(--borda-d8d8d3);
+  --fv-ln2: var(--borda-c4c4be);
+}
+.fv-locais-busca {
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0 12px;
+}
+.fv-locais-grupo h2 {
+  margin: 16px 0 6px;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.fv-local-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  text-align: left;
+  white-space: normal;
+}
+.fv-local-nome {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fv-local-nome .discreto {
+  font-size: 13px;
+}
+.fv-local-linha .fv-sit {
+  flex: none;
+  font-size: 13px;
+}
+.fv-local .fv-topo-inicio h1,
+.fv-local .fv-topo-inicio p {
+  overflow-wrap: anywhere;
+}
+.fv-local-fichas button.fv-local-aberta {
+  min-height: 52px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.fv-local-fichas button.fv-local-aberta.on {
+  border: 2px solid var(--borda-6a1b9a);
+  background: var(--fundo-f6edfa);
+}
+.fv-local-escolher {
+  display: block;
+  margin: 12px 0;
+  font-weight: 600;
+}
+.fv-local-escolher select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+}
+.fv-local-itens h2 {
+  margin: 16px 0 4px;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}

@@ -17,6 +17,13 @@ import { TABELAS_RELATORIOS } from '../relatorios/tabelas'
  */
 export const TABELAS_FVS_REGRAS = ['fvs_regras'] as const
 
+/**
+ * Dados lidos do sistema oficial da obra (migração 20261121130000_sistema_oficial_leitura.sql, 21/11/2026):
+ * os locais que não são peça da planta (as verificações da FVS apontam para eles em `local_id`) e cada
+ * leitura publicada. Bloco à parte, no fim: num servidor sem a migração, só este bloco dá erro.
+ */
+export const TABELAS_SISTEMA_OFICIAL = ['locais_sistema', 'importacoes'] as const
+
 export const TABELAS_SINCRONIZADAS: readonly string[] = [
   ...TABELAS_NUCLEO,
   ...TABELAS_FVS,
@@ -28,6 +35,7 @@ export const TABELAS_SINCRONIZADAS: readonly string[] = [
   ...TABELAS_PROJETOS_DISTRIBUICAO,
   // em 07/11 a migração das áreas de laje (20261106130000_fvs_areas.sql) ainda não estava aplicada
   ...TABELAS_FVS_HISTORICO,
+  ...TABELAS_SISTEMA_OFICIAL,
 ]
 
 /**
@@ -47,4 +55,5 @@ export const BLOCOS_SINCRONIZADOS: readonly (readonly string[])[] = [
   TABELAS_FVS_REGRAS,
   TABELAS_DOCUMENTOS,
   TABELAS_PROJETOS_DISTRIBUICAO,
+  TABELAS_SISTEMA_OFICIAL,
 ]

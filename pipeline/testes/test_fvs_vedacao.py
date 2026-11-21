@@ -91,6 +91,27 @@ class TestPecas(unittest.TestCase):
         r = nomes["101-M02"]["rotulo"]
         self.assertAlmostEqual(r[2] - r[0], 28)
 
+    def test_escolha_de_quais_paredes(self):
+        # dado da obra: na obra piloto só as de área comum (Nicolas, 20/11/2026)
+        def para_prancha(x, y):
+            return [x, y]
+
+        so_ac, r_ac = vedacao.pecas_das_paredes(paredes_exe(), ambientes_exe(), para_prancha, "area_comum")
+        self.assertEqual([p["nome"] for p in so_ac], ["AC-M01"])
+        self.assertEqual((r_ac["paredes"], r_ac["quais"], r_ac["fora_pela_escolha"]), (1, "area_comum", 3))
+        so_apto, r_apto = vedacao.pecas_das_paredes(paredes_exe(), ambientes_exe(), para_prancha, "apartamentos")
+        self.assertEqual(sorted(p["nome"] for p in so_apto), ["101-M01", "101-M02", "101-M03"])
+        self.assertEqual(r_apto["fora_pela_escolha"], 1)
+        _, r_todas = vedacao.pecas_das_paredes(paredes_exe(), ambientes_exe(), para_prancha)
+        self.assertEqual(r_todas["quais"], "todas")
+        self.assertNotIn("fora_pela_escolha", r_todas)
+        # o valor sai do "vedacao" do pavimento.json; true e sem "paredes" valem "todas"
+        self.assertEqual(vedacao.quais_paredes(True), "todas")
+        self.assertEqual(vedacao.quais_paredes({"prancha": "x.pdf"}), "todas")
+        self.assertEqual(vedacao.quais_paredes({"paredes": "area_comum"}), "area_comum")
+        with self.assertRaises(vedacao.ErroVedacao):
+            vedacao.quais_paredes({"paredes": "fachada"})
+
     def test_pacote_aceita_a_parede(self):
         import pacote
 
@@ -158,6 +179,13 @@ class TestPublicar(unittest.TestCase):
             cfg["ambientes"]["vedacao"] = True
             (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
             self.assertIs(publicar_planta.ler_config(base / "pav.json")["ambientes"]["vedacao"], True)
+            cfg["ambientes"]["vedacao"] = {"paredes": "area_comum"}
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            self.assertEqual(publicar_planta.ler_config(base / "pav.json")["ambientes"]["vedacao"], {"paredes": "area_comum"})
+            cfg["ambientes"]["vedacao"] = {"paredes": "corredor"}
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            with self.assertRaises(publicar_planta.ErroPublicacao):
+                publicar_planta.ler_config(base / "pav.json")
 
 
 if __name__ == "__main__":

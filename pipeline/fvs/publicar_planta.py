@@ -156,11 +156,14 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if len(achados) != 1:
                 raise ErroPublicacao(f"ambientes: \"{campo}\" tem que ser um arquivo só (achei {len(achados)})")
             amb[campo] = achados[0]
-        if amb.get("nomes"):
-            achados = arquivos(amb["nomes"])
-            if len(achados) != 1:
-                raise ErroPublicacao(f"ambientes: \"nomes\" tem que ser um arquivo só (achei {len(achados)})")
-            amb["nomes"] = achados[0]
+        for campo in ("nomes", "fichas_por_comodo"):
+            if amb.get(campo):
+                achados = arquivos(amb[campo])
+                if len(achados) != 1:
+                    raise ErroPublicacao(f"ambientes: \"{campo}\" tem que ser um arquivo só (achei {len(achados)})")
+                amb[campo] = achados[0]
+        if amb.get("fichas_por_comodo") and not amb.get("nomes"):
+            raise ErroPublicacao("ambientes: \"fichas_por_comodo\" precisa dos \"nomes\" dos cômodos")
         if amb.get("modulacao"):
             mod = dict(amb["modulacao"])
             mod["pranchas"] = arquivos(mod.get("pranchas"))
@@ -351,6 +354,8 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
             reg["grupo"] = p["grupo"]
         if p.get("comodo"):
             reg["comodo"] = p["comodo"]
+        if p.get("sem_fichas"):
+            reg["sem_fichas"] = p["sem_fichas"]
         if p["tipo"] == "F":
             if p.get("viga"):
                 reg["viga"] = ids[("V", p["viga"])]
@@ -758,6 +763,11 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             n = r["nomes"]
             print(f"  nomes dos cômodos: {n['com_nome']} com nome, {sum(n['sem_nome'].values())} só com o número"
                   + (f"; {len(n['do_tipo_sem_par'])} cômodos do tipo sem par num apartamento (lista no relatorio.json)" if n["do_tipo_sem_par"] else ""))
+        if r.get("fichas_por_comodo"):
+            fc = r["fichas_por_comodo"]
+            fora = fc["tipos_fora_da_tabela"]
+            print(f"  fichas por cômodo: {fc['com_regra']} ambientes com regra"
+                  + (f"; tipos fora da tabela (todas as fichas valem): {', '.join(f'{k} ({v})' for k, v in fora.items())}" if fora else ""))
         if r.get("esquadrias"):
             e = r["esquadrias"]
             print(f"  esquadrias: {e['em_ambiente']} de {e['esquadrias']} em ambiente ({e['em_dois_ambientes']} entre dois), {e['locais']} locais"

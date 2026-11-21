@@ -59,6 +59,9 @@ export interface ElementoPacote {
   grupo?: string
   /** só ambiente: nome do cômodo ("Living", "Suíte 01"), da tabela por apartamento-tipo. O `nome` continua o número */
   comodo?: string
+  /** só ambiente: códigos das fichas que não valem neste cômodo (tabela ficha × tipo de cômodo da obra,
+   *  pipeline/fvs/ambientes.py). Sem o campo, todas valem */
+  sem_fichas?: string[]
   /** [x0, y0, x1, y1], pontos do PDF, y para baixo */
   rotulo: [number, number, number, number]
   polys: Array<Array<[number, number]>>

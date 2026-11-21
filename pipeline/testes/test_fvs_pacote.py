@@ -51,6 +51,17 @@ class TestPacote(unittest.TestCase):
         with self.assertRaises(pacote.ErroPacote):
             pacote.montar(CAB, {}, {"e": {"tipo": "P", "nome": "P1", "rotulo": [0, 0, 1, 1], "polys": [], "detalhe": "P_P9"}}, {})
 
+    def test_ambiente_com_fichas_que_nao_valem(self):
+        amb = {"tipo": "A", "nome": "301-01", "secao": "12,1 m²", "comodo": "Suíte 01", "rotulo": [0, 0, 1, 1], "polys": [],
+               "sem_fichas": ["EXE-024", "EXE-013", "EXE-024"]}
+        man, binario = pacote.montar(CAB, {}, {"a1": amb}, {})
+        m, _ = pacote.ler(man, binario)
+        self.assertEqual(m["elementos"]["a1"]["sem_fichas"], ["EXE-013", "EXE-024"])
+        with self.assertRaises(pacote.ErroPacote):  # só ambiente
+            pacote.montar(CAB, {}, {"p": {"tipo": "P", "nome": "P1", "rotulo": [0, 0, 1, 1], "polys": [], "sem_fichas": ["EXE-024"]}}, {})
+        with self.assertRaises(pacote.ErroPacote):  # lista de códigos
+            pacote.montar(CAB, {}, {"a1": {**amb, "sem_fichas": "EXE-024"}}, {})
+
     def test_recusa_tile_e_tipo_invalidos(self):
         with self.assertRaises(pacote.ErroPacote):
             pacote.montar(CAB, {"../x": b"1"}, {}, {})

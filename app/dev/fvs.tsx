@@ -404,6 +404,8 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
       nome,
       grupo,
       ...(comodo ? { comodo } : {}),
+      // ?comodos=1: tabela ficha × tipo de cômodo (pipeline/fvs/ambientes.py): o reboco de teste não vale nas suítes
+      ...(params.get('comodos') && comodo?.startsWith('Suíte') ? { sem_fichas: ['TESTE-PVS-REB'] } : {}),
       secao: `${((w * h) / 2500).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m²`,
       rotulo: [cx - 22, cy - 7, cx + 22, cy + 7],
       polys: [[[x, y], [x + w, y], [x + w, y + h], [x, y + h]]],

@@ -15,6 +15,7 @@ sys.path.insert(0, str(RAIZ / "pipeline" / "fvs"))
 
 import instalacoes  # noqa: E402
 import pacote  # noqa: E402
+import publicar_fichas  # noqa: E402
 import publicar_planta  # noqa: E402
 
 try:
@@ -208,6 +209,21 @@ class TestPublicador(unittest.TestCase):
     def test_opcoes_so(self):
         ns = argparse.Namespace(so_armadura=False, so_hidro=False, so_sanitario=True)
         self.assertTrue(getattr(ns, "so_sanitario"))
+
+
+class TestFichaComPontos(unittest.TestCase):
+    def ficha(self, aplica=("A",), **item):
+        return [{"codigo": "EXE-PVS-105", "titulo": "Instalações sanitárias (Obra Exemplo)", "revisao": "0", "aplica_a": list(aplica),
+                 "itens": [{"n": 1, "etapa": "EXECUÇÃO", "titulo": "Ralos no lugar do projeto", **item}]}]
+
+    def test_aceita_no_ambiente(self):
+        f = publicar_fichas.normalizar(self.ficha(pontos="sanitario"))
+        self.assertEqual(f[0]["itens"][0]["pontos"], "sanitario")
+
+    def test_recusa(self):
+        for args in ((("A",), {"pontos": "gas"}), (("L",), {"pontos": "hidro"}), (("A",), {"pontos": "hidro", "esquadrias": True})):
+            with self.assertRaises(publicar_fichas.ErroFichas):
+                publicar_fichas.normalizar(self.ficha(args[0], **args[1]))
 
 
 if __name__ == "__main__":

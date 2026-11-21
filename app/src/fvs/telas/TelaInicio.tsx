@@ -125,7 +125,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             <strong>{p.trecho}</strong>
             <span class="discreto">
               {/* planta de ambientes: o número de ambientes já está no resumo acima (o da folha soma as esquadrias) */}
-              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} peças`}
+              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${p.disciplina in SECAO_DE_INSTALACOES ? 'pontos' : 'peças'}`}
             </span>
             {antiga && <span class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</span>}
           </span>
@@ -555,9 +555,12 @@ function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
   )
 }
 
+/** Seções das plantas de instalações (pontos, frente INSTALAÇÕES 20/11/2026), com acento. */
+const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Sanitário' }
+
 /** Título da seção de uma disciplina que o app ainda não conhece ("instalacoes" -> "Instalacoes"). */
 function nomeDaDisciplina(d: string): string {
-  return d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros'
+  return SECAO_DE_INSTALACOES[d] ?? (d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros')
 }
 
 function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T[]> {

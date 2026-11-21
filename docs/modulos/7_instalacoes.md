@@ -7,8 +7,13 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
 - **Ponto: opção B, decidida pelo Nicolas em 20/11 ("Sim, no ambiente", pelo Professor).**
   - **Como fica:** o ponto (ralo, caixa, ponto de água, registro) não é peça em `elementos`. Vai no pacote da planta como sobreposição, em `"pontos"`, como as `"barras"`. O id é fixo, calculado da disciplina e do id do objeto no modelo.
   - **A ficha:** é a PVS do serviço e fica no ambiente, porque o lote das PES 009 e 010 é por ambiente. O ponto conferido alimenta o item dela.
-  - **Banco:** sem migração e sem mudança em `elementos.tipo` nem em `fvs_eventos`. O registro do ponto deve usar a coluna `barra_id`, que já existe: id do pacote, sem chave estrangeira, com `planta_id`.
-  - **Antes de pôr no app:** o Professor confere se usar `barra_id` para o ponto vale. Se não valer, ou se for preciso coluna nova, a frente para e avisa.
+  - **Banco:** sem migração e sem mudança em `elementos.tipo` nem em `fvs_eventos`. O registro do ponto usa a coluna `barra_id`, que já existe: id do pacote, sem chave estrangeira, com `planta_id`.
+  - **`barra_id` vale para "local de sobreposição (barra ou ponto)"** (aprovado pelo Professor em 20/11). Se um dia for preciso coluna nova, a frente para e avisa.
+- **No app (aba Pontos):** a planta da disciplina abre direto na aba Pontos, com um círculo por ponto (azul sem conferir, verde OK, vermelho errado).
+  - O toque segue o ciclo da barra: OK, depois errado (pede o que está errado antes de gravar), depois sem conferir. Tem Desfazer. Dois pontos juntos: pede para aproximar.
+  - O registro vai no item da ficha de ambiente marcado com `"pontos": "hidro"` ou `"sanitario"` (`app/src/fvs/pontos.ts`). Sem esse item na ficha, o toque avisa e não grava.
+  - **Ficha:** em `publicar_fichas.py`, `"pontos"` só vale em ficha de ambiente (`aplica_a: ["A"]`) e não junta com furos, barras, parte ou esquadrias.
+  - No menu do pavimento a seção sai "Hidráulica" ou "Sanitário", e a linha conta "pontos".
   - **Alternativa descartada:** um tipo de peça novo, "I", em `elementos`, que precisaria de migração no núcleo.
 - **Disciplinas:**
   - `hidro` (setor "Água fria e quente"): ponto de água, registro, hidrômetro.
@@ -34,10 +39,10 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - levantamento do Autodoc: disciplinas, fases, pranchas e formatos;
   - lista das PVS que existem;
   - proposta, mandada ao Professor;
-  - pipeline de `hidro` e `sanitario`, com os testes na EXE.
+  - pipeline de `hidro` e `sanitario`, com os testes na EXE;
+  - app: aba Pontos (toque OK, errado, sem conferir, Desfazer), testada na bancada em 375 px e em tablet com 40 pontos de teste.
 - **Falta:**
   1. O download das pranchas e modelos vigentes. Espera o ok do Nicolas no chat da frente.
   2. O piloto no 2º pavimento real, fora do repositório. Depende do download e serve para conferir a classificação e o encaixe.
-  3. O app: desenhar os `"pontos"` na planta da disciplina e o toque OK/NC, como as barras. Os arquivos são de `app/src/fvs/`; falta combinar com o Professor quem faz.
-  4. As fichas: PVS 010.2, 010.4, 010.5 e 010.6 como dado da obra, fora do repositório.
-  5. Depois: SPDA (PVS 009.2.1 e 009.2.2), elétrico (PVS 009.x; na laje só o PES 009.4) e preventivo (sem PES nem PVS: itens marcados como suposição).
+  3. As fichas: PVS 010.2, 010.4, 010.5 e 010.6 como dado da obra, fora do repositório, com o item dos pontos marcado.
+  4. Depois: SPDA (PVS 009.2.1 e 009.2.2), elétrico (PVS 009.x; na laje só o PES 009.4) e preventivo (sem PES nem PVS: itens marcados como suposição).

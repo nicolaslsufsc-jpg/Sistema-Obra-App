@@ -36,6 +36,47 @@ export function dadosGuardados(chave: string): DadosFvs | null {
   return ultimosDados.get(chave)?.dados ?? null
 }
 
+/** Os guardados desta chave ainda valem (nada mudou com a FVS fechada e têm menos de 30 min). */
+function guardadoValeDe(chave: string, agora = Date.now()): boolean {
+  const g = ultimosDados.get(chave)
+  return !!g && !mudouComAFvsFechada && agora - g.lidoEm < RELER_DEPOIS_MS
+}
+
+/** Leitura feita antes de a FVS abrir (pre_leitura.ts), por chave, enquanto não termina. */
+const preLeituras = new Map<string, Promise<void>>()
+
+/**
+ * Lê os dados da FVS por trás, com o módulo ainda fechado (aprovado pelo Professor em 21/11: a primeira
+ * abertura levava ~3 s no tablet). Só lê: o resultado fica guardado como o da última abertura e vale
+ * pelas mesmas regras (o que mudar no aparelho durante ou depois da leitura faz a FVS reler ao abrir).
+ * Com a FVS aberta, ou com dados guardados que ainda valem, não faz nada.
+ */
+export function preLer(chave: string, ler: () => Promise<DadosFvs>): Promise<void> {
+  if (abertas > 0 || guardadoValeDe(chave)) return Promise.resolve()
+  const emCurso = preLeituras.get(chave)
+  if (emCurso) return emCurso
+  ouvirOAparelho()
+  const inicio = Date.now()
+  mudouComAFvsFechada = false
+  const feita = ler()
+    .then((d) => {
+      // a FVS abriu e leu por conta própria nesse meio tempo: a leitura dela é mais nova
+      const atual = ultimosDados.get(chave)
+      if (atual && atual.lidoEm >= inicio) return
+      if (!ultimosDados.has(chave)) ultimosDados.clear()
+      ultimosDados.set(chave, { dados: d, lidoEm: inicio })
+    })
+    .catch((e) => console.warn('FVS: leitura antecipada falhou (a FVS lê ao abrir)', e))
+    .finally(() => preLeituras.delete(chave))
+  preLeituras.set(chave, feita)
+  return feita
+}
+
+/** A leitura antecipada desta chave, se está em curso (a FVS aberta espera por ela em vez de ler de novo). */
+export function preLeituraEmCurso(chave: string): Promise<void> | null {
+  return preLeituras.get(chave) ?? null
+}
+
 export class DadosDaTela {
   private atual: DadosFvs | null
   /** Registros gravados durante cada leitura em curso: ela pode não ter visto. */
@@ -54,8 +95,16 @@ export class DadosDaTela {
 
   /** Os dados guardados ainda valem: dá para abrir sem reler o aparelho. */
   guardadoVale(agora = Date.now()): boolean {
-    const g = this.chave ? ultimosDados.get(this.chave) : undefined
-    return !!g && !mudouComAFvsFechada && agora - g.lidoEm < RELER_DEPOIS_MS
+    return !!this.chave && guardadoValeDe(this.chave, agora)
+  }
+
+  /** Passa a mostrar os dados guardados, se ainda valem (os da leitura antecipada que acabou). */
+  usarGuardado(): DadosFvs | null {
+    if (!this.guardadoVale()) return null
+    const d = dadosGuardados(this.chave!)!
+    this.atual = d
+    this.publicar(d)
+    return d
   }
 
   /** O módulo abriu (true) ou fechou (false). */

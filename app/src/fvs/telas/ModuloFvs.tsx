@@ -4,7 +4,7 @@ import type { Linha } from '../../nucleo/banco_local'
 import type { PropsModulo } from '../../modulos'
 import { usarSincronizacao } from '../../nucleo/usarSincronizacao'
 import { atualizarNomes, avisoDaSincronizacao, carregar, refazerToquesDaObra, type DadosFvs } from '../dados'
-import { DadosDaTela, dadosGuardados } from '../leitura'
+import { DadosDaTela, dadosGuardados, preLeituraEmCurso } from '../leitura'
 import { pacotesNoAparelho } from '../pacote'
 import { sistemaDaObra, type SistemaOficial } from '../../integracoes/sistema_oficial'
 import { lembrarTela, telaGuardada } from '../onde_estava'
@@ -94,9 +94,20 @@ export function ModuloFvs(props: PropsModulo) {
     return () => leitor.aberta(false)
   }, [leitor])
   useEffect(() => {
-    const guardados = primeiraLeitura.current && guardadoVale ? leitor.dados() : null
+    const primeira = primeiraLeitura.current
     primeiraLeitura.current = false
-    ;(guardados ? Promise.resolve(guardados) : recarregar()).then(async (d) => {
+    const ler = async (): Promise<DadosFvs> => {
+      if (primeira && guardadoVale) return leitor.dados()!
+      // o menu já começou a ler por trás (pre_leitura.ts): espera por ela em vez de ler de novo
+      const antecipada = primeira ? preLeituraEmCurso(chaveDosDados) : null
+      if (antecipada) {
+        await antecipada
+        const g = leitor.usarGuardado()
+        if (g) return g
+      }
+      return recarregar()
+    }
+    ler().then(async (d) => {
       if (refez.current) return
       refez.current = true
       const n = await refazerToquesDaObra(obra.id, d, registrados)

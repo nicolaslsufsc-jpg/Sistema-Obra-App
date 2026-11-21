@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { banco } from '../nucleo/servicos'
 import type { Linha } from '../nucleo/banco_local'
 import type { DadosFvs } from './dados'
-import { DadosDaTela, dadosGuardados } from './leitura'
+import { DadosDaTela, dadosGuardados, preLer, preLeituraEmCurso } from './leitura'
 import { guardarPacote, pacotesJaLidos, pacotesNoAparelho, removerPacotes } from './pacote'
 
 // Abrir a FVS de novo sem reler o aparelho (pedido do Nicolas, 21/11: "FVS demora 5s para abrir").
@@ -61,5 +61,46 @@ describe('abrir a FVS de novo', () => {
     await removerPacotes(['pl-1'])
     const agora = await pacotesNoAparelho()
     expect([agora.has('pl-1'), agora.has('pl-2')]).toEqual([false, true])
+  })
+
+  it('leitura antecipada no menu: a FVS abre com ela, espera a que está em curso e relê se algo mudou', async () => {
+    const chave = `${OBRA}|antes`
+    let leituras = 0
+    let soltar: () => void = () => {}
+    const lenta = () => new Promise<DadosFvs>((ok) => (soltar = () => ok(dadosDe(++leituras))))
+    const feita = preLer(chave, lenta)
+    // a FVS abriu no meio: espera a mesma leitura, sem ler de novo
+    expect(preLeituraEmCurso(chave)).toBe(feita)
+    expect(preLer(chave, lenta)).toBe(feita)
+    soltar()
+    await feita
+    expect(preLeituraEmCurso(chave)).toBeNull()
+    const publicados: DadosFvs[] = []
+    const a = new DadosDaTela(async () => dadosDe(++leituras), (d) => publicados.push(d), chave)
+    expect(a.guardadoVale()).toBe(true)
+    expect((a.usarGuardado() as unknown as { n: number }).n).toBe(1)
+    expect(publicados).toHaveLength(1)
+    // com dados que valem, não lê de novo
+    await preLer(chave, async () => dadosDe(++leituras))
+    expect(leituras).toBe(1)
+
+    // gravação no aparelho durante a leitura antecipada: a FVS relê ao abrir
+    const outra = `${OBRA}|antes2`
+    const durante = preLer(outra, async () => {
+      await banco.registros.put({ tabela: 'fvs_eventos', id: 'x3', obra_id: OBRA, linha: { id: 'x3', obra_id: OBRA } as unknown as Linha, pendente: 0 })
+      await esperar()
+      return dadosDe(++leituras)
+    })
+    await durante
+    const b = new DadosDaTela(async () => dadosDe(++leituras), () => {}, outra)
+    expect(b.guardadoVale()).toBe(false)
+    expect(b.usarGuardado()).toBeNull()
+
+    // com a FVS aberta, a antecipada não faz nada
+    b.aberta(true)
+    let lidas = 0
+    await preLer(`${OBRA}|antes3`, async () => dadosDe(++lidas))
+    expect(lidas).toBe(0)
+    b.aberta(false)
   })
 })

@@ -16,6 +16,7 @@ import { camadasDoPacote, NOME_DA_CAMADA, type CamadaDeBarras } from '../src/fvs
 import { camadaDoFuro, ehFuroDeLaje } from '../src/fvs/furos_laje'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
+import { lerFvsAntes } from '../src/fvs/ler_antes'
 
 const OBRA = 'b0000000-0000-0000-0000-0000000000bb'
 const usuario: UsuarioLocal = { id: '00000000-0000-0000-0000-0000000000a1', email: 'bancada@teste.local' }
@@ -1031,7 +1032,19 @@ if (pasta) {
     .then(() => {
       history.replaceState({ tela: 'fvs' }, '')
       const abrirModulo = () => render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
-      abrirModulo()
+      // ?menu=MS: o menu do app fica MS ms na tela, com a leitura antecipada que ele agenda (ler_antes.ts),
+      // e só então a FVS abre, como o toque no cartão (medir a primeira abertura, 21/11)
+      const menu = Number(params.get('menu') || 0)
+      if (menu) {
+        document.getElementById('app')!.innerHTML = '<main class="tela" data-testid="menu-simulado">Menu (bancada)</main>'
+        lerFvsAntes(obra.id, usuario.id)
+        window.setTimeout(() => {
+          ;(window as unknown as { __tocouFvs: number }).__tocouFvs = performance.now()
+          render(null, document.getElementById('app')!)
+          document.getElementById('app')!.innerHTML = ''
+          abrirModulo()
+        }, menu)
+      } else abrirModulo()
       // medir a abertura do módulo sem a semeadura (scratchpad mede_abrir): sai e entra de novo, como pelo menu
       ;(window as unknown as { __reabrirFvs: () => void }).__reabrirFvs = () => {
         render(null, document.getElementById('app')!)

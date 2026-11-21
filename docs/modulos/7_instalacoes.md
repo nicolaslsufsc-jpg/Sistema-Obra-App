@@ -63,7 +63,7 @@ O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de laj
   - furos fora do contorno da forma: numa das quatro direções não há pilar nem viga a menos de 3 m;
   - pilhas: furos no mesmo ponto (até 5 cm);
   - filas: 5 ou mais furos na mesma linha, a até 50 cm um do outro.
-- **Limite do modelo de furação da obra piloto.** O IFC (R03, de 17/08) só tem furos até o 3º pavimento. No 4º, no 5º, no 6º e na cobertura dá 0 furo, e a cobertura também não tem prancha de forma. Para esses pavimentos é preciso decidir: ler os furos das pranchas em PDF, ou usar o 3º como tipo.
+- **Limite do modelo de furação da obra piloto.** O IFC (R03, de 17/08) só tem furos até o 3º pavimento. No 4º, no 5º, no 6º e na cobertura dá 0 furo, e a cobertura também não tem prancha de forma. Decisão do Nicolas (21/11, via Professor): os furos do 3º valem como tipo no 4º, no 5º e no 6º. O fundo de cada pavimento é o PDF dele, e cada furo é comparado com esse PDF; onde não houver desenho, o furo fica "a conferir", com a contagem no relatório. A cobertura fica de fora até ter planta de forma. A fazer.
 - **Furos e peças.**
   - Os furos são os mesmos da forma, com os mesmos ids. Saem do modelo de furação, pelo `furos.py`.
   - Cada furo traz a peça: `viga` (furo de viga), `furo.laje` (furo de laje) e, novo, `pilar` (furo ou caixinha de laje que cai dentro do contorno de um pilar).

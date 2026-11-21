@@ -1752,7 +1752,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** A ficha de ambiente com o item dos pontos desta disciplina (opção B: a ficha fica no ambiente). */
   const fichaDoPonto = () => {
     const d = disciplinaDePontos(manifest?.disciplina)
-    return d ? fichaDosPontos(fichasPara('A', dados.fichas), d) : undefined
+    return d ? fichaDosPontos(fichasPara('A', dados.fichas), d, fichasPara('L', dados.fichas)) : undefined
   }
 
   /** Grava a situação nova do ponto (C OK, NC errado com observação, null sem conferir), em barra_id. */

@@ -3,6 +3,14 @@
    Padrão: escuro. Claro ("Modo sol", no menu): <html data-tema="claro">, igual ao app até 14/11/2026.
    Gerado a partir das cores que existiam; cor nova entra aqui, nunca solta num CSS. */
 :root {
+  /* folha do "Exportar PDF" (21/11/2026): papel branco nos dois temas, por isso não mudam no escuro */
+  --papel-fundo: #ffffff;
+  --papel-texto: #111111;
+  --papel-discreto: #4a4a4a;
+  --papel-borda: #8a8a8a;
+  --papel-linha: #d4d4d4;
+  --papel-cabeca: #ececec;
+  --papel-zebra: #f6f6f6;
   --borda-000000: #000000;
   --borda-111111: #111111;
   --borda-1565c0: #1565c0;

@@ -1,6 +1,6 @@
 # Front end: aparência e componentes comuns (frente 06)
 
-Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar. Na branch `app/fvs-navegacao`, com commit local, a FVS abre em 3 níveis: pavimento, disciplina e opção.
+Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar. A FVS em 3 níveis está no PR #56. Na branch `app/exportar-pdf`, com commit local, entra o botão "Exportar PDF" na FVS, no Concreto, no Projetos e no Documentos.
 
 **O que esta frente cuida:** casca do app, menu, entrada, tema (escuro e modo sol), estilos comuns em `app/src/style.css` e `app/src/tema.css`, e a regra de 375 px e tablet.
 - Cada tela de módulo nasce e muda na frente do próprio módulo. A 06 só aponta o problema para a frente dona.
@@ -42,6 +42,19 @@ Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
   - o menu principal e a tela da planta não mudaram;
   - os testes de tela da FVS (`fvs_bancada`, `local`, `nova_obra`) passaram a entrar pelos 3 níveis, com os ajudantes em `app/testes/fvs_inicio.ts`.
 
+- **Exportar PDF nas telas de consulta (21/11, branch `app/exportar-pdf`, liberado pelo Nicolas):**
+  - uma folha padrão para todos os módulos: cabeçalho com a obra, a data e a hora e quem gerou (nome do perfil, o e-mail, ou "este aparelho (sem conta)"), título, números principais e tabelas legíveis em A4. Tabela larga sai deitada;
+  - sai pelo Imprimir do navegador ("Salvar como PDF"), sem biblioteca nova. O nome do arquivo sugerido é `MODULO_OBRA_TITULO_DATA`;
+  - onde está o botão:
+    - FVS: no pavimento (nível 2) e na obra inteira (nível 1). A folha tem as fichas por peça (situação, C, NC, NA, itens vazios, % conforme, última marcação e quem) e as não conformidades;
+    - Concreto: no pavimento (concretagens) e nas peças concretadas (por caminhão e por peça). Aqui o "Imprimir" antigo virou "Exportar PDF";
+    - Projetos: nas abas Pranchas e Entregas (com a busca e o filtro, a lista inteira) e na lista de projetos antiga;
+    - Documentos: na lista mestra, com os filtros da tela. O "Imprimir lista mestra" continua como estava;
+  - o código fica em `app/src/telas/ExportarPdf.tsx`, `folha_pdf.ts` e `exportar_pdf.css`; os dados de cada módulo saem dos mesmos cálculos da tela (a FVS em `app/src/fvs/pdf.ts`). As cores do papel (`--papel-*`) ficam no `tema.css` e não mudam no tema escuro;
+  - a folha fica escondida na tela e só ela sai na impressão. Ela sai da página no próximo toque ou tecla, e não no "terminou de imprimir", porque no Chrome do Android esse aviso pode vir antes de o PDF ser desenhado;
+  - as impressões que os módulos já tinham (ficha de concreto deitada, lista mestra) não mudaram: a folha usa páginas com nome (`@page folha` e `deitada`);
+  - o teste de tela (`local.e2e`, "Exportar PDF...") confere, em 375 px e no tablet, nos quatro módulos: o botão com 44 px ou mais, sem rolagem para o lado, o cabeçalho, o conteúdo e a limpeza depois. No tablet ele gera os PDFs de verdade.
+
 ## Pendências
 1. **Um estilo só para aviso, toast e tela vazia.**
    - As telas comuns já não têm cor solta.
@@ -54,4 +67,4 @@ Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
 Uma barra comum em todas as telas, com "‹ Menu" à esquerda, inclusive na planta da FVS. Só depois que o #31 (topo da TelaPlanta, frente 02) entrar na main, e combinado com o Professor.
 
 ## Onde ficam os prints
-Ficam fora do git, na pasta "Frontend" do PC do Nicolas: o levantamento de 18/11, os prints de `menu_pr1`, `menu_ifc_doc_2026-11-20` e `menu_heuristicas_2026-11-20` (com a proposta) e `fvs_niveis_2026-11-21` (os 3 níveis da FVS em 375 px e tablet).
+Ficam fora do git, na pasta "Frontend" do PC do Nicolas: o levantamento de 18/11, os prints de `menu_pr1`, `menu_ifc_doc_2026-11-20` e `menu_heuristicas_2026-11-20` (com a proposta) `fvs_niveis_2026-11-21` (os 3 níveis da FVS em 375 px e tablet) e `exportar_pdf_2026-11-21` (os PDFs gerados e os botões no celular).

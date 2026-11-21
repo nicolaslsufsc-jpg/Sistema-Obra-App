@@ -34,7 +34,7 @@ Tema claro é o padrão. Tema escuro fica como opção (ícone de lua no topo do
 
 - Fonte: a fonte do sistema.
 - Tamanhos: título da tela 20 px, título de seção 16 px, texto e tabela 14 px, legenda 12 px (`--fs-titulo`, `--fs-secao`, `--fs-texto`, `--fs-legenda`).
-- A letra da raiz do app continua em 18 px, porque as alturas de toque (44 px ou mais) dependem dela. Os tamanhos acima valem no cabeçalho comum e nas tabelas.
+- Letra base do app: 18 px (aprovado pelo Nicolas em 21/11/2026), porque as alturas de toque (44 px ou mais) dependem dela. Os tamanhos acima (texto e tabela em 14 px) valem nas tabelas e no cabeçalho comum.
 - Números de volume, quantidade e data alinhados à direita nas tabelas, com fonte de largura fixa para números (tabular-nums).
 - Unidade sempre no cabeçalho da coluna, por exemplo "Volume (m³)", e não repetida em cada linha.
 

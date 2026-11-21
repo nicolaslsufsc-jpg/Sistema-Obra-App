@@ -1,6 +1,6 @@
 # Contrato de dados do núcleo (dono: sessão Núcleo)
 
-Versão 1.4, 04/11/2026. v1: validado a partir do rascunho v0 e transformado em migração. v1.1: biblioteca de sincronização do app. v1.2: exportação de obra. v1.3: pessoas da obra, caminho seguro, correções da revisão da exportação. v1.4: casca do app com registro de módulos (`app/src/modulos.ts`). v1.5 (18/11/2026): volta ao último módulo ao reabrir e betas fora do menu.
+Versão 1.4, 04/11/2026. v1: validado a partir do rascunho v0 e transformado em migração. v1.1: biblioteca de sincronização do app. v1.2: exportação de obra. v1.3: pessoas da obra, caminho seguro, correções da revisão da exportação. v1.4: casca do app com registro de módulos (`app/src/modulos.ts`). v1.5 (18/11/2026): volta ao último módulo ao reabrir e betas fora do menu. v1.6 (21/11/2026): convites (pessoa na obra antes de ter e-mail ou conta).
 
 - Migração: `supabase/migrations/20261103120000_nucleo.sql`
 - Testes: `supabase/testes/rodar_testes.sh` (Postgres local com imitação do Supabase)
@@ -24,6 +24,7 @@ Usuário sem linha em `acessos` (e que não é admin) não vê nada. `perfis.pap
 - `perfis` (id = usuário do Supabase, nome, papel admin/usuario). Criado sozinho quando o usuário é criado no Supabase. Cada um vê o próprio perfil e o de quem divide obra com ele.
 - `obras` (id, codigo ex. obra piloto, nome, empresa, criado_por). `codigo` só com maiúsculas, números, `_` e `-`.
 - `acessos` (usuario_id, obra_id, papel gestor/campo/leitura). Revogar = apagar a linha. Não é baixada por cursor: o app relê a lista a cada login com internet.
+- `convites` (obra_id, nome, email opcional, papel, usuario_id e aceito_em quando vira acesso). Só o admin lê e escreve. Não é sincronizada nem exportada. Ver "Convites" abaixo.
 - `pavimentos` (obra_id, nome, ordem). `ordem` cresce de baixo para cima. Nome único por obra.
 - `setores` (obra_id, pavimento_id opcional, nome_projeto ex. "Trecho 2", nome_construpoint ex. "B/C", disciplina ex. "estrutura").
   - Liga o trecho da prancha ao setor do Construpoint. De-para da obra piloto ainda não definido: `nome_construpoint` fica vazio até lá.
@@ -160,6 +161,17 @@ import { ModuloFvs } from './fvs/telas/ModuloFvs'
 - Os administradores aparecem na lista com acesso como "Administrador (vê todas as obras)", sem controles: admin só muda pelo editor SQL, e `dar_acesso` recusa e-mail de admin.
 - E-mails ficam em `auth.users`, que a API não mostra: as funções `public.pessoas_da_obra(obra)`, `public.contas_sem_acesso(obra)` e `public.dar_acesso` (migração `20261103210000_nucleo_pessoas.sql`) só respondem ao admin. Mudar papel e tirar acesso usam a tabela `acessos` direto (as regras já deixam só o admin); a biblioteca confere que uma linha mudou, porque a RLS filtra sem erro.
 - Tirar o acesso ou baixar para leitura: o que a pessoa registrou sem internet e ainda não sincronizou fica preso no celular dela. O app avisa isso na confirmação.
+
+## Convites (pessoa na obra antes de ter e-mail ou conta)
+
+Migração `20261121120000_nucleo_convites.sql` (21/11/2026, pedido do Nicolas: cadastrar pessoas na obra antes de saber o e-mail delas).
+
+- `public.convidar(obra, nome, papel, email opcional)`: cria o convite (só admin). Sem e-mail, a pessoa ainda não tem acesso a nada.
+- `public.por_email_no_convite(convite, email)`: põe o e-mail (só admin; guardado sem espaços e em minúsculas). Se já existe conta com esse e-mail, o acesso é dado na hora e a função devolve `true`; senão devolve `false` e espera a pessoa entrar.
+- Quando a conta nasce (primeiro pedido de código no app com aquele e-mail), o gatilho `sistema_obra_aceitar_convites` em `perfis` cria o `acessos` com o papel do convite, põe o nome do convite no perfil (só se o perfil ainda tiver o nome padrão, tirado do e-mail) e marca o convite como aceito. Só quem recebe o código no e-mail consegue usar essa conta.
+- Convite aceito não muda mais de e-mail: daí em diante, papel e acesso se mexem pela tela "Pessoas da obra". Convite com `apagado = true` não vira acesso. Admin convidado resolve o convite sem linha em `acessos` (já vê todas as obras).
+- Um convite aberto por e-mail em cada obra. Mais de uma conta com o mesmo e-mail: recusa, como `dar_acesso`.
+- Hoje sem tela: o admin usa o editor SQL. Nomes e e-mails de pessoas reais só no servidor, nunca no repositório.
 
 ## Módulo novo: passo a passo
 

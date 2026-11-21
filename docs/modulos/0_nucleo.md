@@ -43,6 +43,7 @@ Projeto `zktsuwxgvvyufuihkndj` (São Paulo). Quem aplica é o Nicolas (ou a sess
 | `20261107200000_relatorios_foto_marca.sql` | app/local | Aplicada em São Paulo (08/11/2026) |
 | `20261107210000_concreto_caneta.sql` | app/local | Aplicada em São Paulo (08/11/2026) |
 | `20261108120000_fvs_resultado_c_nc.sql` | FVS (tarefa 3) | Aplicada em São Paulo (conferido em 18/11/2026: regra C/NC/NA e gatilho `fvs_converter_resultado` no banco; já estava lá antes desta sessão) |
+| `20261121120000_nucleo_convites.sql` | Login (branch `login/convites`) | **Ainda não aplicada.** Convites de pessoa sem e-mail; o Professor aplica depois do merge (aprovado pelo Nicolas em 21/11/2026) |
 
 Seeds: `seed/01_obra_teste.sql` (PR 2) aplicado em São Paulo (04/11), a obra TESTE existe com 3 pavimentos. `seed/02_obra_exemplo.sql` aplicado em São Paulo em 18/11/2026 com o "pode" do Nicolas: obra EXE ("Obra Exemplo", fictícia) com 5 pavimentos, para o teste do servidor com login.
 

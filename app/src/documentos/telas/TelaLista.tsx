@@ -2,9 +2,11 @@
 import { useState } from 'preact/hooks'
 import { Topo } from '../../relatorios/telas/comum'
 import { dataBR } from '../../relatorios/regras'
-import { CATEGORIAS, nomeDaCategoria, type Escopo } from '../categorias'
+import { CATEGORIAS, nomeDaCategoria, NOME_DO_ESCOPO, type Escopo } from '../categorias'
 import { podeCadastrar } from '../dados'
-import { AVISO_TOTAL, contarVencidos, filtrar, tamanhoEmTexto, type Documento, type FiltroStatus } from '../regras'
+import { AVISO_TOTAL, contarVencidos, filtrar, NOME_DO_STATUS, statusDaRevisao, tamanhoEmTexto, validadeDe, type Documento, type FiltroStatus } from '../regras'
+import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import type { FolhaPdf } from '../../telas/folha_pdf'
 import type { ContextoDoc } from './ModuloDocumentos'
 import { SeloExemplo, SeloStatus, SeloValidade } from './comum'
 import { tirarExemplos } from '../exemplos'
@@ -19,7 +21,7 @@ const FILTROS_STATUS: ReadonlyArray<{ v: FiltroStatus; t: string }> = [
 ]
 
 export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo }) {
-  const { dados, hoje, obra, ir, trocar, voltar, recarregar } = ctx
+  const { dados, hoje, obra, usuario, ir, trocar, voltar, recarregar } = ctx
   const nExemplos = dados.documentos.filter((d) => d.exemplo).length
   const [categoria, setCategoria] = useState<string | null>(null)
   const [status, setStatus] = useState<FiltroStatus>('todos')
@@ -35,6 +37,45 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
     else porCategoria.set(d.categoria, [d])
   }
   const categoriasComDoc = CATEGORIAS.filter((c) => doEscopo.some((d) => d.categoria === c.id))
+  // a lista com os filtros da tela em A4 (21/11/2026); a lista mestra inteira continua no "Imprimir lista mestra"
+  const folha = (): FolhaPdf => {
+    const filtros = [
+      categoria && nomeDaCategoria(categoria),
+      status !== 'todos' && FILTROS_STATUS.find((f) => f.v === status)?.t,
+      busca.trim() && `busca "${busca.trim()}"`,
+    ].filter(Boolean)
+    return {
+      modulo: 'Documentos',
+      titulo: `Lista mestra · ${NOME_DO_ESCOPO[escopo]}`,
+      sub: filtros.length ? `Filtros: ${filtros.join(' · ')}` : `Todos os documentos (${NOME_DO_ESCOPO[escopo].toLowerCase()})`,
+      resumo: [
+        lista.length === doEscopo.length ? `${doEscopo.length} ${doEscopo.length === 1 ? 'documento' : 'documentos'}` : `${lista.length} de ${doEscopo.length} documentos`,
+        ...(avisos.vencidos > 0 ? [`${avisos.vencidos} ${avisos.vencidos === 1 ? 'vencido' : 'vencidos'}`] : []),
+      ],
+      tabelas: [
+        {
+          colunas: ['Categoria', 'Código', 'Título', 'Rev.', 'Data', 'Validade', 'Responsável', 'Status'],
+          curtas: [1, 3, 4, 5, 7],
+          linhas: [...porCategoria.values()].flat().map((d) => {
+            const v = validadeDe(d, hoje)
+            return [
+              nomeDaCategoria(d.categoria),
+              d.codigo,
+              `${d.exemplo ? 'EXEMPLO · ' : ''}${d.atual.titulo}`,
+              d.atual.revisao,
+              dataBR(d.atual.data_revisao),
+              d.atual.validade ? `${dataBR(d.atual.validade)}${v.tipo === 'vencido' ? ' VENCIDO' : ''}` : '',
+              d.atual.responsavel,
+              NOME_DO_STATUS[statusDaRevisao(d, d.atual)],
+            ]
+          }),
+          vazio: 'Nenhum documento com estes filtros.',
+          nota: nExemplos > 0 ? 'Documentos marcados EXEMPLO não valem para a auditoria.' : undefined,
+        },
+      ],
+      deitada: true,
+    }
+  }
   const trocarEscopo = (e: Escopo) => {
     setCategoria(null)
     trocar({ nome: 'lista', escopo: e })
@@ -133,6 +174,7 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
         <button type="button" data-testid="imprimir-lista" onClick={() => ir({ nome: 'imprimir', escopo })}>
           Imprimir lista mestra
         </button>
+        <BotaoExportarPdf obra={obra} usuario={usuario} montar={folha} rotulo="Exportar PDF (com os filtros)" testid="documentos-pdf-lista" desativado={lista.length === 0} />
         {nExemplos > 0 && (
           <div class="doc-exemplos" data-testid="aviso-exemplos">
             <p class="discreto">

@@ -20,6 +20,8 @@ import { furoDeOutraPlanta } from '../furos_laje'
 import { disciplinasDoPavimento, ehOpcaoDeAlvenaria, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
+import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import { folhaDaFvs } from '../pdf'
 import { BuscaNaObra } from './BuscaNaObra'
 import { banco } from '../../nucleo/servicos'
 import { dataDoPacoteGuardado } from '../../nucleo/pacote_obra'
@@ -506,6 +508,21 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             )
           })}
         </div>
+        {/* andamento, fichas e NCs do pavimento em A4 (21/11/2026) */}
+        <BotaoExportarPdf
+          obra={props.obra}
+          usuario={props.usuario}
+          classe="so-bt-largo"
+          testid="fvs-pdf-pavimento"
+          rotulo="Exportar PDF do pavimento"
+          montar={() =>
+            folhaDaFvs({
+              titulo: pv.nome,
+              linhas: situacaoDaObra(dados).filter((l) => l.pavimento === pv.nome),
+              reprovacoes: reprovacoes.filter((r) => r.pavimentoId === pv.id),
+            })
+          }
+        />
         {(faltam.length > 1 || baixandoAqui) && (
           <div class="fv-baixar-pav">
             <button
@@ -703,6 +720,19 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           <b>Baixar planilha da situação da obra</b>
           <span>Uma linha por peça e ficha, com o que falta, para abrir no Excel</span>
         </button>
+      )}
+      {dados.pecaPorId.size > 0 && (
+        <BotaoExportarPdf
+          obra={props.obra}
+          usuario={props.usuario}
+          classe="so-bt-largo"
+          testid="fvs-pdf-obra"
+          rotulo="Exportar PDF da obra"
+          montar={() => {
+            const nome = new Map(dados.pavimentos.map((p) => [p.id, p.nome]))
+            return folhaDaFvs({ titulo: 'Obra inteira', linhas: situacaoDaObra(dados), reprovacoes, comPavimento: true, nomeDoPavimento: (id) => nome.get(id) ?? '' })
+          }}
+        />
       )}
 
       {dados.fichasCampoSemPeca.length > 0 && (

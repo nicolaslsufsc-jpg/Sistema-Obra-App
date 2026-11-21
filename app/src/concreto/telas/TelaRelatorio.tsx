@@ -4,6 +4,8 @@ import type { Contexto } from './ModuloConcreto'
 import { sistemaDaObra } from '../../integracoes/sistema_oficial'
 import { corDoCaminhao, dataBR, numBR, plural, Topo } from './comum'
 import { nomeDaConcretagem } from '../exemplo'
+import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import type { FolhaPdf } from '../../telas/folha_pdf'
 
 export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concretagemRaiz: string }) {
   const { dados, voltar } = ctx
@@ -36,6 +38,32 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
+  // as duas tabelas (por caminhão e por peça) numa folha A4 (21/11/2026; antes era o Imprimir da tela)
+  const nomesDasPecas = (l: (typeof porCaminhao)[number]) =>
+    l.pecas.length === 0 ? 'sem peça desenhada' : l.pecas.map((i) => `${i.peca.nome}${i.parcial ? ` (${percentual(i.fracao)})` : ''}`).join(', ')
+  const folha = (): FolhaPdf => ({
+    modulo: 'Concreto',
+    titulo: `Peças concretadas · ${pav?.nome ?? ''}`,
+    sub: `${dataBR(c.data)} · ${nomeDaConcretagem(c)} · fck ${numBR(c.fck_mpa)} MPa${c.codigo_construpoint && sistema ? ` · ${c.codigo_construpoint}` : ''}`,
+    resumo: [plural(cams.length, 'caminhão', 'caminhões'), `${numBR(volume)} m³`, plural(porPeca.length, 'peça', 'peças')],
+    tabelas: [
+      {
+        titulo: 'Por caminhão',
+        colunas: ['Caminhão', 'NF', 'm³', 'Peças'],
+        curtas: [0, 1, 2],
+        linhas: porCaminhao.map((l) => [l.caminhao.sequencia, l.caminhao.nota_fiscal, numBR(l.caminhao.volume_m3, 2), nomesDasPecas(l)]),
+        vazio: 'Nenhum caminhão nesta concretagem.',
+      },
+      {
+        titulo: 'Por peça',
+        colunas: ['Peça', 'Caminhões (NF)'],
+        curtas: [0],
+        linhas: porPeca.map((l) => [l.peca.nome, l.caminhoes.map((x) => `${x.caminhao.sequencia} (NF ${x.caminhao.nota_fiscal || '—'}${x.parcial ? `, ${percentual(x.fracao)}` : ''})`).join(', ')]),
+        vazio: 'Nenhuma peça desenhada nos caminhões.',
+        nota: 'Parcial: a área desenhada cobre menos de 90% da peça. Confira se outro caminhão completou a peça.',
+      },
+    ],
+  })
   const copiar = async () => {
     try {
       await navigator.clipboard.writeText(csvPorCaminhao(c, porCaminhao, sistema).replace('﻿', '').replace(/;/g, '\t'))
@@ -71,9 +99,7 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
         <button type="button" onClick={copiar}>
           Copiar para o Excel
         </button>
-        <button type="button" onClick={() => window.print()}>
-          Imprimir
-        </button>
+        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="concreto-pdf-relatorio" />
       </div>
       {copiado && <p class="aviso nao-imprimir">{copiado}</p>}
 

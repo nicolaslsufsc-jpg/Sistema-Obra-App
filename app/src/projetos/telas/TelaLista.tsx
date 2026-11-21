@@ -3,9 +3,11 @@ import { normalizar, revisaoNova } from '../regras'
 import type { Documento } from '../dados'
 import type { Contexto } from './ModuloProjetos'
 import { plural, rotuloRevisao, Selo, Topo } from './comum'
+import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import type { FolhaPdf } from '../../telas/folha_pdf'
 
 export function TelaLista({ ctx }: { ctx: Contexto }) {
-  const { dados, ir, voltar } = ctx
+  const { dados, obra, usuario, ir, voltar } = ctx
   const [busca, setBusca] = useState('')
   const q = normalizar(busca.trim())
   const visiveis = q ? dados.documentos.filter((d) => d.busca.includes(q)) : dados.documentos
@@ -17,9 +19,44 @@ export function TelaLista({ ctx }: { ctx: Contexto }) {
     else grupos.set(d.disciplina, [d])
   }
 
+  // a lista (com a busca, se houver) em A4 (21/11/2026)
+  const folha = (): FolhaPdf => {
+    const linhas = visiveis.map((d) => {
+      const vigente = dados.vigentes.get(d.id)
+      const sits = dados.situacoesDe.get(d.id) ?? []
+      return [
+        d.disciplina,
+        d.codigo,
+        d.titulo || 'sem título',
+        vigente ? rotuloRevisao(vigente) : 'sem vigente',
+        (dados.revisoesDe.get(d.id) ?? []).some((r) => revisaoNova(r, dados.hoje)) ? 'sim' : '',
+        sits.filter((s) => s.situacao === 'RECOLHER').length || '',
+        sits.filter((s) => s.situacao === 'CONFERIR').length || '',
+      ]
+    })
+    return {
+      modulo: 'Projetos',
+      titulo: 'Lista de projetos',
+      sub: q ? `Busca: "${busca.trim()}"` : undefined,
+      resumo: [plural(visiveis.length, 'prancha', 'pranchas'), plural(grupos.size, 'disciplina', 'disciplinas')],
+      tabelas: [
+        {
+          colunas: ['Disciplina', 'Código', 'Título', 'Vigente', 'Nova', 'A recolher', 'Conferir'],
+          curtas: [1, 3, 4, 5, 6],
+          linhas,
+          vazio: q ? 'Nada com esse texto.' : 'Nenhum projeto nesta obra ainda.',
+          nota: 'A recolher e Conferir: cópias em campo (da lista de distribuição).',
+        },
+      ],
+    }
+  }
+
   return (
     <main class="tela">
       <Topo titulo="Lista de projetos" sub={plural(dados.documentos.length, 'prancha', 'pranchas')} aoVoltar={voltar} />
+      <div class="acoes">
+        <BotaoExportarPdf obra={obra} usuario={usuario} montar={folha} testid="projetos-pdf-lista" desativado={visiveis.length === 0} />
+      </div>
       <div class="pj-busca">
         <input
           type="search"

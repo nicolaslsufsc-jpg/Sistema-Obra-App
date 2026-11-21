@@ -1016,6 +1016,112 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     ['celular', 375, 812],
     ['tablet', 1280, 800],
   ] as const) {
+    it(`${nome} ${largura}x${altura}: Exportar PDF na FVS, no Concreto, no Projetos e no Documentos (folha A4 com obra, data e quem gerou)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      // o Imprimir do navegador não abre no teste: guarda a folha que ia sair
+      await contexto.addInitScript(() => {
+        const w = window as any
+        w.__folhas = []
+        window.print = () => {
+          const f = document.querySelector('.so-folha-pdf')
+          w.__folhas.push({ texto: (f?.textContent ?? '').replace(/\s+/g, ' '), so: document.body.classList.contains('so-imprimindo'), titulo: document.title })
+        }
+      })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const exportar = async (testid: string, arquivo: string) => {
+        const antes = await p.evaluate(() => (window as any).__folhas.length)
+        const bt = p.getByTestId(testid)
+        await bt.waitFor()
+        const caixa = await bt.boundingBox()
+        expect(caixa.height).toBeGreaterThanOrEqual(44)
+        expect(caixa.x + caixa.width).toBeLessThanOrEqual(largura)
+        expect(await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+        if (PRINTS) {
+          await bt.scrollIntoViewIfNeeded()
+          await p.screenshot({ path: path.join(PRINTS, `tela-${nome}-${arquivo}.png`) })
+        }
+        await bt.click()
+        await p.waitForFunction((n: number) => (window as any).__folhas.length > n, antes)
+        const f = await p.evaluate(() => (window as any).__folhas.at(-1))
+        // só a folha sai: o resto da página some na impressão
+        expect(f.so).toBe(true)
+        expect(f.texto).toContain('EXE · Obra Exemplo')
+        expect(f.texto).toMatch(/Gerado em \d\d\/\d\d\/\d{4} \d\d:\d\d/)
+        expect(f.texto).toContain('por este aparelho (sem conta)')
+        expect(f.titulo).toMatch(/_EXE_.*_\d{4}-\d\d-\d\d$/)
+        if (PRINTS) {
+          await p.emulateMedia({ media: 'print' })
+          await p.screenshot({ path: path.join(PRINTS, `pdf-${nome}-${arquivo}.png`), fullPage: true })
+          // null volta ao normal ("screen" faria o page.pdf sair como a tela)
+          await p.emulateMedia({ media: null })
+          if (nome === 'tablet') await p.pdf({ path: path.join(PRINTS, `pdf-${arquivo}.pdf`), preferCSSPageSize: true, printBackground: true })
+        }
+        // fechou o Imprimir (o "afterprint" do page.pdf não tira a folha): no próximo toque ou tecla, a folha
+        // sai da página e o título volta
+        await p.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+        expect(await p.locator('.so-folha-pdf').count()).toBe(1)
+        await p.keyboard.press('Shift')
+        expect(await p.locator('.so-folha-pdf').count()).toBe(0)
+        expect(await p.title()).not.toMatch(/_EXE_/)
+        return f.texto as string
+      }
+      try {
+        // FVS: o pavimento (nível 2) e a obra inteira (nível 1)
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^FVS/ }).click()
+        await p.getByTestId('fvs-pavimento').first().click()
+        let t = await exportar('fvs-pdf-pavimento', 'fvs-pavimento')
+        expect(t).toContain('FVS · 3º Pavimento')
+        expect(t).toContain('Fichas por peça')
+        expect(t).toContain('P1')
+        expect(t).toContain('Não conformidades')
+        await noInicioFvs(p)
+        t = await exportar('fvs-pdf-obra', 'fvs-obra')
+        expect(t).toContain('FVS · Obra inteira')
+
+        // Concreto: as concretagens do pavimento
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^Concreto/ }).click()
+        await p.locator('.cc-linha', { hasText: '3º Pavimento' }).first().click()
+        t = await exportar('concreto-pdf-pavimento', 'concreto-pavimento')
+        expect(t).toContain('Concreto · 3º Pavimento')
+        expect(t).toContain('Concretagens')
+
+        // Documentos: a lista mestra com os filtros da tela
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^Documentos/ }).click()
+        await p.getByTestId('lista-mestra').getByText('Certificado de calibração · trena 5 m').waitFor()
+        t = await exportar('documentos-pdf-lista', 'documentos-lista')
+        expect(t).toContain('Documentos · Lista mestra · Obra')
+        expect(t).toContain('EXEMPLO · Certificado de calibração · trena 5 m')
+
+        // Projetos: importa a base de exemplo; Pranchas e Entregas
+        const vig = path.join(SAIDA, `vigentes_pdf_${nome}.csv`)
+        const dist = path.join(SAIDA, `distribuicao_pdf_${nome}.csv`)
+        writeFileSync(vig, VIGENTES_EXE)
+        writeFileSync(dist, '﻿' + DISTRIBUICAO_EXE)
+        await abrirNaObra(p)
+        await p.getByRole('button', { name: /^Projetos/ }).click()
+        await p.getByTestId('painel-importar').waitFor()
+        await p.setInputFiles('[data-testid=arquivo-vigentes]', vig)
+        await p.setInputFiles('[data-testid=arquivo-distribuicao]', dist)
+        await p.getByRole('button', { name: 'Importar', exact: true }).click()
+        await p.getByTestId('painel-resumo').waitFor()
+        await p.locator('.pj-abas').getByRole('button', { name: 'Pranchas', exact: true }).click()
+        t = await exportar('projetos-pdf-pranchas', 'projetos-pranchas')
+        expect(t).toContain('Projetos · Pranchas da lista vigente')
+        await p.locator('.pj-abas').getByRole('button', { name: 'Entregas', exact: true }).click()
+        t = await exportar('projetos-pdf-entregas', 'projetos-entregas')
+        expect(t).toContain('Projetos · Entregas de cópias')
+        expect(t).toContain('Com filtro em campo')
+        expect(erros).toEqual([])
+      } finally {
+        await contexto.close()
+      }
+    }, 180_000)
+
     it(`${nome} ${largura}x${altura}: Documentos (lista mestra, revisão nova, cadastro, imprimir, salvar e restaurar)`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700, acceptDownloads: true })
       const p: Page = await contexto.newPage()

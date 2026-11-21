@@ -13,7 +13,7 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - O toque segue o ciclo da barra (21/11): 1 toque OK, 2 toques errado (vermelho e caixa do NC), 3 toques tira a verificação, também com a caixa do NC aberta. O NC só grava com Confirmar. Tem Desfazer. Dois pontos juntos: pede para aproximar. O círculo ganha da linha: o toque na caixa onde o eletroduto termina é da caixa.
   - O registro vai no item da ficha de ambiente marcado com `"pontos": "hidro"`, `"sanitario"`, `"eletrico"` ou `"spda"` (`app/src/fvs/pontos.ts`). Sem esse item na ficha, o toque avisa e não grava.
   - **Ficha:** em `publicar_fichas.py`, `"pontos"` só vale em ficha de ambiente (`aplica_a: ["A"]`) e não junta com furos, barras, parte ou esquadrias.
-  - No menu do pavimento as seções saem nesta ordem: "Hidráulica", "Sanitário", "Elétrico", "SPDA". A linha de cada planta conta "pontos".
+  - **Menu (21/11, pedido do Nicolas: "sanitário, elétrico, preventivo contra incêndio, tem que ter tudo, suas abas"):** em Instalações, as seções saem nesta ordem: "Hidráulica", "Esgoto", "Elétrico", "Preventivo contra incêndio", "SPDA"; cada planta abre direto na aba Pontos. A linha de cada planta conta "pontos". A ficha de ambiente que tem item de pontos sai de Acabamentos e aparece em Instalações, em "Por ambiente" (abre a planta de ambientes nessa ficha). Testado na bancada (`dev/fvs.html?instalacoes=1`: uma planta de teste por disciplina, com linha no elétrico e no preventivo) em 375 px e tablet: as cinco abrem, o toque grava no item da disciplina.
   - **Alternativa descartada:** um tipo de peça novo, "I", em `elementos`, que precisaria de migração no núcleo.
 - **Disciplinas:**
   - `hidro` (setor "Água fria e quente"): ponto de água, registro, hidrômetro.
@@ -57,4 +57,4 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
      - elétrico: PVS 009.x, mais a laje elétrica como suposição;
      - SPDA: PVS 009.2.1 e 009.2.2.
   4. Conferir no IFC real do elétrico se o eletroduto vem com eixo ou corpo extrudado e com que nome (piloto do 2º).
-  5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição.
+  5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição. **App pronto (21/11):** disciplina `preventivo` (setor "Hidrantes, extintores e sprinklers"), tipos `hidrante`, `extintor`, `sprinkler`, `detector`, `iluminacao_emergencia`, `alarme`, `sinalizacao` e a tubulação como linha (`tubo_incendio`), item da ficha `"pontos": "preventivo"`; tipo desconhecido aparece com o nome do objeto. **Falta no pipeline** (`instalacoes.py` e `publicar_fichas.py`, que têm de ter a mesma lista de disciplinas): ler o IFC do preventivo e aceitar `"pontos": "preventivo"` na ficha.

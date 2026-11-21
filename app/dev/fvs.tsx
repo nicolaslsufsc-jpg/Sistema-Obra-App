@@ -14,6 +14,7 @@ import { usarFonteDeArquivos } from '../src/fvs/dados'
 import type { ItemFicha } from '../src/fvs/situacao'
 import { camadasDoPacote, NOME_DA_CAMADA, type CamadaDeBarras } from '../src/fvs/barras'
 import { camadaDoFuro, ehFuroDeLaje } from '../src/fvs/furos_laje'
+import { DISCIPLINAS_DE_PONTOS, NOME_DA_DISCIPLINA as NOME_DOS_PONTOS, type DisciplinaDePontos, type PontoPacote, type TipoDePonto } from '../src/fvs/pontos'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
 
@@ -821,6 +822,47 @@ async function semear() {
   await gravarCadastro(linhas)
   if (manifest.camadas_separadas) await semearArmadura(base, manifest, bin)
   if (manifest.furos_laje_separados) await semearFuracao(base, manifest, bin)
+  if (params.get('instalacoes')) await semearInstalacoes(base, manifest, bin)
+}
+
+/** Planta de teste de cada disciplina de instalações: id da planta e do setor. */
+const PLANTA_DE_INSTALACOES = (i: number) => uuid('a2000000', 0xd0 + i)
+
+/**
+ * ?instalacoes=1: uma planta de pontos por disciplina de instalações (hidro, esgoto, elétrico, preventivo, SPDA;
+ * 21/11/2026), como o pipeline/fvs/instalacoes.py publica: setor com a disciplina, pacote com "disciplina" e
+ * "pontos" e o fundo da forma. Cada disciplina tem 4 pontos numa linha (y = 200 + 150 * i, x = 300, 600, 900,
+ * 1200); o elétrico e o preventivo têm também uma linha (eletroduto, tubulação). A ficha de ambiente de teste
+ * "Instalações" tem um item por disciplina, marcado com "pontos".
+ */
+async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
+  const TIPOS: Record<DisciplinaDePontos, TipoDePonto[]> = {
+    hidro: ['ponto_agua', 'registro', 'ponto_agua', 'hidrometro'],
+    sanitario: ['ralo', 'caixa_sifonada', 'ralo', 'ponto_esgoto'],
+    eletrico: ['caixa_passagem', 'ponto_luz', 'ponto_luz', 'quadro'],
+    preventivo: ['hidrante', 'extintor', 'sprinkler', 'detector'],
+    spda: ['captor', 'descida', 'caixa_inspecao', 'haste'],
+  }
+  const linhas: LinhaDeCadastro[] = []
+  for (const [i, d] of DISCIPLINAS_DE_PONTOS.entries()) {
+    const y = 200 + 150 * i
+    const pontos: Record<string, PontoPacote> = {}
+    TIPOS[d].forEach((tipo, k) => {
+      pontos[`pt-${d}-${k + 1}`] = { disciplina: d, tipo, ponto: [300 + 300 * k, y], nome: `${tipo.toUpperCase()} ${k + 1}`, modelo_id: `${d}-${k + 1}` }
+    })
+    if (d === 'eletrico' || d === 'preventivo') {
+      const tipo: TipoDePonto = d === 'eletrico' ? 'eletroduto' : 'tubo_incendio'
+      pontos[`pt-${d}-linha`] = { disciplina: d, tipo, ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: d === 'eletrico' ? 'Eletroduto 25 mm' : 'Tubo de incêndio 65 mm' }
+    }
+    const manifest: Manifest = { ...forma, planta_id: PLANTA_DE_INSTALACOES(i), trecho: NOME_DOS_PONTOS[d], elementos: {}, detalhes: {}, barras: undefined, disciplina: d, pontos, camadas_separadas: undefined, furos_laje_separados: undefined }
+    await guardarPacote(JSON.stringify(manifest), bin)
+    const cad = cadastroDaPlanta(base, manifest, bin, uuid('a1000000', 0xd0 + i), d, 80 + 2 * i)
+    for (const l of cad) if (l.tabela === 'plantas') l.linha.elementos = Object.keys(pontos).length
+    linhas.push(...cad)
+  }
+  const itens: ItemFicha[] = DISCIPLINAS_DE_PONTOS.map((d, k) => ({ n: k + 1, etapa: 'INSTALAÇÕES', titulo: `Pontos: ${NOME_DOS_PONTOS[d].toLowerCase()}`, dispositivo: 'Visual', tolerancia: 'Conforme projeto', pontos: d }))
+  linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 20), codigo: 'TESTE-PVS-INST', titulo: 'Instalações (ficha de teste)', revisao: '0', aplica_a: ['A'], itens } })
+  await gravarCadastro(linhas)
 }
 
 /**

@@ -1938,6 +1938,63 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: instalações: hidráulica, esgoto, elétrico, preventivo e SPDA abrem cada uma na aba Pontos e gravam no item da disciplina`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1`)
+      await noInicio(p)
+      // nível 2: as cinco na ordem do menu, e a ficha de instalações "por ambiente" (não em Acabamentos)
+      const cartao = (d: string) => p.locator(`[data-testid=fvs-disciplina][data-disciplina=${d}]`)
+      await p.getByTestId('fvs-pavimento').first().click()
+      await cartao('instalacoes').waitFor()
+      expect((await cartao('instalacoes').innerText()).replace(/\s+/g, ' ')).toContain('Hidráulica, Esgoto, Elétrico, Preventivo contra incêndio, SPDA, por ambiente')
+      expect(await cartao('acabamentos').innerText()).not.toContain('Instalações (ficha de teste)')
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_pavimento.png`, fullPage: true })
+      await noInicio(p)
+      await naDisciplina(p, 'instalacoes')
+      const secoes = p.getByTestId('fvs-secao-outra')
+      expect(await secoes.locator('h3').allTextContents()).toEqual(['Hidráulica', 'Esgoto', 'Elétrico', 'Preventivo contra incêndio', 'SPDA'])
+      expect(await p.getByTestId('fvs-ambientes-instalacoes').getByTestId('fvs-opcao-ambiente').allInnerTexts()).toEqual([expect.stringContaining('Instalações (ficha de teste)')])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_menu.png`, fullPage: true })
+
+      const disciplinas = [
+        ['Hidráulica', 'hidro', 'PONTO_AGUA 1 (ponto de água)', 4],
+        ['Esgoto', 'sanitario', 'RALO 1 (ralo)', 4],
+        ['Elétrico', 'eletrico', 'CAIXA_PASSAGEM 1 (caixa de passagem)', 5],
+        ['Preventivo contra incêndio', 'preventivo', 'HIDRANTE 1 (hidrante)', 5],
+        ['SPDA', 'spda', 'CAPTOR 1 (captor)', 4],
+      ] as const
+      for (const [i, [secao, d, nomeDoPonto, total]] of disciplinas.entries()) {
+        await naDisciplina(p, 'instalacoes')
+        await secoes.filter({ has: p.locator('h3', { hasText: new RegExp(`^${secao}$`) }) }).getByRole('button').first().click()
+        await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+        // uma aba só (Pontos), sem a fila de abas; o progresso conta os pontos da disciplina
+        expect(await p.locator('.fv-seg button').allTextContents()).toEqual([])
+        await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`0/${total} OK`)
+        const y = 200 + 150 * i
+        await enquadrar(p, [-y, 300], 2)
+        await tocarNaPlanta(p, 300, y)
+        await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), `${nomeDoPonto}: OK`)
+        await expect.poll(() => registros(p).then((rs) => rs.filter((r) => r.barra === `pt-${d}-1`).map((r) => [r.item, r.r]))).toEqual([[i + 1, 'C']])
+        await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`1/${total} OK`)
+        // a linha (eletroduto, tubulação de incêndio) também se toca, no meio dela
+        if (d === 'eletrico' || d === 'preventivo') {
+          await enquadrar(p, [-(y + 60), 750], 2)
+          await tocarNaPlanta(p, 750, y + 60)
+          await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), d === 'eletrico' ? '(eletroduto): OK' : '(tubulação de incêndio): OK')
+        }
+        expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+        if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_${d}.png` })
+        await p.locator('.fv-topo .fv-voltar').click()
+        await noInicio(p)
+      }
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 180_000)
+
     it(`${nome} ${largura}x${altura}: furos de laje em plantas próprias: uma por camada, só os furos dela, o item da área da forma`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

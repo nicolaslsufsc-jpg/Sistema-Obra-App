@@ -82,7 +82,7 @@ export interface ItemFicha {
    * Item da ficha de ambiente que os pontos de uma disciplina marcam (instalações, 20/11/2026): na planta da
    * disciplina (aba Pontos) a pessoa confere ralo, caixa, ponto de água... um a um (pontos.ts). Vem da ficha.
    */
-  pontos?: 'hidro' | 'sanitario' | 'eletrico' | 'spda'
+  pontos?: 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
   /**
    * Item de vão ou esquadria da ficha de ambiente ("eixos e vãos", "requadros", "recorte na porta"): quem
    * marca são as esquadrias do ambiente na planta (aba Esquadrias, 19/11/2026), uma a uma, como os furos.

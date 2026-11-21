@@ -202,10 +202,12 @@ interface Props {
   servicoInicial?: string
   /** e a aba: "ambientes" ou "esquadrias" */
   abaInicial?: AbaDosAmbientes
+  /** aba da forma aberta por uma opção da Estrutura no início (P, V, L, F, B; 21/11/2026) */
+  tipoInicial?: string
   aviso: string
 }
 
-export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, servicoInicial, abaInicial, aviso }: Props) {
+export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, itemInicial, servicoInicial, abaInicial, tipoInicial, aviso }: Props) {
   const { dados, props, online, ir, voltar, recarregar, registrados, sistema } = ctx
   const { usuario, obra } = props
   const planta = dados.plantaPorId.get(plantaId)!
@@ -229,7 +231,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     // barra_id = local de sobreposição do pacote: barra de laje ou ponto de instalação (7_instalacoes.md)
     barras: { has: (id: string) => !!pacote?.manifest.barras?.[id] || !!pacote?.manifest.pontos?.[id] },
   }
-  const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : 'P')
+  const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : (tipoInicial ?? 'P'))
   /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
   const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string } | null>(null)
   /** A caixa que liga o polígono desenhado a uma ficha. */

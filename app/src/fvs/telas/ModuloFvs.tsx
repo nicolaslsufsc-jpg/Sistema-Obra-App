@@ -18,13 +18,17 @@ import type { AbaDosAmbientes } from '../opcoes_ambientes'
 
 export type TelaFvs =
   | { nome: 'inicio' }
+  /** níveis 2 e 3 do início (21/11/2026): as disciplinas do pavimento e as opções de uma disciplina */
+  | { nome: 'pavimento'; pavimentoId: string }
+  | { nome: 'disciplina'; pavimentoId: string; disciplina: string }
   | { nome: 'reprovacoes' }
   | { nome: 'lancamento' }
   | { nome: 'duplicadas' }
   | { nome: 'regras' }
   /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item;
-   *  servico e aba: planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts, campo `abre`) */
-  | { nome: 'planta'; plantaId: string; pecaId?: string; fichaCampoId?: string | null; item?: number; servico?: string; aba?: AbaDosAmbientes }
+   *  servico e aba: planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts, campo `abre`);
+   *  tipo: aba da forma aberta por uma opção da Estrutura (P, V, L, F, B) */
+  | { nome: 'planta'; plantaId: string; pecaId?: string; fichaCampoId?: string | null; item?: number; servico?: string; aba?: AbaDosAmbientes; tipo?: string }
 
 /** Com a planta aberta e conta, a sincronização roda a cada minuto (o núcleo já usa 1 min quando há fila). */
 const MINUTO_NA_PLANTA = 60_000
@@ -145,7 +149,7 @@ export function ModuloFvs(props: PropsModulo) {
   if (tela.nome === 'planta' && dados.plantaPorId.has(plantaDaTela)) {
     return (
       <TelaPlanta
-        key={`${tela.plantaId}|${tela.pecaId ?? ''}|${tela.fichaCampoId ?? ''}|${tela.item ?? ''}|${tela.servico ?? ''}|${tela.aba ?? ''}`}
+        key={`${tela.plantaId}|${tela.pecaId ?? ''}|${tela.fichaCampoId ?? ''}|${tela.item ?? ''}|${tela.servico ?? ''}|${tela.aba ?? ''}|${tela.tipo ?? ''}`}
         ctx={ctx}
         plantaId={plantaDaTela}
         pecaInicial={tela.pecaId}
@@ -153,6 +157,7 @@ export function ModuloFvs(props: PropsModulo) {
         itemInicial={tela.item}
         servicoInicial={tela.servico}
         abaInicial={tela.aba}
+        tipoInicial={tela.tipo}
         aviso={aviso}
       />
     )
@@ -161,5 +166,7 @@ export function ModuloFvs(props: PropsModulo) {
   if (tela.nome === 'lancamento' && ctx.sistema) return <TelaLancamento ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   if (tela.nome === 'regras') return <TelaRegras ctx={ctx} />
   if (tela.nome === 'duplicadas' && ctx.sistema) return <TelaDuplicadas ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
-  return <TelaInicio ctx={ctx} aviso={aviso} />
+  // os três níveis do início são a mesma tela (o download em andamento continua ao trocar de nível)
+  const nivel = tela.nome === 'pavimento' ? { pavimentoId: tela.pavimentoId } : tela.nome === 'disciplina' ? { pavimentoId: tela.pavimentoId, disciplina: tela.disciplina } : undefined
+  return <TelaInicio ctx={ctx} aviso={aviso} nivel={nivel} />
 }

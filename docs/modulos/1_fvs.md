@@ -222,6 +222,15 @@ Decisões do Nicolas (18 e 19/11): o item "controle de concreto e rastreabilidad
 - **Prazo:** o prazo que conta da concretagem usa a data do caminhão primeiro (só depois o C à mão num item da etapa de concretagem).
 - **Bancada:** `dev/fvs.html?rastreio=1` marca o item 6 do pilar como o do rastreio e põe um caminhão no P6 (e2e em 375, 768 e 1024).
 
+## Locais fora da planta (locais do sistema oficial, desde 21/11/2026)
+Pedido do Professor (21/11, itens 1.5, 1.6, 2.2 e 3.7 da lista de conferências): blocos de fundação, trechos de cortina, paredes de concreto aparente e outros locais do sistema oficial que não são peça da prancha. Os locais vêm da tabela do núcleo `locais_sistema` (migração `20261121130000_sistema_oficial_leitura.sql`); a ficha aberta aponta para o local em `fvs_fichas_campo.local_id` e a verificação em `fvs_eventos.local_id`.
+- **Baixa:** `locais_sistema` e `importacoes` num bloco próprio, no fim da lista do núcleo (`TABELAS_SISTEMA_OFICIAL` em `app/src/nucleo/tabelas.ts`): num servidor sem a migração, só esse bloco dá erro.
+- **Lista:** no início da FVS, "N locais fora da planta" (só aparece com algum local com ficha ou marcação) abre a lista, agrupada pelo caminho do local pai e em ordem natural (B2 antes de B10), com a quantidade de fichas e de marcações e a situação de cada local. Busca (sem acento) a partir de 9 locais. Local que também é peça da planta (`elemento_id`) não entra: as fichas dele aparecem na peça. Local "apagado no sistema" continua, com o aviso.
+- **Local:** as fichas abertas do local (como no painel da peça; a pior primeiro) e os itens da ficha com o último resultado. Quem pode marcar tem C, NC e NA, a reinspeção (V02...), o "O que fazer?" do NC (o mesmo campo do painel, `telas/CampoNc.tsx`), o "Reprovado antes", o prazo das regras da obra (só avisa, como na peça) e a ligação entre fichas do mesmo local. O registro vai em `local_id`, sem planta. Sem ficha aberta no local, a pessoa escolhe a ficha.
+- **Fica de fora (por enquanto):** foto no NC, Etapa C e pincel (são da planta), lançamento no sistema oficial e planilha da situação.
+- **Sem conta:** o pacote da obra não traz `locais_sistema`; as fichas do histórico sem peça continuam em "Fichas sem peça na planta" (que agora mostra só as que não estão num local do sistema baixado).
+- **Código:** `app/src/fvs/locais.ts` (parte pura) e `telas/TelaLocais.tsx`. Bancada: `dev/fvs.html?abrir=0&locais=1` (dois blocos e uma cortina da obra EXE); teste de tela em 375 px e 800x1280 (`testes/fvs_bancada.e2e.test.ts`) e de unidade em `src/fvs/locais.test.ts`.
+
 ## Folha única (o pavimento inteiro numa planta, sem trechos)
 Pedido do Nicolas em 06/11: abrir os DWG, plotar como uma folha única e fazer a segmentação no mesmo esquema.
 **Como as janelas se encaixam (`folha_unica.py`):**

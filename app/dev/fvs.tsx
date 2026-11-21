@@ -772,6 +772,74 @@ async function semearRegras() {
   await banco.registros.put({ tabela: 'fvs_regras', id: linha.id, obra_id: OBRA, linha: linha as never, pendente: 0 as const })
 }
 
+/**
+ * ?locais=1: locais do sistema oficial que não são peça da planta (locais_sistema, 21/11/2026), como a leitura
+ * do sistema publica: fundação com dois blocos e uma cortina, cada um com a ficha aberta, e um bloco com NC
+ * marcado. Nomes inventados (obra EXE).
+ */
+async function semearLocais(base: Record<string, unknown>) {
+  const ficha = uuid('f0000000', 40)
+  const local = (n: number, pai: number | null, nome: string, completo: string) => ({
+    tabela: 'locais_sistema',
+    linha: { ...base, id: uuid('fa000000', n), sistema: 'exe', origem_id: String(n), origem_pai_id: pai === null ? null : String(pai), nome, nome_completo: completo, nivel: pai === null ? 0 : 1, apagado_no_sistema: false },
+  })
+  const aberta = (n: number, localN: number, status: string, extra: Record<string, unknown> = {}) => ({
+    tabela: 'fvs_fichas_campo',
+    linha: {
+      ...base,
+      id: uuid('fb000000', n),
+      local_id: uuid('fa000000', localN),
+      elemento_id: null,
+      ficha_id: ficha,
+      codigo: `FVS-EXE-${String(n).padStart(4, '0')}`,
+      local_construpoint: `Fundação \ local ${localN}`,
+      ficha_codigo: 'EXE-PVS-BLOCO',
+      ficha_titulo: 'Blocos de fundação e baldrames (ficha de teste)',
+      status,
+      inspetor: 'Pessoa Um',
+      atualizada_em: '2026-10-02T14:00:00.000Z',
+      qtd_a: 0,
+      qtd_r: 0,
+      qtd_na: 0,
+      ...extra,
+    },
+  })
+  await gravarCadastro([
+    {
+      tabela: 'fichas_modelo',
+      linha: {
+        ...base,
+        id: ficha,
+        codigo: 'EXE-PVS-BLOCO',
+        titulo: 'Blocos de fundação e baldrames (ficha de teste)',
+        revisao: '0',
+        aplica_a: [],
+        itens: [
+          { n: 1, etapa: 'INÍCIO', titulo: 'Arrasamento das estacas', dispositivo: 'Trena', tolerancia: '2 cm' },
+          { n: 2, etapa: 'MONTAGEM', titulo: 'Forma e armadura', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+          { n: 3, etapa: 'MONTAGEM', titulo: 'Cobrimento e espaçadores', dispositivo: 'Trena', tolerancia: '5 mm' },
+          { n: 4, etapa: 'CONCRETAGEM', titulo: 'Lançamento e adensamento', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+        ],
+      },
+    },
+    local(1, null, 'Fundação', 'Obra Exemplo / Fundação'),
+    local(2, 1, 'Bloco B2', 'Obra Exemplo / Fundação / Bloco B2'),
+    local(3, 1, 'Bloco B10 (com nome comprido para ver a quebra de linha no celular)', 'Obra Exemplo / Fundação / Bloco B10'),
+    local(4, null, 'Cortina trecho 1', 'Obra Exemplo / Cortina trecho 1'),
+    aberta(1, 2, 'Aceito', { qtd_a: 4 }),
+    aberta(2, 3, 'Pendente Reinspeção', { qtd_a: 1, qtd_r: 1 }),
+    aberta(3, 4, 'Agendado'),
+    ...[1, 2, 3, 4].map((item) => ({
+      tabela: 'fvs_eventos',
+      linha: { ...base, id: uuid('fc000000', item), local_id: uuid('fa000000', 2), ficha_id: ficha, ficha_campo_id: uuid('fb000000', 1), item, resultado: 'A', rodada: 1, verificado_por: 'Pessoa Um', usuario_id: USUARIO_HISTORICO, criado_em_dispositivo: '2026-10-01T12:00:00.000Z' },
+    })),
+    {
+      tabela: 'fvs_eventos',
+      linha: { ...base, id: uuid('fc000000', 10), local_id: uuid('fa000000', 3), ficha_id: ficha, ficha_campo_id: uuid('fb000000', 2), item: 3, resultado: 'R', rodada: 1, observacao: 'Faltam espaçadores', verificado_por: 'Pessoa Um', usuario_id: USUARIO_HISTORICO, criado_em_dispositivo: '2026-10-02T13:00:00.000Z' },
+    },
+  ])
+}
+
 async function semear() {
   const agora = new Date().toISOString()
   const base = { obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: agora, apagado: false }
@@ -781,6 +849,7 @@ async function semear() {
   if (!ja.has(PLANTA_VED) && params.get('vedacao') && !params.get('pacote')) await semearVedacao(base)
   if (ja.has(PLANTA)) return
   if (!params.get('pacote')) await semearHistoricoDeTeste(base)
+  if (!params.get('pacote') && params.get('locais')) await semearLocais(base)
 
   let manifest: Manifest
   let bin: Blob

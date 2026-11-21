@@ -28,6 +28,7 @@ import { dataDoPacoteGuardado } from '../../nucleo/pacote_obra'
 import { avisoDoSistemaOficial } from '../../integracoes/sistema_oficial'
 import type { ContextoFvs, TelaFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
+import { quantosLocais } from '../locais'
 
 const OBRA_INTEIRA = 'obra-inteira'
 
@@ -53,6 +54,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
     dataDoPacoteGuardado(banco, props.obra.id).then(setGeradoEm, () => setGeradoEm(null))
   }, [props.obra.id])
   const naFrente = useMemo(() => registroNaFrente(dados), [dados])
+  // locais do sistema oficial que não são peça e têm ficha ou marcação (tela "Locais fora da planta")
+  const locaisFora = useMemo(() => quantosLocais(dados), [dados])
 
   // O que está no aparelho. Sai o que esta pessoa não vê mais e a revisão anterior de uma planta cuja
   // revisão nova já chegou; a anterior fica até lá, para ela não ficar sem planta na obra.
@@ -645,6 +648,14 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         <button type="button" class="fv-entra-rep" data-testid="fvs-entra-regras" onClick={() => ir({ nome: 'regras' })}>
           <b>Regras da obra: {resumoDasRegras(dados.regras)}</b>
           <span>Ver os prazos e as ligações entre itens ›</span>
+        </button>
+      )}
+      {locaisFora > 0 && (
+        <button type="button" class="fv-entra-rep" data-testid="fvs-entra-locais" onClick={() => ir({ nome: 'locais' })}>
+          <b>
+            {locaisFora === 1 ? '1 local fora da planta' : `${locaisFora} locais fora da planta`}
+          </b>
+          <span>Blocos, cortinas, paredes e outros locais sem peça na prancha ›</span>
         </button>
       )}
       {dados.fichas.length === 0 && (

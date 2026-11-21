@@ -8,6 +8,7 @@ import { banco, cliente, sincronizador } from '../nucleo/servicos'
 import { BUCKET_OBRAS } from '../config'
 import { areasVigentes, travasDaArea, type AreaDeLaje, type LinhaDeArea, type Ponto, type TravaDaArea } from './areas'
 import { dataHoraCompleta } from './formato'
+import { paraLocal, type LocalSistema } from './locais'
 import { aoTocar, daFichaAberta, fichaDaPeca, fichaNaPeca, fichasPara, normalizarResultado, situacaoDaParteNoLocal, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo, type ItemFicha, type Resultado } from './situacao'
 import { baixarPacote, comPrazo, escalaGuardada, partesDaPlantaGuardadas, partesGuardadas, soDetalheGuardado, type ParteDaPlanta, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
 import { listarParaLancar, type LinhaDeLancamento } from './lancamento'
@@ -64,14 +65,21 @@ export interface DadosFvs {
   fichaPorId: Map<string, Ficha>
   /** fichas abertas por peça (mais de uma = ficha duplicada) */
   fichasCampoDe: Map<string, FichaCampo[]>
-  /** fichas abertas num local que não é peça da planta (laje, bloco, peça fora da prancha) */
+  /**
+   * fichas abertas num local que não é peça da planta (laje, bloco, peça fora da prancha) e que também
+   * não está nos locais do sistema baixados (sem conta, o histórico do pacote só traz o nome do local)
+   */
   fichasCampoSemPeca: FichaCampo[]
+  /** locais do sistema oficial (locais_sistema): os que não são peça abrem na tela "Locais fora da planta" */
+  localPorId: Map<string, LocalSistema>
+  /** fichas abertas por local do sistema (fvs_fichas_campo.local_id) */
+  fichasCampoDoLocal: Map<string, FichaCampo[]>
   /** peças das plantas e áreas de laje desenhadas (tipo L) */
   pecaPorId: Map<string, Peca>
   /** áreas de laje por pavimento (desenhadas no app, cada uma ligada a uma ficha) */
   areasDe: Map<string, AreaDeLaje[]>
   areaPorId: Map<string, AreaDeLaje>
-  /** registros por peça ou área */
+  /** registros por peça, área, barra ou local do sistema */
   eventosDe: Map<string, EventoFvs[]>
   /** fotos (arquivo_id) por registro */
   fotosDe: Map<string, string[]>
@@ -310,12 +318,13 @@ export function horaNormal(iso: string): string {
  * O local de um registro: a peça (elemento_id), a área de laje (area_id) ou a barra de laje (barra_id,
  * desde 20/11/2026; antes a barra ia em elemento_id, e esses registros continuam valendo).
  */
-export const localDoRegistro = (l: Readonly<Record<string, unknown>>): string => String(l.elemento_id ?? l.area_id ?? l.barra_id)
+export const localDoRegistro = (l: Readonly<Record<string, unknown>>): string => String(l.elemento_id ?? l.area_id ?? l.barra_id ?? l.local_id)
 
 function paraEvento(l: Linha): EventoFvs {
   return {
     id: l.id,
-    // para a tela, a área de laje e a barra são locais como a peça: os registros delas ficam na mesma lista
+    // para a tela, a área de laje, a barra e o local do sistema são locais como a peça: os registros
+    // deles ficam na mesma lista
     elemento_id: localDoRegistro(l),
     ficha_id: String(l.ficha_id),
     item: Number(l.item),
@@ -351,6 +360,7 @@ function paraFichaCampo(l: Linha): FichaCampo {
   return {
     id: l.id,
     elemento_id: (l.elemento_id as string | null) ?? null,
+    local_id: (l.local_id as string | null) ?? null,
     ficha_id: (l.ficha_id as string | null) ?? null,
     codigo: String(l.codigo),
     local: String(l.local_construpoint ?? ''),
@@ -367,7 +377,7 @@ function paraFichaCampo(l: Linha): FichaCampo {
 
 /** Lê tudo da FVS da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosFvs> {
-  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras] = await Promise.all([
+  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras, locs] = await Promise.all([
     sincronizador.linhas('pavimentos', obraId),
     sincronizador.linhas('setores', obraId),
     sincronizador.linhas('elementos', obraId),
@@ -381,6 +391,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     banco.lerMeta<Record<string, string>>(CHAVE_NOMES),
     banco.lerMeta<string[]>(chaveLancados(obraId)),
     sincronizador.linhas('fvs_regras', obraId),
+    sincronizador.linhas('locais_sistema', obraId),
   ])
   // caminhões do Concreto por peça (sem Concreto na obra, nenhum): o item do rastreio fica C, só calculado
   const caminhoes = await caminhoesDasPecas(obraId).catch(() => new Map<string, CaminhaoDaPeca[]>())
@@ -434,6 +445,9 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
   const areas = areasVigentes(ars as unknown as LinhaDeArea[])
   for (const a of areas) pecas.push({ id: a.id, pavimento_id: a.pavimento_id, tipo: 'L', nome: a.nome, secao: null })
   const fichasCampo = fcs.map(paraFichaCampo)
+  const localPorId = new Map(locs.map((l) => [l.id, paraLocal(l)]))
+  // ficha num local do sistema que é peça da planta: aparece na peça (o importador já põe elemento_id)
+  const localDaFicha = (f: FichaCampo) => (!f.elemento_id && f.local_id && localPorId.has(f.local_id) ? f.local_id : null)
   const fotosDe = new Map<string, string[]>()
   for (const f of fot) {
     const k = String(f.evento_id)
@@ -464,7 +478,9 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     fichas,
     fichaPorId,
     fichasCampoDe: agrupar(fichasCampo.filter((f) => f.elemento_id), (f) => String(f.elemento_id)),
-    fichasCampoSemPeca: fichasCampo.filter((f) => !f.elemento_id).sort((a, b) => ordemNatural.compare(a.local, b.local)),
+    fichasCampoSemPeca: fichasCampo.filter((f) => !f.elemento_id && !localDaFicha(f)).sort((a, b) => ordemNatural.compare(a.local, b.local)),
+    localPorId,
+    fichasCampoDoLocal: agrupar(fichasCampo.filter(localDaFicha), (f) => localDaFicha(f)!),
     pecaPorId: new Map(pecas.map((p) => [p.id, p])),
     areasDe: agrupar(areas, (a) => a.pavimento_id),
     areaPorId,
@@ -499,6 +515,11 @@ export interface Contexto {
    * elementos; migração 20261120140000_fvs_eventos_barra.sql), sempre com planta_id
    */
   barras?: { has(id: string): boolean }
+  /**
+   * ids dos locais do sistema oficial que não são peça (locais_sistema): o registro vai em local_id
+   * (migração 20261121130000_sistema_oficial_leitura.sql), sem planta
+   */
+  locais?: { has(id: string): boolean }
 }
 
 /**
@@ -518,8 +539,9 @@ export function textoDoErroDeGravacao(e: unknown): string {
 /** Só leva a coluna quando há ficha aberta. */
 const daFichaAbertaDe = (c: Contexto) => (c.fichaCampoId ? { ficha_campo_id: c.fichaCampoId } : {})
 
-/** A coluna que diz onde foi marcado: a peça, a área de laje ou a barra de laje. */
-const doLocal = (c: Contexto, id: string) => (c.areas?.has(id) ? { area_id: id } : c.barras?.has(id) ? { barra_id: id } : { elemento_id: id })
+/** A coluna que diz onde foi marcado: a peça, a área de laje, a barra de laje ou o local do sistema. */
+const doLocal = (c: Contexto, id: string) =>
+  c.areas?.has(id) ? { area_id: id } : c.barras?.has(id) ? { barra_id: id } : c.locais?.has(id) ? { local_id: id } : { elemento_id: id }
 
 /**
  * Toque num botão C / NC / NA de um item. Devolve o registro gravado. `observacao`: o NC do modo "Por
@@ -951,7 +973,7 @@ export async function refazerToquesDaObra(obraId: string, dados: DadosFvs, regis
     obraId,
     async (id) => !!(await banco.registros.get(['fvs_eventos', id])),
     async (t) => {
-      const c: Contexto = { obraId: t.obraId, usuarioId: t.usuarioId, plantaId: t.plantaId, fichaCampoId: t.fichaCampoId, areas: d.areaPorId }
+      const c: Contexto = { obraId: t.obraId, usuarioId: t.usuarioId, plantaId: t.plantaId, fichaCampoId: t.fichaCampoId, areas: d.areaPorId, locais: d.localPorId }
       let feito: Linha | Linha[]
       if (t.tipo === 'lote') {
         const pecas = t.pecas.flatMap((p) => {

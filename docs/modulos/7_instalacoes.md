@@ -23,7 +23,11 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - **Eletroduto como linha** (decisão do Nicolas, 21/11: "eletroduto como linha"): no elétrico, o trecho de eletroduto entra na mesma planta, com `"linha"` (começo e fim na folha) além de `"ponto"` (o meio). Na tela é uma linha, como a barra; o toque e o registro são os do ponto (`barra_id`, mesmo item da ficha). A linha sai do eixo do objeto no IFC ("Axis") ou do sólido extrudado do corpo ("Body"); trecho vertical (menos de 5 cm na planta) fica fora. Eletrocalha, leito, perfilado e cabo não entram. O setor passa a se chamar "Caixas, quadros e eletrodutos". Classificação ainda **suposição** até o IFC real.
   - Em `setores.disciplina` o texto é livre.
 - **De onde vêm os pontos:** do IFC da disciplina (`pipeline/fvs/instalacoes.py`), no nível do pavimento. O nível é o pavimento que contém o objeto ou o "Level" das propriedades. A posição é a do objeto no modelo, em cm.
-  - Classificação, **suposição** a conferir com o IFC real: pela classe IFC (IfcWasteTerminal, IfcSanitaryTerminal, IfcValve, IfcFlowMeter...) e pelo nome ("RALO", "CAIXA SIFONADA", "REGISTRO"...).
+  - **Nível pela altura, não só pelo nome** (piloto do 2º, 21/11): no IFC do Revit, o modelo do pavimento tipo vinculado do 2º ao 6º vem com cinco níveis de mesmo nome ("2° PAVIMENTO"), cada um na altura real do andar (972, 1296, 1620, 1944 e 2268 cm). Fica o mais baixo dos de mesmo nome, e só os objetos de 150 cm abaixo do piso dele até o nível seguinte acima (sem nível acima: até 400 cm). Sem esse filtro, o 2º vinha com os pontos de cinco andares.
+  - No IFC o nome vem com o sinal de grau ("2° PAVIMENTO"), e o `pavimento.json` da estrutura usa o ordinal ("2º PAVIMENTO (NO)"): eles não casam. Em `"instalacoes"`, use em `"nivel"` o nome como está no IFC de instalações.
+  - Classificação, conferida no IFC real de hidráulica e de esgoto (21/11). O Revit põe prefixo com sublinhado ("HID_", "SAN_"), que vira espaço antes de comparar. Conexões (IfcFlowFitting: joelho, tê, adaptador) e tubos não entram.
+    - sanitário: "SAN_Ralo Linear" → ralo; "HID_Caixa Sifonada" → caixa sifonada; o "Prolongamento para Caixa Sifonada" (acessório) e o "Nicho" ficam fora;
+    - hidro (IfcFlowController): "Valvula Esfera", "Registro Gaveta", "Registro Pressao", válvula redutora e de alívio → registro; "Misturador", "Ducha", "Chuveiro", "Torneira" → ponto de água; "Hidrometro" → hidrômetro; filtro, ventosa e flange de incêndio ("PCI_") ficam fora.
   - No elétrico e no SPDA, também suposição, porque ainda não abri os IFC reais. Pelas classes de elétrica (IfcJunctionBox, IfcElectricDistributionBoard, IfcLightFixture...) e pelo nome ("CAIXA DE PASSAGEM", "OCTOGONAL", "QDL", "CAPTOR", "DESCIDA", "CAIXA DE INSPEÇÃO", "HASTE").
   - Trecho de tubo ou cabo só vira ponto no SPDA, e só se o nome disser "descida". O eletroduto vira linha no elétrico (acima).
 - **Encaixe (modelo para a folha):** o mesmo dos furos do pavimento, ou `"encaixe"` à mão. Encaixe duvidoso não serve.
@@ -56,5 +60,5 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
      - hidro e sanitário: PVS 010.2, 010.4, 010.5 e 010.6;
      - elétrico: PVS 009.x, mais a laje elétrica como suposição;
      - SPDA: PVS 009.2.1 e 009.2.2.
-  4. Conferir no IFC real do elétrico se o eletroduto vem com eixo ou corpo extrudado e com que nome (piloto do 2º).
+  4. Conferir no IFC real do elétrico se o eletroduto vem com eixo ou corpo extrudado e com que nome (piloto do 2º; o IFC do elétrico ainda não chegou).
   5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição.

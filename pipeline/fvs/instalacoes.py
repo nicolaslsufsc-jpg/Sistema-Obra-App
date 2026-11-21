@@ -79,6 +79,8 @@ CLASSES = ("IfcSanitaryTerminal", "IfcWasteTerminal", "IfcValve", "IfcFlowTermin
            "IfcFlowSegment", "IfcDiscreteAccessory", "IfcMember")
 # Trecho de tubo, cabo ou eletroduto: só serve como ponto na descida do SPDA (vertical: na planta, um ponto).
 SEGMENTOS = ("IfcCableSegment", "IfcCableCarrierSegment", "IfcFlowSegment", "IfcMember")
+# conexões (joelho, tê, luva, adaptador): não são ponto de conferência em disciplina nenhuma
+CONEXOES = ("IfcFlowFitting", "IfcPipeFitting", "IfcDuctFitting", "IfcCableCarrierFitting", "IfcCableFitting")
 
 
 class ErroInstalacoes(Exception):
@@ -92,7 +94,10 @@ def _sem_acento(s: str) -> str:
 
 def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     """O tipo do ponto (chave de TIPOS_DE_PONTO), ou None se o objeto não é ponto desta disciplina."""
-    n = _sem_acento(nome)
+    # o Revit põe prefixo com sublinhado (HID_, SAN_): vira espaço para o \b das buscas funcionar
+    n = re.sub(r"_+", " ", _sem_acento(nome)).strip()
+    if classe in CONEXOES:
+        return None
     if disciplina == "eletrico" and classe in SEGMENTOS:
         if re.search(r"ELETROCALHA|\bLEITO\b|PERFILADO|\bCABO\b", n):
             return None
@@ -121,6 +126,9 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
             return "descida"
         return None
     if disciplina == "sanitario":
+        # acessório da caixa (prolongamento) e nicho de parede não são ponto
+        if re.search(r"PROLONGAMENTO|\bNICHO\b", n):
+            return None
         if "RALO" in n or classe == "IfcWasteTerminal":
             return "ralo"
         if re.search(r"\bC(AI)?XA?\.? ?SIF", n):
@@ -133,8 +141,13 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     if disciplina == "hidro":
         if "HIDROMETRO" in n or classe == "IfcFlowMeter":
             return "hidrometro"
-        if "REGISTRO" in n or classe == "IfcValve":
+        # peça de barrilete e de incêndio no meio do tubo: não é ponto do ambiente
+        if re.search(r"\bPCI\b|FLANGE|FILTRO|VENTOSA", n):
+            return None
+        if re.search(r"REGISTRO|VALVULA", n) or classe == "IfcValve":
             return "registro"
+        if re.search(r"MISTURADOR|DUCHA|CHUVEIRO|TORNEIRA", n):
+            return "ponto_agua"
         if classe in ("IfcSanitaryTerminal", "IfcFlowTerminal") or re.search(r"\bPONTO\b|\bSAIDA\b", n):
             return "ponto_agua"
         return None
@@ -213,6 +226,32 @@ def _linha_do_segmento(el, m, cm_por_unidade: float) -> list[list[float]] | None
     return linha
 
 
+# Faixa de altura do pavimento: de um pouco abaixo do piso (ralo, caixa sifonada sob a laje) até o pavimento de cima.
+ABAIXO_DO_PISO_CM = 150.0
+SEM_PAVIMENTO_ACIMA_CM = 400.0
+
+
+def _faixa_de_altura(f, niveis: list[str], cm_por_unidade: float) -> tuple[float, float] | None:
+    """(z mínimo, z máximo) em cm dos objetos do pavimento pedido, ou None se o arquivo não tem esse nível.
+
+    O nome do nível não basta: no Revit, o modelo do pavimento tipo vinculado no 2º, 3º... 6º chega no IFC com
+    cinco IfcBuildingStorey de mesmo nome ("2° PAVIMENTO"), cada um na altura real do andar (piloto do 2º,
+    21/11). O pavimento certo é o mais baixo dos de mesmo nome; a faixa vai até o próximo nível acima."""
+    import ifcopenshell.util.placement as up
+    from furos import mesmo_nivel
+
+    def z(s):
+        return float(up.get_local_placement(s.ObjectPlacement)[2, 3]) * cm_por_unidade
+
+    andares = [s for s in f.by_type("IfcBuildingStorey") if s.ObjectPlacement]
+    alvo = [z(s) for s in andares if any(mesmo_nivel(s.Name or "", n) for n in niveis)]
+    if not alvo:
+        return None
+    z0 = min(alvo)
+    acima = sorted(z(s) for s in andares if z(s) > z0 + 50.0)
+    return z0 - ABAIXO_DO_PISO_CM, acima[0] if acima else z0 + SEM_PAVIMENTO_ACIMA_CM
+
+
 def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
     """Os pontos da disciplina no modelo, nos níveis pedidos: [{modelo_id, tipo, nome, x, y}] (x, y em cm).
     O eletroduto vem com "linha" ([[x, y], [x, y]] em cm) e x, y no meio dele."""
@@ -227,6 +266,7 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
 
     f = ifcopenshell.open(caminho)
     cm_por_unidade = uu.calculate_unit_scale(f) * 100.0
+    faixa = _faixa_de_altura(f, niveis, cm_por_unidade)
     vistos: set[str] = set()
     saida = []
     for classe in CLASSES:
@@ -245,6 +285,8 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
             if not any(mesmo_nivel(_nivel_do(el, psets), n) for n in niveis):
                 continue
             m = up.get_local_placement(el.ObjectPlacement)
+            if faixa and not faixa[0] <= float(m[2, 3]) * cm_por_unidade < faixa[1]:
+                continue  # de outro pavimento: cópia do modelo vinculado com o mesmo nome de nível
             item = {"modelo_id": str(el.Tag or el.GlobalId), "tipo": tipo, "nome": (el.Name or "").split(":")[0].strip(),
                     "x": float(m[0, 3]) * cm_por_unidade, "y": float(m[1, 3]) * cm_por_unidade}
             if tipo in TIPOS_DE_LINHA:

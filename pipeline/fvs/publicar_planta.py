@@ -34,6 +34,9 @@ pavimento.json (fica fora do repositório, junto das pranchas):
                   "alinhamento": {"<prancha>": {"matriz": [a, b, c, d], "t": [tx, ty]}}}   opcional: encaixe à mão
   "camadas_separadas": false                       opcional: sem as plantas de armadura (uma por direção, o padrão
                                                    quando há barras_laje; armadura_laje.py); as barras ficam na aba da forma
+  "instalacoes": {"hidro": {"ifc": "../Hidro/modelo.ifc", "nivel": "2º PAVIMENTO"},   opcional: uma planta por disciplina
+                  "sanitario": {"ifc": [...], "nivel": [...]},      com os pontos do modelo (instalacoes.py); só com a
+                  "encaixe": {...}}                                 folha única; encaixe = o dos furos, ou este à mão
 }
 Caminhos relativos valem a partir da pasta do pavimento.json.
 
@@ -94,6 +97,7 @@ sys.path.insert(0, str(AQUI.parent / "projetos"))
 import pacote  # noqa: E402
 import furos as mod_furos  # noqa: E402
 import partes  # noqa: E402
+import instalacoes as mod_inst  # noqa: E402
 from exportar_obra import BUCKET, CHAVE_PADRAO, URL_PADRAO, ErroExportacao, Supabase, dentro_de_repositorio  # noqa: E402
 
 DISCIPLINA = "estrutura"
@@ -194,6 +198,20 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if not (ref / "relatorio.json").is_file():
                 raise ErroPublicacao(f"furos: \"referencia\" tem que ser a pasta gerada de outro pavimento (falta {ref / 'relatorio.json'})")
             fur["referencia"] = str(ref)
+    inst = None
+    if cfg.get("instalacoes"):
+        bruto = dict(cfg["instalacoes"])
+        inst = {"encaixe": bruto.pop("encaixe", None), "disciplinas": {}}
+        for disc, valor in bruto.items():
+            if disc not in mod_inst.DISCIPLINAS:
+                raise ErroPublicacao(f"instalacoes: disciplina desconhecida \"{disc}\" (use {', '.join(mod_inst.DISCIPLINAS)})")
+            if not isinstance(valor, dict) or not valor.get("ifc") or not valor.get("nivel"):
+                raise ErroPublicacao(f"instalacoes: {disc} precisa de \"ifc\" e \"nivel\"")
+            ifcs = arquivos(valor["ifc"])
+            if not ifcs or not all(pathlib.Path(i).is_file() for i in ifcs):
+                raise ErroPublicacao(f"instalacoes: {disc}: modelo não achado ({valor['ifc']})")
+            niveis = valor["nivel"] if isinstance(valor["nivel"], list) else [valor["nivel"]]
+            inst["disciplinas"][disc] = {"ifc": ifcs, "nivel": niveis}
     barras = None
     if cfg.get("barras_laje"):
         import barras_laje
@@ -229,6 +247,7 @@ def ler_config(caminho: pathlib.Path) -> dict:
         "det_macicos": arquivos(cfg.get("det_macicos")),
         "furos": fur,
         "barras_laje": barras,
+        "instalacoes": inst,
         "camadas_separadas": cfg.get("camadas_separadas", True) is not False,
     }
 
@@ -360,7 +379,9 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         cab["camadas_separadas"] = True
     if forma.get("camada"):
         cab["camada"] = forma["camada"]
-    manifest, binario = pacote.montar(cab, forma["tiles"], elementos, dets, forma.get("barras"))
+    if forma.get("disciplina") in mod_inst.DISCIPLINAS:
+        cab["disciplina"] = forma["disciplina"]
+    manifest, binario = pacote.montar(cab, forma["tiles"], elementos, dets, forma.get("barras"), forma.get("pontos"))
     rel = {
         "trecho": cab.get("trecho"),
         "prancha": forma["prancha"],
@@ -455,6 +476,8 @@ def quantos_locais(forma: dict) -> int:
     """O que a planta tem para tocar: as peças; na planta de armadura (sem peças), as barras."""
     if forma.get("disciplina") == "armadura":
         return sum(1 for b in (forma.get("barras") or {}).values() if b["camada"] == forma.get("camada"))
+    if forma.get("disciplina") in mod_inst.DISCIPLINAS:
+        return len(forma.get("pontos") or {})
     return len(forma["pecas"])
 
 
@@ -470,6 +493,43 @@ def por_armadura(cfg: dict, detalhes: dict, formas: list[dict], rel_barras: dict
     folhas = armadura_laje.folhas_de_armadura(fm, detalhes.get("barras") or [], rel_barras["pranchas"])
     formas.extend(folhas)
     return folhas
+
+
+def por_instalacoes(cfg: dict, detalhes: dict, formas: list[dict], rel_furos: dict | None) -> dict | None:
+    """Uma planta por disciplina de instalações (instalacoes.py), acrescentada a formas: o fundo da folha de
+    forma e os pontos do modelo, levados à folha pelo encaixe dos furos (ou "encaixe" à mão)."""
+    if not cfg.get("instalacoes"):
+        return None
+    estrutura = [fm for fm in formas if (fm.get("disciplina") or DISCIPLINA) == DISCIPLINA]
+    if len(estrutura) != 1:
+        raise ErroPublicacao("instalacoes: só com a planta do pavimento numa folha só (\"folha_unica\": true ou \"plotada\")")
+    fm = estrutura[0]
+    enc = cfg["instalacoes"].get("encaixe") or ((rel_furos or {}).get("encaixe") if rel_furos else None)
+    if not enc:
+        raise ErroPublicacao("instalacoes: sem encaixe. Ponha \"furos\" no pavimento.json (o encaixe dos pontos é o dos furos) "
+                             "ou \"encaixe\" em \"instalacoes\"")
+    if enc.get("duvidoso") and not cfg["instalacoes"].get("encaixe"):
+        raise ErroPublicacao("instalacoes: o encaixe dos furos é duvidoso; confira e passe \"encaixe\" à mão")
+    rel = {}
+    print("Montando as instalações em plantas próprias, uma por disciplina:")
+    for disc in mod_inst.DISCIPLINAS:
+        if disc not in cfg["instalacoes"]["disciplinas"]:
+            continue
+        pontos, fora = mod_inst.pontos_na_folha((detalhes.get("instalacoes") or {}).get(disc) or [], enc, disc, fm["largura"], fm["altura"])
+        formas.append(mod_inst.folha_da_disciplina(fm, disc, pontos))
+        rel[disc] = mod_inst.resumo(pontos, fora)
+        print(f"  {mod_inst.DISCIPLINAS[disc]}: {len(pontos)} pontos na folha"
+              + (f"; {len(fora)} fora da folha (lista no relatorio.json; encaixe errado ou ponto de outro pavimento)" if fora else ""))
+    return rel
+
+
+def so_disciplina(formas: list[dict], disc: str) -> list[dict]:
+    """--so-hidro, --so-sanitario: só a planta daquela disciplina. A forma, os ambientes e as outras plantas do
+    pavimento ficam como estão no servidor (nenhuma revisão nova, nenhuma peça criada)."""
+    sel = [fm for fm in formas if fm.get("disciplina") == disc]
+    if not sel:
+        raise ErroPublicacao(f"--so-{disc}: o pavimento.json não gerou a planta de {mod_inst.DISCIPLINAS[disc]} (falta \"instalacoes\"?)")
+    return sel
 
 
 def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
@@ -699,6 +759,17 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
                 print(f"  {len(vindos)} furos de viga do nível {o['nivel']} que {pathlib.Path(o['pasta']).name} não pôs em viga (entram só os que caírem numa viga daqui)")
         except mod_furos.ErroFuros as e:
             raise ErroPublicacao(f"furos: {e}") from e
+    if cfg.get("instalacoes"):
+        detalhes["instalacoes"] = {}
+        for disc, c in cfg["instalacoes"]["disciplinas"].items():
+            lidos: list[dict] = []
+            try:
+                for ifc in c["ifc"]:
+                    lidos += mod_inst.ler_ifc(ifc, c["nivel"], disc)
+            except mod_inst.ErroInstalacoes as e:
+                raise ErroPublicacao(f"instalacoes: {e}") from e
+            detalhes["instalacoes"][disc] = lidos
+            print(f"  {mod_inst.DISCIPLINAS[disc]}: {len(lidos)} pontos no nível {', '.join(c['nivel'])}")
     if cfg.get("barras_laje"):
         import barras_laje
 
@@ -734,6 +805,7 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
     if fora:
         print(f"  {len(fora)} peças não existem no pavimento e saíram da planta (lista no relatorio.json)")
     rel_furos = por_furos(cfg, detalhes, formas)
+    rel_inst = por_instalacoes(cfg, detalhes, formas, rel_furos)
     if args.so_gerar:
         saida = pathlib.Path(args.so_gerar).resolve()
         if dentro_de_repositorio(saida):
@@ -780,6 +852,8 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
         }
         if rel_furos is not None:
             resumo["furos"] = rel_furos
+        if rel_inst is not None:
+            resumo["instalacoes"] = rel_inst
         if rel_barras is not None:
             from alinhamento import relatorio as rel_alinhamento
 
@@ -793,7 +867,13 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
     sb = Supabase(args.url, args.chave)
     entrar(sb, args.email)
     srv = Servidor(sb, sessao_local.dispositivo_id())
-    return publicar_no_servidor(srv, cfg, detalhes, so_armadura(formas) if getattr(args, "so_armadura", False) else formas, args.aceita_ambientes)
+    escolhidas = formas
+    if getattr(args, "so_armadura", False):
+        escolhidas = so_armadura(formas)
+    for disc in mod_inst.DISCIPLINAS:
+        if getattr(args, f"so_{disc}", False):
+            escolhidas = so_disciplina(formas, disc)
+    return publicar_no_servidor(srv, cfg, detalhes, escolhidas, args.aceita_ambientes)
 
 
 def so_armadura(formas: list[dict]) -> list[dict]:
@@ -852,6 +932,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aceita-ambientes", action="store_true", help="o servidor já aceita ambientes em elementos (migração do núcleo aplicada)")
     ap.add_argument("--so-armadura", action="store_true",
                     help="publica só as plantas de armadura de laje; a forma e os ambientes ficam como estão no servidor")
+    grupo_so = ap.add_mutually_exclusive_group()
+    for disc, nome in mod_inst.DISCIPLINAS.items():
+        grupo_so.add_argument(f"--so-{disc}", action="store_true",
+                              help=f"publica só a planta de {nome}; a forma e o resto do pavimento ficam como estão no servidor")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--chave", default=CHAVE_PADRAO)

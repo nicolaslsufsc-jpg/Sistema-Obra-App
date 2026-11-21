@@ -1865,6 +1865,122 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: furos de laje em plantas próprias: uma por camada, só os furos dela, o item da área da forma`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furoslaje=1&furacao=1`)
+      const pavimento = p.getByTestId('fvs-pavimento')
+      await pavimento.waitFor()
+      // menu: seção "Furação de laje" com as três camadas, na ordem da obra, e quantos furos cada uma tem
+      const secao = pavimento.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação de laje' })
+      await secao.waitFor()
+      expect(await secao.locator('h3').textContent()).toBe('Furação de laje')
+      const linhas = (await secao.locator('li').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
+      expect(linhas.map((t: string) => t.match(/Furos de [^ ]+/)?.[0])).toEqual(['Furos de esgoto', 'Furos de água', 'Furos de elétrica'])
+      expect(linhas[0]).toContain('3 furos')
+      expect(linhas[1]).toContain('1 furo')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_menu.png`, fullPage: true })
+
+      const painel = p.getByTestId('fvs-painel')
+      const fechar = async () => {
+        await p.locator('.fv-cab button').click()
+        await painel.waitFor({ state: 'detached' })
+      }
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const itemDaArea = (n: number) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => e.area_id && e.item === ${n})
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          const u = l.at(-1)
+          return u ? { r: u.resultado, obs: u.observacao } : null
+        })()`)
+      const registrosDe = (nomeDoFuro: string) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const els = await sincronizador.linhas('elementos', '${OBRA}')
+          const ids = new Set(els.filter((e) => e.nome === '${nomeDoFuro}').map((e) => e.id))
+          return (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => ids.has(e.elemento_id)).length
+        })()`)
+      const furo = async (x: number, y: number) => {
+        await enquadrar(p, [-y, x], 2)
+        await tocarNaPlanta(p, x, y)
+      }
+      const abrir = async (trecho: string) => {
+        await p.getByTestId('fvs-pavimento').locator('li', { hasText: trecho }).getByRole('button', { name: 'Abrir' }).click()
+        await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      }
+      const voltar = async () => {
+        await p.locator('.fv-topo .fv-voltar').click()
+        await p.getByTestId('fvs-pavimento').waitFor()
+      }
+
+      // forma: sem aba Furos (os de laje foram para as plantas próprias); a área é desenhada aqui
+      await abrir('Trecho 1')
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes'])
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await enquadrar(p, [-600, 600], 0)
+      await p.getByTestId('fvs-nova-area').click()
+      await p.getByTestId('fvs-desenho').waitFor()
+      for (const [x, y] of [[470, 470], [730, 470], [730, 730], [470, 730]]) await tocarNaPlanta(p, x, y)
+      await p.getByTestId('fvs-concluir-area').click()
+      await p.getByTestId('fvs-caixa-nome').fill('Laje dos furos')
+      await p.getByTestId('fvs-caixa-criar').click()
+      await nomeNoPainel(p, 'Laje dos furos')
+      // o item de esgoto continua marcado pelos furos, mesmo com eles em outra planta
+      expect(await p.locator('.fv-item[data-item="6"] button[data-r]').count()).toBe(0)
+      expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('0 de 1 OK')
+      await fechar()
+      await voltar()
+
+      // planta de esgoto: só a aba Furos; longe, o número da área conta só o FL1 (FL4 e FL5 estão fora dela)
+      await abrir('Furos de esgoto')
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual([]) // uma aba só: sem a fila de abas, como na armadura
+      await enquadrar(p, [-600, 600], 0)
+      const numero = p.getByTestId('fvs-numero-furos')
+      await numero.waitFor()
+      expect(await numero.allTextContents()).toEqual(['1 furo'])
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/1 OK')
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_esgoto_longe.png` })
+      // o FL2 (água) não aparece aqui: o toque nele não grava nada
+      await furo(600, 640)
+      await p.waitForTimeout(600)
+      expect(await registrosDe('FL2')).toBe(0)
+      // FL1 OK: o item 6 da área (da forma) fica C
+      await furo(520, 520)
+      await aviso('FL1: OK')
+      await expect.poll(() => itemDaArea(6), { timeout: 5000 }).toEqual({ r: 'C', obs: null })
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_esgoto_ok.png` })
+      await voltar()
+
+      // planta de água: FL2 errado deixa o item 7 NC, com o furo na observação
+      await abrir('Furos de água')
+      await furo(600, 640)
+      await aviso('FL2: OK')
+      await furo(600, 640)
+      await aviso('FL2: errado')
+      await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: 'NC', obs: 'Furo errado: FL2' })
+      await nomeNoPainel(p, 'FL2')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await fechar()
+      await voltar()
+
+      // de volta na forma: o painel da área mostra o que as plantas de furação marcaram
+      await abrir('Trecho 1')
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await enquadrar(p, [-600, 600], 0)
+      await tocarNaPlanta(p, 700, 700)
+      await nomeNoPainel(p, 'Laje dos furos')
+      expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('1 de 1 OK')
+      expect(await contrasteNosDoisTemas(p), 'contraste do painel da área').toEqual([])
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: ligação entre peças: o C no item da área de laje marca os pilares e as vigas de dentro dela, mostra a origem e se desfaz`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

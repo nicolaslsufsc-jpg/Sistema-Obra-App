@@ -281,6 +281,10 @@ export const ehDeArmadura = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 
  *  de alvenaria; o fundo é a prancha de 1ª fiada ou a de arquitetura (pipeline/fvs/vedacao.py). */
 export const ehDeVedacao = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'vedacao'
 
+/** Planta de furos de laje de uma camada (21/11/2026): esgoto, água ou elétrica, com o fundo da forma e
+ *  nas coordenadas dela (pipeline/fvs/furos.py). As áreas de laje da forma valem aqui. */
+export const ehDeFuracao = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'furacao'
+
 function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>()
   for (const i of itens) {
@@ -407,7 +411,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
       if (!a || Date.parse(p.criado_em_dispositivo) > Date.parse(a.criado_em_dispositivo)) porSetor.set(p.setor_id, p)
     }
     // estrutura primeiro (é a ordem da obra), depois a armadura de laje, depois as plantas de ambientes
-    const ordem = (p: Planta) => (ehDeAmbientes(p) ? 2 : ehDeArmadura(p) ? 1 : 0)
+    const ordem = (p: Planta) => (ehDeAmbientes(p) ? 2 : ehDeArmadura(p) || ehDeFuracao(p) ? 1 : 0)
     plantasDe.set(k, [...porSetor.values()].sort((a, b) => ordem(a) - ordem(b) || ordemNatural.compare(a.trecho, b.trecho)))
   }
   const fichas: Ficha[] = fic.map((f) => ({

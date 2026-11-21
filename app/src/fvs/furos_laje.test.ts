@@ -4,9 +4,11 @@ import type { AreaDeLaje, Ponto } from './areas'
 import {
   areaDoFuro,
   avisoDoCEletrico,
+  camadaDoFuro,
   ehFuroDeLaje,
   furoConferivel,
   furoDeLajeEscondido,
+  furoDeOutraPlanta,
   furosConferiveisPorArea,
   furosDeLajeNasAreas,
   furosNoToque,
@@ -261,5 +263,29 @@ describe('densidade na planta (20/11): escondidos, conferíveis, número por ár
     expect(furosNoToque(pts, 108, 100, 22)).toEqual(['y', 'x'])
     expect(furosNoToque(pts, 160, 100, 22)).toEqual(['z'])
     expect(furosNoToque(pts, 400, 400, 22)).toEqual([])
+  })
+})
+
+describe('furos de laje em plantas próprias, uma por camada (21/11)', () => {
+  const san = furo('FL1', 10, 10, ['Sanitário / drenagem'])
+  const sanHid = furo('FL2', 20, 10, ['Sanitário / drenagem', 'Hidráulica'])
+  const hid = furo('FL3', 30, 10, ['Hidráulica'])
+  const elt = furo('FL4', 40, 10, ['Elétrica / telecom'])
+  const geral = furo('FL5', 50, 10, ['Geral'])
+  const deViga = { ...furo('V1-F1', 0, 0, ['Sanitário / drenagem'], false), viga: 'v1' }
+
+  it('a camada é a primeira instalação do furo (a mesma regra do pipeline)', () => {
+    expect([san, sanHid, hid, elt, geral].map(camadaDoFuro)).toEqual(['esgoto', 'esgoto', 'agua', 'eletrica', undefined])
+  })
+
+  it('na planta de uma camada, os furos de laje das outras ficam escondidos; o de viga nunca', () => {
+    const m = { furos_laje: 'agua' as const }
+    expect([san, sanHid, hid, elt, geral, deViga].map((e) => furoDeOutraPlanta(e, m))).toEqual([true, true, false, true, true, false])
+  })
+
+  it('na forma com os furos de laje separados, todos os de laje ficam escondidos; sem separar, nenhum', () => {
+    expect([san, hid, elt, deViga].map((e) => furoDeOutraPlanta(e, { furos_laje_separados: true }))).toEqual([true, true, true, false])
+    expect([san, hid, elt, deViga].map((e) => furoDeOutraPlanta(e, {}))).toEqual([false, false, false, false])
+    expect(furoDeOutraPlanta(san, undefined)).toBe(false)
   })
 })

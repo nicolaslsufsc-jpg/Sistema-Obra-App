@@ -49,15 +49,16 @@ py pipeline\backup_semanal.py --conferir "C:\Users\nicol\Nicolas\09_ESTAGIO\Back
 
 ## Agendar toda semana (Agendador de Tarefas do Windows)
 
-Registrar depois do merge (a pasta do repositório precisa ter a `main` com este script). No PowerShell (sem ser administrador), um comando só:
+**Registrado em 21/11/2026** (tarefa "Sistema Obra - backup semanal", primeira execução 23/11 às 12:30). O Agendador roda o script de uma cópia fixa da `main` (um worktree git), `C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\codigo\`, para não depender da branch em que o checkout principal estiver. Para registrar de novo (no PowerShell, sem ser administrador), um comando só:
 
 ```
-$repo = "C:\Users\nicol\Nicolas\07_DESENVOLVIMENTO\03_Sistema_Obra"; $destino = "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra"; $copia = "C:\Users\nicol\Meu Drive\Backup Sistema Obra"; Register-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Description "Backup de todas as obras (docs/modulos/0_nucleo_backup.md)" -Action (New-ScheduledTaskAction -Execute "C:\Windows\py.exe" -Argument "-3 pipeline\backup_semanal.py --destino `"$destino`" --copia `"$copia`"" -WorkingDirectory $repo) -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 12:30) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2))
+$repo = "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\codigo"; $destino = "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra"; $copia = "C:\Users\nicol\Meu Drive\Backup Sistema Obra"; Register-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Description "Backup de todas as obras (docs/modulos/0_nucleo_backup.md)" -Action (New-ScheduledTaskAction -Execute "C:\Windows\py.exe" -Argument "-3 pipeline\backup_semanal.py --destino `"$destino`" --copia `"$copia`"" -WorkingDirectory $repo) -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 12:30) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2))
 ```
 
 - Segunda às 12:30 (confirmado). Se o PC estiver desligado nessa hora, roda assim que ligar (`StartWhenAvailable`).
 - Roda com o usuário do Windows logado, sem senha guardada no Agendador.
-- O `$repo` é a pasta do repositório no PC. Ela precisa estar com a `main` atualizada (com o `pipeline/backup_semanal.py`).
+- A cópia `codigo\` não se atualiza sozinha. Depois de um merge que mude o backup ou as migrações, atualizar (no checkout principal): `git fetch aberto` e depois `git -C "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\codigo" checkout --detach aberto/main`. Sem isso a conferência usa migrações velhas e pode acusar diferença.
+- O `--copia` só existe no script a partir do PR do Drive. Até esse merge, a tarefa roda sem `--copia` (só a pasta do PC); depois, registrar de novo com o comando acima (antes, `Unregister-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Confirm:$false`).
 - Ver se rodou: abrir `ULTIMO_BACKUP.txt` na pasta de destino, ou o Agendador de Tarefas > "Sistema Obra - backup semanal" > Último resultado (0 = deu certo, 2 = com aviso, 1 = não feito).
 - Rodar agora para testar: `Start-ScheduledTask -TaskName "Sistema Obra - backup semanal"`.
 - Tirar: `Unregister-ScheduledTask -TaskName "Sistema Obra - backup semanal"`.

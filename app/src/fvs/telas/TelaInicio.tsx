@@ -125,7 +125,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             <strong>{p.trecho}</strong>
             <span class="discreto">
               {/* planta de ambientes: o número de ambientes já está no resumo acima (o da folha soma as esquadrias) */}
-              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${ehDeVedacao(p) ? "paredes" : "peças"}`}
+              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${ehDeVedacao(p) ? 'paredes' : p.disciplina in SECAO_DE_INSTALACOES ? 'pontos' : 'peças'}`}
             </span>
             {antiga && <span class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</span>}
           </span>
@@ -403,12 +403,6 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                 <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
               </div>
             )}
-            {outras.map(([disc, lista]) => (
-              <div key={disc} data-testid="fvs-secao-outra">
-                <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>
-                <ul class="lista fv-trechos">{lista.map(linhaDaPlanta)}</ul>
-              </div>
-            ))}
             {vedacao.length > 0 && (
               <div data-testid="fvs-secao-vedacao">
                 <h3 class="fv-disciplina">Modulação de paredes</h3>
@@ -421,6 +415,13 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                 <ul class="lista fv-trechos">{vedacao.map(linhaDaPlanta)}</ul>
               </div>
             )}
+            {/* instalações (hidro, sanitário...) depois da modulação e antes dos ambientes (Professor, 20/11) */}
+            {outras.map(([disc, lista]) => (
+              <div key={disc} data-testid="fvs-secao-outra">
+                <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>
+                <ul class="lista fv-trechos">{lista.map(linhaDaPlanta)}</ul>
+              </div>
+            ))}
             {ra && (
               <div data-testid="fvs-ambientes">
                 <h3 class="fv-disciplina">Ambientes</h3>
@@ -570,9 +571,12 @@ function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
   )
 }
 
+/** Seções das plantas de instalações (pontos, frente INSTALAÇÕES 20/11/2026), com acento. */
+const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Sanitário' }
+
 /** Título da seção de uma disciplina que o app ainda não conhece ("instalacoes" -> "Instalacoes"). */
 function nomeDaDisciplina(d: string): string {
-  return d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros'
+  return SECAO_DE_INSTALACOES[d] ?? (d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Outros')
 }
 
 function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T[]> {

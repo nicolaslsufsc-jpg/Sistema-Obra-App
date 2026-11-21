@@ -32,6 +32,9 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                                "fichas": ["PVS-024"]}},   (fichas, opcional: só nessas fichas o app mostra o recorte)
   "barras": {"<id da barra>": {"camada": "longitudinal_inferior", "posicao": "N25", "texto": "N25 1ø10 C=850",
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
+  "disciplina": "sanitario",   opcional: planta de instalações (pipeline/fvs/instalacoes.py), com os pontos dela
+  "pontos": {"<id do ponto>": {"disciplina": "sanitario", "tipo": "ralo", "ponto": [x, y], "nome": "Ralo seco",
+             "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py)
   "pedacos": {"t:0/1/2": [inicio, tamanho], "d:P_P32": [..], "a:P_P32": [..]}
 }
 "t:" = tile z/x/y (WebP), "d:" = imagem do detalhe (WebP), "a:" = tabela de aço (WebP).
@@ -57,6 +60,10 @@ CLASSES_DE_ESQUADRIA = ("porta", "janela")
 # Barras de aço da laje (pipeline/fvs/barras_laje.py): as quatro camadas das pranchas de armação.
 CAMADAS_DE_BARRAS = ("transversal_superior", "transversal_inferior", "longitudinal_superior", "longitudinal_inferior")
 CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "espacamento", "prancha")
+# Pontos de instalações (pipeline/fvs/instalacoes.py): sobreposição da planta da disciplina, como as barras
+# (não são peças em "elementos"; a ficha fica no ambiente).
+DISCIPLINAS_DE_PONTOS = ("hidro", "sanitario")
+TIPOS_DE_PONTO = ("ponto_agua", "registro", "hidrometro", "ralo", "caixa_sifonada", "caixa", "ponto_esgoto")
 # Chave de detalhe vira nome de pedaço: só letras, números, _ e -.
 CHAVE_SEGURA = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 RE_TILE = re.compile(r"^-?\d+/\d+/\d+$")
@@ -78,6 +85,7 @@ def montar(
     elementos: dict[str, dict],
     detalhes: dict[str, dict],
     barras: dict[str, dict] | None = None,
+    pontos: dict[str, dict] | None = None,
 ) -> tuple[bytes, bytes]:
     """Monta (manifest.json, pacote.bin).
 
@@ -89,6 +97,7 @@ def montar(
       detalhe_corrigido_em: "AAAA-MM-DD" em que a imagem do detalhe mudou em relação ao pacote anterior
     detalhes: {chave: {titulo, prancha, img: bytes, aco: bytes | None}}
     barras: {id: {camada, linha: [[x, y], ...], posicao?, texto?, ...}} (barras de aço da laje, já na folha)
+    pontos: {id: {disciplina, tipo, ponto: [x, y], nome, modelo_id?}} (pontos de instalações, já na folha)
     """
     for campo in ("planta_id", "trecho", "prancha", "revisao", "largura", "altura", "tile", "niveis"):
         if campo not in cabecalho:
@@ -223,6 +232,24 @@ def montar(
         reg.update({k: b[k] for k in CAMPOS_DA_BARRA if b.get(k) not in (None, "")})
         barras_manifest[bid] = reg
 
+    pontos_manifest: dict[str, dict] = {}
+    for pid in sorted(pontos or {}):
+        p = pontos[pid]
+        if pid in elementos or pid in barras_manifest:
+            raise ErroPacote(f"ponto com o mesmo id de uma peça ou barra: {pid}")
+        if p.get("disciplina") not in DISCIPLINAS_DE_PONTOS:
+            raise ErroPacote(f"ponto {pid}: disciplina desconhecida ({p.get('disciplina')})")
+        if p.get("tipo") not in TIPOS_DE_PONTO:
+            raise ErroPacote(f"ponto {pid}: tipo desconhecido ({p.get('tipo')})")
+        xy = p.get("ponto") or []
+        if len(xy) != 2:
+            raise ErroPacote(f"ponto {pid}: precisa de [x, y]")
+        reg = {"disciplina": p["disciplina"], "tipo": p["tipo"], "ponto": [round(float(xy[0]), 2), round(float(xy[1]), 2)],
+               "nome": str(p.get("nome") or "")}
+        if p.get("modelo_id"):
+            reg["modelo_id"] = str(p["modelo_id"])
+        pontos_manifest[pid] = reg
+
     manifest = {
         "formato": FORMATO,
         **{k: cabecalho[k] for k in ("planta_id", "obra", "pavimento", "trecho", "prancha", "revisao") if k in cabecalho},
@@ -236,6 +263,13 @@ def montar(
     }
     if barras_manifest:
         manifest["barras"] = barras_manifest
+    if pontos_manifest:
+        manifest["pontos"] = pontos_manifest
+    if cabecalho.get("disciplina"):
+        # planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela
+        if cabecalho["disciplina"] not in DISCIPLINAS_DE_PONTOS:
+            raise ErroPacote(f"disciplina de planta desconhecida: {cabecalho['disciplina']}")
+        manifest["disciplina"] = cabecalho["disciplina"]
     if cabecalho.get("camadas_separadas"):
         # forma de pavimento com a armadura de laje em plantas próprias (pipeline/fvs/armadura_laje.py): as
         # barras ficam aqui para o item da área de laje, mas o app não mostra a aba Barras nesta planta

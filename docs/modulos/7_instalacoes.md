@@ -53,6 +53,7 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - `eletrico` e `spda` no pipeline (`--so-eletrico`, `--so-spda`) e no app. Na `main` pelo #52.
   - correção do revisor (21/11): o id do ponto leva obra e pavimento. Branch `instalacoes/id-ponto-planta`. Os pontos publicados antes mudam de id, mas nenhum foi publicado no servidor.
   - 21/11: toque de barras e pontos em 1 verde, 2 vermelho, 3 tira (também com a caixa do NC aberta) e eletroduto como linha. Branch `instalacoes/toque-e-eletroduto`, testada na bancada em 375 px e em tablet, com toques rápidos e lentos.
+  - 21/11: download das 125 pranchas e modelos vigentes de HI, SA e EL, guardados e no índice. Piloto do 2º, fora do repositório, com hidráulica e esgoto: 546 pontos de água e 196 de esgoto. O encaixe está certo: 111 das 123 caixas sifonadas caem sobre um furo de laje Ø20 (distância mediana de 0,1 cm). Branch `instalacoes/classificar-ifc-real`.
 - **Falta:**
   1. O download das pranchas e modelos vigentes. O Nicolas deu o ok no chat da frente em 20/11.
   2. O piloto no 2º pavimento real, fora do repositório. Depende do download e serve para conferir a classificação e o encaixe; no elétrico e no SPDA, também os nomes reais.
@@ -60,5 +61,5 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
      - hidro e sanitário: PVS 010.2, 010.4, 010.5 e 010.6;
      - elétrico: PVS 009.x, mais a laje elétrica como suposição;
      - SPDA: PVS 009.2.1 e 009.2.2.
-  4. Conferir no IFC real do elétrico se o eletroduto vem com eixo ou corpo extrudado e com que nome (piloto do 2º; o IFC do elétrico ainda não chegou).
+  4. Elétrico no IFC real (piloto do 2º, 21/11): o eletroduto vem como "Conduit with/without Fittings" (IfcFlowSegment, com corpo extrudado; já casa com a regra) e a eletrocalha como "Cable Tray" (fica fora). Caixas na laje: "Tomada de Teto" e "Tomada de Piso" (Conjunto 4x2 e 4x4, IfcBuildingElementProxy), "CAIXA DE PASSAGEM", "Quadro de Distribuição". **Pendente de decisão do Nicolas:** os eletrodutos horizontais do 2º ficam cerca de 36 cm abaixo do piso do 3º (12,60 m; o 3º está em 12,96 m), e a tomada de teto do 2º fica em 12,96 m. Isso é a laje do 3º (embutido) ou o forro do 2º? Conforme a resposta, o elétrico passa a ser escolhido pela altura da laje e não pelo pavimento que contém o objeto. As tomadas e os interruptores de parede vêm uns 15 m acima do andar (erro do IFC) e não entram na laje.
   5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição.

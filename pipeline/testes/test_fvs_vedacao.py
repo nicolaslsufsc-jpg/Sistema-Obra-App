@@ -11,9 +11,12 @@ RAIZ = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "pipeline" / "fvs"))
 sys.path.insert(0, str(RAIZ / "pipeline" / "testes"))
 
-from shapely.geometry import box  # noqa: E402
+try:
+    from shapely.geometry import box  # noqa: E402
 
-import vedacao  # noqa: E402
+    import vedacao  # noqa: E402
+except ImportError as e:  # o CI não instala o shapely (como o ifcopenshell nos outros testes de IFC)
+    raise unittest.SkipTest(f"sem shapely: {e}")
 
 
 def ambientes_exe():

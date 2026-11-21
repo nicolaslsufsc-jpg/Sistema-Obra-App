@@ -115,28 +115,32 @@ async function tocarNaPlanta(p: Page, x: number, y: number) {
  *  ao novo tamanho (o efeito do painel, 60 ms depois, faz invalidateSize). Com o processador lento do
  *  GitHub, esse ajuste podia cair entre a conta do ponto e o toque, e o dedo caía fora da peça.
  *  Aqui: espera o mapa saber o próprio tamanho e não ter animação, enquadra, e espera 150 ms sem movimento. */
-async function enquadrar(p: Page, centro: [number, number], zoom: number) {
-  const assentou = () =>
-    p.waitForFunction(() => {
-      const w = window as any
-      const m = w.__fvMapa
-      const c = m.getContainer()
-      const s = m.getSize()
-      const parado = !m._animatingZoom && !(m._panAnim && m._panAnim._inProgress)
-      return s.x === c.clientWidth && s.y === c.clientHeight && parado && performance.now() - (w.__ultimoMovimento ?? 0) > 150
-    })
+/** Espera o mapa parar: tamanho certo, sem animação e 150 ms sem movimento (o voo mexe o mapa a cada quadro). */
+async function mapaParado(p: Page) {
   await p.evaluate(() => {
     const w = window as any
     const m = w.__fvMapa
     if (!m.__vigiaMovimento) {
       m.__vigiaMovimento = true
       m.on('move resize zoom', () => (w.__ultimoMovimento = performance.now()))
+      w.__ultimoMovimento = performance.now()
     }
-    w.__ultimoMovimento = performance.now()
   })
-  await assentou()
+  await p.waitForFunction(() => {
+    const w = window as any
+    const m = w.__fvMapa
+    const c = m.getContainer()
+    const s = m.getSize()
+    const parado = !m._animatingZoom && !(m._panAnim && m._panAnim._inProgress)
+    return s.x === c.clientWidth && s.y === c.clientHeight && parado && performance.now() - (w.__ultimoMovimento ?? 0) > 150
+  })
+}
+
+async function enquadrar(p: Page, centro: [number, number], zoom: number) {
+  await p.evaluate(() => void ((window as any).__ultimoMovimento = performance.now()))
+  await mapaParado(p)
   await p.evaluate(([c, z]: [[number, number], number]) => void (window as any).__fvMapa.setView(c, z, { animate: false }), [centro, zoom] as [[number, number], number])
-  await assentou()
+  await mapaParado(p)
 }
 
 /** Enquadra a folha inteira (a busca deixa o zoom em cima de um local só). */
@@ -144,6 +148,9 @@ async function verFolhaInteira(p: Page) {
   // Falha rara (09/11, 1 em 20 suítes no celular): o enquadro pega (-2,5) e, até 250 ms depois, o mapa
   // volta ao zoom 0, alvo do voo da busca do P2 que estava terminando. Para a próxima vez dizer quem mexeu,
   // registra cada movimento do mapa nesses 250 ms (quem chamou, e o zoom).
+  // Antes de enquadrar, espera o voo da busca acabar: com a máquina lenta (CI, 21/11 à noite) a espera
+  // fixa de quem chama não bastava, o voo continuava depois do enquadro e o toque seguinte caía fora
+  await mapaParado(p)
   const antes = await p.evaluate(() => {
     const m = (window as any).__fvMapa
     const w = window as any
@@ -170,6 +177,7 @@ async function verFolhaInteira(p: Page) {
     return r
   })
   if (z > -1) throw new Error(`DIAG verFolhaInteira não pegou: ${JSON.stringify({ ...antes, z250: z, movimentos })}`)
+  await mapaParado(p)
 }
 
 async function buscar(p: Page, texto: string) {

@@ -5,6 +5,7 @@ import type { Contexto } from './ModuloConcreto'
 import { dataBR, numBR, plural, Selo, Topo } from './comum'
 import { nomeDaConcretagem } from '../exemplo'
 import { SecaoFvm } from './TelasFvm'
+import { SecaoPlanilha } from './SecaoPlanilha'
 
 export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
   const { dados, obra, ir } = ctx
@@ -109,6 +110,8 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
           </ul>
         </section>
       )}
+
+      <SecaoPlanilha ctx={ctx} />
     </main>
   )
 }

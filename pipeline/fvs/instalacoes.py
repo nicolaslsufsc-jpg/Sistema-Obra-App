@@ -15,6 +15,12 @@ Suposição: os modelos de hidráulica e de sanitário estão nas mesmas coorden
 três saem do Revit do mesmo projeto). Conferir na tela: os pontos têm que cair dentro do contorno da laje.
 
 Classificação dos pontos (suposição, ajustar com o IFC real): pela classe IFC e pelo nome do objeto.
+
+Elétrico e SPDA (20/11/2026, pedido do Professor): mesmo padrão. Elétrico = caixas na laje (PES 009.4: caixa
+de passagem, caixa octogonal do ponto de luz) e quadros (PVS 009.x). SPDA = captores (PVS 009.2.1), descidas e
+caixas de inspeção (PVS 009.2.2), hastes de aterramento. Sem os IFC reais, a classificação é SUPOSIÇÃO: nomes
+usuais do Revit em português e as classes IFC de elétrica. O eletroduto é linha, não ponto: fica fora (a
+decidir se entra como linha, como as barras). A descida do SPDA, vertical, aparece na planta como ponto.
 """
 
 from __future__ import annotations
@@ -27,6 +33,8 @@ import uuid
 DISCIPLINAS = {
     "hidro": "Água fria e quente",
     "sanitario": "Esgoto e pluvial",
+    "eletrico": "Caixas e quadros",
+    "spda": "Captores e descidas",
 }
 
 # Tipo de ponto -> nome para a pessoa
@@ -38,6 +46,13 @@ TIPOS_DE_PONTO = {
     "caixa_sifonada": "Caixa sifonada",
     "caixa": "Caixa",
     "ponto_esgoto": "Ponto de esgoto",
+    "caixa_passagem": "Caixa de passagem",
+    "ponto_luz": "Ponto de luz",
+    "quadro": "Quadro",
+    "captor": "Captor",
+    "descida": "Descida",
+    "caixa_inspecao": "Caixa de inspeção",
+    "haste": "Haste de aterramento",
 }
 
 # Namespace fixo dos ids dos pontos (uuid5): o mesmo objeto do modelo dá o mesmo id em toda geração.
@@ -45,7 +60,13 @@ _NS = uuid.UUID("6f1d3c2a-9b7e-4c51-8a40-1e2f3a4b5c6d")
 
 # Classes IFC que podem ser ponto (as que o Revit usa para aparelhos, ralos, registros e conexões).
 CLASSES = ("IfcSanitaryTerminal", "IfcWasteTerminal", "IfcValve", "IfcFlowTerminal", "IfcFlowController",
-           "IfcDistributionChamberElement", "IfcFlowMeter", "IfcBuildingElementProxy", "IfcFurnishingElement")
+           "IfcDistributionChamberElement", "IfcFlowMeter", "IfcBuildingElementProxy", "IfcFurnishingElement",
+           # elétrica e SPDA (IFC4 e IFC2x3; suposição até ver os IFC reais)
+           "IfcJunctionBox", "IfcElectricDistributionBoard", "IfcElectricDistributionPoint", "IfcLightFixture",
+           "IfcOutlet", "IfcFlowFitting", "IfcProtectiveDevice", "IfcCableSegment", "IfcCableCarrierSegment",
+           "IfcFlowSegment", "IfcDiscreteAccessory", "IfcMember")
+# Trecho de tubo, cabo ou eletroduto: só serve como ponto na descida do SPDA (vertical: na planta, um ponto).
+SEGMENTOS = ("IfcCableSegment", "IfcCableCarrierSegment", "IfcFlowSegment", "IfcMember")
 
 
 class ErroInstalacoes(Exception):
@@ -60,6 +81,27 @@ def _sem_acento(s: str) -> str:
 def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     """O tipo do ponto (chave de TIPOS_DE_PONTO), ou None se o objeto não é ponto desta disciplina."""
     n = _sem_acento(nome)
+    if classe in SEGMENTOS and disciplina != "spda":
+        return None
+    if disciplina == "eletrico":
+        if re.search(r"\bQUADRO\b|\bQGBT\b|\bQD[A-Z]*\d*\b|\bCD\b", n) or classe in (
+                "IfcElectricDistributionBoard", "IfcElectricDistributionPoint"):
+            return "quadro"
+        if re.search(r"LUMINARIA|PONTO DE LUZ|OCTOGONAL", n) or classe == "IfcLightFixture":
+            return "ponto_luz"
+        if re.search(r"\bC(AI)?XA?\b.*(PASSAGEM|4 ?X ?[24]|ELETRIC)|\bCAIXA DE PASSAGEM\b", n) or classe == "IfcJunctionBox":
+            return "caixa_passagem"
+        return None
+    if disciplina == "spda":
+        if re.search(r"CAPTOR|FRANKLIN|TERMINAL AEREO|MASTRO", n):
+            return "captor"
+        if re.search(r"C(AI)?XA?\.? ?(DE )?INSP|EQUALIZ|\bBEP\b", n):
+            return "caixa_inspecao"
+        if re.search(r"\bHASTE\b|ATERRAMENTO", n):
+            return "haste"
+        if "DESCIDA" in n:
+            return "descida"
+        return None
     if disciplina == "sanitario":
         if "RALO" in n or classe == "IfcWasteTerminal":
             return "ralo"

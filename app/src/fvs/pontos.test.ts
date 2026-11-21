@@ -44,6 +44,8 @@ describe('nomes', () => {
     expect(nomeDoPonto(p(0, 0, 'ralo', 'Ralo seco 100x100'))).toBe('Ralo seco 100x100 (ralo)')
     expect(nomeDoPonto(p(0, 0, 'caixa_sifonada', ''))).toBe('Caixa sifonada')
     expect(nomeDoPonto(p(0, 0, 'ralo', 'Ralo'))).toBe('Ralo')
+    expect(nomeDoPonto({ disciplina: 'spda', tipo: 'caixa_inspecao', ponto: [0, 0], nome: '' })).toBe('Caixa de inspeção')
+    expect(nomeDoPonto({ disciplina: 'eletrico', tipo: 'quadro', ponto: [0, 0], nome: 'QDL-02' })).toBe('QDL-02 (quadro)')
   })
   it('resumo por tipo', () => {
     expect(resumoDosPontos({ a: p(0, 0), b: p(1, 1), c: p(2, 2, 'caixa') })).toEqual([

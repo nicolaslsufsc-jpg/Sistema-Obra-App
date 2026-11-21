@@ -23,7 +23,7 @@ Aceita três formatos de arquivo:
      área; a elétrica fica à mão, e furo elétrico errado deixa o item NC (item 4, 19/11/2026).
      "esquadrias": true (opcional, só em ficha de ambiente, um ou mais por ficha): item de vão ou esquadria
      ("eixos e vãos", "requadros", "recorte na porta"), que as esquadrias do ambiente marcam, uma a uma.
-     "pontos": "hidro" ou "sanitario" (opcional, só em ficha de ambiente): o item que os pontos de instalação
+     "pontos": "hidro", "sanitario", "eletrico" ou "spda" (opcional, só em ficha de ambiente): o item que os pontos de instalação
      daquela disciplina marcam na planta dela, um a um (pipeline/fvs/instalacoes.py, 20/11/2026).
   2. o do HTML legado (exemplo: pipeline/legado/itens_fvs.exemplo.json): {"P": {"codigo", "titulo", "itens": [...]}, "V": {...}}
      (as marcas "parte", "furos", "barras", "concretagem", "rastreio_concreto", "instalacao", "esquadrias" e "pontos" passam como no formato 1)
@@ -60,6 +60,8 @@ TIPOS_LEGADO = ("P", "V")
 TIPOS = ("P", "V", "L", "A", "M")
 # partes do pilar que um item pode ter (as mesmas do pacote da planta: pacote.TIPOS_DE_PARTE)
 PARTES = ("consolo", "capitel")
+# disciplinas dos pontos de instalações (as mesmas do pacote: pacote.DISCIPLINAS_DE_PONTOS; instalacoes.py)
+DISCIPLINAS_DOS_PONTOS = ("hidro", "sanitario", "eletrico", "spda")
 
 
 
@@ -142,8 +144,8 @@ def normalizar(dados, aplica_a_padrao: list[str] | None = None) -> list[dict]:
             disc = i.get("pontos")
             if disc is None:
                 continue
-            if disc not in ("hidro", "sanitario"):
-                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "pontos" só aceita "hidro" ou "sanitario" (os pontos que marcam o item)')
+            if disc not in DISCIPLINAS_DOS_PONTOS:
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "pontos" só aceita {", ".join(DISCIPLINAS_DOS_PONTOS)} (os pontos que marcam o item)')
             if f["aplica_a"] != ["A"]:
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: item dos pontos de instalação só em ficha de ambiente ("aplica_a": ["A"])')
             if i.get("furos") or i.get("barras") or i.get("parte") or i.get("esquadrias"):

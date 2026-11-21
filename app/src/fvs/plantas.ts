@@ -6,6 +6,7 @@
 import { sincronizador } from '../nucleo/servicos'
 import type { Linha } from '../nucleo/banco_local'
 import { abrirPacote, pacotesNoAparelho, type PacoteAberto } from './pacote'
+import { FORA_DA_ESTRUTURA } from './situacao'
 import { cadeiaDeRevisoes, pacoteDaPlanta } from './revisoes'
 
 export interface ElementoDesenho {
@@ -52,14 +53,14 @@ export function plantaDeDesenho(pacote: PacoteAberto, idEstavel: string, titulo:
     largura: m.largura,
     altura: m.altura,
     fundo: { tile: m.tile, niveis: m.niveis, url: (z, x, y) => pacote.tile(z, x, y) ?? TILE_VAZIO },
-    // só peças de estrutura: ambiente (planta de arquitetura), furo de viga e esquadria não interessam a quem desenha concretagem
-    elementos: Object.entries(m.elementos).flatMap(([id, e]) => (e.tipo === 'A' || e.tipo === 'F' || e.tipo === 'E' ? [] : [{ id, tipo: e.tipo, nome: e.nome, rotulo: e.rotulo, polys: e.polys }])),
+    // só peças de estrutura: ambiente (planta de arquitetura), furo de viga, esquadria e parede não interessam a quem desenha concretagem
+    elementos: Object.entries(m.elementos).flatMap(([id, e]) => (e.tipo === 'A' || e.tipo === 'F' || e.tipo === 'E' || e.tipo === 'M' ? [] : [{ id, tipo: e.tipo, nome: e.nome, rotulo: e.rotulo, polys: e.polys }])),
   }
 }
 
 /** Planta de forma (tem pilar, viga ou laje). A planta de ambientes da FVS não entra aqui. */
 export function ehPlantaDeEstrutura(pacote: PacoteAberto): boolean {
-  return Object.values(pacote.manifest.elementos).some((e) => e.tipo !== 'A')
+  return Object.values(pacote.manifest.elementos).some((e) => !FORA_DA_ESTRUTURA.has(e.tipo))
 }
 
 /** Plantas vigentes de um pavimento (a que nenhuma revisão nova substituiu), uma por trecho. */

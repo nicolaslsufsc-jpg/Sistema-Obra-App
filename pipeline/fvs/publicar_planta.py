@@ -57,6 +57,10 @@ Outros projetos ("projetos": [{"titulo": "Paginação de piso", "pranchas": [...
 em "ambientes"): o mesmo recorte, colorido, em "projetos" do ambiente; o app mostra cada um só nas fichas
 listadas (paginação de piso no piso, impermeabilização no piso e no reboco...).
 
+Modulação de paredes (vedacao.py, com "vedacao": true ou {"prancha": ..., "escala": 50} em "ambientes"): uma
+planta a mais do pavimento (setor "Modulação", disciplina "vedacao"), em que cada parede de alvenaria do IFC é
+um local "M" ("303-M01"), conferido pela ficha de alvenaria. O fundo é a prancha de 1ª fiada, ou a de arquitetura.
+
 Furos de viga (fatia 1 da conferência por elemento, furos.py): cada furo do modelo de furação vira um
 local "F" da planta, ligado à viga onde cai. O relatorio.json lista os que não caíram em viga. Os furos
 de laje (item 4, 19/11/2026) viram locais "F" sem viga ("FL1"...); a área de laje de cada um é achada no app.
@@ -171,6 +175,14 @@ def ler_config(caminho: pathlib.Path) -> dict:
                     raise ErroPublicacao(f"ambientes: projeto {i + 1} ({pj.get('titulo') or 'sem título'}) sem prancha nenhuma (confira \"pranchas\")")
                 projetos.append(pj)
             amb["projetos"] = projetos
+        if amb.get("vedacao"):
+            ved = dict(amb["vedacao"]) if isinstance(amb["vedacao"], dict) else {}
+            if ved.get("prancha"):
+                achados = arquivos(ved["prancha"])
+                if len(achados) != 1:
+                    raise ErroPublicacao(f"ambientes: \"vedacao\": \"prancha\" tem que ser um arquivo só, a 1ª fiada do pavimento inteiro (achei {len(achados)})")
+                ved["prancha"] = achados[0]
+            amb["vedacao"] = ved or True
     fur = None
     if cfg.get("furos"):
         fur = dict(cfg["furos"])
@@ -359,7 +371,7 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
                 if corrigido:
                     reg["detalhe_corrigido_em"] = corrigido
             dets.setdefault(d["chave"], {"titulo": d["titulo"], "prancha": d["prancha"], "img": d["img"], "aco": d["aco"]})
-        elif p["tipo"] not in ("A", "F", "E"):  # ambiente, furo e esquadria não têm prancha de detalhe
+        elif p["tipo"] not in ("A", "F", "E", "M"):  # ambiente, furo, esquadria e parede não têm prancha de detalhe
             sem_detalhe.append(p["nome"])
         if p.get("partes"):
             reg["partes"] = []
@@ -389,6 +401,7 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         "vigas": sum(1 for p in forma["pecas"] if p["tipo"] == "V"),
         "furos": sum(1 for p in forma["pecas"] if p["tipo"] == "F"),
         "esquadrias": sum(1 for p in forma["pecas"] if p["tipo"] == "E"),
+        "paredes": sum(1 for p in forma["pecas"] if p["tipo"] == "M"),
         "barras": len(forma.get("barras") or {}),
         "elementos": quantos_locais(forma),
         "disciplina": forma.get("disciplina") or DISCIPLINA,
@@ -523,15 +536,6 @@ def por_instalacoes(cfg: dict, detalhes: dict, formas: list[dict], rel_furos: di
     return rel
 
 
-def so_disciplina(formas: list[dict], disc: str) -> list[dict]:
-    """--so-hidro, --so-sanitario: só a planta daquela disciplina. A forma, os ambientes e as outras plantas do
-    pavimento ficam como estão no servidor (nenhuma revisão nova, nenhuma peça criada)."""
-    sel = [fm for fm in formas if fm.get("disciplina") == disc]
-    if not sel:
-        raise ErroPublicacao(f"--so-{disc}: o pavimento.json não gerou a planta de {mod_inst.DISCIPLINAS[disc]} (falta \"instalacoes\"?)")
-    return sel
-
-
 def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
     """As barras das pranchas de armação (detalhes["barras"]) alinhadas na folha de forma: ficam em
     forma["barras"] ({id: barra}). Só com a folha única, como os furos. Roda antes de tirar da planta as
@@ -554,6 +558,7 @@ def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
         estado = "ok" if a["ok"] else "FORA (conflito)"
         print(f"  {r['prancha']} ({r['camada']}): {r['barras']} barras, {r['com_posicao']} com posição; alinhamento {estado}: "
               f"{a['pontos']} de {a['total']} pilares, erro máx. {a['residuo_max_cm']} cm" + (f" — {a['motivo']}" if a.get("motivo") else "")
+              + (f"; pilares pelo {r['pilares_por']}" if r.get("pilares_por", "contorno do pilar") != "contorno do pilar" else "")
               + (f"; {r['repetidas']} já vinham de outra prancha (emenda)" if r.get("repetidas") else ""))
     if conflitos:
         print(f"  ATENÇÃO: {len(conflitos)} prancha(s) de armação não alinharam e ficaram fora (conflitos_de_alinhamento.csv)")
@@ -712,7 +717,8 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
 
         print(f"Lendo ambientes: {pathlib.Path(cfg['ambientes']['prancha']).name}")
         try:
-            lida = ambientes.ler_planta(cfg["ambientes"])
+            base_amb = ambientes.base_da_planta(cfg["ambientes"])
+            lida = ambientes.ler_planta(cfg["ambientes"], base_amb)
         except ambientes.ErroAmbientes as e:
             raise ErroPublicacao(f"ambientes: {e}") from e
         r = lida["resumo"]
@@ -737,6 +743,8 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
         detalhes.setdefault("A", {}).update(lida.pop("detalhes_a", None) or {})
         detalhes.setdefault("A_projetos", {}).update(lida.pop("projetos_a", None) or {})
         formas.append(lida)
+        if cfg["ambientes"].get("vedacao"):
+            formas.append(ler_vedacao(cfg["ambientes"], base_amb))
     if cfg.get("det_consolos") or cfg.get("det_macicos"):
         import partes as pt
 
@@ -791,6 +799,21 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
     return detalhes, formas
 
 
+def ler_vedacao(cfg_amb: dict, base_amb: dict) -> dict:
+    """A planta de modulação do pavimento (vedacao.py): cada parede de alvenaria do IFC, um local "M"."""
+    import vedacao
+
+    try:
+        lida = vedacao.ler_planta(cfg_amb, base_amb)
+    except vedacao.ErroVedacao as e:
+        raise ErroPublicacao(f"vedação: {e}") from e
+    r = lida["resumo"]
+    print(f"  modulação: {r['paredes']} paredes de alvenaria ({r['metros']:g} m) em {len(r['por_apartamento'])} unidades,"
+          f" fundo da prancha de {r['fundo']} (modelo x prancha: {r['coincidencia']:.0%})"
+          + (f"; {r['curtas_fora']} pedaços com menos de 10 cm ficaram fora" if r.get("curtas_fora") else ""))
+    return lida
+
+
 def publicar(cfg: dict, args) -> list[dict]:
     detalhes, formas = ler_pranchas(cfg)
     return publicar_lidas(cfg, detalhes, formas, args)
@@ -827,6 +850,8 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
                         "pacote": {"sha256": pacote.sha256(binario), "tamanho": len(binario)}})
             if fm.get("origens"):
                 rel["origens"] = fm["origens"]
+            if fm.get("disciplina") == "vedacao" and fm.get("resumo"):
+                rel["vedacao"] = fm["resumo"]
             if fm.get("disciplina") == "arquitetura" and fm.get("resumo"):
                 resumo_amb = dict(fm["resumo"])
                 modelo = resumo_amb.pop("modelo_de_nomes", None)
@@ -842,7 +867,7 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
             "obra": cfg["obra"],
             "pavimento": cfg["pavimento"],
             "pecas": [{"id": i, "tipo": t, "nome": n, "secao": secoes.get((t, n)) or ""} for (t, n), i in sorted(ids.items())],
-            "pecas_unicas": {t: len({k[1] for k in ids if k[0] == t}) for t in ("P", "V", "A", "F")},
+            "pecas_unicas": {t: len({k[1] for k in ids if k[0] == t}) for t in ("P", "V", "A", "F", "M")},
             "pranchas_de_detalhe": {"P": len(cfg["det_pilares"]), "V": len(cfg["det_vigas"])},
             "pecas_com_detalhe": {t: len(detalhes[t]) for t in ("P", "V")},
             "fora_do_pavimento": fora,
@@ -867,25 +892,36 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
     sb = Supabase(args.url, args.chave)
     entrar(sb, args.email)
     srv = Servidor(sb, sessao_local.dispositivo_id())
-    escolhidas = formas
-    if getattr(args, "so_armadura", False):
-        escolhidas = so_armadura(formas)
-    for disc in mod_inst.DISCIPLINAS:
+    # --so-armadura, --so-vedacao, --so-hidro, --so-sanitario: um de cada vez (grupo exclusivo no main)
+    for disc in ("armadura", "vedacao", *mod_inst.DISCIPLINAS):
         if getattr(args, f"so_{disc}", False):
-            escolhidas = so_disciplina(formas, disc)
-    return publicar_no_servidor(srv, cfg, detalhes, escolhidas, args.aceita_ambientes)
+            formas = so_disciplina(formas, disc)
+            break
+    return publicar_no_servidor(srv, cfg, detalhes, formas, args.aceita_ambientes, getattr(args, "aceita_paredes", False))
+
+
+FALTA_PARA_A_DISCIPLINA = {"armadura": "\"barras_laje\"", "vedacao": "\"vedacao\" em \"ambientes\"",
+                           **{d: "\"instalacoes\"" for d in mod_inst.DISCIPLINAS}}
+
+
+def so_disciplina(formas: list[dict], disciplina: str) -> list[dict]:
+    """--so-armadura, --so-vedacao, --so-hidro, --so-sanitario: só as plantas dessa disciplina (a armadura de laje,
+    uma por direção; a de modulação; a de pontos de instalações). A forma e os ambientes do pavimento ficam como estão no servidor (nenhuma revisão nova, nenhuma
+    peça deles criada)."""
+    so = [fm for fm in formas if fm.get("disciplina") == disciplina]
+    if not so:
+        raise ErroPublicacao(f"--so-{disciplina}: o pavimento.json não gerou nenhuma planta de {disciplina}"
+                             f" (falta {FALTA_PARA_A_DISCIPLINA.get(disciplina, 'a configuração')}?)")
+    return so
 
 
 def so_armadura(formas: list[dict]) -> list[dict]:
-    """--so-armadura: só as plantas de armadura de laje (uma por direção). A forma e os ambientes do pavimento
-    ficam como estão no servidor (nenhuma revisão nova, nenhuma peça criada)."""
-    arm = [fm for fm in formas if fm.get("disciplina") == "armadura"]
-    if not arm:
-        raise ErroPublicacao("--so-armadura: o pavimento.json não gerou nenhuma planta de armadura (falta \"barras_laje\"?)")
-    return arm
+    """--so-armadura: só as plantas de armadura de laje (so_disciplina)."""
+    return so_disciplina(formas, "armadura")
 
 
-def publicar_no_servidor(srv, cfg: dict, detalhes: dict, formas: list[dict], aceita_ambientes: bool = False) -> list[dict]:
+def publicar_no_servidor(srv, cfg: dict, detalhes: dict, formas: list[dict], aceita_ambientes: bool = False,
+                         aceita_paredes: bool = False) -> list[dict]:
     relatorios = []
     obra = srv.obra(cfg["obra"])
     pav = srv.pavimento(obra["id"], cfg["pavimento"])
@@ -894,7 +930,10 @@ def publicar_no_servidor(srv, cfg: dict, detalhes: dict, formas: list[dict], ace
     novas = pecas_a_criar(existentes, lidas)
     if novas:
         print(f"Criando {len(novas)} peças novas em elementos...")
-        if any(t not in ("P", "V", "L") for t, _, _ in novas) and not aceita_ambientes:
+        if any(t == "M" for t, _, _ in novas) and not aceita_paredes:
+            raise ErroPublicacao("o servidor ainda não aceita paredes (tipo M) em \"elementos\": falta aplicar a migração "
+                                 "20261120200000_nucleo_elementos_m.sql (núcleo). Use --aceita-paredes depois que ela entrar.")
+        if any(t not in ("P", "V", "L", "M") for t, _, _ in novas) and not aceita_ambientes:
             raise ErroPublicacao("o servidor ainda não aceita ambientes nem furos em \"elementos\" (pedido ao núcleo em docs/modulos/1_fvs_status.md). "
                                  "Publique sem eles, ou use --aceita-ambientes depois que a migração do núcleo entrar.")
         criadas = srv.inserir("elementos", [
@@ -930,12 +969,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--so-gerar", metavar="PASTA", help="só grava os pacotes nesta pasta, sem publicar")
     ap.add_argument("--folha-unica", action="store_true", help="o pavimento inteiro numa planta só, sem trechos")
     ap.add_argument("--aceita-ambientes", action="store_true", help="o servidor já aceita ambientes em elementos (migração do núcleo aplicada)")
-    ap.add_argument("--so-armadura", action="store_true",
-                    help="publica só as plantas de armadura de laje; a forma e os ambientes ficam como estão no servidor")
     grupo_so = ap.add_mutually_exclusive_group()
+    grupo_so.add_argument("--so-armadura", action="store_true",
+                          help="publica só as plantas de armadura de laje; a forma e os ambientes ficam como estão no servidor")
+    grupo_so.add_argument("--so-vedacao", action="store_true",
+                          help="publica só a planta de modulação (paredes de alvenaria); a forma e os ambientes ficam como estão no servidor")
+    ap.add_argument("--aceita-paredes", action="store_true",
+                    help="o servidor já aceita paredes (tipo M) em elementos (migração do núcleo aplicada)")
     for disc, nome in mod_inst.DISCIPLINAS.items():
         grupo_so.add_argument(f"--so-{disc}", action="store_true",
-                              help=f"publica só a planta de {nome}; a forma e o resto do pavimento ficam como estão no servidor")
+                              help=f"publica só a planta de {nome.lower()}; a forma e o resto do pavimento ficam como estão no servidor")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--chave", default=CHAVE_PADRAO)

@@ -21,7 +21,7 @@ import {
   type Ponto,
   type TravaDaArea,
 } from '../areas'
-import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, ehDeVedacao, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDasLigacoes } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
@@ -124,7 +124,7 @@ const COR_DUPLICADA = '#6a1b9a'
 /** "Por item": a peça com o item em NA (não se aplica), diferente do OK. */
 const COR_NA = '#00838f'
 /** Tipos de local em que o "Por item" funciona (pilar desde a fatia 1; viga e ambiente desde a fatia 2). */
-const TIPOS_POR_ITEM = ['P', 'V', 'A']
+const TIPOS_POR_ITEM = ['P', 'V', 'A', 'M']
 /** Área de laje cobre muita planta: a cor fica mais leve que a das peças, para o desenho continuar legível. */
 const OPACIDADE_MAX_AREA = 0.35
 const COR_TRACADO = '#1565c0'
@@ -135,9 +135,9 @@ const SEM_EVENTOS: EventoFvs[] = []
 const SEM_FICHAS: FichaCampo[] = []
 /** Tocar perto assim do primeiro canto (em pixels de tela) fecha o polígono. */
 const FECHAR_PX = 18
-const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo', E: 'Esquadria' }
-const PLURAL_TIPO: Record<string, string> = { P: 'Pilares', V: 'Vigas', L: 'Lajes', A: 'Ambientes', E: 'Esquadrias', F: 'Furos', B: 'Barras', I: 'Pontos' }
-const ORDEM_TIPOS = ['P', 'V', 'L', 'A', 'E', 'F', 'B', 'I']
+const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo', E: 'Esquadria', M: 'Parede' }
+const PLURAL_TIPO: Record<string, string> = { P: 'Pilares', V: 'Vigas', L: 'Lajes', A: 'Ambientes', E: 'Esquadrias', F: 'Furos', B: 'Barras', M: 'Paredes', I: 'Pontos' }
+const ORDEM_TIPOS = ['P', 'V', 'L', 'A', 'E', 'M', 'F', 'B', 'I']
 /** Furo e esquadria: um toque cada, dentro do pai (viga, ambiente), pelo item da ficha do pai. */
 const ehFilho = (t: string | undefined) => t === 'F' || t === 'E'
 /** A aba Esquadrias usa a ficha dos ambientes (o serviço escolhido no topo). */
@@ -322,7 +322,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // as áreas de laje desenhadas na forma valem aqui (para o item de armadura de cada área)
   const deArmadura = ehDeArmadura(planta)
   const setorDasAreas = deArmadura
-    ? (dados.plantasDe.get(planta.pavimento_id) ?? []).find((p) => !ehDeAmbientes(p) && !ehDeArmadura(p))?.setor_id ?? planta.setor_id
+    ? (dados.plantasDe.get(planta.pavimento_id) ?? []).find((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p))?.setor_id ?? planta.setor_id
     : planta.setor_id
   const areasDaPlanta = useMemo(() => (areasDoPavimento ?? []).filter((a) => a.setor_id === setorDasAreas), [areasDoPavimento, setorDasAreas])
   const chaveDasAreas = areasDaPlanta.map((a) => a.versao).join()
@@ -345,7 +345,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // planta de instalações (hidro, sanitário; 20/11/2026): só os pontos da disciplina, sem áreas nem peças
   const deInstalacoes = !!manifest?.disciplina
   const pontos = manifest?.pontos
-  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !deArmadura && !deInstalacoes && (pode || areasDaPlanta.length > 0)
+  // a modulação (paredes) não tem área de laje
+  const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deInstalacoes && (pode || areasDaPlanta.length > 0)
   // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
   const barras = manifest?.barras
   // na planta de armadura, só a direção dela; na forma com a armadura em plantas próprias, nenhuma (sem aba Barras)
@@ -1077,12 +1078,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // fino e quase sem cor, para a prancha continuar legível; o que já tem marcação se destaca
       const pendenteLeve = e.tipo === 'A' && s === 'nada'
       const duplicada = abertasDe(id).length > 1
-      const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : cor
+      // parede da modulação pendente (20/11): cinza claro e mais grossa, para aparecer em cima da parede preta da prancha
+      const paredePendente = e.tipo === 'M' && s === 'nada' && doItem !== 'NA'
+      const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
       // arranque (só detalhe): tracejado e quase sem cor, para não parecer peça a marcar
       const soDetalhe = !!e.so_detalhe
       const fillOpacity = soDetalhe ? 0.02 : ehArea ? (ativo ? Math.min(f, OPACIDADE_MAX_AREA) : Math.min(f, OPACIDADE_MAX_AREA) * 0.5) : pendenteLeve ? 0.05 : ativo ? f : f * 0.25
       const opacity = ehArea ? (ativo ? 1 : 0.6) : !ativo ? 0.3 : soDetalhe && sel !== id ? 0.6 : pendenteLeve && sel !== id ? 0.6 : 1
-      const weight = sel === id ? 4 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : 2
+      const weight = sel === id ? 4 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : e.tipo === 'M' ? 3 : 2
       const dashArray = soDetalhe ? '5 4' : undefined
       if (ehFilho(e.tipo)) {
         // furo (ou esquadria) pendente: miolo branco (fica visível em cima da viga); fora da aba dele, apagado e sem toque
@@ -1317,7 +1320,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       return abrirPainel(id)
     }
     if (porItemAtivo && pode) {
-      if (e.tipo !== porItemAtivo.tipo) return avisar(`No "Por item", toque ${porItemAtivo.tipo === 'P' ? 'nos pilares' : porItemAtivo.tipo === 'V' ? 'nas vigas' : 'nos ambientes'}. Para abrir ${e.nome}, toque em Sair.`)
+      if (e.tipo !== porItemAtivo.tipo) return avisar(`No "Por item", toque ${porItemAtivo.tipo === 'P' ? 'nos pilares' : porItemAtivo.tipo === 'V' ? 'nas vigas' : porItemAtivo.tipo === 'M' ? 'nas paredes' : 'nos ambientes'}. Para abrir ${e.nome}, toque em Sair.`)
       return tocarPorItem(id, e, porItemAtivo)
     }
     if (e.tipo !== tipo) setTipo(e.tipo)
@@ -1826,7 +1829,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       setTipo(doGrupo[0][1].tipo)
       fecharPainel()
       voar(b.pad(0.1), 1.5)
-      return avisar(`${doGrupo[0][1].grupo}: ${doGrupo.length} ambientes`)
+      return avisar(`${doGrupo[0][1].grupo}: ${doGrupo.length} ${doGrupo[0][1].tipo === 'M' ? 'paredes' : 'ambientes'}`)
     }
     const [id, e] = achado
     setTipo(e.tipo)
@@ -3051,7 +3054,7 @@ function Painel(p: PropsPainel) {
           {peca.secao && (
             <>
               {' '}
-              · {peca.tipo === 'A' || peca.tipo === 'F' || peca.tipo === 'E' || p.area ? '' : 'seção '}
+              · {peca.tipo === 'A' || peca.tipo === 'F' || peca.tipo === 'E' || peca.tipo === 'M' || p.area ? '' : 'seção '}
               <b>{peca.secao}</b>
             </>
           )}
@@ -3268,7 +3271,7 @@ function Painel(p: PropsPainel) {
               </div>
             )}
           </div>
-        ) : peca.tipo === 'F' || peca.tipo === 'E' ? null : peca.tipo === 'A' ? (
+        ) : peca.tipo === 'F' || peca.tipo === 'E' || peca.tipo === 'M' ? null : peca.tipo === 'A' ? (
           irmaosDoAmbiente
         ) : (
           <div class="fv-sec">

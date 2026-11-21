@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { build, preview, type PreviewServer } from 'vite'
@@ -32,6 +32,43 @@ let contexto: BrowserContext
 let pagina: Page
 let urlApp = ''
 let ultimoDialogo = ''
+
+/** Últimas mensagens do console e erros da página: saem junto quando um passo trava (CI sem artefato). */
+const consoleDaPagina: string[] = []
+/** Capturas dos passos que travaram (app/testes/saida/, fora do git). */
+const PASTA_TRAVOU = path.join(RAIZ, 'testes', 'saida')
+
+/**
+ * Um passo do teste com prazo curto. Se travar, diz em qual passo, onde a página estava (endereço,
+ * history.state, texto da tela) e as últimas mensagens do console, e guarda uma captura. Desde o CI 69/70:
+ * o teste só dizia "timeout de 30 s", sem o passo.
+ */
+async function passo<T>(nome: string, acao: () => Promise<T>): Promise<T> {
+  try {
+    return await acao()
+  } catch (e) {
+    const onde = await pagina
+      .evaluate(() => ({ url: location.href, estado: JSON.stringify(history.state), texto: document.body.innerText }))
+      .catch(() => ({ url: '?', estado: '?', texto: '?' }))
+    try {
+      mkdirSync(PASTA_TRAVOU, { recursive: true })
+      await pagina.screenshot({ path: path.join(PASTA_TRAVOU, `travou-${nome.replace(/[^a-z0-9]+/gi, '_')}.png`), fullPage: true })
+    } catch {
+      // sem captura: o texto abaixo basta
+    }
+    const detalhe = [
+      `travou em: ${nome}`,
+      `endereço: ${onde.url}`,
+      `history.state: ${onde.estado}`,
+      `texto da tela (até 2.000 caracteres):\n${String(onde.texto).slice(0, 2000)}`,
+      `console (últimas 30):\n${consoleDaPagina.slice(-30).join('\n')}`,
+      `erro original: ${String(e)}`,
+    ].join('\n')
+    console.error(detalhe)
+    throw new Error(detalhe)
+  }
+}
+const PRAZO = { timeout: 8000 }
 
 async function capturar(nome: string) {
   if (PRINTS) await pagina.screenshot({ path: path.join(PRINTS, `${nome}.png`), fullPage: true })
@@ -79,6 +116,8 @@ suite('telas no navegador', () => {
     navegador = await chromium.launch()
     contexto = await navegador.newContext({ viewport: { width: 412, height: 900 }, deviceScaleFactor: PRINTS ? 2 : 1 })
     pagina = await contexto.newPage()
+    pagina.on('console', (m: { type(): string; text(): string }) => consoleDaPagina.push(`[${m.type()}] ${m.text()}`.slice(0, 300)))
+    pagina.on('pageerror', (e: Error) => consoleDaPagina.push(`[pageerror] ${String(e)}`.slice(0, 300)))
     // "Sair" pede confirmação (confirm): aceita e guarda o texto para conferir.
     pagina.on('dialog', async (d: { message(): string; accept(): Promise<void> }) => {
       ultimoDialogo = d.message()
@@ -245,31 +284,62 @@ suite('telas no navegador', () => {
 
   it('menu abre o módulo pronto e o voltar do Android retorna ao menu', async () => {
     // Desde 18/11/2026 o Relatórios saiu do menu, com o código guardado.
-    // Desde 20/11/2026 o IFC voltou, com e sem conta, sem o selo "beta"; o Projetos voltou só sem conta.
-    // Desde 20/11/2026 (teste com cabo) o Documentos só aparece sem conta: com conta não há tabela no servidor.
+    // Desde 20/11/2026 o IFC voltou, com e sem conta, sem o selo "beta".
+    // Desde 20/11/2026 (teste com cabo) o Documentos só aparecia sem conta; desde o item 3 do núcleo (20/11, tabela
+    // doc_documentos no servidor) ele abre também com conta.
+    // Desde 20/11/2026 (item 2 do núcleo, lista de distribuição no servidor) o Projetos aparece também com conta,
+    // com o selo "beta": é o único beta do menu.
+    await passo('menu da obra no começo', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
     const concreto = pagina.getByRole('button', { name: /^Concreto/ })
-    expect(await concreto.isEnabled()).toBe(true)
+    expect(await passo('botão Concreto', () => concreto.isEnabled(PRAZO))).toBe(true)
     expect(await pagina.getByRole('button', { name: /^IFC/ }).count()).toBe(1)
-    expect(await pagina.locator('.selo-beta').count()).toBe(0)
-    for (const beta of [/^Projetos/, /^Relatórios/, /^Documentos/]) expect(await pagina.getByRole('button', { name: beta }).count()).toBe(0)
+    const projetos = pagina.getByRole('button', { name: /^Projetos/ })
+    const documentos = pagina.getByRole('button', { name: /^Documentos/ })
+    expect(await projetos.count()).toBe(1)
+    expect(await passo('botão Projetos', () => projetos.isEnabled(PRAZO))).toBe(true)
+    expect(await documentos.count()).toBe(1)
+    expect(await pagina.locator('.selo-beta').count()).toBe(1)
+    expect(await projetos.locator('.selo-beta').count()).toBe(1)
+    expect(await documentos.locator('.selo-beta').count()).toBe(0)
+    expect(await pagina.getByRole('button', { name: /^Relatórios/ }).count()).toBe(0)
 
-    await concreto.click()
-    await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
+    // Documentos com conta: abre a lista mestra da obra do servidor, sem os exemplos da demonstração; o gestor cadastra
+    await passo('clicar em Documentos', () => documentos.click(PRAZO))
+    // Com conta a lista começa vazia (os exemplos são só sem conta): o contêiner da lista existe, mas sem
+    // altura, e o Playwright o trata como invisível (CI 73). A contagem ("0 documentos.") sempre aparece.
+    await passo('contagem do Documentos', () => pagina.getByTestId('contagem').waitFor(PRAZO))
+    await passo('lista-mestra do Documentos', () => pagina.getByTestId('lista-mestra').waitFor({ ...PRAZO, state: 'attached' }))
+    expect(await pagina.evaluate(() => history.state?.tela)).toBe('documentos')
+    expect(await pagina.getByTestId('aviso-exemplos').count()).toBe(0)
+    expect(await pagina.getByTestId('cadastrar').count()).toBe(1)
+    await passo('voltar do Documentos', () => pagina.goBack(PRAZO))
+    await passo('menu depois do Documentos', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
+
+    // Projetos com conta: abre a tela inicial do módulo e o voltar do Android retorna ao menu
+    await passo('clicar em Projetos', () => projetos.click(PRAZO))
+    // o título leva o selo: o nome acessível é "Projetos beta" (com exact: 'Projetos' esperava para sempre, CI 69)
+    await passo('título do Projetos', () => pagina.getByRole('heading', { name: /^Projetos/ }).waitFor(PRAZO))
+    expect(await pagina.evaluate(() => history.state?.tela)).toBe('projetos')
+    await passo('voltar do Projetos', () => pagina.goBack(PRAZO))
+    await passo('menu depois do Projetos', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
+
+    await passo('clicar em Concreto', () => concreto.click(PRAZO))
+    await passo('título do Concreto', () => pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor(PRAZO))
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('concreto')
-    await pagina.goBack()
-    await pagina.getByTestId('menu-obra').waitFor()
+    await passo('voltar do Concreto', () => pagina.goBack(PRAZO))
+    await passo('menu depois do Concreto', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
 
     // O "‹ Menu" da tela inicial do módulo também volta ao menu (era "‹ Voltar" até 20/11/2026).
-    await pagina.getByRole('button', { name: /^Concreto/ }).click()
-    await pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor()
+    await passo('clicar em Concreto de novo', () => pagina.getByRole('button', { name: /^Concreto/ }).click(PRAZO))
+    await passo('título do Concreto de novo', () => pagina.getByRole('heading', { name: 'Concreto', exact: true }).waitFor(PRAZO))
     expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹ Menu')
-    await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
-    await pagina.getByTestId('menu-obra').waitFor()
+    await passo('‹ Menu do Concreto', () => pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click(PRAZO))
+    await passo('menu no fim', () => pagina.getByTestId('menu-obra').waitFor(PRAZO))
   })
 
   it('FVS abre pelo menu e o voltar retorna ao menu', async () => {
     const fvs = pagina.getByRole('button', { name: /^FVS/ })
-    expect(await fvs.isEnabled()).toBe(true)
+    expect(await passo('botão FVS (começa no menu)', () => fvs.isEnabled(PRAZO))).toBe(true)
     await fvs.click()
     await pagina.getByRole('heading', { name: 'FVS', exact: true }).waitFor()
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('fvs')

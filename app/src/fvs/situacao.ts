@@ -14,6 +14,9 @@
 
 export type Resultado = 'C' | 'NC' | 'NA'
 
+/** Locais que não são peça de estrutura: ambiente, furo, esquadria e parede de alvenaria (modulação, 20/11). */
+export const FORA_DA_ESTRUTURA: ReadonlySet<string> = new Set(['A', 'F', 'E', 'M'])
+
 /** Nome por extenso de cada resultado, como na ficha (PVS). */
 export const NOME_DO_RESULTADO: Record<Resultado, string> = { C: 'Conforme', NC: 'Não conforme', NA: 'Não aplicável' }
 
@@ -555,8 +558,11 @@ export type ContextoCampo = {
   partesDe?: (id: string) => readonly string[]
 }
 
-/** Peças de estrutura (ambiente não conta): quantas liberadas e quantas com NC na ficha do seu tipo. */
-export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readonly Ficha[], eventosDe: EventosDe, campo?: ContextoCampo) {
+/**
+ * Peças de estrutura (ambiente, furo, esquadria e parede não contam): quantas liberadas e quantas com NC na ficha
+ * do seu tipo. Com `so`, só os locais desse tipo ("M": as paredes da modulação).
+ */
+export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readonly Ficha[], eventosDe: EventosDe, campo?: ContextoCampo, so?: string) {
   const fichaDoTipo = new Map<string, Ficha | undefined>()
   const mapaDeFichas = new Map(fichas.map((f) => [f.id, f]))
   const porId = (id: string) => mapaDeFichas.get(id)
@@ -566,8 +572,9 @@ export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readon
   let comR = 0
   let duplicadas = 0
   for (const l of locais) {
-    // furo de viga conta dentro da viga (pelo item de furação da ficha), e não como peça; a esquadria, no ambiente
-    if (l.tipo === 'A' || l.tipo === 'F' || l.tipo === 'E') continue
+    // furo de viga conta dentro da viga (pelo item de furação da ficha), e não como peça; a esquadria, no ambiente;
+    // a parede, na modulação
+    if (so ? l.tipo !== so : FORA_DA_ESTRUTURA.has(l.tipo)) continue
     total++
     if (!fichaDoTipo.has(l.tipo)) fichaDoTipo.set(l.tipo, fichasPara(l.tipo, fichas)[0])
     const abertas = campo?.fichasDe(l.id) ?? []

@@ -50,8 +50,8 @@ export interface DadosDaEsquadria {
 }
 
 export interface ElementoPacote {
-  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga), E esquadria do ambiente */
-  tipo: 'P' | 'V' | 'L' | 'A' | 'F' | 'E'
+  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga), E esquadria do ambiente, M parede de alvenaria (planta de modulação) */
+  tipo: 'P' | 'V' | 'L' | 'A' | 'F' | 'E' | 'M'
   nome: string
   /** seção da peça ("19x60") ou área do ambiente ("12,1 m²") */
   secao: string

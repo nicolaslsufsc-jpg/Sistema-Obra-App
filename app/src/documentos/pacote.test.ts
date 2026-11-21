@@ -3,13 +3,18 @@ import { BancoLocal } from '../nucleo/banco_local'
 import type { ObraLocal } from '../nucleo/conta'
 import { sha256Hex } from '../fvs/pacote'
 import { pdfDeExemplo } from './exemplos'
-import { gravarLinha } from './gravar'
+import { Sincronizador } from '../nucleo/sincronizacao'
+import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { semearDocumentosDoPacote, type DocumentoNoPacote } from './pacote'
 import { montarDocumentos, TABELA_DOCUMENTOS, type LinhaDocumento } from './regras'
 
 const OBRA: ObraLocal = { id: 'b0000000-0000-0000-0000-0000000000ee', codigo: 'EXE', nome: 'Obra Exemplo', empresa: null, papel: 'admin' }
 let seq = 0
 const novoBanco = () => new BancoLocal(`teste-doc-pacote-${++seq}`)
+
+/** Grava como o módulo grava (sincronizador do núcleo), num banco só do teste. */
+const gravarLinha = (b: BancoLocal, obraId: string, usuarioId: string, campos: Record<string, unknown>) =>
+  new Sincronizador({ banco: b, cliente: {} as never, tabelas: TABELAS_SINCRONIZADAS }).registrar(TABELA_DOCUMENTOS, obraId, usuarioId, campos)
 
 async function pacote(docs: Array<Omit<DocumentoNoPacote, 'arquivo'> & { pdf?: string }>) {
   const arquivos = new Map<string, Blob>()

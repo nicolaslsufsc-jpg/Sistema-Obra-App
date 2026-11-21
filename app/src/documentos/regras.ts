@@ -6,7 +6,7 @@
 import { vigentes, type Corrigivel, type Vigente } from '../concreto/vigentes'
 import { ordemDaCategoria, type Escopo } from './categorias'
 
-export const TABELA_DOCUMENTOS = 'doc_documentos'
+export { TABELA_DOCUMENTOS } from './tabelas'
 /** Maior arquivo aceito (PDF ou foto). */
 export const LIMITE_ARQUIVO = 10 * 1024 * 1024
 /** Acima disto, o módulo avisa que os arquivos estão pesando no aparelho e no salvamento. */
@@ -162,12 +162,17 @@ export function conferirRascunho(r: Rascunho, outros: readonly Documento[], chav
   if (!r.categoria) erros.categoria = 'Escolha a categoria.'
   if (!r.codigo.trim()) erros.codigo = 'Informe o código.'
   else if (r.codigo.trim().length > 40) erros.codigo = 'Código com até 40 letras.'
+  // os limites de texto são os mesmos do servidor (20261120150000_documentos.sql)
   if (!r.titulo.trim()) erros.titulo = 'Informe o título.'
+  else if (r.titulo.trim().length > 300) erros.titulo = 'Título com até 300 letras.'
   if (!r.revisao.trim()) erros.revisao = 'Informe a revisão (ex.: 00).'
+  else if (r.revisao.trim().length > 20) erros.revisao = 'Revisão com até 20 letras.'
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.data_revisao)) erros.data_revisao = 'Informe a data da revisão.'
   if (r.validade && !/^\d{4}-\d{2}-\d{2}$/.test(r.validade)) erros.validade = 'Data inválida.'
   else if (r.validade && r.data_revisao && r.validade < r.data_revisao) erros.validade = 'A validade é antes da data da revisão.'
   if (!r.responsavel.trim()) erros.responsavel = 'Informe o responsável.'
+  else if (r.responsavel.trim().length > 200) erros.responsavel = 'Responsável com até 200 letras.'
+  if (r.observacao.trim().length > 2000) erros.observacao = 'Observação com até 2.000 letras.'
   const chave = chaveDoDocumento(r.escopo, r.codigo)
   if (!erros.codigo && chave !== chaveDaRevisao && outros.some((d) => d.chave === chave)) {
     erros.codigo = 'Já existe um documento com este código. Para mudar, abra ele e use "Revisão nova".'

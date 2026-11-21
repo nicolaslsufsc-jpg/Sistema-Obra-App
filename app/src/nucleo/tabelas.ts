@@ -5,8 +5,9 @@
 // servidor vai para o fim, para não travar as que já existem.
 import { TABELAS_NUCLEO } from '../config'
 import { TABELAS_CONCRETO } from '../concreto/tabelas'
+import { TABELAS_DOCUMENTOS } from '../documentos/tabelas'
 import { TABELAS_FVS, TABELAS_FVS_HISTORICO } from '../fvs/tabelas'
-import { TABELAS_PROJETOS } from '../projetos/tabelas'
+import { TABELAS_PROJETOS, TABELAS_PROJETOS_DISTRIBUICAO } from '../projetos/tabelas'
 import { TABELAS_RELATORIOS } from '../relatorios/tabelas'
 
 /**
@@ -23,6 +24,8 @@ export const TABELAS_SINCRONIZADAS: readonly string[] = [
   ...TABELAS_PROJETOS,
   ...TABELAS_RELATORIOS,
   ...TABELAS_FVS_REGRAS,
+  ...TABELAS_DOCUMENTOS,
+  ...TABELAS_PROJETOS_DISTRIBUICAO,
   // em 07/11 a migração das áreas de laje (20261106130000_fvs_areas.sql) ainda não estava aplicada
   ...TABELAS_FVS_HISTORICO,
 ]
@@ -42,4 +45,6 @@ export const BLOCOS_SINCRONIZADOS: readonly (readonly string[])[] = [
   // Bloco à parte: a tabela cuja migração ainda não foi aplicada no servidor só para este bloco.
   TABELAS_FVS_HISTORICO,
   TABELAS_FVS_REGRAS,
+  TABELAS_DOCUMENTOS,
+  TABELAS_PROJETOS_DISTRIBUICAO,
 ]

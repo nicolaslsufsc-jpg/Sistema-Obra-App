@@ -26,32 +26,7 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
     <main class="tela">
       <Topo titulo="Concreto" sub={`${obra.codigo} · rastreabilidade por peça`} aoVoltar={aoSair} paraMenu />
 
-      {alertas.length > 0 && (
-        <section class="cartao cc-alertas" data-testid="alertas">
-          <h2>Laudos que pedem atenção ({alertas.length})</h2>
-          <ul class="lista">
-            {alertas.slice(0, 30).map(({ c, conc, pior }) => (
-              <li key={c.raiz}>
-                <button type="button" class="cc-linha" onClick={() => ir({ nome: 'caminhao', raiz: c.raiz })}>
-                  <span>
-                    <strong>
-                      Caminhão {c.sequencia}
-                      {c.nota_fiscal ? ` · NF ${c.nota_fiscal}` : ''}
-                    </strong>
-                    <span class="discreto">
-                      {nomePav.get(conc.pavimento_id)} · {dataBR(conc.data)} · {nomeDaConcretagem(conc)}
-                    </span>
-                  </span>
-                  <Selo situacao={pior!} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {ctx.fvm && <SecaoFvm ctx={ctx} fvm={ctx.fvm} />}
-
+      {/* "Laudos depois dos pavimentos" (Nicolas, 21/11): primeiro o mapa por pavimento, depois os alertas de laudo */}
       <h2>Pavimentos</h2>
       {dados.pavimentos.length === 0 ? (
         <p class="discreto">Nenhum pavimento cadastrado nesta obra ainda.</p>
@@ -84,6 +59,32 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
           })}
         </ul>
       )}
+
+      {alertas.length > 0 && (
+        <section class="cartao cc-alertas" data-testid="alertas">
+          <h2>Laudos que pedem atenção ({alertas.length})</h2>
+          <ul class="lista">
+            {alertas.slice(0, 30).map(({ c, conc, pior }) => (
+              <li key={c.raiz}>
+                <button type="button" class="cc-linha" onClick={() => ir({ nome: 'caminhao', raiz: c.raiz })}>
+                  <span>
+                    <strong>
+                      Caminhão {c.sequencia}
+                      {c.nota_fiscal ? ` · NF ${c.nota_fiscal}` : ''}
+                    </strong>
+                    <span class="discreto">
+                      {nomePav.get(conc.pavimento_id)} · {dataBR(conc.data)} · {nomeDaConcretagem(conc)}
+                    </span>
+                  </span>
+                  <Selo situacao={pior!} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {ctx.fvm && <SecaoFvm ctx={ctx} fvm={ctx.fvm} />}
 
       {dias.length > 0 && (
         <section data-testid="fichas-concreto">

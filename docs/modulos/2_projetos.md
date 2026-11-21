@@ -117,7 +117,14 @@ Pedido do Nicolas (21/11, pelo Professor): "coloca esse script no programa, a ú
   - Com mais de 1 dia, diz "Rode o atalho ... no PC".
   - Lê só a última linha de `listas_autodoc`, direto do servidor (a tabela não desce com a sincronização), e guarda uma cópia no aparelho para abrir sem internet.
   - Sem migração nova.
-- Bancada: `app/dev/projetos.html?autodoc=ok|atrasada|nunca`.
+- Bancada: `app/dev/projetos.html?autodoc=ok|atrasada|nunca` (e `&base=exe` para carregar a base fictícia).
+- **Aba Pessoas** ("quem tem o quê"; pedido do Nicolas de 21/11: "quando eu clico no fulano, ele tem tal projeto... tem que tirar dele tais projetos"). Só leitura, com e sem conta, em cima da base importada (`projetos/pessoas.ts` e `telas/TelaPessoas.tsx`).
+  - Menu: as empresas, com mais atrasadas primeiro. Submenu: as pessoas de cada empresa. Busca por empresa ou pessoa.
+  - Painel da pessoa: em campo, atrasadas, a entregar e conferir.
+    - **Recolher**: as cópias com revisão que não vale mais.
+    - **Entregar**: o que a lista de distribuição diz que falta.
+    - **O que tem em campo**: por disciplina e pasta do Autodoc (LO/Formas, LO/Pilares...), como a obra separa forma, armadura e pavimento.
+  - Atrasada = a cópia em campo não é a revisão vigente. A ficha de cópias não tem prazo de devolução; esse segundo critério fica para quando houver o campo.
 - Próximo passo: o teste ao vivo com o login do Nicolas no Autodoc e a primeira publicação de verdade da obra piloto.
 
 ## Status (20/11/2026): lista de distribuição e "A entregar" (branch `projetos/distribuicao`)

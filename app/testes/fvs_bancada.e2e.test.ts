@@ -729,6 +729,33 @@ suite('FVS na bancada (Chrome)', () => {
     [375, 812],
     [1024, 768],
   ] as const) {
+    it(`${largura}x${altura}: ficha que não vale no tipo de cômodo fica apagada, fora da contagem e sem itens`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      // ?comodos=1: o reboco de teste não vale nas 4 suítes com nome (aptos 103 e 104)
+      await p.goto(`${url}?abrir=ambientes&comodos=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/16 liberados')
+      await buscar(p, 'suite 01 103')
+      await nomeNoPainel(p, 'Suíte 01')
+      const aviso = p.getByTestId('fvs-fora-da-ficha')
+      await aviso.waitFor()
+      expect(await aviso.innerText()).toContain('não vale em Suíte 01')
+      expect(await p.locator('.fv-item').count()).toBe(0)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_fora_da_ficha_${largura}.png`) })
+      // na alvenaria a suíte vale: itens de volta e os 20 ambientes na conta
+      await p.getByTestId('fvs-servico').selectOption('TESTE-PVS-ALV')
+      await p.locator('.fv-ficha', { hasText: 'TESTE-PVS-ALV' }).waitFor()
+      expect(await aviso.count()).toBe(0)
+      expect(await p.locator('.fv-item').count()).toBeGreaterThan(0)
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/20 liberados')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${largura}x${altura}: planta de ambientes aberta pelo menu do pavimento, já no serviço e na aba escolhidos`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

@@ -112,6 +112,7 @@ import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { recortesDoAmbiente } from '../projetos_ambiente'
 import { usarCamadas } from './usarCamadas'
 import type { AbaDosAmbientes } from '../opcoes_ambientes'
+import { fichaValeNoLocal } from '../comodos'
 import { esquadriasPorUnidade, pontosPorMetroDasEsquadrias, posicoesDasEsquadrias, zoomDasEsquadrias } from '../esquadrias_longe'
 
 const COR: Record<Situacao, [string, number]> = {
@@ -404,6 +405,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     fichaDoTipo.set(t, f)
     return f
   }
+  // ficha × tipo de cômodo (pacote, `sem_fichas`): com o serviço escolhido, o cômodo em que ele não vale fica
+  // apagado, sem marcação e fora da contagem (piso cerâmico no quarto, drywall na sacada...)
+  const codigoDoServico = fichaDe('A')?.codigo
+  const foraDoServico = (e: ElementoPacote) => !fichaValeNoLocal(e, codigoDoServico)
   const fichasTipo = fichasPara(tipoDaFicha(tipo), dados.fichas)
   const fichaTipo = fichaDe(tipoDaFicha(tipo))
   // aba Esquadrias: os itens de esquadria do serviço escolhido e o que as esquadrias marcam agora
@@ -1095,7 +1100,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     for (const [id, e] of elementos) {
       // "Por item": a peça fica na cor daquele item (OK verde, NA verde-azulado, errado vermelho, sem conferir
       // cinza); a peça em que o item não se marca fica apagada
-      const doItem = porItemAtivo && e.tipo === porItemAtivo.tipo && !e.so_detalhe ? resultadoPorItem(id, porItemAtivo) : undefined
+      const doItem = porItemAtivo && e.tipo === porItemAtivo.tipo && !e.so_detalhe && !foraDoServico(e) ? resultadoPorItem(id, porItemAtivo) : undefined
       const s = doItem === undefined ? situacao(id, e) : doItem === 'C' || doItem === 'NA' ? 'liberado' : doItem === 'NC' ? 'reprovado' : 'nada'
       const [cor, f] = doItem === 'NA' ? [COR_NA, 0.45] : COR[s]
       const ativo = e.tipo === tipo && doItem !== 'fora'
@@ -1107,8 +1112,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // parede da modulação pendente (20/11): cinza claro e mais grossa, para aparecer em cima da parede preta da prancha
       const paredePendente = e.tipo === 'M' && s === 'nada' && doItem !== 'NA'
       const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
-      // arranque (só detalhe): tracejado e quase sem cor, para não parecer peça a marcar
-      const soDetalhe = !!e.so_detalhe
+      // arranque (só detalhe) e cômodo em que o serviço não vale: tracejado e quase sem cor, para não parecer peça a marcar
+      const soDetalhe = !!e.so_detalhe || foraDoServico(e)
       const fillOpacity = soDetalhe ? 0.02 : ehArea ? (ativo ? Math.min(f, OPACIDADE_MAX_AREA) : Math.min(f, OPACIDADE_MAX_AREA) * 0.5) : pendenteLeve ? 0.05 : ativo ? f : f * 0.25
       const opacity = ehArea ? (ativo ? 1 : 0.6) : !ativo ? 0.3 : soDetalhe && sel !== id ? 0.6 : pendenteLeve && sel !== id ? 0.6 : 1
       const weight = sel === id ? 4 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : e.tipo === 'M' ? 3 : 2
@@ -1352,6 +1357,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       if (!dados.areaPorId.has(id)) return
       setParteAberta(null)
       return abrirPainel(id)
+    }
+    // cômodo em que o serviço escolhido não vale (tabela ficha × tipo de cômodo): o pincel e o "Por item" não
+    // marcam nada; o toque comum abre o painel, que diz por quê
+    const semServico = foraDoServico(e) && e.tipo === tipo
+    if (semServico && (pincel || porItemAtivo) && pode) {
+      return avisar(`${fichaDe('A')?.codigo ?? 'Esta ficha'} não vale ${e.comodo ? `em ${e.comodo}` : 'neste cômodo'} (${e.nome}).`)
     }
     if (porItemAtivo && pode) {
       if (e.tipo !== porItemAtivo.tipo) return avisar(`No "Por item", toque ${porItemAtivo.tipo === 'P' ? 'nos pilares' : porItemAtivo.tipo === 'V' ? 'nas vigas' : porItemAtivo.tipo === 'M' ? 'nas paredes' : 'nos ambientes'}. Para abrir ${e.nome}, toque em Sair.`)
@@ -1910,8 +1921,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // arranque (só detalhe) não tem ficha: não conta no "x/y liberados"; na aba Furos, só os furos
   // conferíveis (o de laje fora de área ou de Geral, Climatização e Incêndio não marca nada; 20/11)
   const doTipo = useMemo(
-    () => elementos.filter(([id, e]) => e.tipo === tipo && !e.so_detalhe && (e.tipo !== 'F' || (furoConferivel(e, furosDeLaje.get(id)) && !deOutraPlanta(e)))),
-    [elementos, tipo, furosDeLaje],
+    () =>
+      elementos.filter(
+        ([id, e]) => e.tipo === tipo && !e.so_detalhe && !foraDoServico(e) && (e.tipo !== 'F' || (furoConferivel(e, furosDeLaje.get(id)) && !deOutraPlanta(e))),
+      ),
+    [elementos, tipo, furosDeLaje, codigoDoServico],
   )
   let liberadas = 0
   let paraConcretar = 0
@@ -2633,6 +2647,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           c={c}
           pacote={pacote}
           ficha={ehFilho(pecaSel.tipo) ? fichaDoFuro(sel) : fichaDoLocal(sel, pecaSel.tipo)}
+          foraDaFicha={pecaSel.tipo === 'A' && !fichaValeNoLocal(pecaSel, fichaDoLocal(sel, 'A')?.codigo)}
           // a área tem a ficha dela: escolhida na caixa, não muda depois
           fichas={areaSel ? (fichaPorId(areaSel.ficha_id) ? [fichaPorId(areaSel.ficha_id)!] : []) : ehFilho(pecaSel.tipo) ? [] : fichasPara(pecaSel.tipo, dados.fichas)}
           aoGravar={
@@ -2697,6 +2712,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 // ---------------------------------------------------------------------- painel da peça
 
 interface PropsPainel {
+  /** ambiente em que a ficha escolhida não vale (tabela ficha × tipo de cômodo): sem itens para marcar */
+  foraDaFicha?: boolean
   id: string
   /** consolo e capitel do pilar nesta planta */
   partes: readonly string[]
@@ -3375,8 +3392,13 @@ function Painel(p: PropsPainel) {
             // furo e esquadria não têm ficha própria (usam a do pai): o aviso de cima já diz o que falta
             !ehFilho(peca.tipo) && <p class="aviso">Não há ficha (PVS) para {NOME_TIPO[peca.tipo] ?? peca.tipo} nesta obra.</p>
           )}
-          {!soDetalhe && !p.pode && <p class="discreto">Seu acesso nesta obra é só de leitura.</p>}
-          {!soDetalhe && linhas}
+          {!soDetalhe && p.foraDaFicha && (
+            <p class="aviso" data-testid="fvs-fora-da-ficha">
+              Esta ficha não vale {peca.comodo ? `em ${peca.comodo}` : 'neste cômodo'}, pela tabela de fichas por tipo de cômodo da obra. Escolha outra ficha.
+            </p>
+          )}
+          {!soDetalhe && !p.foraDaFicha && !p.pode && <p class="discreto">Seu acesso nesta obra é só de leitura.</p>}
+          {!soDetalhe && !p.foraDaFicha && linhas}
           {!soDetalhe && secoesDasPartes}
           {daFicha.length > 0 && (
             <details class="fv-hist-peca" data-testid="fvs-hist-peca">

@@ -18,6 +18,7 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                                    "rotulo": [x0, y0, x1, y1], "polys": [[[x, y], ...]],
                                    "detalhe": "P_P32"}},
                (ambiente: "tipo": "A", "nome": "303-04", "secao": "12,1 m²", "grupo": "Apto 303", opcional "comodo": "Suíte 01";
+                opcional "sem_fichas": ["EXE-024"] (fichas que não valem neste cômodo; ambientes.marcar_fichas_do_comodo);
                 opcional "detalhe" (modulação) e "projetos": ["PP_Apto_303", "I_Apto_303"] (paginação, impermeabilização...;
                 pipeline/fvs/modulacao.py))
                (pilar com consolo ou capitel: "partes": [{"tipo": "consolo", "polys": [[[x, y], ...]], "detalhe": "C_CONSOLO_P32"}])
@@ -163,6 +164,12 @@ def montar(
             if e["tipo"] != "A":
                 raise ErroPacote(f"{e.get('nome')}: só ambiente tem nome de cômodo")
             reg["comodo"] = str(e["comodo"])
+        if e.get("sem_fichas"):
+            if e["tipo"] != "A":
+                raise ErroPacote(f"{e.get('nome')}: só ambiente tem \"sem_fichas\"")
+            if not isinstance(e["sem_fichas"], list) or not all(isinstance(c, str) and c for c in e["sem_fichas"]):
+                raise ErroPacote(f"{e.get('nome')}: \"sem_fichas\" tem que ser uma lista de códigos de ficha")
+            reg["sem_fichas"] = sorted(set(e["sem_fichas"]))
         if e.get("projetos"):
             if e["tipo"] != "A":
                 raise ErroPacote(f"{e.get('nome')}: só ambiente tem projetos")

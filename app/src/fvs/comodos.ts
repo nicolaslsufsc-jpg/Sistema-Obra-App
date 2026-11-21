@@ -20,5 +20,15 @@ export function nomeComComodo(nome: string, comodo?: string): string {
   return comodo ? `${nome} · ${comodo}` : nome
 }
 
+/**
+ * A ficha vale neste local? Só o ambiente pode dizer que não, pelo `sem_fichas` do pacote (tabela ficha × tipo
+ * de cômodo da obra: piso cerâmico não vai no quarto, drywall não vai na sacada...). Sem ficha escolhida, sem o
+ * campo ou outro tipo de local: vale, como antes da tabela.
+ */
+export function fichaValeNoLocal(e: { tipo: string; sem_fichas?: readonly string[] }, codigo: string | undefined): boolean {
+  if (!codigo || e.tipo !== 'A' || !e.sem_fichas?.length) return true
+  return !e.sem_fichas.includes(codigo)
+}
+
 /** O nome da peça para as listas, com o cômodo se for ambiente com nome. */
 export const nomeDaPeca = (peca: { id: string; nome: string }): string => nomeComComodo(peca.nome, comodoGuardado(peca.id))

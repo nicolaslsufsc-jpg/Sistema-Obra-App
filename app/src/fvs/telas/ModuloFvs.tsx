@@ -4,7 +4,8 @@ import type { Linha } from '../../nucleo/banco_local'
 import type { PropsModulo } from '../../modulos'
 import { usarSincronizacao } from '../../nucleo/usarSincronizacao'
 import { atualizarNomes, avisoDaSincronizacao, carregar, refazerToquesDaObra, type DadosFvs } from '../dados'
-import { DadosDaTela } from '../leitura'
+import { DadosDaTela, dadosGuardados } from '../leitura'
+import { pacotesNoAparelho } from '../pacote'
 import { sistemaDaObra, type SistemaOficial } from '../../integracoes/sistema_oficial'
 import { lembrarTela, telaGuardada } from '../onde_estava'
 import { TelaDuplicadas } from './TelaDuplicadas'
@@ -66,19 +67,34 @@ export function ModuloFvs(props: PropsModulo) {
     lembrarTela(obra.id, { nome: 'inicio' })
     return { nome: 'inicio' }
   })
-  const [dados, setDados] = useState<DadosFvs | null>(null)
+  // aberta de novo na mesma página: mostra o que já tinha lido e relê por trás (leitura.ts)
+  const chaveDosDados = `${obra.id}|${usuario.id}`
+  const [dados, setDados] = useState<DadosFvs | null>(() => dadosGuardados(chaveDosDados))
   const leitor = useMemo(
-    () => new DadosDaTela(async () => ({ ...(await carregar(obra.id)), usuarioId: usuario.id }), setDados),
-    [obra.id, usuario.id],
+    () => new DadosDaTela(async () => ({ ...(await carregar(obra.id)), usuarioId: usuario.id }), setDados, chaveDosDados),
+    [chaveDosDados],
   )
+  // as plantas do aparelho: a lista é lida junto com as marcações, não depois da tela inicial
+  useEffect(() => {
+    pacotesNoAparelho().catch(() => {})
+  }, [])
   const recarregar = useCallback(() => leitor.recarregar(), [leitor])
   const registrados = useCallback((linhas: readonly Linha[]) => leitor.registrados(linhas), [leitor])
 
   // toques que a página não terminou de gravar (recarregou no meio): refeitos uma vez, ao abrir
   const [refeitos, setRefeitos] = useState(0)
   const refez = useRef(false)
+  // aberta de novo sem nada mudar no aparelho: não relê (a primeira vez do efeito abaixo)
+  const [guardadoVale] = useState(() => leitor.guardadoVale())
+  const primeiraLeitura = useRef(true)
   useEffect(() => {
-    recarregar().then(async (d) => {
+    leitor.aberta(true)
+    return () => leitor.aberta(false)
+  }, [leitor])
+  useEffect(() => {
+    const guardados = primeiraLeitura.current && guardadoVale ? leitor.dados() : null
+    primeiraLeitura.current = false
+    ;(guardados ? Promise.resolve(guardados) : recarregar()).then(async (d) => {
       if (refez.current) return
       refez.current = true
       const n = await refazerToquesDaObra(obra.id, d, registrados)

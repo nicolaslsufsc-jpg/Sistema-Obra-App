@@ -1026,10 +1026,18 @@ async function semearRevisaoNova() {
 
 const pasta = params.get('pasta')
 if (pasta) {
-  semearDaPasta(pasta)
+  // ?ja=1: a obra já está no aparelho (semeada e baixada antes): abre sem semear, como o app de verdade
+  ;(params.get('ja') ? Promise.resolve() : semearDaPasta(pasta))
     .then(() => {
       history.replaceState({ tela: 'fvs' }, '')
-      render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
+      const abrirModulo = () => render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
+      abrirModulo()
+      // medir a abertura do módulo sem a semeadura (scratchpad mede_abrir): sai e entra de novo, como pelo menu
+      ;(window as unknown as { __reabrirFvs: () => void }).__reabrirFvs = () => {
+        render(null, document.getElementById('app')!)
+        history.replaceState({ tela: 'fvs' }, '')
+        abrirModulo()
+      }
     })
     .catch((e) => {
       document.getElementById('app')!.textContent = `Bancada: não consegui ler ${pasta} (${e}). Rode: py pipeline/fvs/bancada.py PASTA`

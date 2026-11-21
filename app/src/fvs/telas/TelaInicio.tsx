@@ -5,6 +5,7 @@
 //      planta que já existe. Cada planta mostra se já está no aparelho (abre sem internet) ou o Baixar.
 // Os três níveis são esta mesma tela (o download continua ao trocar de nível); o voltar sobe um nível.
 import { resumoDasRegras } from '../regras_tela'
+import { contagemDoEscoramento, listaDoEscoramento } from '../escoramento'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
 import { resumoDasAreas } from '../areas'
@@ -253,6 +254,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   const reprovacoes = useMemo(() => conta(dados, 'reprovacoes', () => reprovacoesDaObra(dados)), [dados])
   const abertas = reprovacoes.filter((r) => r.aberta).length
   const paraLancar = useMemo(() => conta(dados, 'lancar', () => paraLancarDaObra(dados, dados.lancados).length), [dados])
+  // escoramento e desforma (3.6, 21/11): quantas peças já podem e quantas aguardam o prazo das regras
+  const escoramento = useMemo(() => (dados.regras.prazos.length ? conta(dados, 'escoramento', () => contagemDoEscoramento(listaDoEscoramento(dados))) : null), [dados])
   const duplicadas = useMemo(() => [...dados.fichasCampoDe.values()].filter((f) => f.length > 1).length, [dados])
   const avisoSistema = avisoDoSistemaOficial(props.obra, dados.fichasCampoDe.size > 0 || dados.fichasCampoSemPeca.length > 0)
   // os resumos percorrem a obra inteira: só refaz quando os dados mudam, não a cada ponto do download
@@ -645,6 +648,14 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             {duplicadas} {duplicadas === 1 ? 'peça' : 'peças'} com ficha duplicada no {sistema.nome}
           </b>
           <span>Ver as duas situações de cada uma ›</span>
+        </button>
+      )}
+      {escoramento && escoramento.podem + escoramento.aguardam > 0 && (
+        <button type="button" class="fv-entra-rep" data-testid="fvs-entra-escoramento" onClick={() => ir({ nome: 'escoramento' })}>
+          <b>
+            Escoramento e desforma: {escoramento.podem} {escoramento.podem === 1 ? 'pode retirar' : 'podem retirar'} · {escoramento.aguardam} aguardando
+          </b>
+          <span>Ver por pavimento ›</span>
         </button>
       )}
       {(dados.regras.prazos.length > 0 || dados.regras.ligacoes.length > 0 || !!dados.regras.fora) && (

@@ -13,6 +13,7 @@ import { TelaInicio } from './TelaInicio'
 import { TelaLancamento } from './TelaLancamento'
 import { TelaPlanta } from './TelaPlanta'
 import { TelaRegras } from './TelaRegras'
+import { TelaEscoramento } from './TelaEscoramento'
 import { TelaReprovacoes } from './TelaReprovacoes'
 import '../fvs.css'
 import type { AbaDosAmbientes } from '../opcoes_ambientes'
@@ -26,6 +27,7 @@ export type TelaFvs =
   | { nome: 'lancamento' }
   | { nome: 'duplicadas' }
   | { nome: 'regras' }
+  | { nome: 'escoramento' }
   /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item;
    *  servico e aba: planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts, campo `abre`);
    *  tipo: aba da forma aberta por uma opção da Estrutura (P, V, L, F, B) */
@@ -181,6 +183,7 @@ export function ModuloFvs(props: PropsModulo) {
   if (tela.nome === 'reprovacoes') return <TelaReprovacoes ctx={ctx} aviso={aviso} />
   if (tela.nome === 'lancamento' && ctx.sistema) return <TelaLancamento ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   if (tela.nome === 'regras') return <TelaRegras ctx={ctx} />
+  if (tela.nome === 'escoramento') return <TelaEscoramento ctx={ctx} aviso={aviso} />
   if (tela.nome === 'duplicadas' && ctx.sistema) return <TelaDuplicadas ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   // os três níveis do início são a mesma tela (o download em andamento continua ao trocar de nível)
   const nivel = tela.nome === 'pavimento' ? { pavimentoId: tela.pavimentoId } : tela.nome === 'disciplina' ? { pavimentoId: tela.pavimentoId, disciplina: tela.disciplina } : undefined

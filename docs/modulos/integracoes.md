@@ -8,6 +8,30 @@ Proposta aprovada pelo Professor em nome do Nicolas: colunas do banco ficam como
 `sistema_oficial`, skill de concreto sem mudança. **Feitos os PRs 1, 2 e 3** (commits locais), o teste
 "sem integrações" e o job dele no GitHub (liberado pelo Professor em 09/11).
 
+### Leitura completa publicada no servidor (21/11/2026)
+
+Pedido do Nicolas (pelo Professor): tudo o que está no Construpoint tem que estar no programa. Migração
+`20261121130000_sistema_oficial_leitura.sql` (contrato v1.7) aplicada pelo Professor. Novo no galho:
+`leitura.py` (só biblioteca padrão, sem rede) e `publicar_leitura.py`, que lê a pasta de uma leitura
+salva no PC e grava no Supabase do Sistema Obra, do mesmo jeito que o `publicar_historico.py`: login do app,
+sem chave secreta, ids fixos (rodar de novo não duplica), trava `--empresa-autorizou`. Não entra no Construpoint.
+
+    py pipeline/integracoes/construpoint/publicar_leitura.py PASTA_DA_LEITURA --obra OBRA --fichas-com-peca FICHA_PILAR,FICHA_VIGA --so-conferir
+
+- Grava: `locais_sistema` (todos os locais de lá), `fvs_fichas_campo` (todas as fichas, com `local_id`,
+  `agendada_em`, `reinspecao_em`, `medicao`; peça quando é pilar ou viga da planta), `fvs_eventos` (só itens de
+  fichas com peça) e uma linha em `importacoes`.
+- **Não grava verificação só com `local_id`** (regra do contrato v1.7): ficam nas contagens da ficha até a tela
+  da FVS saber mostrar. Quando a tela estiver pronta, é só tirar essa trava em `leitura.py`.
+- **Não mexe nas fichas modelo do servidor**: as da obra piloto foram montadas pelas frentes da FVS (marcas de
+  laje, partes, furos). O registro é ligado ao item da ficha vigente pelo texto do item (sem acento, caixa e
+  pontuação). Publicar os modelos de lá por cima trocaria a ficha vigente (revisão maior ganha).
+- Concreto (rastreabilidade, caminhões) fica com a frente do Concreto, que cruza com a planta antes de publicar.
+- Obra piloto, 21/11: 4.228 locais, 1.486 fichas (1.340 com peça), 24.618 registros de 27.607 verificações
+  (os outros são de laje, bloco, cortina e ambientes); todos os itens acharam o item da ficha do servidor.
+  Os registros de teste que já estavam no servidor ficaram como estavam.
+- Testes: `testes/test_construpoint_leitura.py` (obra EXE, dados inventados).
+
 ### Como usar
 
 - Gerar o pacote com o sistema da obra: `py pipeline/fvs/exportar_bancada.py ... --sistema-oficial construpoint`

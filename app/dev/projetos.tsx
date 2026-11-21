@@ -133,6 +133,8 @@ async function semearAutodoc() {
   const horas = qual === 'atrasada' ? 50 : 2
   await banco.gravarMeta(chave, {
     conferidoEm: new Date().toISOString(),
+    // leitura anterior há 3 dias: no painel da obra, "nova" = vista depois dela
+    anterior: qual === 'nunca' ? null : dia(3),
     ultima:
       qual === 'nunca'
         ? null

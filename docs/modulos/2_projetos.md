@@ -105,6 +105,17 @@ Item "Projetos" no menu da obra. Celular e tablet primeiro, depois o PC.
 ## Depende de
 Núcleo (banco, sincronização, `arquivos` para as fotos).
 
+## Status (21/11/2026, tarde): painel da obra (branch `projetos/painel-obra`)
+Pedido do Nicolas (21/11, pelo Professor): "da inicio as outras etapas que haviamos comentado dos projetos". Etapas: (a) painel da obra, (b) controle de entrega por pessoa, (c) PDF dessas telas.
+- **Teste ao vivo do atalho do Autodoc (21/11, 12:31): deu certo.** Lista do dia publicada na obra piloto (`listas_autodoc`, `documentos` e `revisoes`). A rodada exigiu três ajustes no script do PC: selecionar a conta pela página inicial depois do login, fechar o tour de boas-vindas e limpar o filtro Data (últimos 7 dias).
+- **(a) Painel da obra** (`projetos/obra.ts` e `telas/TelaObra.tsx`): a primeira tela do Projetos no app com conta. Sem conta, continua o painel da base.
+  - Faixa da última atualização do Autodoc.
+  - Quatro números: vigentes; com revisão nova; PC atrás do Autodoc (pasta do escritório com revisão antiga); PC em dia (e quantas sem registro do escritório).
+  - Por disciplina e, dentro dela, por pavimento. O pavimento sai do nome curto e do título da prancha (`pavimentoDe`: "FOR4PAVTIP" vira 4º pavimento; pilotis, térreo, fundação...; o resto fica em "Geral").
+  - **Nova** = a revisão vigente apareceu depois da leitura anterior do Autodoc (o app lê as últimas linhas de `listas_autodoc`). Na primeira leitura nada conta como novo. Sem internet e sem cópia guardada, vale a regra antiga dos últimos 7 dias.
+  - Lista das revisões novas; tocar abre a prancha.
+  - Sem migração nova.
+
 ## Status (21/11/2026): atualização automática do Autodoc (branch `projetos/autodoc-com-conta`)
 Pedido do Nicolas (21/11, pelo Professor): "coloca esse script no programa, a única coisa que a pessoa vai fazer é executar ele".
 - **Fora do repositório** (entra no Autodoc, regra do CLAUDE.md): um atalho na área de trabalho, "Atualizar projetos do Autodoc", roda o exportador.

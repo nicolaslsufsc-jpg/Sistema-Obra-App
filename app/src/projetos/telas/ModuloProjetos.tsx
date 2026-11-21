@@ -10,6 +10,7 @@ import { FormDevolucao, FormEntrega } from './Formularios'
 import { TelaEmpresas } from './TelaEmpresas'
 import { TelaAcoes } from './TelaAcoes'
 import { TelaPainel } from './TelaPainel'
+import { TelaObra } from './TelaObra'
 import { TelaEntregasBase, TelaPranchasBase } from './TelaListasBase'
 import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
 import { TelaPessoa, TelaPessoas } from './TelaPessoas'
@@ -19,6 +20,7 @@ import { avisoDoEnvio } from '../aviso_sync'
 import '../projetos.css'
 
 export type TelaProjetos =
+  | { nome: 'obra' }
   | { nome: 'painel'; importar?: boolean }
   | { nome: 'pranchas-base' }
   | { nome: 'entregas-base' }
@@ -63,7 +65,7 @@ export function ModuloProjetos({
   aoPerderObra: () => void
 }) {
   const { estado } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
-  const [tela, setTela] = useState<TelaProjetos>(() => (history.state?.projetos as TelaProjetos) ?? { nome: 'painel' })
+  const [tela, setTela] = useState<TelaProjetos>(() => (history.state?.projetos as TelaProjetos) ?? { nome: 'obra' })
   const [dados, setDados] = useState<DadosProjetos | null>(null)
   const [mensagem, setMensagem] = useState<{ texto: string; tipo: 'ok' | 'erro' } | null>(null)
 
@@ -79,7 +81,7 @@ export function ModuloProjetos({
     const aoVoltar = (e: PopStateEvent) => {
       if (e.state?.tela === 'projetos') {
         setMensagem(null)
-        setTela((e.state.projetos as TelaProjetos) ?? { nome: 'painel' })
+        setTela((e.state.projetos as TelaProjetos) ?? { nome: 'obra' })
       }
     }
     window.addEventListener('popstate', aoVoltar)
@@ -113,6 +115,9 @@ export function ModuloProjetos({
 
   let conteudo
   switch (tela.nome) {
+    case 'obra':
+      conteudo = <TelaObra ctx={ctx} aoSair={aoSair} />
+      break
     case 'painel':
       conteudo = <TelaPainel ctx={ctx} aoSair={aoSair} importar={tela.importar} />
       break

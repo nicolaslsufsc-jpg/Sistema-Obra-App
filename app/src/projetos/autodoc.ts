@@ -24,6 +24,8 @@ export interface UltimaListaAutodoc {
 /** O que o servidor devolveu na última consulta; `null` = a obra ainda não tem nenhuma lista. */
 export interface EstadoAutodoc {
   ultima: UltimaListaAutodoc | null
+  /** dia da lista anterior à última (para contar o que é novo desde a leitura anterior); null = só uma leitura */
+  anterior?: string | null
   /** quando o aparelho perguntou ao servidor pela última vez (ISO) */
   conferidoEm: string
 }
@@ -56,9 +58,12 @@ export async function atualizarDoServidor(obraId: string, agora = new Date()): P
       .eq('obra_id', obraId)
       .eq('apagado', false)
       .order('criado_em_servidor', { ascending: false })
-      .limit(1)
+      .limit(20)
     if (error || !data) return lerGuardado(obraId)
-    const linha = (data as LinhaLista[])[0]
+    const linhas = data as LinhaLista[]
+    const linha = linhas[0]
+    // a leitura anterior é a última de um dia antes (no mesmo dia o script pode rodar mais de uma vez)
+    const anterior = linha ? (linhas.find((l) => l.data_lista < linha.data_lista)?.data_lista ?? null) : null
     let ultima: UltimaListaAutodoc | null = null
     if (linha) {
       let quem = 'alguém da obra'
@@ -74,7 +79,7 @@ export async function atualizarDoServidor(obraId: string, agora = new Date()): P
         resultado: linha.resultado ?? '',
       }
     }
-    const estado: EstadoAutodoc = { ultima, conferidoEm: agora.toISOString() }
+    const estado: EstadoAutodoc = { ultima, anterior, conferidoEm: agora.toISOString() }
     await banco.gravarMeta(chave(obraId), estado)
     return estado
   } catch (e) {

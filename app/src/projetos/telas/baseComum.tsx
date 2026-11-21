@@ -7,7 +7,8 @@ import { aplicarEdicoes, gravarEdicao, lerEdicoes, resumirEscritorio, type Edica
 import { cruzar, resumir, type CopiaCruzada } from '../painel'
 import { mesclarEscritorio, vigentesDoServidor } from '../canteiro'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
-import { dataBR } from './comum'
+import { dataBR, horaBR } from './comum'
+import { FaixaAutodoc } from './FaixaAutodoc'
 
 /** A base desta obra (só dela), com as correções aplicadas e o cruzamento feito. */
 export function usarBase(ctx: Contexto) {
@@ -97,10 +98,17 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
 
       {base && (base.vigentesImportadaEm || base.copiasImportadaEm || vigenteDoServidor) && (
         <p class="pj-aviso-base" data-testid="painel-datas">
-          {vigenteDoServidor ? 'Revisão vigente do servidor (lista do Autodoc).' : base.vigentesImportadaEm ? `Lista vigente importada em ${dataBR(base.vigentesImportadaEm)}.` : 'Falta a lista vigente.'}{' '}
+          {vigenteDoServidor
+            ? 'Revisão vigente do servidor (lista do Autodoc).'
+            : base.vigentesImportadaEm
+              ? `Revisão vigente da lista importada em ${horaBR(base.vigentesImportadaEm)} (última atualização manual).`
+              : 'Falta a lista vigente.'}{' '}
           {base.copias.length ? `Distribuição com entregas até ${dataBR(ultimaEntrega(base))}.` : 'Falta a distribuição.'}
         </p>
       )}
+
+      {/* com conta: quando o Autodoc foi puxado, em todas as abas (pedido do Nicolas, 21/11) */}
+      {!ctx.semConta && <FaixaAutodoc obraId={obra.id} />}
 
       <nav class="pj-abas" aria-label="Partes do módulo" ref={abas}>
         {ABAS.map((a) => (

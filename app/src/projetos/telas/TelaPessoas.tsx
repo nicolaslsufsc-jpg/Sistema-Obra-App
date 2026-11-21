@@ -3,7 +3,7 @@
 // ela tem em campo, por disciplina e pasta. Só leitura. Ver projetos/pessoas.ts.
 import { useMemo, useState } from 'preact/hooks'
 import { normalizar, rotuloRev, type CopiaCruzada } from '../painel'
-import { gruposDaPessoa, pessoasDaObra, porEmpresa, type Pessoa } from '../pessoas'
+import { pavimentosDaPessoa, pessoasDaObra, porEmpresa, type Pessoa } from '../pessoas'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
@@ -107,7 +107,7 @@ export function TelaPessoa({ ctx, chave }: { ctx: Contexto; chave: string }) {
         <p class="discreto">Essa pessoa não está mais na base desta obra.</p>
       </main>
     )
-  const grupos = gruposDaPessoa(p)
+  const pavimentos = pavimentosDaPessoa(p)
 
   return (
     <main class="tela pj-painel" data-testid="pessoa">
@@ -170,20 +170,21 @@ export function TelaPessoa({ ctx, chave }: { ctx: Contexto; chave: string }) {
 
       <section class="pj-bloco" data-testid="pessoa-tem">
         <h2>O que tem em campo</h2>
-        {grupos.length === 0 && <p class="discreto">Nenhuma cópia em campo.</p>}
-        {grupos.map((g) => (
-          <details key={g.disciplina} class="pj-disc" open={grupos.length <= 2}>
+        <p class="discreto">Por pavimento e, dentro dele, por disciplina.</p>
+        {pavimentos.length === 0 && <p class="discreto">Nenhuma cópia em campo.</p>}
+        {pavimentos.map((g) => (
+          <details key={g.pavimento} class="pj-disc" open={pavimentos.length <= 2} data-testid="pessoa-pavimento">
             <summary>
-              <b>{g.disciplina}</b> <span class="discreto">{plural(g.pastas.reduce((s, x) => s + x.copias.length, 0), 'cópia', 'cópias')}</span>
-              {g.pastas.some((x) => x.copias.some((c) => c.resultado === 'desatualizada')) && <span class="pj-selo des">tem atrasada</span>}
+              <b>{g.pavimento}</b> <span class="discreto">{plural(g.disciplinas.reduce((s, x) => s + x.copias.length, 0), 'cópia', 'cópias')}</span>
+              {g.atrasadas > 0 && <span class="pj-selo des">{plural(g.atrasadas, 'a recolher', 'a recolher')}</span>}
             </summary>
-            {g.pastas.map((pasta) => (
-              <div key={pasta.pasta} class="pj-subgrupo">
+            {g.disciplinas.map((d) => (
+              <div key={d.disciplina} class="pj-subgrupo">
                 <h3>
-                  {pasta.pasta} <span class="discreto">· {pasta.copias.length}</span>
+                  {d.disciplina} <span class="discreto">· {d.copias.length}</span>
                 </h3>
                 <ul class="pj-lista-painel">
-                  {pasta.copias.map((x) => (
+                  {d.copias.map((x) => (
                     <LinhaCopia key={x.copia.linha} ctx={ctx} x={x} />
                   ))}
                 </ul>

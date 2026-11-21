@@ -5,7 +5,7 @@
 // Plano aprovado pelo Nicolas em 21/11/2026 (docs/modulos/2_projetos.md).
 
 import type { DadosProjetos } from './dados'
-import { chaveFolha, type RegistroEscritorio } from './edicoes'
+import { chaveFolha, compararEscritorio, type RegistroEscritorio } from './edicoes'
 import { chaveNumero, lerCsv, melhor, normalizar, type CopiaCruzada, type Fase, type Vigente } from './painel'
 
 /** Nome da disciplina como a ficha de cópias escreve, pela sigla do código. Sigla fora daqui: o nome do Autodoc. */
@@ -141,9 +141,9 @@ export function escritorioDasFolhas(vigentes: readonly Vigente[], escritorio: Re
     const r = escritorio.get(k) ?? null
     let situacao: SituacaoEscritorio = 'SEM CÓPIA'
     if (r) {
-      // no PC a fase do arquivo é conhecida: EX R03 na pasta com a LO R03 vigente é ATUALIZAR
-      const dif = (PESO[r.fase] ?? 0) - (PESO[v.fase] ?? 0) || r.revisao - v.revisao
-      situacao = dif < 0 ? 'ATUALIZAR' : dif > 0 ? 'CONFERIR' : 'OK'
+      // regra estrita (compararEscritorio): EX R03 na pasta com a LO R03 vigente é ATUALIZAR
+      const c = compararEscritorio(r, v)
+      situacao = c === 'desatualizado' ? 'ATUALIZAR' : c === 'à frente' ? 'CONFERIR' : 'OK'
     }
     saida.push({ vigente: v, registro: r, situacao })
   }

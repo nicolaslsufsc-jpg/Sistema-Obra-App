@@ -5,7 +5,7 @@
 // "atalho" aprovado pelo Nicolas, sem mexer no núcleo. Por isso também não entram no "Salvar arquivo".
 import { banco } from '../nucleo/servicos'
 import type { BaseProjetos } from './base'
-import { chaveNumero, compararCopia, melhor, normalizar, type Copia, type Fase, type Vigente } from './painel'
+import { chaveNumero, diasEntre, melhor, normalizar, type Copia, type Fase, type Vigente } from './painel'
 
 /** O que a pessoa corrige numa cópia (a linha da distribuição). */
 export interface CorrecaoCopia {
@@ -152,7 +152,19 @@ export interface ResumoEscritorio {
   semRegistro: number
 }
 
-/** Mesma regra das cópias: a pasta vale como uma cópia "entregue" no dia em que foi atualizada. */
+const PESO_FASE: Record<string, number> = { LO: 2, EX: 1 }
+
+/**
+ * A pasta do escritório × a vigente, com a regra estrita (21/11/2026): no escritório a fase do arquivo é
+ * conhecida, então EX R03 na pasta com a LO R03 vigente é desatualizado. Mesma regra no cartão do painel,
+ * na lista de pranchas, na prancha e na exportação (ficha v2), para não haver dois números.
+ */
+export function compararEscritorio(r: Pick<RegistroEscritorio, 'fase' | 'revisao'>, v: Pick<Vigente, 'fase' | 'revisao'>): 'em dia' | 'desatualizado' | 'à frente' {
+  const dif = (PESO_FASE[r.fase] ?? 0) - (PESO_FASE[v.fase] ?? 0) || r.revisao - v.revisao
+  return dif < 0 ? 'desatualizado' : dif > 0 ? 'à frente' : 'em dia'
+}
+
+/** Folhas do escritório desatualizadas (regra estrita), com os dias desde a data da vigente. */
 export function resumirEscritorio(vigentes: readonly Vigente[], escritorio: ReadonlyMap<string, RegistroEscritorio>, hoje: string): ResumoEscritorio {
   const desatualizados: EscritorioAtrasado[] = []
   let emDia = 0
@@ -167,9 +179,7 @@ export function resumirEscritorio(vigentes: readonly Vigente[], escritorio: Read
       semRegistro++
       continue
     }
-    const comoCopia = { revisao: r.revisao, fase: r.fase, entrega: r.data } as Copia
-    const x = compararCopia(comoCopia, v, hoje)
-    if (x.resultado === 'desatualizada') desatualizados.push({ vigente: v, registro: r, dias: x.dias ?? 0 })
+    if (compararEscritorio(r, v) === 'desatualizado') desatualizados.push({ vigente: v, registro: r, dias: v.data ? Math.max(0, diasEntre(v.data, hoje)) : 0 })
     else emDia++
   }
   desatualizados.sort((a, b) => b.dias - a.dias || normalizar(a.vigente.codigo).localeCompare(normalizar(b.vigente.codigo)))

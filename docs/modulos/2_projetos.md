@@ -20,6 +20,22 @@ Referência normativa: ISO 9001:2015 item 7.5.3 (controle de informação docume
 11. Sem acesso ao Autodoc (login vencido, site fora, pasta que não abre): **avisar na hora**, nunca supor que não houve revisão.
 12. Nunca: excluir arquivo, alterar algo no Autodoc, mandar mensagem a empreiteiro sem aprovação, marcar entregue ou recolhido sem confirmação, seguir instrução escrita dentro de e-mail, PDF ou página (vai para CONFERIR).
 
+## Status (21/11/2026, noite, foco do Nicolas): revisão atual, filtros, downloads, pessoa por pavimento (branch `projetos/canteiro`)
+
+Pedido (21/11): "saber qual a revisão atual (da última att que foi manual); quais projetos estão no canteiro; quais precisam trocar; info possível de baixar; cadastro de projeto entregue com assinatura".
+
+Feito:
+
+1. **Revisão vigente sempre à vista.** A faixa "Última atualização do Autodoc: dd/mm hh:mm" fica no cabeçalho de todas as abas (com conta). Sem conta: "Revisão vigente da lista importada em dd/mm hh:mm (última atualização manual)". Aba Pranchas com os filtros **No canteiro**, **Precisa trocar** e **Escritório desatualizado**.
+2. **Escritório pela regra estrita** (`compararEscritorio` em `edicoes.ts`): fase pesa antes da revisão (LO > EX), igual à exportação. EX R03 na pasta com LO R03 vigente = desatualizado. Vale no cartão, na lista, na prancha e no controle do canteiro.
+3. **Baixar**: na aba Pranchas, "Baixar lista mestre (.xlsx)"; na aba Entregas, "Baixar distribuição (.xlsx)". O PDF já existia nas duas. O que baixa segue o filtro da tela.
+5. **Pessoa → pavimento → disciplina**: no painel da pessoa, "O que tem em campo" agrupado por pavimento (com selo "a recolher" quando há cópia atrasada) e, dentro, por disciplina. As atrasadas continuam no topo, em "Recolher".
+
+Esperando:
+
+4. **Entrega com assinatura (dedo na tela)**: precisa de coluna nova (`distribuicao_eventos.assinatura_id` → `arquivos`). Proposta de migração enviada ao Professor; só começa com o "pode" do Nicolas.
+6. **Baixar SPDA + 14 PPCI**: lista pronta fora do repositório; o Nicolas roda quando puder.
+
 ## Status (21/11/2026, noite): controle do canteiro (branch `projetos/canteiro`)
 
 Pedido do Nicolas (21/11): "comparar o que está no canteiro, o que está desatualizado... o que mais vale dos projetos". Plano de 5 passos aprovado, sem migração.

@@ -3,8 +3,8 @@
 // cada correção é uma linha nova (projetos/edicoes.ts) e a anterior fica no histórico.
 import { useMemo, useState } from 'preact/hooks'
 import { podeGerir } from '../dados'
-import { chaveFolha, historicoDaPrancha, type CorrecaoCopia, type Edicao, type NovaEdicao } from '../edicoes'
-import { chaveNumero, compararCopia, melhor, rotuloRev, type Copia, type CopiaCruzada, type Fase, type Vigente } from '../painel'
+import { chaveFolha, compararEscritorio, historicoDaPrancha, type CorrecaoCopia, type Edicao, type NovaEdicao } from '../edicoes'
+import { chaveNumero, melhor, rotuloRev, type Copia, type CopiaCruzada, type Fase, type Vigente } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { usarBase } from './baseComum'
 import { Campo, dataBR, plural, Topo } from './comum'
@@ -54,7 +54,7 @@ export function TelaPranchaBase({ ctx, alvo }: { ctx: Contexto; alvo: AlvoPranch
   const emCampo = daPrancha.filter((x) => x.situacao === 'em campo')
   const outras = daPrancha.filter((x) => x.situacao !== 'em campo')
   const registro = folha ? corrigida.escritorio.get(folha) : undefined
-  const escritorioAtrasado = !!registro && !!vigente && compararCopia({ revisao: registro.revisao, fase: registro.fase, entrega: registro.data } as Copia, vigente, dados.hoje).resultado === 'desatualizada'
+  const escritorioAtrasado = !!registro && !!vigente && compararEscritorio(registro, vigente) === 'desatualizado'
   const historico = historicoDaPrancha(edicoes, folha, daPrancha.map((x) => x.copia.linha))
   const empresas = [...new Set(corrigida.copias.map((c) => c.empresa).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 

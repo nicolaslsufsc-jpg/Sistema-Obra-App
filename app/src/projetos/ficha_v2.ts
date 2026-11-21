@@ -4,6 +4,7 @@
 import { escaparXml, letrasDaColuna, montarXlsx, serialDoExcel, type ArquivosXlsx } from '../concreto/xlsx'
 import { resumoPorEmpresa, situacaoFicha, SITUACOES_FICHA, type LinhaEscritorio } from './canteiro'
 import { rotuloRev, type CopiaCruzada, type Vigente } from './painel'
+import { baixarBlob } from '../nucleo/baixar'
 
 /** Valor de célula: texto, número, data (AAAA-MM-DD, vira data do Excel) ou vazio. */
 export type Celula = string | number | { data: string } | null
@@ -117,10 +118,13 @@ export interface EntradaFichaV2 {
   escritorio: readonly LinhaEscritorio[]
 }
 
-export function abasFichaV2(e: EntradaFichaV2): Aba[] {
+const LARGURAS_FICHA = [8, 12, 26, 20, 10, 16, 40, 6, 9, 7, 12, 12, 12, 12, 10, 34]
+
+/** Aba FICHA: uma linha por cópia, na ordem da ficha, com a Situação. */
+export function abaFicha(cruzadas: readonly CopiaCruzada[], nome = 'FICHA'): Aba {
   const ficha: Celula[][] = [
     [...COLUNAS_FICHA_V2],
-    ...[...e.cruzadas]
+    ...[...cruzadas]
       .sort((a, b) => a.copia.linha - b.copia.linha)
       .map((x) => {
         const c = x.copia
@@ -145,6 +149,10 @@ export function abasFichaV2(e: EntradaFichaV2): Aba[] {
         ]
       }),
   ]
+  return { nome, linhas: ficha, cabecalho: true, larguras: LARGURAS_FICHA }
+}
+
+export function abasFichaV2(e: EntradaFichaV2): Aba[] {
   const autodoc: Celula[][] = [
     ['Disciplina', 'Pasta', 'Número', 'Código', 'Fase', 'Revisão', 'Vigente desde', 'Status', 'Título'],
     ...[...e.vigentes]
@@ -180,7 +188,7 @@ export function abasFichaV2(e: EntradaFichaV2): Aba[] {
     ['', e.escritorio.length, esc('OK'), esc('ATUALIZAR'), esc('CONFERIR'), esc('SEM CÓPIA')],
   ]
   return [
-    { nome: 'FICHA', linhas: ficha, cabecalho: true, larguras: [8, 12, 26, 20, 10, 16, 40, 6, 9, 7, 12, 12, 12, 12, 10, 34] },
+    abaFicha(e.cruzadas),
     { nome: 'AUTODOC', linhas: autodoc, cabecalho: true, larguras: [16, 22, 10, 30, 6, 8, 12, 18, 50] },
     { nome: 'ESCRITORIO', linhas: escritorio, cabecalho: true, larguras: [16, 30, 50, 10, 12, 13, 12] },
     { nome: 'RESUMO', linhas: resumo, larguras: [30, 22, 10, 11, 11, 11] },
@@ -189,6 +197,11 @@ export function abasFichaV2(e: EntradaFichaV2): Aba[] {
 
 export function fichaV2Xlsx(e: EntradaFichaV2): Uint8Array<ArrayBuffer> {
   return planilhaXlsx(abasFichaV2(e))
+}
+
+/** Baixa um .xlsx (no celular vai para Downloads; no PC, a pasta de downloads do navegador). */
+export function baixarXlsx(nome: string, abas: readonly Aba[]): void {
+  baixarBlob(nome, new Blob([planilhaXlsx(abas)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
 }
 
 export function nomeFichaV2(codigoObra: string, hoje: string): string {

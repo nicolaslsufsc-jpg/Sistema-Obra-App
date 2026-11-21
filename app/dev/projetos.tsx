@@ -133,6 +133,8 @@ async function semearAutodoc() {
   const horas = qual === 'atrasada' ? 50 : 2
   await banco.gravarMeta(chave, {
     conferidoEm: new Date().toISOString(),
+    // leitura anterior há 3 dias: no painel da obra, "nova" = vista depois dela
+    anterior: qual === 'nunca' ? null : dia(3),
     ultima:
       qual === 'nunca'
         ? null
@@ -144,7 +146,17 @@ async function semearAutodoc() {
 async function semearBase() {
   if (new URLSearchParams(location.search).get('base') !== 'exe') return
   const arquivo = (texto: string, nome: string) => new File([texto], nome, { type: 'text/csv' })
-  await importarBase(OBRA, { vigentes: arquivo(VIGENTES_EXE, 'vigentes_exe.csv'), distribuicao: arquivo(DISTRIBUICAO_EXE, 'distribuicao_exe.csv') })
+  // índice do escritório fictício: uma folha em dia, uma com EX na pasta e a LO vigente
+  const indice = [
+    'codigo;arquivo',
+    'EXE.ES.LO.100.FORPILOTIS-R02 - FORMAS;EXE.ES.LO.100.FORPILOTIS-R02.pdf',
+    'EXE.ES.EX.200.PILSUBSOLO-R00 - PILARES;EXE.ES.EX.200.PILSUBSOLO-R00.pdf',
+  ].join('\n')
+  await importarBase(OBRA, {
+    vigentes: arquivo(VIGENTES_EXE, 'vigentes_exe.csv'),
+    distribuicao: arquivo(DISTRIBUICAO_EXE, 'distribuicao_exe.csv'),
+    escritorio: arquivo(indice, 'indice_escritorio_exe.csv'),
+  })
 }
 
 Promise.all([semear(), semearAutodoc(), semearBase()]).then(() => {

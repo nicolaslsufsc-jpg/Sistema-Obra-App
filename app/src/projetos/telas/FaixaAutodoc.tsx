@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'preact/hooks'
 import { atualizarDoServidor, faixaAutodoc, lerGuardado, type EstadoAutodoc } from '../autodoc'
 
-export function FaixaAutodoc({ obraId }: { obraId: string }) {
+/** undefined = ainda lendo; null = nada guardado e sem resposta do servidor. */
+export function usarEstadoAutodoc(obraId: string, ativo = true): EstadoAutodoc | null | undefined {
   const [estado, setEstado] = useState<EstadoAutodoc | null | undefined>(undefined)
-
   useEffect(() => {
+    if (!ativo) return
     let vivo = true
     // primeiro a cópia do aparelho (abre na hora, até sem internet); depois o servidor
     lerGuardado(obraId).then((g) => vivo && setEstado((e) => (e === undefined ? g : e)))
@@ -14,8 +15,13 @@ export function FaixaAutodoc({ obraId }: { obraId: string }) {
     return () => {
       vivo = false
     }
-  }, [obraId])
+  }, [obraId, ativo])
+  return estado
+}
 
+export function FaixaAutodoc({ obraId, estado: dado }: { obraId: string; estado?: EstadoAutodoc | null }) {
+  const lido = usarEstadoAutodoc(obraId, dado === undefined)
+  const estado = dado === undefined ? lido : dado
   if (estado === undefined) return null
   const f = faixaAutodoc(estado)
   return (

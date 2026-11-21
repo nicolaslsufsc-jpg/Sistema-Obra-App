@@ -14,6 +14,7 @@ import { usarFonteDeArquivos } from '../src/fvs/dados'
 import type { ItemFicha } from '../src/fvs/situacao'
 import { camadasDoPacote, NOME_DA_CAMADA, type CamadaDeBarras } from '../src/fvs/barras'
 import { camadaDoFuro, ehFuroDeLaje } from '../src/fvs/furos_laje'
+import { DISCIPLINAS_DE_PONTOS, NOME_DA_DISCIPLINA as NOME_DOS_PONTOS, type DisciplinaDePontos, type PontoPacote, type TipoDePonto } from '../src/fvs/pontos'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
 
@@ -771,6 +772,74 @@ async function semearRegras() {
   await banco.registros.put({ tabela: 'fvs_regras', id: linha.id, obra_id: OBRA, linha: linha as never, pendente: 0 as const })
 }
 
+/**
+ * ?locais=1: locais do sistema oficial que não são peça da planta (locais_sistema, 21/11/2026), como a leitura
+ * do sistema publica: fundação com dois blocos e uma cortina, cada um com a ficha aberta, e um bloco com NC
+ * marcado. Nomes inventados (obra EXE).
+ */
+async function semearLocais(base: Record<string, unknown>) {
+  const ficha = uuid('f0000000', 40)
+  const local = (n: number, pai: number | null, nome: string, completo: string) => ({
+    tabela: 'locais_sistema',
+    linha: { ...base, id: uuid('fa000000', n), sistema: 'exe', origem_id: String(n), origem_pai_id: pai === null ? null : String(pai), nome, nome_completo: completo, nivel: pai === null ? 0 : 1, apagado_no_sistema: false },
+  })
+  const aberta = (n: number, localN: number, status: string, extra: Record<string, unknown> = {}) => ({
+    tabela: 'fvs_fichas_campo',
+    linha: {
+      ...base,
+      id: uuid('fb000000', n),
+      local_id: uuid('fa000000', localN),
+      elemento_id: null,
+      ficha_id: ficha,
+      codigo: `FVS-EXE-${String(n).padStart(4, '0')}`,
+      local_construpoint: `Fundação \ local ${localN}`,
+      ficha_codigo: 'EXE-PVS-BLOCO',
+      ficha_titulo: 'Blocos de fundação e baldrames (ficha de teste)',
+      status,
+      inspetor: 'Pessoa Um',
+      atualizada_em: '2026-10-02T14:00:00.000Z',
+      qtd_a: 0,
+      qtd_r: 0,
+      qtd_na: 0,
+      ...extra,
+    },
+  })
+  await gravarCadastro([
+    {
+      tabela: 'fichas_modelo',
+      linha: {
+        ...base,
+        id: ficha,
+        codigo: 'EXE-PVS-BLOCO',
+        titulo: 'Blocos de fundação e baldrames (ficha de teste)',
+        revisao: '0',
+        aplica_a: [],
+        itens: [
+          { n: 1, etapa: 'INÍCIO', titulo: 'Arrasamento das estacas', dispositivo: 'Trena', tolerancia: '2 cm' },
+          { n: 2, etapa: 'MONTAGEM', titulo: 'Forma e armadura', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+          { n: 3, etapa: 'MONTAGEM', titulo: 'Cobrimento e espaçadores', dispositivo: 'Trena', tolerancia: '5 mm' },
+          { n: 4, etapa: 'CONCRETAGEM', titulo: 'Lançamento e adensamento', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+        ],
+      },
+    },
+    local(1, null, 'Fundação', 'Obra Exemplo / Fundação'),
+    local(2, 1, 'Bloco B2', 'Obra Exemplo / Fundação / Bloco B2'),
+    local(3, 1, 'Bloco B10 (com nome comprido para ver a quebra de linha no celular)', 'Obra Exemplo / Fundação / Bloco B10'),
+    local(4, null, 'Cortina trecho 1', 'Obra Exemplo / Cortina trecho 1'),
+    aberta(1, 2, 'Aceito', { qtd_a: 4 }),
+    aberta(2, 3, 'Pendente Reinspeção', { qtd_a: 1, qtd_r: 1 }),
+    aberta(3, 4, 'Agendado'),
+    ...[1, 2, 3, 4].map((item) => ({
+      tabela: 'fvs_eventos',
+      linha: { ...base, id: uuid('fc000000', item), local_id: uuid('fa000000', 2), ficha_id: ficha, ficha_campo_id: uuid('fb000000', 1), item, resultado: 'A', rodada: 1, verificado_por: 'Pessoa Um', usuario_id: USUARIO_HISTORICO, criado_em_dispositivo: '2026-10-01T12:00:00.000Z' },
+    })),
+    {
+      tabela: 'fvs_eventos',
+      linha: { ...base, id: uuid('fc000000', 10), local_id: uuid('fa000000', 3), ficha_id: ficha, ficha_campo_id: uuid('fb000000', 2), item: 3, resultado: 'R', rodada: 1, observacao: 'Faltam espaçadores', verificado_por: 'Pessoa Um', usuario_id: USUARIO_HISTORICO, criado_em_dispositivo: '2026-10-02T13:00:00.000Z' },
+    },
+  ])
+}
+
 async function semear() {
   const agora = new Date().toISOString()
   const base = { obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: agora, apagado: false }
@@ -780,6 +849,7 @@ async function semear() {
   if (!ja.has(PLANTA_VED) && params.get('vedacao') && !params.get('pacote')) await semearVedacao(base)
   if (ja.has(PLANTA)) return
   if (!params.get('pacote')) await semearHistoricoDeTeste(base)
+  if (!params.get('pacote') && params.get('locais')) await semearLocais(base)
 
   let manifest: Manifest
   let bin: Blob
@@ -821,6 +891,48 @@ async function semear() {
   await gravarCadastro(linhas)
   if (manifest.camadas_separadas) await semearArmadura(base, manifest, bin)
   if (manifest.furos_laje_separados) await semearFuracao(base, manifest, bin)
+  if (params.get('instalacoes')) await semearInstalacoes(base, manifest, bin)
+}
+
+/** Planta de teste de cada disciplina de instalações: id da planta e do setor. */
+const PLANTA_DE_INSTALACOES = (i: number) => uuid('a2000000', 0xd0 + i)
+
+/**
+ * ?instalacoes=1: uma planta de pontos por disciplina de instalações (hidro, esgoto, elétrico, preventivo, SPDA;
+ * 21/11/2026), como o pipeline/fvs/instalacoes.py publica: setor com a disciplina, pacote com "disciplina" e
+ * "pontos" e o fundo da forma. Cada disciplina tem 4 pontos numa linha (y = 200 + 150 * i, x = 300, 600, 900,
+ * 1200); o elétrico e o preventivo têm também uma linha (eletroduto, tubulação). A ficha de ambiente de teste
+ * "Instalações" tem um item por disciplina, marcado com "pontos", menos o preventivo (planta de consulta).
+ */
+async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
+  const TIPOS: Record<DisciplinaDePontos, TipoDePonto[]> = {
+    hidro: ['ponto_agua', 'registro', 'ponto_agua', 'hidrometro'],
+    sanitario: ['ralo', 'caixa_sifonada', 'ralo', 'ponto_esgoto'],
+    eletrico: ['caixa_passagem', 'ponto_luz', 'ponto_luz', 'quadro'],
+    preventivo: ['hidrante', 'extintor', 'sprinkler', 'detector'],
+    spda: ['captor', 'descida', 'caixa_inspecao', 'haste'],
+  }
+  const linhas: LinhaDeCadastro[] = []
+  for (const [i, d] of DISCIPLINAS_DE_PONTOS.entries()) {
+    const y = 200 + 150 * i
+    const pontos: Record<string, PontoPacote> = {}
+    TIPOS[d].forEach((tipo, k) => {
+      pontos[`pt-${d}-${k + 1}`] = { disciplina: d, tipo, ponto: [300 + 300 * k, y], nome: `${tipo.toUpperCase()} ${k + 1}`, modelo_id: `${d}-${k + 1}` }
+    })
+    if (d === 'eletrico' || d === 'preventivo') {
+      const tipo: TipoDePonto = d === 'eletrico' ? 'eletroduto' : 'tubo_incendio'
+      pontos[`pt-${d}-linha`] = { disciplina: d, tipo, ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: d === 'eletrico' ? 'Eletroduto 25 mm' : 'Tubo de incêndio 65 mm' }
+    }
+    const manifest: Manifest = { ...forma, planta_id: PLANTA_DE_INSTALACOES(i), trecho: NOME_DOS_PONTOS[d], elementos: {}, detalhes: {}, barras: undefined, disciplina: d, pontos, camadas_separadas: undefined, furos_laje_separados: undefined }
+    await guardarPacote(JSON.stringify(manifest), bin)
+    const cad = cadastroDaPlanta(base, manifest, bin, uuid('a1000000', 0xd0 + i), d, 80 + 2 * i)
+    for (const l of cad) if (l.tabela === 'plantas') l.linha.elementos = Object.keys(pontos).length
+    linhas.push(...cad)
+  }
+  // o preventivo fica sem item: planta de consulta (decisão do Nicolas, 21/11/2026: "não vai para ficha")
+  const itens: ItemFicha[] = DISCIPLINAS_DE_PONTOS.filter((d) => d !== 'preventivo').map((d, k) => ({ n: k + 1, etapa: 'INSTALAÇÕES', titulo: `Pontos: ${NOME_DOS_PONTOS[d].toLowerCase()}`, dispositivo: 'Visual', tolerancia: 'Conforme projeto', pontos: d }))
+  linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 20), codigo: 'TESTE-PVS-INST', titulo: 'Instalações (ficha de teste)', revisao: '0', aplica_a: ['A'], itens } })
+  await gravarCadastro(linhas)
 }
 
 /**

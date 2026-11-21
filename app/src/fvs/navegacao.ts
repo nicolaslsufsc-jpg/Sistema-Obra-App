@@ -18,6 +18,7 @@ const GRUPO: Record<string, string> = {
   hidro: 'instalacoes',
   sanitario: 'instalacoes',
   eletrico: 'instalacoes',
+  preventivo: 'instalacoes', // preventivo contra incêndio (21/11/2026)
   spda: 'instalacoes',
 }
 
@@ -33,6 +34,12 @@ const ORDEM = ['estrutura', 'alvenaria', 'acabamentos', 'instalacoes']
 
 /** Opção da planta de ambientes que é de alvenaria (vai para Alvenaria, e não para Acabamentos). */
 export const ehOpcaoDeAlvenaria = (op: Pick<OpcaoDosAmbientes, 'titulo'>) => /alvenaria|veda[cç][aã]o|modula[cç][aã]o|fiada/i.test(op.titulo)
+
+/** Opção da planta de ambientes que é de instalações: a ficha tem item de pontos (vai para Instalações, 21/11/2026). */
+export const ehOpcaoDeInstalacoes = (op: Pick<OpcaoDosAmbientes, 'pontos'>) => !!op.pontos?.length
+
+/** Opção de ambientes que fica em Acabamentos: nem de alvenaria nem de instalações. */
+export const ehOpcaoDeAcabamentos = (op: Pick<OpcaoDosAmbientes, 'titulo' | 'pontos'>) => !ehOpcaoDeAlvenaria(op) && !ehOpcaoDeInstalacoes(op)
 
 /** Nome da disciplina no menu ("instalacoes" → "Instalações"; a que o app não conhece, com a 1ª letra maiúscula). */
 export function nomeDaDisciplinaDoMenu(id: string): string {
@@ -58,8 +65,10 @@ export function disciplinasDoPavimento(plantas: readonly Planta[], opcoesAmb: Re
     if (p.disciplina === 'arquitetura') {
       const ops = opcoesAmb.get(p.id) ?? []
       const deAlvenaria = ops.filter(ehOpcaoDeAlvenaria).length
+      const deInstalacoes = ops.filter((o) => !ehOpcaoDeAlvenaria(o) && ehOpcaoDeInstalacoes(o)).length
       if (deAlvenaria > 0) juntar('alvenaria', p)
-      if (deAlvenaria === 0 || deAlvenaria < ops.length) juntar('acabamentos', p)
+      if (deInstalacoes > 0) juntar('instalacoes', p)
+      if (ops.length === 0 || ops.some(ehOpcaoDeAcabamentos)) juntar('acabamentos', p)
       continue
     }
     juntar(grupo, p)

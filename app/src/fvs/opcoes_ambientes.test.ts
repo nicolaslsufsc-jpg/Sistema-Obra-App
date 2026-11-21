@@ -37,6 +37,13 @@ const ELEMENTOS: Record<string, ElementoPacote> = {
 }
 
 describe('opções dos ambientes para o menu do pavimento', () => {
+  it('ficha com item de pontos de instalações leva as disciplinas dela (vai para Instalações no menu, 21/11/2026)', () => {
+    const fichas = [...FICHAS, ficha('EXE-PVS-HID', 'Instalações hidrossanitárias', { itens: [item(1), item(2, { pontos: 'hidro' }), item(3, { pontos: 'sanitario' })] })]
+    const ops = opcoesDosAmbientes({ elementos: ELEMENTOS, detalhes: DETALHES }, fichas)
+    expect(ops.find((o) => o.id === 'amb:ficha:EXE-PVS-HID')?.pontos).toEqual(['hidro', 'sanitario'])
+    expect(ops.filter((o) => o.pontos).length).toBe(1)
+  })
+
   it('uma por ficha de ambiente, projetos de uma ficha no nome, projeto de várias fichas à parte, esquadrias no fim', () => {
     const op = opcoesDosAmbientes({ elementos: ELEMENTOS, detalhes: DETALHES }, FICHAS)
     expect(op.map((o) => o.id)).toEqual([

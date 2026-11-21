@@ -3,7 +3,7 @@
 // conferir, faixas de atraso, barras por empresa e por disciplina e as listas.
 import { useState } from 'preact/hooks'
 import { importarBase, type BaseProjetos } from '../base'
-import { chaveNumero, ErroDeArquivo, FAIXAS, rotuloRev, type Barra, type CopiaCruzada, type Resumo } from '../painel'
+import { chaveNumero, ErroDeArquivo, FAIXAS, rotuloRev, type Barra, type CopiaCruzada, type Resumo, type Vigente } from '../painel'
 import type { ResumoEscritorio } from '../edicoes'
 import type { GrupoAEntregar } from '../distribuicao'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
@@ -11,13 +11,16 @@ import { podeGerir } from '../dados'
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural } from './comum'
 import { alvoDe } from './TelaPranchaBase'
-import { FaixaAutodoc } from './FaixaAutodoc'
+import { escritorioDasFolhas, situacaoFicha, SITUACOES_FICHA } from '../canteiro'
+import { fichaV2Xlsx, nomeFichaV2 } from '../ficha_v2'
+import type { RegistroEscritorio } from '../edicoes'
+import { baixarBlob } from '../../nucleo/baixar'
 
 const LIMITE = 40
 
 export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: () => void; importar?: boolean }) {
   const { ir, trocar } = ctx
-  const { base, setBase, resumo, escritorio, regras, pendentes } = usarBase(ctx)
+  const { base, setBase, resumo, escritorio, regras, pendentes, cruzadas, corrigida, fonteVigente, vigServidor } = usarBase(ctx)
 
   if (base === undefined) return <main class="tela">Carregando…</main>
   const mostrarImportar = importar || !resumo
@@ -25,18 +28,26 @@ export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: (
   return (
     <main class="tela pj-painel">
       <CabecalhoBase ctx={ctx} aba={mostrarImportar ? 'importar' : 'painel'} aoSair={aoSair} base={base} temCruzamento={!!resumo} />
-      {!ctx.semConta && <FaixaAutodoc obraId={ctx.obra.id} />}
       {mostrarImportar ? (
         <Importar
           ctx={ctx}
           base={base}
+          vigenteDoServidor={!!vigServidor}
           aoImportar={(b) => {
             setBase(b)
             trocar({ nome: 'painel' })
           }}
         />
       ) : (
-        resumo && escritorio && <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} />
+        resumo &&
+        escritorio &&
+        cruzadas &&
+        corrigida && (
+          <>
+            <Canteiro ctx={ctx} cruzadas={cruzadas} vigentes={corrigida.vigentes} escritorio={corrigida.escritorio} fonteVigente={fonteVigente} />
+            <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} />
+          </>
+        )
       )}
     </main>
   )
@@ -181,6 +192,46 @@ function Painel({
   )
 }
 
+/** Controle do canteiro: a Situação de cada cópia como na ficha v2 e o Excel no mesmo formato. */
+function Canteiro({
+  ctx,
+  cruzadas,
+  vigentes,
+  escritorio,
+  fonteVigente,
+}: {
+  ctx: Contexto
+  cruzadas: CopiaCruzada[]
+  vigentes: Vigente[]
+  escritorio: ReadonlyMap<string, RegistroEscritorio>
+  fonteVigente: string
+}) {
+  const conta = { OK: 0, RECOLHER: 0, DEVOLVIDO: 0, CONFERIR: 0 }
+  for (const x of cruzadas) conta[situacaoFicha(x)]++
+  const exportar = () => {
+    const linhasEsc = escritorioDasFolhas(vigentes, escritorio)
+    const bytes = fichaV2Xlsx({ obra: ctx.obra.codigo, hoje: ctx.dados.hoje, fonteVigente, cruzadas, vigentes, escritorio: linhasEsc })
+    baixarBlob(nomeFichaV2(ctx.obra.codigo, ctx.dados.hoje), new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+  }
+  return (
+    <section class="pj-bloco" data-testid="painel-canteiro">
+      <h2>Controle do canteiro</h2>
+      <ul class="pj-situacoes" aria-label="Situação das cópias, como na ficha v2">
+        {SITUACOES_FICHA.map((s) => (
+          <li key={s} class={`pj-sit-${s.toLowerCase()}`} data-testid={`canteiro-${s.toLowerCase()}`}>
+            <b>{conta[s]}</b>
+            {s}
+          </li>
+        ))}
+      </ul>
+      <p class="discreto pj-nota">Revisão vigente: {fonteVigente}.</p>
+      <button type="button" class="pj-pequeno" onClick={exportar} data-testid="exportar-ficha-v2">
+        Exportar ficha v2 (.xlsx)
+      </button>
+    </section>
+  )
+}
+
 function Barras({ titulo, barras, comAtraso }: { titulo: string; barras: Barra[]; comAtraso?: boolean }) {
   const max = Math.max(1, ...barras.map((b) => b.quantas))
   return (
@@ -264,10 +315,21 @@ function LinhaConferir({ x, abrir }: { x: CopiaCruzada; abrir: () => void }) {
   )
 }
 
-function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos | null; aoImportar: (b: BaseProjetos) => void }) {
+function Importar({
+  ctx,
+  base,
+  vigenteDoServidor,
+  aoImportar,
+}: {
+  ctx: Contexto
+  base: BaseProjetos | null
+  vigenteDoServidor: boolean
+  aoImportar: (b: BaseProjetos) => void
+}) {
   const { obra, avisar } = ctx
   const [vig, setVig] = useState<File | null>(null)
   const [dist, setDist] = useState<File | null>(null)
+  const [esc, setEsc] = useState<File | null>(null)
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
   if (!podeGerir(obra.papel)) return <p class="pj-vazio">Só o gestor importa a base desta obra.</p>
@@ -275,17 +337,22 @@ function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos
   const importar = async (e: Event) => {
     e.preventDefault()
     setErro('')
-    if (!vig && !dist) {
-      setErro('Escolha pelo menos um dos dois arquivos.')
+    if (!vig && !dist && !esc) {
+      setErro('Escolha pelo menos um arquivo.')
       return
     }
     setSalvando(true)
     try {
-      const b = await importarBase(obra.id, { vigentes: vig, distribuicao: dist })
-      avisar(`Base importada: ${plural(b.vigentes.length, 'linha', 'linhas')} da lista vigente e ${plural(b.copias.length, 'cópia', 'cópias')} da distribuição.`)
+      const b = await importarBase(obra.id, { vigentes: vig, distribuicao: dist, escritorio: esc })
+      const partes = [
+        vig && plural(b.vigentes.length, 'linha da lista vigente', 'linhas da lista vigente'),
+        dist && plural(b.copias.length, 'cópia da ficha', 'cópias da ficha'),
+        esc && plural(Object.keys(b.escritorioIndice ?? {}).length, 'folha no escritório', 'folhas no escritório'),
+      ].filter(Boolean)
+      avisar(`Importado: ${partes.join(', ')}.`)
       aoImportar(b)
     } catch (err) {
-      setErro(err instanceof ErroDeArquivo ? err.message : 'Não consegui ler o arquivo. Salve como CSV (separado por ";") no Excel e tente de novo.')
+      setErro(err instanceof ErroDeArquivo ? err.message : 'Não consegui ler o arquivo. Use a ficha .xlsx ou salve como CSV (separado por ";") no Excel e tente de novo.')
     } finally {
       setSalvando(false)
     }
@@ -295,10 +362,15 @@ function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos
     <form class="pj-bloco pj-importar" onSubmit={importar} data-testid="painel-importar">
       <h2>Importar a base da obra</h2>
       <p class="discreto">
-        Os arquivos ficam só neste aparelho e não entram no "Salvar arquivo". Quando a lista ou a planilha mudar, importe de novo: o painel é refeito.
+        Os arquivos ficam só neste aparelho e não entram no "Salvar arquivo". Quando a ficha ou o índice mudar, importe de novo: o painel é refeito.
       </p>
+      {vigenteDoServidor && (
+        <p class="pj-aviso-base" data-testid="importar-vigente-servidor">
+          A revisão vigente vem do servidor (a lista do Autodoc publicada pelo PC). A lista vigente em CSV só vale sem conta.
+        </p>
+      )}
       <label class="pj-campo">
-        <span>Lista vigente (.csv)</span>
+        <span>Lista vigente (.csv){vigenteDoServidor ? ' · não precisa' : ''}</span>
         <input type="file" accept=".csv,text/csv" data-testid="arquivo-vigentes" onChange={(e) => setVig(e.currentTarget.files?.[0] ?? null)} />
         <span class="discreto">
           Colunas: disciplina, numero_de, numero_ate, codigo_exemplo, revisao, data (e, se tiver, pasta, status, titulo).
@@ -306,11 +378,24 @@ function Importar({ ctx, base, aoImportar }: { ctx: Contexto; base: BaseProjetos
         </span>
       </label>
       <label class="pj-campo">
-        <span>Distribuição de cópias (.csv)</span>
-        <input type="file" accept=".csv,text/csv" data-testid="arquivo-distribuicao" onChange={(e) => setDist(e.currentTarget.files?.[0] ?? null)} />
+        <span>Distribuição de cópias (ficha .xlsx ou .csv)</span>
+        <input
+          type="file"
+          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          data-testid="arquivo-distribuicao"
+          onChange={(e) => setDist(e.currentTarget.files?.[0] ?? null)}
+        />
         <span class="discreto">
-          Colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.
+          A ficha de controle do Excel entra como está (primeira aba). Em CSV, as colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.
           {base?.copiasArquivo ? ` Atual: ${base.copiasArquivo} (${base.copias.length} cópias).` : ''}
+        </span>
+      </label>
+      <label class="pj-campo">
+        <span>Índice do escritório (.csv)</span>
+        <input type="file" accept=".csv,text/csv" data-testid="arquivo-escritorio" onChange={(e) => setEsc(e.currentTarget.files?.[0] ?? null)} />
+        <span class="discreto">
+          As pranchas que estão na pasta do PC (coluna codigo ou arquivo, com o código do Autodoc). Vale a revisão mais nova de cada folha.
+          {base?.escritorioArquivo ? ` Atual: ${base.escritorioArquivo} (${Object.keys(base.escritorioIndice ?? {}).length} folhas).` : ''}
         </span>
       </label>
       {erro && (

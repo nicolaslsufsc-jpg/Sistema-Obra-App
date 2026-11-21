@@ -9,7 +9,9 @@
 
 import type { Ficha, ItemFicha } from './situacao'
 
-export type DisciplinaDePontos = 'hidro' | 'sanitario' | 'eletrico' | 'spda'
+export type DisciplinaDePontos = 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
+/** Na ordem do menu (pedido do Nicolas, 21/11/2026: hidráulico, esgoto, elétrico, preventivo, SPDA). */
+export const DISCIPLINAS_DE_PONTOS: readonly DisciplinaDePontos[] = ['hidro', 'sanitario', 'eletrico', 'preventivo', 'spda']
 export type TipoDePonto =
   | 'ponto_agua'
   | 'registro'
@@ -28,6 +30,15 @@ export type TipoDePonto =
   | 'haste'
   // eletroduto como linha (21/11/2026, "eletroduto como linha"): tem "linha" além de "ponto"
   | 'eletroduto'
+  // preventivo contra incêndio (21/11/2026; sem PES nem PVS na obra piloto: suposição); a tubulação é linha
+  | 'hidrante'
+  | 'extintor'
+  | 'sprinkler'
+  | 'detector'
+  | 'iluminacao_emergencia'
+  | 'alarme'
+  | 'sinalizacao'
+  | 'tubo_incendio'
 
 export interface PontoPacote {
   disciplina: DisciplinaDePontos
@@ -45,6 +56,7 @@ export const NOME_DA_DISCIPLINA: Record<DisciplinaDePontos, string> = {
   hidro: 'Água fria e quente',
   sanitario: 'Esgoto e pluvial',
   eletrico: 'Caixas, quadros e eletrodutos',
+  preventivo: 'Hidrantes, extintores e sprinklers',
   spda: 'Captores e descidas',
 }
 
@@ -64,6 +76,14 @@ export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
   caixa_inspecao: 'Caixa de inspeção',
   haste: 'Haste de aterramento',
   eletroduto: 'Eletroduto',
+  hidrante: 'Hidrante',
+  extintor: 'Extintor',
+  sprinkler: 'Sprinkler',
+  detector: 'Detector',
+  iluminacao_emergencia: 'Iluminação de emergência',
+  alarme: 'Alarme',
+  sinalizacao: 'Sinalização',
+  tubo_incendio: 'Tubulação de incêndio',
 }
 
 type Pt = readonly [number, number]

@@ -24,6 +24,8 @@ export interface OpcaoDosAmbientes {
   abre: { servico: string; aba: AbaDosAmbientes }
   /** títulos dos projetos que aparecem no painel nessa opção ("Paginação de piso") */
   projetos: string[]
+  /** ficha com item de pontos de instalações (hidro, esgoto...): a opção vai para Instalações no menu (21/11/2026) */
+  pontos?: string[]
 }
 
 interface ProjetoDoPacote {
@@ -75,6 +77,7 @@ export function opcoesDosAmbientes(
       setor: 'Ambientes',
       abre: { servico: f.codigo, aba: 'ambientes' },
       projetos: daFicha.map((p) => p.titulo),
+      ...(f.itens.some((i) => i.pontos) ? { pontos: [...new Set(f.itens.flatMap((i) => (i.pontos ? [i.pontos] : [])))] } : {}),
     })
   }
   for (const p of projetos) {

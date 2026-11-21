@@ -623,6 +623,8 @@ describe('registros novos nos dados da tela', () => {
     fichaPorId: new Map(),
     fichasCampoDe: new Map(),
     fichasCampoSemPeca: [],
+    localPorId: new Map(),
+    fichasCampoDoLocal: new Map(),
     pecaPorId: new Map(),
     areasDe: new Map(),
     areaPorId: new Map(),
@@ -730,7 +732,8 @@ describe('registros novos nos dados da tela', () => {
 
 describe('lista de tabelas', () => {
   it('tabela que depende de migração nova fica por último: se faltar no servidor, não trava as outras', () => {
-    expect(TABELAS_SINCRONIZADAS.slice(-2)).toEqual(['fvs_fichas_campo', 'fvs_areas'])
+    // desde 21/11 os locais do sistema oficial (migração mais nova) vêm depois das fichas abertas
+    expect(TABELAS_SINCRONIZADAS.slice(-4)).toEqual(['fvs_fichas_campo', 'fvs_areas', 'locais_sistema', 'importacoes'])
     expect(TABELAS_SINCRONIZADAS).toContain('fvs_eventos')
     expect(TABELAS_SINCRONIZADAS.indexOf('fvs_eventos')).toBeLessThan(TABELAS_SINCRONIZADAS.indexOf('fvs_fichas_campo'))
   })

@@ -1,7 +1,7 @@
 // Tela de edição (protótipo de 14/11/2026): correção por linha nova, com histórico; e a pasta do escritório.
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { aplicarEdicoes, chaveFolha, gravarEdicao, historicoDaPrancha, lerEdicoes, resumirEscritorio, type Edicao } from './edicoes'
+import { aplicarEdicoes, chaveFolha, compararEscritorio, gravarEdicao, historicoDaPrancha, lerEdicoes, resumirEscritorio, type Edicao } from './edicoes'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 import { cruzar, lerDistribuicao, lerVigentes, resumir } from './painel'
 
@@ -82,5 +82,13 @@ describe('escritório desatualizado', () => {
     expect(r.desatualizados[0].vigente.codigo).toBe('EXE.ES.LO.100.FORPILOTIS')
     expect(r.emDia).toBe(1)
     expect(r.semRegistro).toBe(4)
+  })
+
+  it('regra estrita: EX na pasta com a LO de mesmo número vigente é desatualizado, mesmo atualizada depois', () => {
+    expect(compararEscritorio({ fase: 'EX', revisao: 2 }, { fase: 'LO', revisao: 2 })).toBe('desatualizado')
+    expect(compararEscritorio({ fase: 'LO', revisao: 0 }, { fase: 'EX', revisao: 5 })).toBe('à frente')
+    expect(compararEscritorio({ fase: 'LO', revisao: 2 }, { fase: 'LO', revisao: 2 })).toBe('em dia')
+    const r = resumirEscritorio(vigentes, new Map([[FORMAS, { fase: 'EX', revisao: 2, data: '2026-11-13' }]]), HOJE)
+    expect(r.desatualizados).toHaveLength(1)
   })
 })

@@ -10,6 +10,7 @@ import { lembrarTela, telaGuardada } from '../onde_estava'
 import { TelaDuplicadas } from './TelaDuplicadas'
 import { TelaInicio } from './TelaInicio'
 import { TelaLancamento } from './TelaLancamento'
+import { TelaLocais, TelaLocal } from './TelaLocais'
 import { TelaPlanta } from './TelaPlanta'
 import { TelaRegras } from './TelaRegras'
 import { TelaReprovacoes } from './TelaReprovacoes'
@@ -25,6 +26,9 @@ export type TelaFvs =
   | { nome: 'lancamento' }
   | { nome: 'duplicadas' }
   | { nome: 'regras' }
+  /** locais do sistema oficial que não são peça da planta (21/11/2026): a lista e um local */
+  | { nome: 'locais' }
+  | { nome: 'local'; localId: string }
   /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item;
    *  servico e aba: planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts, campo `abre`);
    *  tipo: aba da forma aberta por uma opção da Estrutura (P, V, L, F, B) */
@@ -165,6 +169,8 @@ export function ModuloFvs(props: PropsModulo) {
   if (tela.nome === 'reprovacoes') return <TelaReprovacoes ctx={ctx} aviso={aviso} />
   if (tela.nome === 'lancamento' && ctx.sistema) return <TelaLancamento ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   if (tela.nome === 'regras') return <TelaRegras ctx={ctx} />
+  if (tela.nome === 'locais') return <TelaLocais ctx={ctx} aviso={aviso} />
+  if (tela.nome === 'local') return <TelaLocal key={tela.localId} ctx={ctx} localId={tela.localId} aviso={aviso} />
   if (tela.nome === 'duplicadas' && ctx.sistema) return <TelaDuplicadas ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   // os três níveis do início são a mesma tela (o download em andamento continua ao trocar de nível)
   const nivel = tela.nome === 'pavimento' ? { pavimentoId: tela.pavimentoId } : tela.nome === 'disciplina' ? { pavimentoId: tela.pavimentoId, disciplina: tela.disciplina } : undefined

@@ -103,6 +103,7 @@ import {
 import { guardarItem, itemGuardado, itemNaPeca, itensParaEscolher, nomeDoItem, proximoDoToque, registroDoItem, resultadoDoItem, resumoDoItem, textoDoResultado, type ItemEscolhido, type ModoDoToque } from '../porItem'
 import type { Linha } from '../../nucleo/banco_local'
 import { AvisoHora } from './AvisoHora'
+import { CampoNc } from './CampoNc'
 import { pecasDoMesmoDesenho } from '../mesmo_desenho'
 import { fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
@@ -1775,7 +1776,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const pt = pontos[r.id]
     const s = situacaoDaBarra(eventosDe(r.id))
     if (!pode) return avisar(`${nomeDoPonto(pt)}: ${s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errado' : 'sem conferir'}`)
-    if (!fichaDoPonto()) return avisar('Nenhuma ficha de ambiente tem o item destes pontos: os pontos ficam só para ver.')
+    // sem item de ficha: planta de consulta (PPCI, SPDA sem ficha; 21/11/2026): o toque só mostra o que é o ponto
+    if (!fichaDoPonto()) return avisar(`${nomeDoPonto(pt)} · só consulta`)
     cicloDoToque(r.id, gravarPonto, pos)
   }
 
@@ -2159,7 +2161,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           }}
         />
         {listaDaBusca}
-        {resumoDaCamada ? (
+        {tipo === 'I' && !fichaDoPonto() ? (
+          // planta de consulta (PPCI, SPDA sem ficha; decisão do Nicolas, 21/11/2026: "não vai para ficha"): nada grava
+          <span class="fv-prog" data-testid="fvs-progresso" title="Planta para olhar e conferir no local: nenhuma ficha tem o item destes pontos">
+            Só consulta
+          </span>
+        ) : resumoDaCamada ? (
           <span class="fv-prog" data-testid="fvs-progresso" title={resumoDaCamada.texto}>
             {resumoDaCamada.ok}/{resumoDaCamada.total} OK
             {resumoDaCamada.erradas > 0 && ` · ${resumoDaCamada.erradas} errada${resumoDaCamada.erradas > 1 ? 's' : ''}`}
@@ -3426,59 +3433,6 @@ function Painel(p: PropsPainel) {
         </div>
       </div>
     </aside>
-  )
-}
-
-/**
- * "O que fazer?" de um item reprovado. Grava um segundo depois de parar de digitar e ao sair do
- * campo (o que vier primeiro); a gravação confere o texto contra o registro mais novo, então
- * repetir não duplica.
- */
-function CampoNc({ inicial, pode, salvar }: { inicial: string; pode: boolean; salvar: (t: string) => unknown }) {
-  const [texto, setTexto] = useState(inicial)
-  const espera = useRef<number | undefined>(undefined)
-  const ultimo = useRef(texto)
-  ultimo.current = texto
-  const agora = () => {
-    window.clearTimeout(espera.current)
-    espera.current = undefined
-    salvar(ultimo.current)
-  }
-  // saiu da tela (fechou o painel, trocou de peça) com texto ainda não gravado
-  useEffect(() => () => {
-    if (espera.current !== undefined) agora()
-  }, [])
-  // foi para outro app: o Android pode fechar este sem avisar, então grava logo
-  useEffect(() => {
-    const aoEsconder = () => {
-      if (document.visibilityState === 'hidden' && espera.current !== undefined) agora()
-    }
-    document.addEventListener('visibilitychange', aoEsconder)
-    return () => document.removeEventListener('visibilitychange', aoEsconder)
-  }, [])
-  return (
-    <label>
-      O que fazer?
-      <textarea
-        rows={2}
-        disabled={!pode}
-        value={texto}
-        placeholder="Descreva a não conformidade e o que precisa ser corrigido"
-        onFocus={(ev) => {
-          // no celular, o teclado sobe por cima da parte de baixo do painel: o campo vai para o alto dele
-          const campo = ev.target as HTMLTextAreaElement
-          window.setTimeout(() => campo.scrollIntoView({ block: 'start' }), 300)
-        }}
-        onInput={(ev) => {
-          setTexto((ev.target as HTMLTextAreaElement).value)
-          window.clearTimeout(espera.current)
-          espera.current = window.setTimeout(agora, 1000)
-        }}
-        onBlur={() => {
-          if (espera.current !== undefined) agora()
-        }}
-      />
-    </label>
   )
 }
 

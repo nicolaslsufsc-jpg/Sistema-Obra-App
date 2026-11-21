@@ -42,10 +42,15 @@ describe('Documentos: arquivos que entram e que abrem', () => {
   it('4. os textos do módulo não têm nome da lista de nomes proibidos (nem nome de branch com ele)', () => {
     const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
     // a mesma conferência da trava do build (siglas só como palavra inteira)
+    // desde 21/11 o detalhe por data fica em docs/historico/ (o resumo em docs/modulos/)
     const doc = readFileSync(path.join(raiz, 'docs', 'modulos', '4_documentos.md'), 'utf-8')
-    expect(doc).toContain('PR #42')
+    const historico = readFileSync(path.join(raiz, 'docs', 'historico', '4_documentos.md'), 'utf-8')
+    expect(doc).toContain('Módulo 4: Documentos')
+    expect(historico).toContain('PR #42')
     // só conta (não mostra o nome achado)
-    expect(nomesNoTexto(doc, lerNomesProibidos(raiz)).length).toBe(0)
+    const nomes = lerNomesProibidos(raiz)
+    expect(nomesNoTexto(doc, nomes).length).toBe(0)
+    expect(nomesNoTexto(historico, nomes).length).toBe(0)
   })
 })
 

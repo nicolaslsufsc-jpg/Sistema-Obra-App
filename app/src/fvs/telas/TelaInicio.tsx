@@ -17,7 +17,7 @@ import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { furoDeOutraPlanta } from '../furos_laje'
-import { disciplinasDoPavimento, ehOpcaoDeAlvenaria, OPCOES_DA_FORMA } from '../navegacao'
+import { disciplinasDoPavimento, ehOpcaoDeAcabamentos, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
@@ -28,6 +28,7 @@ import { dataDoPacoteGuardado } from '../../nucleo/pacote_obra'
 import { avisoDoSistemaOficial } from '../../integracoes/sistema_oficial'
 import type { ContextoFvs, TelaFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
+import { quantosLocais } from '../locais'
 
 const OBRA_INTEIRA = 'obra-inteira'
 
@@ -53,6 +54,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
     dataDoPacoteGuardado(banco, props.obra.id).then(setGeradoEm, () => setGeradoEm(null))
   }, [props.obra.id])
   const naFrente = useMemo(() => registroNaFrente(dados), [dados])
+  // locais do sistema oficial que não são peça e têm ficha ou marcação (tela "Locais fora da planta")
+  const locaisFora = useMemo(() => quantosLocais(dados), [dados])
 
   // O que está no aparelho. Sai o que esta pessoa não vê mais e a revisão anterior de uma planta cuja
   // revisão nova já chegou; a anterior fica até lá, para ela não ficar sem planta na obra.
@@ -418,7 +421,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               {opcoesDeAmbientes(ambientes, ehOpcaoDeAlvenaria)}
             </div>
           )}
-          {ambientes.length > 0 && discAberta.id !== 'alvenaria' && (
+          {ambientes.length > 0 && discAberta.id !== 'alvenaria' && discAberta.id !== 'instalacoes' && (
             <div data-testid="fvs-ambientes">
               <h3 class="fv-disciplina">Ambientes</h3>
               {resumoAmb.servicos.length === 0 ? (
@@ -433,7 +436,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                   ))}
                 </ul>
               )}
-              {opcoesDeAmbientes(ambientes, (op) => !ehOpcaoDeAlvenaria(op))}
+              {opcoesDeAmbientes(ambientes, ehOpcaoDeAcabamentos)}
               <p class="fv-subgrupo">Planta com todos os ambientes</p>
               <div class="fv-grade-armadura">{ambientes.map((p) => plantaNaLista(p, ambientes.length > 1 ? p.trecho : 'Todos os ambientes', p.prancha))}</div>
             </div>
@@ -445,6 +448,13 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               <div class="fv-grade-armadura">{lista.map((p) => plantaNaLista(p, p.trecho, `${p.elementos} ${disc in SECAO_DE_INSTALACOES ? 'pontos' : 'locais'} · ${p.prancha}`))}</div>
             </div>
           ))}
+          {/* fichas de ambiente com item de pontos (hidro, esgoto...): por ambiente, na planta de ambientes (21/11/2026) */}
+          {ambientes.length > 0 && discAberta.id === 'instalacoes' && (
+            <div data-testid="fvs-ambientes-instalacoes">
+              <h3 class="fv-disciplina">Por ambiente</h3>
+              {opcoesDeAmbientes(ambientes, ehOpcaoDeInstalacoes)}
+            </div>
+          )}
           {semRede && plantas.some((p) => !noAparelho?.has(p.id)) && <p class="discreto">Planta que ainda não foi baixada precisa de internet uma vez.</p>}
         </section>
       </main>
@@ -473,10 +483,12 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         return { tem: partes.join(', '), andamento: rm.total > 0 ? `${rm.liberadas} de ${rm.total} paredes liberadas` : null }
       }
       if (d.id === 'acabamentos') {
-        const partes = ops((op) => !ehOpcaoDeAlvenaria(op))
+        const partes = ops(ehOpcaoDeAcabamentos)
         return { tem: partes.length ? partes.join(', ') : `${ra.total} ambientes`, andamento: null }
       }
-      const secoes = [...new Set(ps.map((p) => nomeDaDisciplina(p.disciplina)))]
+      // na ordem do menu (hidráulica, esgoto, elétrico, preventivo, SPDA), e "por ambiente" no fim
+      const secoes = [...new Set([...ps.filter((p) => !ehDeAmbientes(p))].sort((a, b) => ordemDaSecao(a.disciplina) - ordemDaSecao(b.disciplina)).map((p) => nomeDaDisciplina(p.disciplina)))]
+      if (d.id === 'instalacoes' && ops(ehOpcaoDeInstalacoes).length) secoes.push('por ambiente')
       return { tem: secoes.join(', '), andamento: null }
     }
     return (
@@ -638,6 +650,14 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           <span>Ver os prazos e as ligações entre itens ›</span>
         </button>
       )}
+      {locaisFora > 0 && (
+        <button type="button" class="fv-entra-rep" data-testid="fvs-entra-locais" onClick={() => ir({ nome: 'locais' })}>
+          <b>
+            {locaisFora === 1 ? '1 local fora da planta' : `${locaisFora} locais fora da planta`}
+          </b>
+          <span>Blocos, cortinas, paredes e outros locais sem peça na prancha ›</span>
+        </button>
+      )}
       {dados.fichas.length === 0 && (
         <p class="aviso">Esta obra ainda não tem fichas (PVS). Quem cuida do cadastro publica pelo PC (pipeline/fvs/publicar_fichas.py).</p>
       )}
@@ -783,13 +803,14 @@ function IconeDaCamada({ camada }: { camada?: CamadaDeBarras }) {
   )
 }
 
-/** Seções das plantas de instalações (pontos, frente INSTALAÇÕES 20/11/2026), com acento. */
-const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Sanitário', eletrico: 'Elétrico', spda: 'SPDA' }
+/** Seções das plantas de instalações (pontos, frente INSTALAÇÕES 20/11/2026), com acento, na ordem do menu
+ *  (21/11/2026: hidráulica, esgoto, elétrico, preventivo, SPDA). */
+const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', sanitario: 'Esgoto', eletrico: 'Elétrico', preventivo: 'Preventivo contra incêndio', spda: 'SPDA' }
 /** Plantas de furos de laje na ordem da obra: esgoto, água, elétrica (o nome vem do pipeline/fvs/furos.py). */
 const ordemDoFuro = (trecho: string) => { const t = trecho.toLowerCase(); return t.includes('esgoto') ? 0 : t.includes('água') || t.includes('agua') ? 1 : t.includes('elétrica') || t.includes('eletrica') ? 2 : 3 }
 /** Seções depois da estrutura: os furos de laje por camada (21/11/2026), depois as instalações. */
 const SECOES: Record<string, string> = { furacao: 'Furação de laje', ...SECAO_DE_INSTALACOES }
-/** Na ordem do menu (furação, hidro, sanitário, elétrico, SPDA); disciplina que o app não conhece vem depois. */
+/** Na ordem do menu (furação, hidro, esgoto, elétrico, preventivo, SPDA); disciplina que o app não conhece vem depois. */
 const ordemDaSecao = (d: string) => { const i = Object.keys(SECOES).indexOf(d); return i < 0 ? 99 : i }
 
 /** Título da seção de uma disciplina que o app ainda não conhece ("instalacoes" -> "Instalacoes"). */

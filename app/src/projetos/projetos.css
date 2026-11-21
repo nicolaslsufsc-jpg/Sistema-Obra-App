@@ -766,3 +766,62 @@ button.pj-pequeno {
   flex: none;
   align-self: center;
 }
+
+/* Controle do canteiro: Situação das cópias como na ficha v2 (21/11/2026) */
+.pj-situacoes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.pj-situacoes li {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 0.45rem 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* celular: 2 × 2, para OK / RECOLHER / DEVOLVIDO / CONFERIR não quebrarem no meio da palavra */
+@media (max-width: 479px) {
+  .pj-situacoes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.pj-situacoes b {
+  display: block;
+  font-size: 1.15rem;
+}
+.pj-situacoes .pj-sit-ok {
+  color: var(--texto-1b5e20);
+  background: var(--ok-fundo);
+  border-color: var(--ok-borda-claro);
+}
+.pj-situacoes .pj-sit-recolher {
+  color: var(--texto-8e1b16);
+  background: var(--erro-fundo);
+  border-color: var(--erro-claro);
+}
+.pj-situacoes .pj-sit-devolvido {
+  color: var(--discreto);
+  background: var(--superficie);
+}
+.pj-situacoes .pj-sit-conferir {
+  color: var(--atencao-texto);
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+}
+[data-testid='painel-canteiro'] .pj-pequeno {
+  margin-top: 0.6rem;
+}
+/* PDF e .xlsx lado a lado (quebram para baixo no celular) */
+.pj-baixar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}

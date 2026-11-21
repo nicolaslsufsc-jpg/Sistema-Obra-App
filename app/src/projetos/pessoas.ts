@@ -11,6 +11,7 @@
 // Funções puras: sem banco nem rede.
 import type { GrupoAEntregar, Pendencia } from './distribuicao'
 import { normalizar, type CopiaCruzada } from './painel'
+import { ordemPavimento, pavimentoDe } from './obra'
 
 export interface Pessoa {
   chave: string
@@ -117,5 +118,38 @@ export function gruposDaPessoa(p: Pessoa): GrupoDaPessoa[] {
       pastas: [...pastas.entries()]
         .sort((a, b) => (a[0] === 'sem pasta' ? 1 : b[0] === 'sem pasta' ? -1 : ordem.compare(a[0], b[0])))
         .map(([pasta, copias]) => ({ pasta, copias: [...copias].sort((a, b) => ordem.compare(a.copia.codigo, b.copia.codigo)) })),
+    }))
+}
+
+export interface PavimentoDaPessoa {
+  pavimento: string
+  atrasadas: number
+  disciplinas: { disciplina: string; copias: CopiaCruzada[] }[]
+}
+
+/**
+ * O que a pessoa tem em campo por pavimento e, dentro dele, por disciplina (pedido do Nicolas, 21/11:
+ * "clicar na pessoa → pavimento → disciplina"). O pavimento sai do nome e do título da folha (ver obra.ts);
+ * sem pavimento no título, "Geral".
+ */
+export function pavimentosDaPessoa(p: Pessoa): PavimentoDaPessoa[] {
+  const pav = new Map<string, Map<string, CopiaCruzada[]>>()
+  for (const x of p.emCampo) {
+    const nomeCurto = (x.vigente?.codigo ?? '').split('.')[4] ?? ''
+    const onde = pavimentoDe({ nome_curto: nomeCurto, titulo: x.vigente?.titulo || x.copia.titulo })
+    const d = x.copia.disciplinaNome || x.copia.disciplina || 'Sem disciplina'
+    const disc = pav.get(onde) ?? new Map<string, CopiaCruzada[]>()
+    disc.set(d, [...(disc.get(d) ?? []), x])
+    pav.set(onde, disc)
+  }
+  const ordem = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' })
+  return [...pav.entries()]
+    .sort((a, b) => ordemPavimento(a[0]) - ordemPavimento(b[0]) || ordem.compare(a[0], b[0]))
+    .map(([pavimento, disc]) => ({
+      pavimento,
+      atrasadas: [...disc.values()].flat().filter((x) => x.resultado === 'desatualizada').length,
+      disciplinas: [...disc.entries()]
+        .sort((a, b) => ordem.compare(a[0], b[0]))
+        .map(([disciplina, copias]) => ({ disciplina, copias: [...copias].sort((a, b) => ordem.compare(a.copia.codigo, b.copia.codigo)) })),
     }))
 }

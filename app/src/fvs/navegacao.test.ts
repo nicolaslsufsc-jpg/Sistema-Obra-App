@@ -68,6 +68,18 @@ describe('disciplinas do pavimento', () => {
     expect(com(['Piso cerâmico'])).toEqual([['acabamentos', ['amb']]])
   })
 
+  it('preventivo e ficha de ambiente com item de pontos vão para Instalações (21/11/2026)', () => {
+    const amb = planta('amb', 'arquitetura')
+    const inst: OpcaoDosAmbientes = { ...opcao('Instalações hidrossanitárias'), pontos: ['hidro', 'sanitario'] }
+    const d = disciplinasDoPavimento([planta('prev', 'preventivo'), planta('spda', 'spda'), amb], new Map([['amb', [opcao('Reboco interno'), inst]]]))
+    expect(ids(d)).toEqual([
+      ['acabamentos', ['amb']],
+      ['instalacoes', ['prev', 'spda', 'amb']],
+    ])
+    // só a ficha de instalações: a planta de ambientes não aparece em Acabamentos
+    expect(ids(disciplinasDoPavimento([amb], new Map([['amb', [inst]]])))).toEqual([['instalacoes', ['amb']]])
+  })
+
   it('opção de alvenaria pelo título da ficha', () => {
     for (const t of ['Alvenaria de vedação', 'Execução de VEDAÇÃO', 'Modulação da 1ª fiada', 'Marcação da primeira fiada']) expect(ehOpcaoDeAlvenaria({ titulo: t }), t).toBe(true)
     for (const t of ['Reboco interno', 'Contrapiso', 'Pintura', 'Esquadrias']) expect(ehOpcaoDeAlvenaria({ titulo: t }), t).toBe(false)

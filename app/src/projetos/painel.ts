@@ -177,7 +177,11 @@ export function lerVigentes(texto: string): Vigente[] {
 }
 
 export function lerDistribuicao(texto: string): Copia[] {
-  const linhas = lerCsv(texto)
+  return distribuicaoDeLinhas(lerCsv(texto))
+}
+
+/** Cópias a partir das linhas já lidas (do CSV ou da ficha .xlsx, ver planilha_xlsx.ts). */
+export function distribuicaoDeLinhas(linhas: Record<string, string>[]): Copia[] {
   conferirColunas(linhas, COLUNAS_DISTRIBUICAO, 'distribuição')
   const copias: Copia[] = []
   linhas.forEach((l, i) => {

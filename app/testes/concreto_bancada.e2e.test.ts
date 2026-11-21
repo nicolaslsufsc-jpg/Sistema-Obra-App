@@ -991,6 +991,52 @@ suite('Concreto na bancada (Chrome)', () => {
     }
   }, 180_000)
 
+  it('planilha de controle: escolhe o modelo da obra e baixa a planilha preenchida, um caminhão por linha (celular e tablet)', async () => {
+    const { abrirXlsx, texto } = await import('../src/concreto/xlsx')
+    for (const largura of [1280, 375]) {
+      const contexto = await navegador.newContext({ viewport: { width: largura, height: 800 }, hasTouch: true, acceptDownloads: true })
+      const p = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(url)
+      await clicar(p, /Pavimento em 2 trechos/)
+      await clicar(p, '+ Nova concretagem')
+      await p.getByLabel('Local').fill('Trecho 1 · planilha')
+      await p.getByLabel('fck (MPa)').fill('40')
+      await clicar(p, 'Salvar concretagem')
+      await clicar(p, '+ Caminhão')
+      await p.getByLabel('Nota fiscal').fill(`80${largura}`)
+      await clicar(p, /^Salvar$/)
+      await p.getByText(`80${largura}`).first().waitFor()
+      await p.goto(url)
+
+      const secao = p.getByTestId('planilha-controle')
+      await secao.scrollIntoViewIfNeeded()
+      // o modelo de exemplo (obra EXE) serve de "modelo da obra"
+      const [exemplo] = await Promise.all([p.waitForEvent('download'), secao.getByRole('button', { name: 'Baixar modelo de exemplo' }).click()])
+      expect(exemplo.suggestedFilename()).toMatch(/\.xlsx$/)
+      await p.getByTestId('planilha-modelo').setInputFiles(await exemplo.path())
+      const [gerado] = await Promise.all([p.waitForEvent('download'), secao.getByRole('button', { name: 'Gerar planilha' }).click()])
+      expect(await p.getByTestId('planilha-mensagem').innerText()).toMatch(/Planilha gerada: \d+ caminh/)
+      const a = await abrirXlsx(new Uint8Array(readFileSync(await gerado.path())))
+      const aba = texto(a, 'xl/worksheets/sheet2.xml')!
+      expect(aba).toContain(`80${largura}`)
+      expect(aba).toContain('Trecho 1 · planilha')
+      expect(aba).toContain('INFORMAÇÕES A MAIS (SISTEMA OBRA)')
+      // a concretagem de exemplo da apresentação não entra
+      expect(aba).not.toContain('EXEMPLO-0001')
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await capturar(p, `planilha_controle_${largura}`)
+
+      // arquivo que não é planilha: mensagem, sem travar
+      await p.getByTestId('planilha-modelo').setInputFiles({ name: 'errado.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('não sou planilha') })
+      await secao.getByRole('button', { name: 'Gerar planilha' }).click()
+      expect(await p.getByTestId('planilha-mensagem').innerText()).toContain('não é um .xlsx')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }
+  }, 120_000)
+
   it('celular em pé: nenhuma tela rola de lado e os botões têm pelo menos 44 px', async () => {
     const contexto = await navegador.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
     const p = await contexto.newPage()

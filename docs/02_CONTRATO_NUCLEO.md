@@ -1,6 +1,6 @@
 # Contrato de dados do núcleo (dono: sessão Núcleo)
 
-Versão 1.4, 04/11/2026. v1: validado a partir do rascunho v0 e transformado em migração. v1.1: biblioteca de sincronização do app. v1.2: exportação de obra. v1.3: pessoas da obra, caminho seguro, correções da revisão da exportação. v1.4: casca do app com registro de módulos (`app/src/modulos.ts`). v1.5 (18/11/2026): volta ao último módulo ao reabrir e betas fora do menu.
+Versão 1.7, 21/11/2026. v1: validado a partir do rascunho v0 e transformado em migração. v1.1: biblioteca de sincronização do app. v1.2: exportação de obra. v1.3: pessoas da obra, caminho seguro, correções da revisão da exportação. v1.4: casca do app com registro de módulos (`app/src/modulos.ts`). v1.5 (18/11/2026): volta ao último módulo ao reabrir e betas fora do menu. v1.6 (21/11/2026): convites (pessoa na obra antes de ter e-mail ou conta). v1.7 (21/11/2026): dados lidos de um sistema oficial (locais do sistema, local_id nas verificações, importações).
 
 - Migração: `supabase/migrations/20261103120000_nucleo.sql`
 - Testes: `supabase/testes/rodar_testes.sh` (Postgres local com imitação do Supabase)
@@ -24,6 +24,7 @@ Usuário sem linha em `acessos` (e que não é admin) não vê nada. `perfis.pap
 - `perfis` (id = usuário do Supabase, nome, papel admin/usuario). Criado sozinho quando o usuário é criado no Supabase. Cada um vê o próprio perfil e o de quem divide obra com ele.
 - `obras` (id, codigo ex. obra piloto, nome, empresa, criado_por). `codigo` só com maiúsculas, números, `_` e `-`.
 - `acessos` (usuario_id, obra_id, papel gestor/campo/leitura). Revogar = apagar a linha. Não é baixada por cursor: o app relê a lista a cada login com internet.
+- `convites` (obra_id, nome, email opcional, papel, usuario_id e aceito_em quando vira acesso). Só o admin lê e escreve. Não é sincronizada nem exportada. Ver "Convites" abaixo.
 - `pavimentos` (obra_id, nome, ordem). `ordem` cresce de baixo para cima. Nome único por obra.
 - `setores` (obra_id, pavimento_id opcional, nome_projeto ex. "Trecho 2", nome_construpoint ex. "B/C", disciplina ex. "estrutura").
   - Liga o trecho da prancha ao setor do Construpoint. De-para da obra piloto ainda não definido: `nome_construpoint` fica vazio até lá.
@@ -160,6 +161,35 @@ import { ModuloFvs } from './fvs/telas/ModuloFvs'
 - Os administradores aparecem na lista com acesso como "Administrador (vê todas as obras)", sem controles: admin só muda pelo editor SQL, e `dar_acesso` recusa e-mail de admin.
 - E-mails ficam em `auth.users`, que a API não mostra: as funções `public.pessoas_da_obra(obra)`, `public.contas_sem_acesso(obra)` e `public.dar_acesso` (migração `20261103210000_nucleo_pessoas.sql`) só respondem ao admin. Mudar papel e tirar acesso usam a tabela `acessos` direto (as regras já deixam só o admin); a biblioteca confere que uma linha mudou, porque a RLS filtra sem erro.
 - Tirar o acesso ou baixar para leitura: o que a pessoa registrou sem internet e ainda não sincronizou fica preso no celular dela. O app avisa isso na confirmação.
+
+## Convites (pessoa na obra antes de ter e-mail ou conta)
+
+Migração `20261121120000_nucleo_convites.sql` (21/11/2026, pedido do Nicolas: cadastrar pessoas na obra antes de saber o e-mail delas).
+
+- `public.convidar(obra, nome, papel, email opcional)`: cria o convite (só admin). Sem e-mail, a pessoa ainda não tem acesso a nada.
+- `public.por_email_no_convite(convite, email)`: põe o e-mail (só admin; guardado sem espaços e em minúsculas). Se já existe conta com esse e-mail **e o e-mail dela está confirmado**, o acesso é dado na hora e a função devolve `true`; senão devolve `false` e espera a pessoa entrar (ou confirmar).
+- O acesso só sai com o **e-mail confirmado** (`auth.users.email_confirmed_at`): no login por código, o Supabase cria a conta quando a pessoa pede o código e só confirma o e-mail quando ela digita o código certo. Quem digita o e-mail de outra pessoa não ganha nada. Vale também para conta criada com senha. O gatilho `sistema_obra_entrada_convites` em `auth.users` (ao criar a conta e ao confirmar ou trocar o e-mail) cria o `acessos` com o papel do convite, põe o nome do convite no perfil (só se o perfil ainda tiver o nome padrão, tirado do e-mail) e marca o convite como aceito. O nome do gatilho vem depois de `sistema_obra_criar_perfil` na ordem alfabética, porque o Postgres roda os gatilhos nessa ordem e o perfil precisa existir antes. O gatilho roda dentro do cadastro da conta: se um convite der erro ao virar acesso, ele só deixa aviso no log e a conta nasce normalmente (o admin dá o acesso pela tela). Convite de obra apagada não vira acesso. Trocar o e-mail da conta (o Supabase só troca depois que o e-mail novo é confirmado) aceita os convites abertos do e-mail novo e não tira o acesso que veio do e-mail antigo; para tirar, use a tela "Pessoas da obra".
+- Convite aceito não muda mais de e-mail: daí em diante, papel e acesso se mexem pela tela "Pessoas da obra". Convite com `apagado = true` não vira acesso. Admin convidado resolve o convite sem linha em `acessos` (já vê todas as obras).
+- Um convite aberto por e-mail em cada obra. Mais de uma conta com o mesmo e-mail: recusa, como `dar_acesso`.
+- Hoje sem tela: o admin usa o editor SQL. Nomes e e-mails de pessoas reais só no servidor, nunca no repositório.
+
+## Dados lidos de um sistema oficial (v1.7, 21/11/2026)
+
+Leitura só de ida do sistema em que a empresa registra a obra (galhos em `pipeline/integracoes/`,
+`docs/modulos/integracoes.md`). O nome do sistema é dado (coluna `sistema`, o id do galho), nunca
+nome de coluna. Migração `20261121130000_sistema_oficial_leitura.sql`, teste `testes_x_sistema_oficial.sql`.
+
+- `locais_sistema` (obra_id, sistema, origem_id, origem_pai_id, nome, nome_completo, nivel,
+  apagado_no_sistema, pavimento_id e elemento_id opcionais): árvore de locais do sistema, inclusive os
+  que não são peça da planta (apartamento, ambiente, casa, loja, bloco). Único por (obra, sistema,
+  origem_id). Gestor inclui e altera; todos da obra leem.
+- `fvs_eventos.local_id`: verificação num local do sistema. Cada verificação é de um só: peça
+  (`elemento_id`), área de laje (`area_id`), barra (`barra_id`) ou local (`local_id`). Nenhuma verificação
+  só com `local_id` é publicada antes de a tela da FVS saber mostrá-la.
+- `fvs_fichas_campo`: `local_id`, `agendada_em`, `reinspecao_em`, `medicao`.
+- `concretagens.status_sistema`: situação da ficha de concreto lá (Agendado, Aguardando Laudo...).
+- `importacoes` (obra_id, sistema, lida_em, contagens jsonb, observacao): cada leitura publicada. Gestor
+  inclui; não se altera.
 
 ## Módulo novo: passo a passo
 

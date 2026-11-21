@@ -53,8 +53,9 @@ from exportar_obra import CHAVE_PADRAO, URL_PADRAO, ErroExportacao, Supabase  # 
 # Fichas no formato do HTML legado: o código e o título de cada ficha vêm do próprio arquivo
 # ("codigo" e "titulo" em cada tipo). Nada da empresa fica fixo aqui.
 TIPOS_LEGADO = ("P", "V")
-# P pilar, V viga, L laje, A ambiente (ficha por ambiente: alvenaria, reboco, pintura...)
-TIPOS = ("P", "V", "L", "A")
+# P pilar, V viga, L laje, A ambiente (ficha por ambiente: alvenaria, reboco, pintura...), M parede (modulação:
+# a ficha de alvenaria por parede, vedacao.py)
+TIPOS = ("P", "V", "L", "A", "M")
 # partes do pilar que um item pode ter (as mesmas do pacote da planta: pacote.TIPOS_DE_PARTE)
 PARTES = ("consolo", "capitel")
 

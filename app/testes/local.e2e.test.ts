@@ -1257,6 +1257,21 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
           }
         }
       }))
+      // Escolhe o .zip e espera o quadro de confirmação. No CI lento a tela do menu pode ser refeita logo depois
+      // da abertura anterior (fim do pacote, módulo reaberto) e o .zip escolhido se perde: escolhe de novo
+      // (CI run 79, 20/11/2026: 'Trocar para a obra OUTRA2' nunca apareceu; aqui passava).
+      const escolherEPerguntar = async (arquivo: string, titulo: string | RegExp) => {
+        const quadro = p.getByRole('heading', { name: titulo })
+        for (let tentativa = 0; ; tentativa++) {
+          await escolherPacote(p, arquivo)
+          try {
+            await quadro.waitFor({ timeout: 15_000 })
+            return
+          } catch (erro) {
+            if (tentativa >= 2) throw erro
+          }
+        }
+      }
       try {
         // primeira vez, aparelho vazio: o .zip da EXE abre sem perguntar
         await irAoApp(p)
@@ -1265,8 +1280,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         const antes = await banco()
 
         // .zip de outra obra: mostra as duas, com data; cancelar volta ao menu da EXE sem mexer em nada
-        await escolherPacote(p, outra) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
-        await p.getByRole('heading', { name: 'Trocar de obra?' }).waitFor()
+        await escolherEPerguntar(outra, 'Trocar de obra?') // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
         const quadro = await p.getByTestId('comparacao-pacote').innerText()
         expect(quadro).toContain('Obra OUTRA2 (Outra Obra), gerado em 09/11/2026 às 08:30')
         expect(quadro).toContain('Obra EXE (Obra Exemplo), pacote de 08/11/2026 às 10:00')
@@ -1277,16 +1291,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await banco()).toBe(antes)
 
         // .zip mais antigo da mesma obra: pede confirmação; cancelar também não mexe
-        await escolherPacote(p, antigo) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
-        await p.getByRole('heading', { name: 'Abrir um pacote mais antigo?' }).waitFor()
+        await escolherEPerguntar(antigo, 'Abrir um pacote mais antigo?')
         expect(await p.getByTestId('comparacao-pacote').innerText()).toContain('gerado em 01/11/2026 às 10:00')
         await p.getByRole('button', { name: 'Cancelar' }).click()
         await naLac()
         expect(await banco()).toBe(antes)
 
         // .zip sem data: o título diz "sem data", não "mais antigo" (testador, 08/11, T3)
-        await escolherPacote(p, semData) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
-        await p.getByRole('heading', { name: 'Abrir um pacote sem data?' }).waitFor()
+        await escolherEPerguntar(semData, 'Abrir um pacote sem data?')
         expect(await p.getByRole('alert').innerText()).toContain('não tem data')
         await p.getByRole('button', { name: 'Cancelar' }).click()
         await naLac()
@@ -1298,7 +1310,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         expect(await p.getByRole('heading', { name: /pacote mais antigo|Trocar de obra/ }).count()).toBe(0)
 
         // confirmando a troca, o app passa para a outra obra
-        await escolherPacote(p, outra) // abre o menu da obra se preciso (o .zip fica nele desde 20/11/2026)
+        await escolherEPerguntar(outra, 'Trocar de obra?')
         await p.getByRole('button', { name: 'Trocar para a obra OUTRA2' }).click()
         await p.getByRole('heading', { name: /OUTRA2/ }).waitFor({ timeout: 30_000 })
         expect(erros).toEqual([])

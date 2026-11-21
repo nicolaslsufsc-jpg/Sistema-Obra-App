@@ -27,7 +27,7 @@ Usuário sem linha em `acessos` (e que não é admin) não vê nada. `perfis.pap
 - `pavimentos` (obra_id, nome, ordem). `ordem` cresce de baixo para cima. Nome único por obra.
 - `setores` (obra_id, pavimento_id opcional, nome_projeto ex. "Trecho 2", nome_construpoint ex. "B/C", disciplina ex. "estrutura").
   - Liga o trecho da prancha ao setor do Construpoint. De-para da obra piloto ainda não definido: `nome_construpoint` fica vazio até lá.
-- `elementos` (obra_id, pavimento_id, tipo P/V/L/A/F/E: pilar, viga, laje, ambiente, furo de viga, esquadria; nome, secao). Único por (pavimento_id, tipo, nome) entre os não apagados.
+- `elementos` (obra_id, pavimento_id, tipo P/V/L/A/F/E/M: pilar, viga, laje, ambiente, furo de viga, esquadria, parede de modulação; nome, secao). Único por (pavimento_id, tipo, nome) entre os não apagados.
   - Pilar que aparece em dois trechos é um elemento só.
   - `nome` sem espaço: "V46", não "V 46". O leitor de prancha normaliza antes de gravar.
 - `arquivos` (obra_id, caminho, nome_original, hash SHA-256 hex, tamanho em bytes, tipo MIME). Quem criou e quando: `usuario_id` e `criado_em_servidor`.

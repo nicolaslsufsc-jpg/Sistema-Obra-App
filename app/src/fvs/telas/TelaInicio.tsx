@@ -5,7 +5,7 @@
 import { resumoDasRegras } from '../regras_tela'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { resumoDasAreas } from '../areas'
-import { baixarPlanta, ehDeAmbientes, ehDeArmadura, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
+import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { abrirPacoteOuAnterior, limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
@@ -125,7 +125,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             <strong>{p.trecho}</strong>
             <span class="discreto">
               {/* planta de ambientes: o número de ambientes já está no resumo acima (o da folha soma as esquadrias) */}
-              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} peças`}
+              {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${ehDeVedacao(p) ? "paredes" : "peças"}`}
             </span>
             {antiga && <span class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</span>}
           </span>
@@ -227,6 +227,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
           {
             r: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo),
             ra: resumoDosAmbientes(locais, dados.fichas, eventosDe),
+            rm: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo, 'M'),
             lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe, undefined, (a) => travasDaAreaNaObra(dados, a).length > 0),
           },
         ] as const
@@ -322,14 +323,16 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
 
       {comPlanta.map((pv) => {
         const plantas = dados.plantasDe.get(pv.id)!
-        const estrutura = plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p))
+        const estrutura = plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p))
+        // modulação de paredes (20/11): seção própria, antes dos ambientes (a alvenaria vem antes do reboco)
+        const vedacao = plantas.filter(ehDeVedacao)
         // só as direções que o pavimento tem publicadas, na ordem do app
         const armadura = plantas.filter(ehDeArmadura).sort((a, b) => ordemDaCamada(a.trecho) - ordemDaCamada(b.trecho))
         const ambientes = plantas.filter(ehDeAmbientes)
         // disciplinas que vierem depois (instalações...) entram sozinhas, uma seção por disciplina
-        const outras = [...agrupar(plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && p.disciplina !== 'estrutura'), (p) => p.disciplina)]
+        const outras = [...agrupar(plantas.filter((p) => !ehDeAmbientes(p) && !ehDeArmadura(p) && !ehDeVedacao(p) && p.disciplina !== 'estrutura'), (p) => p.disciplina)]
         const daEstrutura = estrutura.filter((p) => p.disciplina === 'estrutura')
-        const { r, ra: resumoAmb, lajes } = resumos.get(pv.id)!
+        const { r, ra: resumoAmb, rm, lajes } = resumos.get(pv.id)!
         const ra = ambientes.length ? resumoAmb : null
         const faltam = noAparelho ? plantas.filter((p) => !noAparelho.has(p.id)) : []
         const baixandoAqui = baixando?.pavimentoId === pv.id ? baixando : null
@@ -383,7 +386,7 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
             )}
             {daEstrutura.length > 0 && (
               <div data-testid="fvs-secao-estrutura">
-                {(ambientes.length > 0 || armadura.length > 0 || outras.length > 0) && <h3 class="fv-disciplina">Estrutura</h3>}
+                {(ambientes.length > 0 || armadura.length > 0 || outras.length > 0 || vedacao.length > 0) && <h3 class="fv-disciplina">Estrutura</h3>}
                 {armadura.length > 0 && <p class="fv-subgrupo">Forma: pilares, vigas e lajes</p>}
                 <ul class="lista fv-trechos">{daEstrutura.map(linhaDaPlanta)}</ul>
                 {armadura.length > 0 && (
@@ -406,6 +409,18 @@ export function TelaInicio({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                 <ul class="lista fv-trechos">{lista.map(linhaDaPlanta)}</ul>
               </div>
             ))}
+            {vedacao.length > 0 && (
+              <div data-testid="fvs-secao-vedacao">
+                <h3 class="fv-disciplina">Modulação de paredes</h3>
+                {rm.total > 0 && (
+                  <p class="discreto" data-testid="fvs-resumo-paredes">
+                    {rm.liberadas} de {rm.total} paredes liberadas
+                    {rm.comR > 0 && <span class="fv-txt-r"> · {rm.comR} com NC</span>}
+                  </p>
+                )}
+                <ul class="lista fv-trechos">{vedacao.map(linhaDaPlanta)}</ul>
+              </div>
+            )}
             {ra && (
               <div data-testid="fvs-ambientes">
                 <h3 class="fv-disciplina">Ambientes</h3>

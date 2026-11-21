@@ -106,6 +106,25 @@ class TestDesempate(unittest.TestCase):
         self.assertAlmostEqual(T["transformacao"]["t"][0], 1000, delta=1)
 
 
+class TestAConferir(unittest.TestCase):
+    def test_fora_do_contorno_pilhas_e_filas(self):
+        pecas = [{"tipo": "P", "nome": "P1", "polys": [ret(0, 0, 10, 10)]}, {"tipo": "P", "nome": "P2", "polys": [ret(1000, 1000, 10, 10)]},
+                 {"tipo": "V", "nome": "V1", "polys": [ret(500, 0, 1000, 10)]}, {"tipo": "V", "nome": "V2", "polys": [ret(500, 1000, 1000, 10)]},
+                 {"tipo": "V", "nome": "V3", "polys": [ret(0, 500, 10, 1000)]}, {"tipo": "V", "nome": "V4", "polys": [ret(1000, 500, 10, 1000)]}]
+
+        def furo(nome, x, y):
+            return {"tipo": "F", "nome": nome, "rotulo": [x - 1, y - 1, x + 1, y + 1], "polys": []}
+
+        pecas += [furo("dentro", 500, 500), furo("fora", 500, -300),
+                  furo("a", 200, 200), furo("b", 200.5, 200.5)]
+        pecas += [furo(f"c{i}", 800, 300 + i * 10) for i in range(6)]  # 6 em fila, de 10 em 10 pontos
+        c = furacao_fundo.a_conferir(pecas, 72 / 2.54 / 50)
+        self.assertEqual([f["furo"] for f in c["fora_do_contorno"]], ["fora"])
+        self.assertIn("acima", c["fora_do_contorno"][0]["sem_estrutura"])
+        self.assertIn(["a", "b"], c["mesmo_ponto"])
+        self.assertEqual([x["furos"] for x in c["em_fila"]], [[f"c{i}" for i in range(6)]])
+
+
 class TestFurosComPeca(unittest.TestCase):
     def test_furo_de_laje_no_pilar_ganha_o_pilar(self):
         pecas = pecas_da_forma()

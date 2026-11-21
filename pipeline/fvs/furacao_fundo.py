@@ -232,6 +232,73 @@ def marcar_pilares(pecas: list[dict]) -> None:
                 f["pilar"] = pilar
 
 
+LONGE_DA_ESTRUTURA_CM = 300.0  # largura da faixa em que se procura estrutura para cada lado do furo
+MESMO_PONTO_CM = 5.0
+COLUNA_MIN = 5  # furos em fila, com vão pequeno entre eles: pilha a conferir
+COLUNA_VAO_CM = 50.0
+
+
+def _centro(p: dict) -> tuple[float, float]:
+    r = p["rotulo"]
+    return ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2)
+
+
+def a_conferir(pecas: list[dict], pt_por_cm: float) -> dict:
+    """Furos que pedem conferência (nada sai da planta; vai para o relatório):
+    - fora do contorno: para algum lado (esquerda, direita, acima, abaixo) não há pilar nem viga da forma,
+      numa faixa de LONGE_DA_ESTRUTURA_CM;
+    - pilhas: dois ou mais no mesmo ponto (MESMO_PONTO_CM), ou COLUNA_MIN ou mais em fila reta (mesmo x ou
+      mesmo y) com vão de até COLUNA_VAO_CM entre um e outro."""
+    import math
+
+    faixa = LONGE_DA_ESTRUTURA_CM * pt_por_cm
+    pts = []  # contorno de pilares e vigas, com um ponto a cada meia faixa (viga longa tem vértice só nas pontas)
+    for p in pecas:
+        if p.get("tipo") not in ("P", "V"):
+            continue
+        for poly in p.get("polys") or []:
+            for i in range(len(poly)):
+                (ax, ay), (bx, by) = poly[i - 1], poly[i]
+                n = max(1, math.ceil(math.hypot(bx - ax, by - ay) / (faixa / 2)))
+                pts.extend((ax + (bx - ax) * k / n, ay + (by - ay) * k / n) for k in range(n))
+    furos = [p for p in pecas if p.get("tipo") == "F"]
+    fora = []
+    for f in furos:
+        x, y = _centro(f)
+        # fora do prédio: numa das quatro direções não há pilar nem viga (numa faixa de 3 m de largura)
+        lados = {"esquerda": any(q[0] < x and abs(q[1] - y) <= faixa for q in pts),
+                 "direita": any(q[0] > x and abs(q[1] - y) <= faixa for q in pts),
+                 "acima": any(q[1] < y and abs(q[0] - x) <= faixa for q in pts),
+                 "abaixo": any(q[1] > y and abs(q[0] - x) <= faixa for q in pts)}
+        vazios = [k for k, tem in lados.items() if not tem]
+        if vazios:
+            fora.append({"furo": f["nome"], "x": round(x, 1), "y": round(y, 1), "sem_estrutura": vazios})
+    tol = MESMO_PONTO_CM * pt_por_cm
+    grupos: dict[tuple[int, int], list[str]] = {}
+    for f in furos:
+        x, y = _centro(f)
+        grupos.setdefault((round(x / tol), round(y / tol)), []).append(f["nome"])
+    mesmo_ponto = [sorted(g) for g in grupos.values() if len(g) > 1]
+    colunas = []
+    vao = COLUNA_VAO_CM * pt_por_cm
+    for eixo in (0, 1):
+        filas: dict[int, list[tuple[float, str]]] = {}
+        for f in furos:
+            c = _centro(f)
+            filas.setdefault(round(c[eixo] / tol), []).append((c[1 - eixo], f["nome"]))
+        for fila in filas.values():
+            fila.sort()
+            atual = [fila[0]] if fila else []
+            for item in fila[1:] + [(float("inf"), "")]:
+                if item[0] - atual[-1][0] <= vao and item[1]:
+                    atual.append(item)
+                    continue
+                if len(atual) >= COLUNA_MIN:
+                    colunas.append({"direcao": "vertical" if eixo == 0 else "horizontal", "furos": [n for _, n in atual]})
+                atual = [item]
+    return {"fora_do_contorno": fora, "mesmo_ponto": mesmo_ponto, "em_fila": colunas}
+
+
 def folha_de_furacao(forma: dict, alinhadas: list[dict], imprimir=print) -> dict | None:
     """A planta de furação do pavimento (no formato de folha_unica.ler_folha_unica). Marca
     forma["furos_separados"] = True. Sem prancha alinhada ou sem furo, não sai planta."""

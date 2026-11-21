@@ -579,7 +579,12 @@ def por_furacao(cfg: dict, formas: list[dict]) -> dict | None:
         formas.append(folha)
     else:
         print("  sem planta de furação (nenhuma prancha encaixou ou o pavimento não tem furos)")
-    return {"pranchas": resumo, "furos": len(folha["pecas"]) if folha else 0}
+    conferir = furacao_fundo.a_conferir(fm["pecas"], 72 / 2.54 / 50)
+    if any(conferir.values()):
+        print(f"  a conferir (ficam na planta; lista no relatorio.json): {len(conferir['fora_do_contorno'])} furos fora do contorno da forma,"
+              f" {len(conferir['mesmo_ponto'])} pontos com furos repetidos ({sum(len(g) for g in conferir['mesmo_ponto'])} furos),"
+              f" {len(conferir['em_fila'])} filas de furos ({sum(len(c['furos']) for c in conferir['em_fila'])} furos)")
+    return {"pranchas": resumo, "furos": len(folha["pecas"]) if folha else 0, "a_conferir": conferir}
 
 
 def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:

@@ -4,12 +4,12 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
 
 ## Regras vigentes
 
-- **Ponto: suposição provisória, aprovada pelo Professor em 20/11; a decisão final é do Nicolas.**
+- **Ponto: opção B, decidida pelo Nicolas em 20/11 ("Sim, no ambiente", pelo Professor).**
   - **Como fica:** o ponto (ralo, caixa, ponto de água, registro) não é peça em `elementos`. Vai no pacote da planta como sobreposição, em `"pontos"`, como as `"barras"`. O id é fixo, calculado da disciplina e do id do objeto no modelo.
   - **A ficha:** é a PVS do serviço e fica no ambiente, porque o lote das PES 009 e 010 é por ambiente. O ponto conferido alimenta o item dela.
   - **Banco:** sem migração e sem mudança em `elementos.tipo` nem em `fvs_eventos`. O registro do ponto deve usar a coluna `barra_id`, que já existe: id do pacote, sem chave estrangeira, com `planta_id`.
   - **Antes de pôr no app:** o Professor confere se usar `barra_id` para o ponto vale. Se não valer, ou se for preciso coluna nova, a frente para e avisa.
-  - **Alternativa, se o Nicolas preferir:** um tipo de peça novo, "I", em `elementos`. Precisa de migração no núcleo.
+  - **Alternativa descartada:** um tipo de peça novo, "I", em `elementos`, que precisaria de migração no núcleo.
 - **Disciplinas:**
   - `hidro` (setor "Água fria e quente"): ponto de água, registro, hidrômetro.
   - `sanitario` (setor "Esgoto e pluvial"): ralo, caixa sifonada, caixa, ponto de esgoto de aparelho.

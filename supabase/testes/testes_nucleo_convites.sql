@@ -3,7 +3,7 @@
 -- Roda depois de testes_nucleo.sql (mesmo banco: usa a1 admin, b1 gestor, c1 campo,
 -- e1 sem acesso, e as obras 1111.../2222...). No fim apaga tudo o que criou, porque
 -- testes_nucleo_pessoas.sql (depois deste) confere as listas de pessoas exatas.
--- Contas novas deste arquivo: ...f2 a ...f5.
+-- Contas novas deste arquivo: ...f2 a ...f6. Obra nova: 3333... (apagada no fim).
 -- =====================================================================
 
 \set ON_ERROR_STOP 1
@@ -60,8 +60,14 @@ select teste.deve_falhar($$select public.por_email_no_convite('99999999-9999-999
   'P0002', 'convites: convite inexistente é recusado');
 reset role;
 
--- A pessoa entra no app pela primeira vez (conta nova): o acesso nasce sozinho
+-- Alguém pede o código com o e-mail do convite: a conta nasce, mas sem e-mail confirmado não ganha nada
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f2', 'Pessoa.Um@teste.local');
+select teste.ok((select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f2') = 0
+  and (select aceito_em is null from public.convites where id = :'conv1'),
+  'convites: conta com o e-mail do convite, ainda sem confirmar (sem o código), não ganha acesso');
+
+-- A pessoa digita o código certo (o Supabase confirma o e-mail): o acesso nasce sozinho
+update auth.users set email_confirmed_at = now() where id = '00000000-0000-0000-0000-0000000000f2';
 select teste.ok(
   (select papel from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f2'
      and obra_id = '11111111-1111-1111-1111-111111111111') = 'campo',
@@ -75,7 +81,7 @@ select teste.ok((select count(*) from public.acessos where usuario_id = '0000000
   'convites: só a obra do convite (nada na obra 2)');
 
 -- Conta nova com outro e-mail não ganha nada
-insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f3', 'outra@teste.local');
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000f3', 'outra@teste.local', now());
 select teste.ok((select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f3') = 0,
   'convites: conta sem convite não ganha acesso');
 select teste.ok((select nome from public.perfis where id = '00000000-0000-0000-0000-0000000000f3') = 'outra',
@@ -96,7 +102,27 @@ select teste.ok((select nome from public.perfis where id = '00000000-0000-0000-0
 select teste.deve_falhar(format($$select public.por_email_no_convite(%L, 'nova@teste.local')$$, :'conv2'),
   '22023', 'convites: convite aceito não muda mais de e-mail');
 
--- Convite com e-mail na hora de convidar, para conta que já existe (e1, sem acesso), na obra 2
+-- Conta que já existe mas nunca confirmou o e-mail (e1): espera a confirmação
+reset role;
+update auth.users set email_confirmed_at = null where id = '00000000-0000-0000-0000-0000000000e1';
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
+select public.convidar('22222222-2222-2222-2222-222222222222', 'Pessoa Fora', 'campo') as conv3 \gset
+select teste.ok(public.por_email_no_convite(:'conv3', 'fora@teste.local') = false
+  and (select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1') = 0,
+  'convites: e-mail de conta existente ainda não confirmada não dá acesso na hora (false)');
+reset role;
+update auth.users set email_confirmed_at = now() where id = '00000000-0000-0000-0000-0000000000e1';
+select teste.ok(
+  (select papel from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1'
+     and obra_id = '22222222-2222-2222-2222-222222222222') = 'campo',
+  'convites: ao confirmar o e-mail, a conta existente ganha o acesso');
+delete from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1';
+delete from public.convites where id = :'conv3';
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
+
+-- Convite com e-mail na hora de convidar, para conta que já existe e está confirmada (e1), na obra 2
 select public.convidar('22222222-2222-2222-2222-222222222222', 'Pessoa Fora', 'campo', 'fora@teste.local') as conv3 \gset
 select teste.ok(
   (select papel from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1'
@@ -107,7 +133,7 @@ select teste.ok(
 select public.convidar('22222222-2222-2222-2222-222222222222', 'Pessoa Tres', 'campo', 'tres@teste.local') as conv4 \gset
 update public.convites set apagado = true where id = :'conv4';
 reset role;
-insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f4', 'tres@teste.local');
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000f4', 'tres@teste.local', now());
 select teste.ok((select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f4') = 0,
   'convites: convite apagado não dá acesso');
 
@@ -122,7 +148,7 @@ begin
 end;
 $$;
 create trigger teste_recusar_acesso before insert on public.acessos for each row execute function teste.recusar_acesso();
-insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f5', 'cinco@teste.local');
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000f5', 'cinco@teste.local', now());
 drop trigger teste_recusar_acesso on public.acessos;
 drop function teste.recusar_acesso();
 select teste.ok(exists (select 1 from public.perfis where id = '00000000-0000-0000-0000-0000000000f5')
@@ -130,7 +156,20 @@ select teste.ok(exists (select 1 from public.perfis where id = '00000000-0000-00
   and (select aceito_em is null from public.convites where id = :'conv6'),
   'convites: erro ao aceitar o convite não trava a criação da conta (convite fica aberto)');
 
+-- Convite numa obra que foi apagada depois do convite não vira acesso
+insert into public.obras (id, codigo, nome, criado_por) values
+  ('33333333-3333-3333-3333-333333333333', 'OBRACONV', 'Obra dos convites', '00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
+select public.convidar('33333333-3333-3333-3333-333333333333', 'Pessoa Seis', 'campo', 'seis@teste.local') as conv7 \gset
+reset role;
+update public.obras set apagado = true where id = '33333333-3333-3333-3333-333333333333';
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000f6', 'seis@teste.local', now());
+select teste.ok((select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000f6') = 0,
+  'convites: convite de obra apagada não vira acesso');
+
 -- Convite para o próprio admin: resolve o convite sem linha em acessos
+update auth.users set email_confirmed_at = now() where id = '00000000-0000-0000-0000-0000000000a1';
 set role authenticated;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a1';
 select public.convidar('11111111-1111-1111-1111-111111111111', 'Admin', 'campo', 'admin@teste.local') as conv5 \gset
@@ -148,9 +187,13 @@ reset role;
 
 -- Limpeza (testes_nucleo_pessoas.sql confere as listas exatas de pessoas)
 delete from public.convites;
+delete from public.obras where id = '33333333-3333-3333-3333-333333333333';
 delete from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1';
+update auth.users set email_confirmed_at = null
+where id in ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000e1');
 delete from auth.users where id in ('00000000-0000-0000-0000-0000000000f2',
-  '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f4', '00000000-0000-0000-0000-0000000000f5');
+  '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f4', '00000000-0000-0000-0000-0000000000f5',
+  '00000000-0000-0000-0000-0000000000f6');
 select teste.ok((select count(*) from public.acessos where obra_id = '11111111-1111-1111-1111-111111111111') = 3
   and (select count(*) from public.acessos where usuario_id = '00000000-0000-0000-0000-0000000000e1') = 0,
   'convites: limpeza deixou os acessos como estavam');

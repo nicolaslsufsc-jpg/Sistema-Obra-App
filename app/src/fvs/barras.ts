@@ -138,19 +138,6 @@ export function situacaoDaBarra(eventos: readonly EventoFvs[]): Situacao {
   return ult?.resultado === 'NC' ? 'reprovado' : ult?.resultado ? 'liberado' : 'nada'
 }
 
-/**
- * O que faz o toque na barra (ou no ponto de instalação), pedido do Nicolas em 21/11: 1 toque OK (verde),
- * 2 toques errada (vermelho, abre a caixa do NC), 3 toques tira a verificação. O 3º toque vale com a caixa do
- * NC ainda aberta (ncAberto: a caixa aberta é desta mesma barra): fecha a caixa e volta para sem conferir.
- */
-export type PassoDoToque = 'ok' | 'abrir_nc' | 'tirar'
-export function passoDoToque(s: Situacao, ncAberto: boolean): PassoDoToque {
-  if (ncAberto) return 'tirar'
-  if (s === 'liberado') return 'abrir_nc'
-  if (s === 'reprovado') return 'tirar'
-  return 'ok'
-}
-
 /** A observação da barra errada (o que a pessoa escreveu ao confirmar o NC). */
 export function observacaoDaBarra(eventos: readonly EventoFvs[]): string | null {
   let ult: EventoFvs | undefined

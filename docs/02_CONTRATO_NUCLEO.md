@@ -1,6 +1,6 @@
 # Contrato de dados do núcleo (dono: sessão Núcleo)
 
-Versão 1.4, 04/11/2026. v1: validado a partir do rascunho v0 e transformado em migração. v1.1: biblioteca de sincronização do app. v1.2: exportação de obra. v1.3: pessoas da obra, caminho seguro, correções da revisão da exportação. v1.4: casca do app com registro de módulos (`app/src/modulos.ts`). v1.5 (18/11/2026): volta ao último módulo ao reabrir e betas fora do menu. v1.6 (21/11/2026): convites (pessoa na obra antes de ter e-mail ou conta).
+Versão 1.7, 21/11/2026. v1: validado a partir do rascunho v0 e transformado em migração. v1.1: biblioteca de sincronização do app. v1.2: exportação de obra. v1.3: pessoas da obra, caminho seguro, correções da revisão da exportação. v1.4: casca do app com registro de módulos (`app/src/modulos.ts`). v1.5 (18/11/2026): volta ao último módulo ao reabrir e betas fora do menu. v1.6 (21/11/2026): convites (pessoa na obra antes de ter e-mail ou conta). v1.7 (21/11/2026): dados lidos de um sistema oficial (locais do sistema, local_id nas verificações, importações).
 
 - Migração: `supabase/migrations/20261103120000_nucleo.sql`
 - Testes: `supabase/testes/rodar_testes.sh` (Postgres local com imitação do Supabase)
@@ -172,6 +172,24 @@ Migração `20261121120000_nucleo_convites.sql` (21/11/2026, pedido do Nicolas: 
 - Convite aceito não muda mais de e-mail: daí em diante, papel e acesso se mexem pela tela "Pessoas da obra". Convite com `apagado = true` não vira acesso. Admin convidado resolve o convite sem linha em `acessos` (já vê todas as obras).
 - Um convite aberto por e-mail em cada obra. Mais de uma conta com o mesmo e-mail: recusa, como `dar_acesso`.
 - Hoje sem tela: o admin usa o editor SQL. Nomes e e-mails de pessoas reais só no servidor, nunca no repositório.
+
+## Dados lidos de um sistema oficial (v1.7, 21/11/2026)
+
+Leitura só de ida do sistema em que a empresa registra a obra (galhos em `pipeline/integracoes/`,
+`docs/modulos/integracoes.md`). O nome do sistema é dado (coluna `sistema`, o id do galho), nunca
+nome de coluna. Migração `20261121130000_sistema_oficial_leitura.sql`, teste `testes_x_sistema_oficial.sql`.
+
+- `locais_sistema` (obra_id, sistema, origem_id, origem_pai_id, nome, nome_completo, nivel,
+  apagado_no_sistema, pavimento_id e elemento_id opcionais): árvore de locais do sistema, inclusive os
+  que não são peça da planta (apartamento, ambiente, casa, loja, bloco). Único por (obra, sistema,
+  origem_id). Gestor inclui e altera; todos da obra leem.
+- `fvs_eventos.local_id`: verificação num local do sistema. Cada verificação é de um só: peça
+  (`elemento_id`), área de laje (`area_id`), barra (`barra_id`) ou local (`local_id`). Nenhuma verificação
+  só com `local_id` é publicada antes de a tela da FVS saber mostrá-la.
+- `fvs_fichas_campo`: `local_id`, `agendada_em`, `reinspecao_em`, `medicao`.
+- `concretagens.status_sistema`: situação da ficha de concreto lá (Agendado, Aguardando Laudo...).
+- `importacoes` (obra_id, sistema, lida_em, contagens jsonb, observacao): cada leitura publicada. Gestor
+  inclui; não se altera.
 
 ## Módulo novo: passo a passo
 

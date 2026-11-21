@@ -8,6 +8,7 @@ import { ArquivoNaoConfere, podeCadastrar, registrarDocumento, urlDoArquivo, typ
 import { COLUNAS_DOCUMENTO, statusDaRevisao, tamanhoEmTexto, type ComoAbrir, type Revisao, nomeLimpo } from '../regras'
 import type { ContextoDoc } from './ModuloDocumentos'
 import { SeloExemplo, SeloStatus, SeloValidade, textoValidade } from './comum'
+import { BotoesOffline } from './Offline'
 
 /** Link para abrir o arquivo da revisão (e a foto em miniatura). */
 function AbrirArquivo({ arquivo, rotulo, miniatura = false }: { arquivo: ArquivoDoc | undefined; rotulo: string; miniatura?: boolean }) {
@@ -42,7 +43,7 @@ function AbrirArquivo({ arquivo, rotulo, miniatura = false }: { arquivo: Arquivo
       vivo = false
       if (criada) URL.revokeObjectURL(criada)
     }
-  }, [arquivo?.id, doServidor])
+  }, [arquivo?.id, arquivo?.onde, doServidor])
 
   if (!arquivo) return <p class="discreto">Sem arquivo.</p>
   if (baixando) return <p class="discreto">Baixando o arquivo do servidor…</p>
@@ -80,6 +81,7 @@ function AbrirArquivo({ arquivo, rotulo, miniatura = false }: { arquivo: Arquivo
       </a>
       <span class="discreto">
         {arquivo.nome_original} · {foto ? 'foto' : 'PDF'} · {tamanhoEmTexto(arquivo.tamanho)}
+        {arquivo.onde === 'offline' ? ' · baixado, abre sem internet' : ''}
       </span>
       {miniatura && foto && aberto.tipo !== 'image/heic' && <img class="doc-foto" src={url} alt={arquivo.nome_original} />}
     </div>
@@ -155,6 +157,8 @@ export function TelaDocumento({ ctx, chave }: { ctx: ContextoDoc; chave: string 
       </dl>
 
       <AbrirArquivo arquivo={a.arquivo_id ? dados.arquivos.get(a.arquivo_id) : undefined} rotulo="Abrir arquivo" miniatura />
+      {/* com conta: guardar no aparelho para abrir sem internet é opcional (Nicolas, 21/11) */}
+      <BotoesOffline arquivos={[a.arquivo_id ? dados.arquivos.get(a.arquivo_id) : undefined]} recarregar={recarregar} testid="offline-documento" />
 
       {pode && (
         <div class="doc-acoes">

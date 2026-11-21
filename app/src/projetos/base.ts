@@ -4,6 +4,9 @@
 import { banco } from '../nucleo/servicos'
 import { distribuicaoDeLinhas, ErroDeArquivo, lerDistribuicao, lerVigentes, type Copia, type Vigente } from './painel'
 import { linhasDaFichaXlsx } from './planilha_xlsx'
+import { lerIndiceEscritorio } from './canteiro'
+import type { RegistroEscritorio } from './edicoes'
+import { dataLocal } from './regras'
 
 export interface BaseProjetos {
   vigentes: Vigente[]
@@ -12,6 +15,10 @@ export interface BaseProjetos {
   vigentesImportadaEm?: string
   copiasArquivo?: string
   copiasImportadaEm?: string
+  /** a revisão de cada folha na pasta do escritório, pelo índice de pranchas do PC (chave = chaveFolha) */
+  escritorioIndice?: Record<string, RegistroEscritorio>
+  escritorioArquivo?: string
+  escritorioImportadoEm?: string
 }
 
 const chave = (obraId: string) => `projetos_base:${obraId}`
@@ -21,7 +28,11 @@ export async function lerBase(obraId: string): Promise<BaseProjetos | null> {
 }
 
 /** Importa um ou os dois arquivos. O que não veio continua como estava. Erro de formato: nada muda. */
-export async function importarBase(obraId: string, arquivos: { vigentes?: File | null; distribuicao?: File | null }, agora = new Date()): Promise<BaseProjetos> {
+export async function importarBase(
+  obraId: string,
+  arquivos: { vigentes?: File | null; distribuicao?: File | null; escritorio?: File | null },
+  agora = new Date(),
+): Promise<BaseProjetos> {
   const atual = (await lerBase(obraId)) ?? { vigentes: [], copias: [] }
   const nova: BaseProjetos = { ...atual }
   if (arquivos.vigentes) {
@@ -33,6 +44,18 @@ export async function importarBase(obraId: string, arquivos: { vigentes?: File |
     nova.copias = await lerArquivoDistribuicao(arquivos.distribuicao)
     nova.copiasArquivo = arquivos.distribuicao.name
     nova.copiasImportadaEm = agora.toISOString()
+  }
+  if (arquivos.escritorio) {
+    let indice: Map<string, RegistroEscritorio>
+    try {
+      indice = lerIndiceEscritorio(await textoDe(arquivos.escritorio), dataLocal(agora))
+    } catch (e) {
+      throw new ErroDeArquivo((e as Error).message)
+    }
+    if (indice.size === 0) throw new ErroDeArquivo('O índice do escritório não tem nenhuma prancha com código do Autodoc (OBRA.DISC.FASE.NUM.NOME-RNN).')
+    nova.escritorioIndice = Object.fromEntries(indice)
+    nova.escritorioArquivo = arquivos.escritorio.name
+    nova.escritorioImportadoEm = agora.toISOString()
   }
   await banco.gravarMeta(chave(obraId), nova)
   return nova

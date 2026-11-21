@@ -58,6 +58,10 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
           <strong>Cópias em campo</strong>
           <span class="discreto">recolher, conferir, empresas e entregas</span>
         </button>
+        <button type="button" onClick={() => ir({ nome: 'painel' })} data-testid="obra-canteiro">
+          <strong>Controle do canteiro</strong>
+          <span class="discreto">a ficha de cópias × a vigente: OK, recolher, conferir; escritório; Excel ficha v2</span>
+        </button>
       </nav>
 
       <section class="pj-bloco" data-testid="obra-disciplinas">

@@ -105,6 +105,43 @@ Item "Projetos" no menu da obra. Celular e tablet primeiro, depois o PC.
 ## Depende de
 Núcleo (banco, sincronização, `arquivos` para as fotos).
 
+## Status (21/11/2026, noite): controle do canteiro (branch `projetos/canteiro`)
+
+Pedido do Nicolas (21/11): "comparar o que está no canteiro, o que está desatualizado... o que mais vale dos projetos". Plano de 5 passos aprovado, sem migração.
+
+Feito:
+- **Ficha .xlsx direto no app** (`planilha_xlsx.ts`): o importador da distribuição aceita a ficha de controle do Excel como está (primeira aba). As colunas são achadas pelo nome do cabeçalho, mesmo quando o cabeçalho ocupa duas linhas mescladas. Lê datas do Excel e datas digitadas. Conferido com a ficha real de 14/11, fora do repositório: 2116 cópias e 690 devoluções, iguais à leitura do openpyxl.
+- **Vigente do servidor** (`canteiro.ts`, `vigentesDoServidor`): com conta, a revisão vigente de cada documento vem do servidor (a lista do Autodoc que o PC publica) e a lista vigente em CSV deixa de ser necessária. Sem conta, vale a lista importada.
+  - A disciplina usa o nome que a ficha escreve, pela sigla: ES ESTRUTURAL, EC ESCORAMENTO, FU FUNDAÇÃO, HI HIDRO, SA SANITÁRIO, FR FURAÇÃO, SP SPDA, VD VEDAÇÃO, AR ARQUITETÔNICO. As outras siglas usam o nome do Autodoc.
+  - Uma fase que não é de obra (PL, DE, AP...) entra com a fase na frente do número, para não cruzar com cópia.
+- **Situação como na ficha v2:**
+  - em dia → OK
+  - desatualizada em campo → RECOLHER
+  - devolvida ou provavelmente recolhida → DEVOLVIDO
+  - o resto → CONFERIR
+
+  No painel, o bloco "Controle do canteiro" mostra a contagem. A entrada é pelo painel da obra, em "Controle do canteiro".
+- **Escritório pelo índice do PC:** a importação tem um terceiro arquivo, o índice de pranchas (CSV com `codigo` ou `arquivo`). Para cada folha vale a revisão mais nova que está na pasta.
+  - Junta com o "Atualizar" feito no app: fica o de data mais recente.
+  - A comparação é estrita, porque no PC a fase do arquivo é conhecida. EX R03 na pasta com a LO R03 vigente dá ATUALIZAR.
+- **Exportar ficha v2 (.xlsx)** (`ficha_v2.ts`), com as abas:
+  - FICHA: uma linha por cópia, com Situação, revisão vigente, dias e o motivo do CONFERIR;
+  - AUTODOC: a lista vigente;
+  - ESCRITORIO: OK / ATUALIZAR / CONFERIR / SEM CÓPIA;
+  - RESUMO: totais por empresa e do escritório.
+
+  O arquivo é gerado no aparelho, sem fórmulas; texto que parece fórmula entra como texto.
+- Telas conferidas em 375 px e 768 px, nos temas claro e escuro. Os prints estão fora do repositório.
+
+Próximo passo:
+- conferir com o Nicolas os números da ficha real contra o servidor;
+- (b) controle de entrega por pessoa;
+- (c) PDF.
+
+Pendências:
+- O cartão "escritório desatualizado" do painel ainda usa a regra das cópias, que é mais branda (EX = LO do mesmo número entregue depois). Só a exportação usa a regra estrita. Falta decidir com o Nicolas se o cartão passa a usar a estrita.
+- A ficha real e os nomes ficam só no aparelho e no servidor, nunca no repositório.
+
 ## Status (21/11/2026, tarde): painel da obra (branch `projetos/painel-obra`)
 Pedido do Nicolas (21/11, pelo Professor): "da inicio as outras etapas que haviamos comentado dos projetos". Etapas: (a) painel da obra, (b) controle de entrega por pessoa, (c) PDF dessas telas.
 - **Teste ao vivo do atalho do Autodoc (21/11, 12:31): deu certo.** Lista do dia publicada na obra piloto (`listas_autodoc`, `documentos` e `revisoes`). A rodada exigiu três ajustes no script do PC: selecionar a conta pela página inicial depois do login, fechar o tour de boas-vindas e limpar o filtro Data (últimos 7 dias).

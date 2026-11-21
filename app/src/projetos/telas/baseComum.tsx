@@ -5,6 +5,7 @@ import { lerBaseOuDoPacote, type BaseProjetos } from '../base'
 import { aEntregar, gravarDestinatarios, lerDestinatarios, regrasAtuais, type DadosDestinatario, type Destinatario } from '../distribuicao'
 import { aplicarEdicoes, gravarEdicao, lerEdicoes, resumirEscritorio, type Edicao, type NovaEdicao } from '../edicoes'
 import { cruzar, resumir, type CopiaCruzada } from '../painel'
+import { mesclarEscritorio, vigentesDoServidor } from '../canteiro'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
 import { dataBR } from './comum'
 
@@ -34,7 +35,14 @@ export function usarBase(ctx: Contexto) {
     }
   }, [obra.id])
 
-  const corrigida = useMemo(() => (base ? aplicarEdicoes(base, edicoes) : null), [base, edicoes])
+  // Com conta, a revisão vigente vem do servidor (a lista do Autodoc publicada pelo PC): a lista em CSV não é
+  // preciso importar. Sem conta (ou servidor ainda vazio), vale a lista importada.
+  const vigServidor = useMemo(() => (!ctx.semConta && dados.vigentes.size ? vigentesDoServidor(dados) : null), [ctx.semConta, dados])
+  const corrigida = useMemo(() => {
+    if (!base) return null
+    const c = aplicarEdicoes(vigServidor ? { ...base, vigentes: vigServidor } : base, edicoes)
+    return { ...c, escritorio: mesclarEscritorio(base.escritorioIndice, c.escritorio) }
+  }, [base, edicoes, vigServidor])
   const cruzadas = useMemo<CopiaCruzada[] | null>(
     () => (corrigida && corrigida.vigentes.length && corrigida.copias.length ? cruzar(corrigida.copias, corrigida.vigentes, dados.hoje) : null),
     [corrigida, dados.hoje],
@@ -48,7 +56,8 @@ export function usarBase(ctx: Contexto) {
   const salvar = async (nova: NovaEdicao) => setEdicoes(await gravarEdicao(obra.id, nova, autor))
   const salvarRegras = async (novas: (DadosDestinatario & { substitui_id?: string | null })[]) => setDestinatarios(await gravarDestinatarios(obra.id, novas, usuario.id, nomeDe))
 
-  return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras }
+  const fonteVigente = vigServidor ? 'servidor (lista do Autodoc publicada)' : base?.vigentesArquivo ? `lista importada (${base.vigentesArquivo})` : 'lista importada'
+  return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras, vigServidor, fonteVigente }
 }
 
 export type AbaBase = 'painel' | 'pessoas' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
@@ -65,6 +74,7 @@ const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos }[] = [
 /** Cabeçalho das abas da base: título, datas da base e as abas. As abas trocam a tela sem empilhar. */
 export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: Contexto; aba: AbaBase; aoSair: () => void; base: BaseProjetos | null; temCruzamento: boolean }) {
   const { obra, ir, trocar } = ctx
+  const vigenteDoServidor = !ctx.semConta && ctx.dados.vigentes.size > 0
   // no celular as abas não cabem: a ativa rola para dentro da tela
   const abas = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -85,9 +95,9 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
         </div>
       </header>
 
-      {base && (base.vigentesImportadaEm || base.copiasImportadaEm) && (
+      {base && (base.vigentesImportadaEm || base.copiasImportadaEm || vigenteDoServidor) && (
         <p class="pj-aviso-base" data-testid="painel-datas">
-          {base.vigentesImportadaEm ? `Lista vigente importada em ${dataBR(base.vigentesImportadaEm)}.` : 'Falta a lista vigente.'}{' '}
+          {vigenteDoServidor ? 'Revisão vigente do servidor (lista do Autodoc).' : base.vigentesImportadaEm ? `Lista vigente importada em ${dataBR(base.vigentesImportadaEm)}.` : 'Falta a lista vigente.'}{' '}
           {base.copias.length ? `Distribuição com entregas até ${dataBR(ultimaEntrega(base))}.` : 'Falta a distribuição.'}
         </p>
       )}

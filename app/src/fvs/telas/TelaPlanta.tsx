@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { lembrarPainel } from '../onde_estava'
 import L from 'leaflet'
 import { opcoesDeToque } from '../toque'
+import { passoDoToque } from '../ciclo_do_toque'
 import { canvasDaPlanta, toqueSoNoMapa } from '../toque_canvas'
 import 'leaflet/dist/leaflet.css'
 import {
@@ -62,7 +63,6 @@ import {
   resultadoPelasBarras,
   resumoDasBarras,
   situacaoDaBarra,
-  passoDoToque,
   type CamadaDeBarras,
 } from '../barras'
 import {

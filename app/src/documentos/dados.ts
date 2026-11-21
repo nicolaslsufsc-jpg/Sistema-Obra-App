@@ -15,6 +15,7 @@ import { sha256Hex } from '../fvs/pacote'
 import { montarLigacoes, TABELAS_LIDAS, type Ligacoes, type LinhasLidas } from './ligacoes'
 import { idDaConcretagemDeExemplo } from '../concreto/exemplo'
 import { idsDosExemplos } from './exemplos'
+import { apagarDoAparelho, baixarParaOffline, listarOffline, lerOffline, type ResultadoDoBaixar } from './offline'
 import { comoAbrir, montarDocumentos, TABELA_DOCUMENTOS, type ComoAbrir, type Documento, type LinhaDocumento, nomeLimpo, recusaDoArquivo, tipoDoArquivo } from './regras'
 
 export interface ArquivoDoc {
@@ -26,13 +27,20 @@ export interface ArquivoDoc {
   tamanho: number
   /** SHA-256 gravado pelo núcleo no envio: o arquivo baixado do servidor tem que bater com ele. */
   hash: string
+  /**
+   * Onde os bytes estão: `aparelho` (ainda não enviado, ou sem conta), `offline` (baixado para usar sem
+   * internet, offline.ts) ou `servidor` (só lá: abre com um toque e internet).
+   */
+  onde: 'aparelho' | 'offline' | 'servidor'
 }
 
 export interface DadosDocumentos {
   documentos: Documento[]
   arquivos: Map<string, ArquivoDoc>
-  /** Soma dos arquivos dos documentos no aparelho (bytes). */
+  /** Soma dos arquivos guardados pelo núcleo no aparelho (bytes): os que vão no "Salvar arquivo" (.obra). */
   totalArquivos: number
+  /** Só os baixados para usar offline (bytes). */
+  totalOffline: number
   /** Registros da FVS, do Concreto e dos Relatórios (só leitura). */
   ligacoes: Ligacoes
 }
@@ -57,13 +65,18 @@ export async function carregar(obraId: string): Promise<DadosDocumentos> {
   const documentos = montarDocumentos(linhas as LinhaDocumento[], exemplos)
   const usados = new Set(linhas.map((l) => l.arquivo_id).filter((x): x is string => typeof x === 'string'))
   const mapa = new Map<string, ArquivoDoc>()
+  const offline = await listarOffline()
   let totalArquivos = 0
+  let totalOffline = 0
   for (const a of arquivos) {
     if (!usados.has(a.id)) continue
-    mapa.set(a.id, { id: a.id, caminho: String(a.caminho ?? ''), nome_original: nomeLimpo(String(a.nome_original ?? '')), tipo: String(a.tipo ?? ''), tamanho: Number(a.tamanho ?? 0), hash: String(a.hash ?? '') })
-    totalArquivos += Number(a.tamanho ?? 0)
+    const local = (await banco.conteudos.where('id').equals(a.id).count()) > 0
+    const onde: ArquivoDoc['onde'] = local ? 'aparelho' : offline.has(a.id) ? 'offline' : 'servidor'
+    mapa.set(a.id, { id: a.id, caminho: String(a.caminho ?? ''), nome_original: nomeLimpo(String(a.nome_original ?? '')), tipo: String(a.tipo ?? ''), tamanho: Number(a.tamanho ?? 0), hash: String(a.hash ?? ''), onde })
+    if (onde === 'aparelho') totalArquivos += Number(a.tamanho ?? 0)
+    if (onde === 'offline') totalOffline += Number(a.tamanho ?? 0)
   }
-  return { documentos, arquivos: mapa, totalArquivos, ligacoes: montarLigacoes(t, idDoExemplo) }
+  return { documentos, arquivos: mapa, totalArquivos, totalOffline, ligacoes: montarLigacoes(t, idDoExemplo) }
 }
 
 /** Foto é reduzida (como no Diário); PDF entra como está. Devolve o id da linha em `arquivos`. */
@@ -115,7 +128,8 @@ export async function urlDoArquivo(
   doServidor = false,
 ): Promise<({ url: string } & ComoAbrir) | null> {
   const local = await banco.conteudos.get(arquivo.id)
-  let bytes: ArrayBuffer | null = local?.bytes ?? null
+  // ainda não enviado (ou sem conta) vem do aparelho; depois, o baixado para usar offline
+  let bytes: ArrayBuffer | null = local?.bytes ?? (await lerOffline(arquivo.id))
   if (!bytes && doServidor && arquivo.caminho && navigator.onLine) {
     bytes = await baixar(arquivo.caminho).catch(() => null)
     if (bytes && (bytes.byteLength !== arquivo.tamanho || (await sha256Hex(bytes)) !== arquivo.hash)) throw new ArquivoNaoConfere()
@@ -123,4 +137,24 @@ export async function urlDoArquivo(
   if (!bytes) return null
   const como = comoAbrir(new Uint8Array(bytes.slice(0, 16)))
   return { url: URL.createObjectURL(new Blob([bytes], { type: como.tipo })), ...como }
+}
+
+/** Só os que estão só no servidor: os que dá para baixar para usar offline. */
+export function paraBaixar(arquivos: readonly (ArquivoDoc | undefined)[]): ArquivoDoc[] {
+  return arquivos.filter((a): a is ArquivoDoc => !!a && a.onde === 'servidor' && !!a.caminho)
+}
+
+/** Os baixados para usar offline (os que dá para apagar do aparelho). */
+export function baixados(arquivos: readonly (ArquivoDoc | undefined)[]): ArquivoDoc[] {
+  return arquivos.filter((a): a is ArquivoDoc => !!a && a.onde === 'offline')
+}
+
+/** "Baixar para usar offline": um documento ou a pasta inteira. Precisa de internet. */
+export function baixarDocumentos(arquivos: readonly ArquivoDoc[], aoAndar?: (feitos: number, total: number) => void): Promise<ResultadoDoBaixar> {
+  return baixarParaOffline(arquivos, (c) => baixar(c), aoAndar)
+}
+
+/** "Apagar do aparelho": o arquivo continua no servidor. */
+export function apagarDocumentosDoAparelho(arquivos: readonly ArquivoDoc[]): Promise<number> {
+  return apagarDoAparelho(arquivos.map((a) => a.id))
 }

@@ -10,6 +10,7 @@ import { SeloExemplo, SeloStatus, SeloValidade } from './comum'
 import { tirarExemplos } from '../exemplos'
 import { banco } from '../../nucleo/servicos'
 import { Registros } from './Registros'
+import { BotoesOffline } from './Offline'
 
 const FILTROS_STATUS: ReadonlyArray<{ v: FiltroStatus; t: string }> = [
   { v: 'todos', t: 'Todos' },
@@ -94,6 +95,8 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
         {[...porCategoria].map(([cat, docs]) => (
           <section key={cat} class="doc-grupo">
             <h2>{nomeDaCategoria(cat)}</h2>
+            {/* a pasta inteira (só a revisão vigente de cada documento): opcional, nada baixa sozinho */}
+            <BotoesOffline pasta arquivos={docs.map((d) => (d.atual.arquivo_id ? dados.arquivos.get(d.atual.arquivo_id) : undefined))} recarregar={recarregar} testid={`offline-pasta-${cat}`} />
             <ul class="lista">
               {docs.map((d) => (
                 <li key={d.chave}>
@@ -111,6 +114,11 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
                     {d.atual.situacao === 'em_revisao' && <SeloStatus status="em_revisao" />}
                     <SeloValidade doc={d} hoje={hoje} />
                     {!d.atual.arquivo_id && <span class="rl-selo neutro">Sem arquivo</span>}
+                    {d.atual.arquivo_id && dados.arquivos.get(d.atual.arquivo_id)?.onde === 'offline' && (
+                      <span class="rl-selo neutro" data-testid="selo-offline">
+                        No aparelho
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -146,6 +154,11 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
           </div>
         )}
         <p class="discreto">Arquivos no aparelho: {tamanhoEmTexto(dados.totalArquivos)}.</p>
+        {dados.totalOffline > 0 && (
+          <p class="discreto" data-testid="total-offline">
+            Baixados para usar offline: {tamanhoEmTexto(dados.totalOffline)} (continuam no servidor).
+          </p>
+        )}
         {dados.totalArquivos > AVISO_TOTAL && (
           <p class="aviso" data-testid="aviso-espaco">
             Os arquivos dos documentos passam de {tamanhoEmTexto(AVISO_TOTAL)}. O "Salvar arquivo" fica pesado: prefira PDFs menores.

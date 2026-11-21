@@ -112,8 +112,13 @@ class TestClassificar(unittest.TestCase):
         self.assertEqual(c("eletrico", "IfcElectricDistributionBoard", "x"), "quadro")
         self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "QDL-02"), "quadro")
         self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "Quadro de medição"), "quadro")
-        # eletroduto é linha: fica fora
-        self.assertIsNone(c("eletrico", "IfcCableCarrierSegment", "Eletroduto caixa 4x4"))
+        # eletroduto entra como linha (21/11); eletrocalha, leito e cabo não
+        self.assertEqual(c("eletrico", "IfcCableCarrierSegment", "Eletroduto corrugado 25"), "eletroduto")
+        self.assertEqual(c("eletrico", "IfcFlowSegment", "ELETRODUTO PVC RIGIDO"), "eletroduto")
+        self.assertEqual(c("eletrico", "IfcCableCarrierSegment", "Conduite 3/4"), "eletroduto")
+        self.assertIsNone(c("eletrico", "IfcCableCarrierSegment", "Eletrocalha perfurada 100x50"))
+        self.assertIsNone(c("eletrico", "IfcCableSegment", "Cabo 2,5mm²"))
+        self.assertIsNone(c("eletrico", "IfcFlowSegment", "Tubo PVC"))
         self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "Ralo seco"))
 
     def test_spda(self):
@@ -159,22 +164,73 @@ class TestLerIfc(unittest.TestCase):
             spda = sorted((p["modelo_id"], p["tipo"]) for p in instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "spda"))
             self.assertEqual(spda, [("25", "captor"), ("26", "descida"), ("27", "caixa_inspecao")])
 
+    def test_eletroduto_como_linha(self):
+        """O eletroduto vem com a linha do corpo extrudado (ou do eixo); o vertical e o sem forma ficam fora."""
+        with tempfile.TemporaryDirectory() as d:
+            arq = str(pathlib.Path(d) / "EXE_eletrico.ifc")
+            ifc_de_teste(arq, ELETRICO_SPDA + (
+                ("IfcCableCarrierSegment", "Eletroduto PVC 25:EL:8", 1000.0, 1000.0, "2º PAVIMENTO", "28"),
+                ("IfcCableCarrierSegment", "Eletroduto PVC 25:EL:9", 3000.0, 3000.0, "2º PAVIMENTO", "29"),
+                ("IfcCableCarrierSegment", "Eletroduto PVC 25:EL:10", 500.0, 500.0, "2º PAVIMENTO", "30")))
+            f = ifcopenshell.open(arq)
+            ctx = f.by_type("IfcGeometricRepresentationContext")[0]
+            por_tag = {e.Tag: e for e in f.by_type("IfcCableCarrierSegment")}
+
+            def corpo(el, eixo_z, depth):
+                # Revit: o tubo é extrudado no Z local da posição, que aponta para onde ele corre
+                pos = f.createIfcAxis2Placement3D(f.createIfcCartesianPoint((0.0, 0.0, 0.0)), f.createIfcDirection(eixo_z), None)
+                perfil = f.createIfcCircleProfileDef("AREA", None, None, 12.5)
+                sol = f.createIfcExtrudedAreaSolid(perfil, pos, f.createIfcDirection((0.0, 0.0, 1.0)), depth)
+                el.Representation = f.createIfcProductDefinitionShape(None, None, [f.createIfcShapeRepresentation(ctx, "Body", "SweptSolid", [sol])])
+
+            corpo(por_tag["28"], (1.0, 0.0, 0.0), 2000.0)  # 2 m para +x a partir de (1000, 1000) mm
+            corpo(por_tag["30"], (0.0, 0.0, 1.0), 3000.0)  # vertical: fora
+            eixo = f.createIfcPolyline([f.createIfcCartesianPoint((0.0, 0.0)), f.createIfcCartesianPoint((0.0, 1500.0))])
+            por_tag["29"].Representation = f.createIfcProductDefinitionShape(None, None, [f.createIfcShapeRepresentation(ctx, "Axis", "Curve2D", [eixo])])
+            f.write(arq)
+            ele = {p["modelo_id"]: p for p in instalacoes.ler_ifc(arq, ["2º PAVIMENTO"], "eletrico")}
+            self.assertEqual(sorted(k for k, v in ele.items() if v["tipo"] == "eletroduto"), ["28", "29"])
+            l28 = ele["28"]["linha"]
+            self.assertEqual([[round(a, 6) for a in p] for p in l28], [[100.0, 100.0], [300.0, 100.0]])
+            self.assertAlmostEqual(ele["28"]["x"], 200.0)
+            self.assertEqual([[round(a, 6) for a in p] for p in ele["29"]["linha"]], [[300.0, 300.0], [300.0, 450.0]])
+
 
 class TestNaFolha(unittest.TestCase):
     def test_encaixe_ids_fixos_e_fora(self):
         pts = [{"modelo_id": "11", "tipo": "ralo", "nome": "Ralo seco", "x": 100.0, "y": 200.0},
                {"modelo_id": "99", "tipo": "caixa", "nome": "", "x": 5000.0, "y": 10.0}]
         enc = {"rotacao": [[1, 0], [0, -1]], "fator": 2.0, "t": [10.0, 700.0]}
-        dentro, fora = instalacoes.pontos_na_folha(pts, enc, "sanitario", 1000.0, 800.0)
-        pid = instalacoes.id_do_ponto("sanitario", "11")
+        dentro, fora = instalacoes.pontos_na_folha(pts, enc, "sanitario", 1000.0, 800.0, "EXE", "2º Pavimento")
+        pid = instalacoes.id_do_ponto("EXE", "2º Pavimento", "sanitario", "11")
         self.assertEqual(list(dentro), [pid])
         self.assertEqual(dentro[pid]["ponto"], [210.0, 300.0])
         self.assertEqual(fora, [{"modelo_id": "99", "tipo": "caixa", "nome": ""}])
-        self.assertEqual(pid, instalacoes.id_do_ponto("sanitario", "11"))
-        self.assertNotEqual(pid, instalacoes.id_do_ponto("hidro", "11"))
+        self.assertEqual(pid, instalacoes.id_do_ponto(" exe ", "2º Pavimento", "sanitario", "11"))
+        self.assertNotEqual(pid, instalacoes.id_do_ponto("EXE", "2º Pavimento", "hidro", "11"))
+
+    def test_mesmo_ifc_em_duas_plantas_nao_repete_id(self):
+        """Revisor (21/11): o mesmo IFC usado em dois pavimentos ou em duas obras não pode dar o mesmo barra_id."""
+        pts = [{"modelo_id": "11", "tipo": "ralo", "nome": "Ralo", "x": 1.0, "y": 1.0}]
+        ids = {next(iter(instalacoes.pontos_na_folha(pts, IDENT, "sanitario", 10, 10, o, pav)[0]))
+               for o, pav in (("EXE", "2º Pavimento"), ("EXE", "3º Pavimento"), ("EX2", "2º Pavimento"))}
+        self.assertEqual(len(ids), 3)
+
+    def test_linha_na_folha(self):
+        """O eletroduto leva a linha para a folha; entra se uma ponta cai nela, mesmo com o meio fora."""
+        pts = [{"modelo_id": "28", "tipo": "eletroduto", "nome": "Eletroduto PVC 25", "x": 15.0, "y": 5.0, "linha": [[5.0, 5.0], [25.0, 5.0]]},
+               {"modelo_id": "29", "tipo": "eletroduto", "nome": "", "x": 60.0, "y": 5.0, "linha": [[8.0, 5.0], [112.0, 5.0]]},
+               {"modelo_id": "30", "tipo": "eletroduto", "nome": "", "x": 200.0, "y": 5.0, "linha": [[150.0, 5.0], [250.0, 5.0]]}]
+        dentro, fora = instalacoes.pontos_na_folha(pts, IDENT, "eletrico", 50, 50, "EXE", "2º Pavimento")
+        reg = {p["modelo_id"]: p for p in dentro.values()}
+        self.assertEqual(sorted(reg), ["28", "29"])
+        self.assertEqual(reg["28"]["linha"], [[5.0, 5.0], [25.0, 5.0]])
+        self.assertEqual(reg["28"]["ponto"], [15.0, 5.0])
+        self.assertEqual(reg["29"]["nome"], "Eletroduto")
+        self.assertEqual([f["modelo_id"] for f in fora], ["30"])
 
     def test_nome_padrao_e_resumo(self):
-        dentro, fora = instalacoes.pontos_na_folha([{"modelo_id": "1", "tipo": "registro", "nome": "", "x": 1, "y": 1}], IDENT, "hidro", 10, 10)
+        dentro, fora = instalacoes.pontos_na_folha([{"modelo_id": "1", "tipo": "registro", "nome": "", "x": 1, "y": 1}], IDENT, "hidro", 10, 10, "EXE", "2º Pavimento")
         self.assertEqual(next(iter(dentro.values()))["nome"], "Registro")
         self.assertEqual(instalacoes.resumo(dentro, fora), {"pontos": 1, "por_tipo": {"registro": 1}, "fora_da_folha": []})
 
@@ -189,6 +245,13 @@ class TestPacote(unittest.TestCase):
         m = json.loads(man)
         self.assertEqual(m["disciplina"], "sanitario")
         self.assertEqual(m["pontos"], {"a": {"disciplina": "sanitario", "tipo": "ralo", "ponto": [1.23, 5.0], "nome": "Ralo", "modelo_id": "11"}})
+
+    def test_linha_do_eletroduto_no_manifest(self):
+        pts = {"e": {"disciplina": "eletrico", "tipo": "eletroduto", "ponto": [2, 1], "nome": "Eletroduto", "linha": [[1, 1], [3.333, 1]]}}
+        m = json.loads(pacote.montar(self.CAB, {}, {}, {}, None, pts)[0])
+        self.assertEqual(m["pontos"]["e"]["linha"], [[1.0, 1.0], [3.33, 1.0]])
+        with self.assertRaises(pacote.ErroPacote):
+            pacote.montar(self.CAB, {}, {}, {}, None, {"e": {**pts["e"], "linha": [[1, 1]]}})
 
     def test_sem_pontos_nao_poe_a_chave(self):
         cab = {k: v for k, v in self.CAB.items() if k != "disciplina"}
@@ -210,7 +273,7 @@ class TestPublicador(unittest.TestCase):
     PONTOS = [{"modelo_id": "11", "tipo": "ralo", "nome": "Ralo", "x": 100.0, "y": 200.0}]
 
     def cfg(self, **inst):
-        return {"instalacoes": {"encaixe": None, "disciplinas": {"sanitario": {"ifc": ["x.ifc"], "nivel": ["2º"]}}, **inst}}
+        return {"obra": "EXE", "pavimento": "2º Pavimento", "instalacoes": {"encaixe": None, "disciplinas": {"sanitario": {"ifc": ["x.ifc"], "nivel": ["2º"]}}, **inst}}
 
     def test_folha_por_disciplina_com_encaixe_dos_furos(self):
         formas = [forma()]
@@ -218,6 +281,7 @@ class TestPublicador(unittest.TestCase):
         self.assertEqual(rel["sanitario"]["pontos"], 1)
         self.assertEqual(len(formas), 2)
         fl = formas[1]
+        self.assertEqual(list(fl["pontos"]), [instalacoes.id_do_ponto("EXE", "2º Pavimento", "sanitario", self.PONTOS[0]["modelo_id"])])
         self.assertEqual((fl["disciplina"], fl["trecho"], fl["pecas"]), ("sanitario", "Esgoto e pluvial", []))
         self.assertEqual(publicar_planta.quantos_locais(fl), 1)
         man, _, r = publicar_planta.montar_trecho(fl, {}, {}, {"planta_id": "p", "obra": "EXE", "pavimento": "2º", "trecho": fl["trecho"]})

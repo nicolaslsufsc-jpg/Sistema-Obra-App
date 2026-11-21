@@ -34,7 +34,8 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
   "disciplina": "sanitario",   opcional: planta de instalações (pipeline/fvs/instalacoes.py), com os pontos dela
   "pontos": {"<id do ponto>": {"disciplina": "sanitario", "tipo": "ralo", "ponto": [x, y], "nome": "Ralo seco",
-             "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py)
+             "modelo_id": "123456"}}   opcional (pipeline/fvs/instalacoes.py); o eletroduto tem também
+             "linha": [[x, y], [x, y]] (o "ponto" é o meio dele)
   "furos_laje": "esgoto",   opcional: planta de furos de laje de uma camada (esgoto, agua, eletrica; pipeline/fvs/furos.py):
                             leva todos os furos de laje do pavimento, o app mostra e deixa tocar só os desta camada
   "furos_laje_separados": true,   opcional: forma com os furos de laje em plantas próprias (escondidos aqui)
@@ -69,7 +70,7 @@ CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "e
 # (não são peças em "elementos"; a ficha fica no ambiente).
 DISCIPLINAS_DE_PONTOS = ("hidro", "sanitario", "eletrico", "spda")
 TIPOS_DE_PONTO = ("ponto_agua", "registro", "hidrometro", "ralo", "caixa_sifonada", "caixa", "ponto_esgoto",
-                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste")
+                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste", "eletroduto")
 # Chave de detalhe vira nome de pedaço: só letras, números, _ e -.
 CHAVE_SEGURA = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 RE_TILE = re.compile(r"^-?\d+/\d+/\d+$")
@@ -254,6 +255,11 @@ def montar(
                "nome": str(p.get("nome") or "")}
         if p.get("modelo_id"):
             reg["modelo_id"] = str(p["modelo_id"])
+        if p.get("linha") is not None:
+            linha = [[round(float(x), 2), round(float(y), 2)] for x, y in p["linha"]]
+            if len(linha) < 2:
+                raise ErroPacote(f"ponto {pid}: a linha precisa de pelo menos dois pontos")
+            reg["linha"] = linha
         pontos_manifest[pid] = reg
 
     manifest = {

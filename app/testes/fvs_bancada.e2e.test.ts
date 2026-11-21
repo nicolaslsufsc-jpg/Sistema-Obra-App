@@ -1966,6 +1966,31 @@ suite('FVS na bancada (Chrome)', () => {
       await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: 'NC', obs: 'Furo errado: FL2' })
       await nomeNoPainel(p, 'FL2')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // o painel abriu: o mapa encolhe e põe o furo no meio da faixa (60 ms depois); espera assentar
+      await p.waitForFunction(() => {
+        const m = (window as any).__fvMapa
+        const c = m.getContainer()
+        return m.getSize().y === c.clientHeight && !m._animatingZoom
+      })
+      await p.waitForTimeout(300)
+      // o furo está à vista, acima do painel e fora do aviso
+      const [xFuro, yFuro] = await naTela(p, 600, 640)
+      const caixa = (await painel.boundingBox())!
+      const sobOPainel = xFuro >= caixa.x && xFuro <= caixa.x + caixa.width && yFuro >= caixa.y - 50 && yFuro <= caixa.y + caixa.height
+      expect(sobOPainel).toBe(false)
+      expect(await p.evaluate(([x, y]: [number, number]) => !!document.elementFromPoint(x, y)?.closest('.fv-mapa'), [xFuro, yFuro] as [number, number])).toBe(true)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_agua_nc.png` })
+      // 3º toque com o painel do NC aberto (regra de 21/11, passoDoToque): sem conferir e o painel fecha
+      await tocarNaPlanta(p, 600, 640)
+      await aviso('FL2: sem conferir')
+      await painel.waitFor({ state: 'detached' })
+      await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: null, obs: null })
+      // e de novo: OK, errado
+      await furo(600, 640)
+      await aviso('FL2: OK')
+      await furo(600, 640)
+      await aviso('FL2: errado')
+      await expect.poll(() => itemDaArea(7), { timeout: 5000 }).toEqual({ r: 'NC', obs: 'Furo errado: FL2' })
       await fechar()
       await voltar()
 

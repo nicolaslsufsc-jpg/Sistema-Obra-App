@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { lembrarPainel } from '../onde_estava'
 import L from 'leaflet'
 import { opcoesDeToque } from '../toque'
+import { passoDoToque } from '../ciclo_do_toque'
 import { canvasDaPlanta, toqueSoNoMapa } from '../toque_canvas'
 import 'leaflet/dist/leaflet.css'
 import {
@@ -368,7 +369,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [camadaEscolhida, setCamada] = useState<CamadaDeBarras | null>(null)
   const camada: CamadaDeBarras | undefined = camadaEscolhida && camadasDasBarras.includes(camadaEscolhida) ? camadaEscolhida : camadasDasBarras[0]
   /** Barra marcada como errada esperando a observação e o Confirmar (sem confirmar, não grava NC). */
-  const [ncDaBarra, setNcDaBarra] = useState<{ id: string; texto: string } | null>(null)
+  const [ncDaBarra, setNcDaBarra] = useState<{ id: string; texto: string; embaixo?: boolean } | null>(null)
+  /**
+   * Situação já pedida de cada barra ou ponto tocado, até a gravação entrar nos dados: com toques rápidos,
+   * o 2º toque chega antes do 1º estar gravado e veria a situação velha (21/11).
+   */
+  const previsto = useRef(new Map<string, { s: Situacao }>())
   const tipos = useMemo(
     () =>
       deArmadura
@@ -697,7 +703,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Desenho de cada barra de laje e o grupo de cada camada (só aparece na aba Barras). */
   const camadasDeBarra = useRef(new Map<string, L.Polyline>())
   /** Desenho de cada ponto de instalação e o grupo deles (só aparece na aba Pontos). */
-  const marcasDePonto = useRef(new Map<string, L.CircleMarker>())
+  const marcasDePonto = useRef(new Map<string, L.CircleMarker | L.Polyline>())
   const grupoDosPontos = useRef<L.LayerGroup | null>(null)
   const gruposDasBarras = useRef(new Map<string, L.LayerGroup>())
   /** Alvo invisível de cada furo (44 px): só recebe o toque na aba Furos. */
@@ -853,7 +859,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (manifest.pontos && Object.keys(manifest.pontos).length) {
       const g = L.layerGroup()
       for (const [id, pt] of Object.entries(manifest.pontos)) {
-        const marca = L.circleMarker(ll(pt.ponto), { renderer: rend, radius: 7, color: COR_BARRA.nada, weight: 2.5, fillOpacity: 0.35, interactive: false })
+        // eletroduto: linha, como a barra; o resto: círculo
+        const marca =
+          pt.linha && pt.linha.length >= 2
+            ? L.polyline(pt.linha.map(ll), { renderer: rend, color: COR_BARRA.nada, weight: 3, opacity: 0.95, interactive: false })
+            : L.circleMarker(ll(pt.ponto), { renderer: rend, radius: 7, color: COR_BARRA.nada, weight: 2.5, fillOpacity: 0.35, interactive: false })
         marca.addTo(g)
         marcasDePonto.current.set(id, marca)
       }
@@ -1173,7 +1183,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
     if (tipo === 'B') {
       for (const [id, l] of camadasDeBarra.current) {
-        const s = situacaoDaBarra(eventosDe(id))
+        // com a caixa do NC aberta, a barra já fica vermelha (2º toque); o NC só grava no Confirmar
+        const s = ncDaBarra?.id === id ? 'reprovado' : situacaoDaBarra(eventosDe(id))
         const cor = COR_BARRA[s === 'liberado' || s === 'reprovado' ? s : 'nada']
         const w = s === 'reprovado' ? 4 : 2.5
         const chave = `${cor}|${w}`
@@ -1184,12 +1195,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
     if (tipo === 'I') {
       for (const [id, l] of marcasDePonto.current) {
-        const s = situacaoDaBarra(eventosDe(id))
+        const s = ncDaBarra?.id === id ? 'reprovado' : situacaoDaBarra(eventosDe(id))
         const cor = COR_BARRA[s === 'liberado' || s === 'reprovado' ? s : 'nada']
-        const chave = `${cor}`
+        const linha = !(l instanceof L.CircleMarker)
+        const w = linha ? (s === 'reprovado' ? 5 : 3) : 2.5
+        const chave = `${cor}|${w}`
         if (estilos.current.get(l) === chave) continue
         estilos.current.set(l, chave)
-        l.setStyle({ color: cor, fillColor: cor })
+        l.setStyle({ color: cor, fillColor: cor, weight: w })
       }
     }
   })
@@ -1209,16 +1222,17 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
   }, [desenho])
 
-  // desenhando, dois toques rápidos são dois cantos, e não zoom
-  const desenhando = !!desenho
+  // desenhando, dois toques rápidos são dois cantos, e não zoom; nas abas Barras e Pontos, dois toques
+  // rápidos são o 2º passo do ciclo (vermelho), e não zoom (21/11)
+  const semZoomNoDuplo = !!desenho || tipo === 'B' || tipo === 'I'
   useEffect(() => {
     const m = mapa.current
-    if (!m || !desenhando) return
+    if (!m || !semZoomNoDuplo) return
     m.doubleClickZoom.disable()
     return () => {
       m.doubleClickZoom.enable()
     }
-  }, [desenhando])
+  }, [semZoomNoDuplo])
 
   /** Começa o desenho de uma área. O voltar do aparelho cancela, sem sair da planta. */
   const comecarDesenho = (areaId?: string) => {
@@ -1308,7 +1322,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       if (!m) return
       m.invalidateSize()
       const forma = sel ? camadas.current.get(sel)?.[0] : undefined
-      if (forma) m.panInside(limitesDaCamada(forma).getCenter(), { padding: [30, 30] })
+      // furo ou esquadria (bolinha pequena): no meio da faixa que sobra, para o aviso do toque ("FL2: errado"),
+      // no pé dela no celular, não cobrir; assim o 3º toque (sem conferir, painel aberto) chega a ela (21/11)
+      const filho = sel ? ehFilho(manifest?.elementos[sel]?.tipo ?? '') : false
+      if (forma && filho) m.panTo(limitesDaCamada(forma).getCenter(), { animate: false })
+      else if (forma) m.panInside(limitesDaCamada(forma).getCenter(), { padding: [30, 30] })
     }
     const t = window.setTimeout(() => {
       m = mapa.current
@@ -1468,8 +1486,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
 
   /**
-   * Toque no furo (gesto A do protótipo): sem conferir → OK; OK → errado (abre o painel para "O que
-   * fazer?" e a foto); errado → sem conferir. O aviso traz "Desfazer", que volta ao que estava.
+   * Toque no furo: o ciclo da barra e do ponto (passoDoToque, 21/11): 1 toque OK; 2 toques errado (abre o
+   * painel para "O que fazer?" e a foto); 3 toques sem conferir, também com o painel do NC aberto (fecha).
+   * O aviso traz "Desfazer", que volta ao que estava.
    */
   const tocarFuro = (id: string, e: ElementoPacote) => {
     const f = alvoDoFilho(id)
@@ -1481,12 +1500,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       return avisar(furoSemItem(id))
     }
     const { ficha, item } = f
+    // o painel deste furo aberto (o NC dele): o próximo toque tira a verificação e fecha o painel
+    const painelDoFuro = sel === id
     executar(async (evs) => {
       const eventos = daFichaAberta(evs(id), null)
       const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === ficha.id)).get(item)
       const r = anterior?.resultado ?? null
+      const passo = passoDoToque(r === 'C' ? 'liberado' : r === 'NC' ? 'reprovado' : 'nada', painelDoFuro && r === 'NC')
+      if (passo === 'tirar' && painelDoFuro) fecharPainel()
       const gravado =
-        r === 'NC' ? await desmarcarR(c, id, ficha, item, eventos) : await tocarItem(c, id, ficha, item, r === 'C' ? 'NC' : r === 'NA' ? 'NA' : 'C', eventos)
+        passo === 'tirar' ? await desmarcarR(c, id, ficha, item, eventos) : await tocarItem(c, id, ficha, item, passo === 'abrir_nc' ? 'NC' : r === 'NA' ? 'NA' : 'C', eventos)
       const novo = gravado.resultado as string | null
       avisar(`${e.nome}: ${novo === 'C' ? 'OK' : novo === 'NC' ? 'errado' : 'sem conferir'}`, () => {
         setMsg(null)
@@ -1619,12 +1642,52 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       return gravados
     })
 
+  /** Guarda a situação pedida até a gravação entrar (toques rápidos); a gravação pronta manda de novo. */
+  const prever = (id: string, resultado: 'C' | 'NC' | null, feito: Promise<unknown>) => {
+    const ent = { s: (resultado === 'C' ? 'liberado' : resultado === 'NC' ? 'reprovado' : 'nada') as Situacao }
+    previsto.current.set(id, ent)
+    feito.finally(() => {
+      if (previsto.current.get(id) === ent) previsto.current.delete(id)
+    })
+  }
+  /** Situação da barra ou do ponto para o próximo toque: a pedida (ainda gravando) ou a gravada. */
+  const situacaoParaToque = (id: string): Situacao => previsto.current.get(id)?.s ?? situacaoDaBarra(atuais.current.eventosDe.get(id) ?? [])
+
+  /**
+   * O ciclo do toque, igual na barra e no ponto (21/11): 1 toque OK, 2 toques errada (abre a caixa do NC e
+   * já mostra vermelho), 3 toques tira a verificação, também com a caixa do NC ainda aberta.
+   */
+  const cicloDoToque = (id: string, gravar: (id: string, resultado: 'C' | 'NC' | null, obs: string | null) => void, pos: L.LatLng) => {
+    const aberto = ncDaBarra?.id === id
+    if (ncDaBarra && !aberto) {
+      // caixa do NC de outra barra aberta e sem Confirmar: fecha (a outra fica como estava) e segue o toque
+      setNcDaBarra(null)
+      fecharSobre()
+    }
+    const passo = passoDoToque(situacaoParaToque(id), aberto)
+    if (passo === 'ok') return gravar(id, 'C', null)
+    if (passo === 'abrir_nc') {
+      // a caixa do NC abre do lado oposto ao toque (toque na metade de cima: caixa embaixo), para não cobrir a
+      // barra ou o ponto: o 3º toque no mesmo lugar, rápido ou lento, chega a ele (e não à caixa)
+      const m = mapa.current
+      const embaixo = !!m && m.latLngToContainerPoint(pos).y < m.getSize().y / 2
+      setNcDaBarra({ id, texto: '', embaixo })
+      abrirSobre(() => setNcDaBarra(null))
+      return
+    }
+    if (aberto) {
+      setNcDaBarra(null)
+      fecharSobre()
+    }
+    gravar(id, null, null)
+  }
+
   /** Grava a situação nova da barra (C OK, NC errada com observação, null sem conferir) e acerta as lajes. */
   const gravarBarra = (barraId: string, resultado: 'C' | 'NC' | null, obs: string | null) => {
     const b = barras?.[barraId]
     const arm = armaduraDaBarra(barraId)
     if (!b || !arm) return
-    executar(async (evs) => {
+    const feito = executar(async (evs) => {
       const eventos = daFichaAberta(evs(barraId), null)
       let anterior: EventoFvs | undefined
       for (const e of eventos) if (!anterior || maisNovo(e, anterior)) anterior = e
@@ -1632,6 +1695,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const texto = resultado === 'C' ? 'OK' : resultado === 'NC' ? 'errada' : 'sem conferir'
       avisar(`${nomeDaBarra(b)}: ${texto}`, () => {
         setMsg(null)
+        previsto.current.delete(barraId)
         executar(async (evs2) => {
           const volta = await voltarItem(c, gravado, anterior && anterior.ficha_id === gravado.ficha_id ? anterior : undefined, daFichaAberta(evs2(barraId), null))
           avisar(volta ? `Desfeito: ${nomeDaBarra(b)}` : 'Nada a desfazer: a barra já mudou.')
@@ -1641,6 +1705,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       })
       return gravado
     })
+    prever(barraId, resultado, feito)
     acertarLajes([barraId])
   }
 
@@ -1655,14 +1720,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const s = situacaoDaBarra(eventosDe(r.id))
     if (!pode) return avisar(`${b.texto ?? nomeDaBarra(b)}: ${s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errada' : 'sem conferir'}`)
     if (!armaduraDaBarra(r.id)) return avisar('A ficha de laje não tem item de armadura marcado pelas barras: as barras ficam só para ver.')
-    // sem conferir → OK; OK → errada (só depois de escrever e confirmar); errada → sem conferir
-    if (s === 'nada') return gravarBarra(r.id, 'C', null)
-    if (s === 'liberado') {
-      setNcDaBarra({ id: r.id, texto: '' })
-      abrirSobre(() => setNcDaBarra(null))
-      return
-    }
-    gravarBarra(r.id, null, null)
+    cicloDoToque(r.id, gravarBarra, pos)
   }
 
   // ------------------------------------------------------------------ pontos de instalação
@@ -1674,7 +1732,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const pt = pontos?.[pontoId]
     const fp = fichaDoPonto()
     if (!pt || !fp) return
-    executar(async (evs) => {
+    const feito = executar(async (evs) => {
       const eventos = daFichaAberta(evs(pontoId), null)
       let anterior: EventoFvs | undefined
       for (const e of eventos) if (!anterior || maisNovo(e, anterior)) anterior = e
@@ -1682,6 +1740,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const texto = resultado === 'C' ? 'OK' : resultado === 'NC' ? 'errado' : 'sem conferir'
       avisar(`${nomeDoPonto(pt)}: ${texto}`, () => {
         setMsg(null)
+        previsto.current.delete(pontoId)
         executar(async (evs2) => {
           const volta = await voltarItem(c, gravado, anterior && anterior.ficha_id === gravado.ficha_id ? anterior : undefined, daFichaAberta(evs2(pontoId), null))
           avisar(volta ? `Desfeito: ${nomeDoPonto(pt)}` : 'Nada a desfazer: o ponto já mudou.')
@@ -1690,6 +1749,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       })
       return gravado
     })
+    prever(pontoId, resultado, feito)
   }
 
   /** Toque na aba Pontos: o ponto mais perto, com margem larga para o dedo. Mesmo ciclo da barra. */
@@ -1703,14 +1763,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const s = situacaoDaBarra(eventosDe(r.id))
     if (!pode) return avisar(`${nomeDoPonto(pt)}: ${s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errado' : 'sem conferir'}`)
     if (!fichaDoPonto()) return avisar('Nenhuma ficha de ambiente tem o item destes pontos: os pontos ficam só para ver.')
-    // sem conferir → OK; OK → errado (só depois de escrever e confirmar); errado → sem conferir
-    if (s === 'nada') return gravarPonto(r.id, 'C', null)
-    if (s === 'liberado') {
-      setNcDaBarra({ id: r.id, texto: '' })
-      abrirSobre(() => setNcDaBarra(null))
-      return
-    }
-    gravarPonto(r.id, null, null)
+    cicloDoToque(r.id, gravarPonto, pos)
   }
 
   const confirmarNcDaBarra = () => {
@@ -2421,7 +2474,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
       {ncDaBarra && pontos?.[ncDaBarra.id] && (
         <form
-          class="fv-caixa-form"
+          class={ncDaBarra.embaixo ? 'fv-caixa-form fv-caixa-embaixo' : 'fv-caixa-form'}
           data-testid="fvs-nc-ponto"
           onSubmit={(ev) => {
             ev.preventDefault()
@@ -2435,6 +2488,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             <textarea
               data-testid="fvs-nc-ponto-texto"
               required
+              // escrevendo, a caixa sobe: embaixo, o teclado do celular a cobriria
+              onFocus={() => ncDaBarra.embaixo && setNcDaBarra({ ...ncDaBarra, embaixo: false })}
               maxLength={500}
               rows={3}
               value={ncDaBarra.texto}
@@ -2461,7 +2516,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
       {ncDaBarra && barras?.[ncDaBarra.id] && (
         <form
-          class="fv-caixa-form"
+          class={ncDaBarra.embaixo ? 'fv-caixa-form fv-caixa-embaixo' : 'fv-caixa-form'}
           data-testid="fvs-nc-barra"
           onSubmit={(ev) => {
             ev.preventDefault()
@@ -2475,6 +2530,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             <textarea
               data-testid="fvs-nc-barra-texto"
               required
+              // escrevendo, a caixa sobe: embaixo, o teclado do celular a cobriria
+              onFocus={() => ncDaBarra.embaixo && setNcDaBarra({ ...ncDaBarra, embaixo: false })}
               maxLength={500}
               rows={3}
               value={ncDaBarra.texto}

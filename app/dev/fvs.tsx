@@ -833,7 +833,7 @@ const PLANTA_DE_INSTALACOES = (i: number) => uuid('a2000000', 0xd0 + i)
  * 21/11/2026), como o pipeline/fvs/instalacoes.py publica: setor com a disciplina, pacote com "disciplina" e
  * "pontos" e o fundo da forma. Cada disciplina tem 4 pontos numa linha (y = 200 + 150 * i, x = 300, 600, 900,
  * 1200); o elétrico e o preventivo têm também uma linha (eletroduto, tubulação). A ficha de ambiente de teste
- * "Instalações" tem um item por disciplina, marcado com "pontos".
+ * "Instalações" tem um item por disciplina, marcado com "pontos", menos o preventivo (planta de consulta).
  */
 async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
   const TIPOS: Record<DisciplinaDePontos, TipoDePonto[]> = {
@@ -860,7 +860,8 @@ async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest,
     for (const l of cad) if (l.tabela === 'plantas') l.linha.elementos = Object.keys(pontos).length
     linhas.push(...cad)
   }
-  const itens: ItemFicha[] = DISCIPLINAS_DE_PONTOS.map((d, k) => ({ n: k + 1, etapa: 'INSTALAÇÕES', titulo: `Pontos: ${NOME_DOS_PONTOS[d].toLowerCase()}`, dispositivo: 'Visual', tolerancia: 'Conforme projeto', pontos: d }))
+  // o preventivo fica sem item: planta de consulta (decisão do Nicolas, 21/11/2026: "não vai para ficha")
+  const itens: ItemFicha[] = DISCIPLINAS_DE_PONTOS.filter((d) => d !== 'preventivo').map((d, k) => ({ n: k + 1, etapa: 'INSTALAÇÕES', titulo: `Pontos: ${NOME_DOS_PONTOS[d].toLowerCase()}`, dispositivo: 'Visual', tolerancia: 'Conforme projeto', pontos: d }))
   linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 20), codigo: 'TESTE-PVS-INST', titulo: 'Instalações (ficha de teste)', revisao: '0', aplica_a: ['A'], itens } })
   await gravarCadastro(linhas)
 }

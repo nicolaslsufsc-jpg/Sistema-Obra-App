@@ -1960,31 +1960,45 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_menu.png`, fullPage: true })
 
+      // [seção, disciplina, ponto 1, quantos pontos, item da ficha (null: planta de consulta, sem ficha)]
       const disciplinas = [
-        ['Hidráulica', 'hidro', 'PONTO_AGUA 1 (ponto de água)', 4],
-        ['Esgoto', 'sanitario', 'RALO 1 (ralo)', 4],
-        ['Elétrico', 'eletrico', 'CAIXA_PASSAGEM 1 (caixa de passagem)', 5],
-        ['Preventivo contra incêndio', 'preventivo', 'HIDRANTE 1 (hidrante)', 5],
-        ['SPDA', 'spda', 'CAPTOR 1 (captor)', 4],
+        ['Hidráulica', 'hidro', 'PONTO_AGUA 1 (ponto de água)', 4, 1],
+        ['Esgoto', 'sanitario', 'RALO 1 (ralo)', 4, 2],
+        ['Elétrico', 'eletrico', 'CAIXA_PASSAGEM 1 (caixa de passagem)', 5, 3],
+        ['Preventivo contra incêndio', 'preventivo', 'HIDRANTE 1 (hidrante)', 5, null],
+        ['SPDA', 'spda', 'CAPTOR 1 (captor)', 4, 4],
       ] as const
-      for (const [i, [secao, d, nomeDoPonto, total]] of disciplinas.entries()) {
+      for (const [i, [secao, d, nomeDoPonto, total, item]] of disciplinas.entries()) {
         await naDisciplina(p, 'instalacoes')
         await secoes.filter({ has: p.locator('h3', { hasText: new RegExp(`^${secao}$`) }) }).getByRole('button').first().click()
         await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
         // uma aba só (Pontos), sem a fila de abas; o progresso conta os pontos da disciplina
         expect(await p.locator('.fv-seg button').allTextContents()).toEqual([])
-        await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`0/${total} OK`)
         const y = 200 + 150 * i
+        if (item === null) {
+          // planta de consulta (PPCI): o topo diz, o toque só mostra o ponto e nada grava
+          await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe('Só consulta')
+          await enquadrar(p, [-y, 300], 2)
+          await tocarNaPlanta(p, 300, y)
+          await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), `${nomeDoPonto} · só consulta`)
+          await p.waitForTimeout(500)
+          expect((await registros(p)).filter((r) => r.barra?.startsWith(`pt-${d}-`))).toEqual([])
+          if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_${d}.png` })
+          await p.locator('.fv-topo .fv-voltar').click()
+          await noInicio(p)
+          continue
+        }
+        await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`0/${total} OK`)
         await enquadrar(p, [-y, 300], 2)
         await tocarNaPlanta(p, 300, y)
         await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), `${nomeDoPonto}: OK`)
-        await expect.poll(() => registros(p).then((rs) => rs.filter((r) => r.barra === `pt-${d}-1`).map((r) => [r.item, r.r]))).toEqual([[i + 1, 'C']])
+        await expect.poll(() => registros(p).then((rs) => rs.filter((r) => r.barra === `pt-${d}-1`).map((r) => [r.item, r.r]))).toEqual([[item, 'C']])
         await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`1/${total} OK`)
         // a linha (eletroduto, tubulação de incêndio) também se toca, no meio dela
-        if (d === 'eletrico' || d === 'preventivo') {
+        if (d === 'eletrico') {
           await enquadrar(p, [-(y + 60), 750], 2)
           await tocarNaPlanta(p, 750, y + 60)
-          await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), d === 'eletrico' ? '(eletroduto): OK' : '(tubulação de incêndio): OK')
+          await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), '(eletroduto): OK')
         }
         expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
         if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_${d}.png` })

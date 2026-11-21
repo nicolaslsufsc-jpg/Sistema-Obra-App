@@ -1775,7 +1775,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const pt = pontos[r.id]
     const s = situacaoDaBarra(eventosDe(r.id))
     if (!pode) return avisar(`${nomeDoPonto(pt)}: ${s === 'liberado' ? 'OK' : s === 'reprovado' ? 'errado' : 'sem conferir'}`)
-    if (!fichaDoPonto()) return avisar('Nenhuma ficha de ambiente tem o item destes pontos: os pontos ficam só para ver.')
+    // sem item de ficha: planta de consulta (PPCI, SPDA sem ficha; 21/11/2026): o toque só mostra o que é o ponto
+    if (!fichaDoPonto()) return avisar(`${nomeDoPonto(pt)} · só consulta`)
     cicloDoToque(r.id, gravarPonto, pos)
   }
 
@@ -2159,7 +2160,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           }}
         />
         {listaDaBusca}
-        {resumoDaCamada ? (
+        {tipo === 'I' && !fichaDoPonto() ? (
+          // planta de consulta (PPCI, SPDA sem ficha; decisão do Nicolas, 21/11/2026: "não vai para ficha"): nada grava
+          <span class="fv-prog" data-testid="fvs-progresso" title="Planta para olhar e conferir no local: nenhuma ficha tem o item destes pontos">
+            Só consulta
+          </span>
+        ) : resumoDaCamada ? (
           <span class="fv-prog" data-testid="fvs-progresso" title={resumoDaCamada.texto}>
             {resumoDaCamada.ok}/{resumoDaCamada.total} OK
             {resumoDaCamada.erradas > 0 && ` · ${resumoDaCamada.erradas} errada${resumoDaCamada.erradas > 1 ? 's' : ''}`}

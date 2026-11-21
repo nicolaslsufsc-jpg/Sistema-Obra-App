@@ -442,7 +442,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
     }, 120_000)
   }
 
-  // IFC (de volta ao menu em 13/11/2026, como beta): o selo aparece, o leitor abre e lê a amostra
+  // IFC (no menu desde 20/11/2026, sem selo beta; confirmado pelo Nicolas em 21/11): o leitor abre e lê a amostra
   // (escrita à mão, sem dado de obra) com o app compilado e sem internet.
   for (const [nome, largura, altura] of [
     ['celular', 375, 812],

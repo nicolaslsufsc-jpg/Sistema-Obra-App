@@ -180,12 +180,36 @@ export function furoDeLajeEscondido(e: ElementoPacote | undefined): boolean {
 }
 
 /**
- * Furo que entra no "x/y OK" da aba Furos: o de viga sempre; o de laje só dentro de área de laje e de
- * esgoto, água ou elétrica.
+ * Furo que entra no "x/y OK" da aba Furos: o de viga sempre; o de laje se for de esgoto, água ou elétrica.
+ * Desde 21/11/2026 (testador: "furos esgotos/água não funcionando", nenhum pavimento tinha área desenhada),
+ * o de laje conta e se marca também fora de área: o registro fica no furo, na ficha de laje (ver
+ * fichaDoFuroSemArea); quando a área for desenhada, o item dela conta os furos de dentro.
  */
-export function furoConferivel(e: ElementoPacote, area: AreaDeLaje | undefined): boolean {
+export function furoConferivel(e: ElementoPacote, _area?: AreaDeLaje): boolean {
   if (!ehFuroDeLaje(e)) return true
-  return !!area && instalacoesDoFuro(e).length > 0
+  return instalacoesDoFuro(e).length > 0
+}
+
+/**
+ * A ficha de laje em que fica o registro do furo de laje fora de área: a preferida (a do serviço escolhido,
+ * se tiver o item da instalação do furo), senão a primeira ficha de laje que tem. Sem nenhuma: undefined.
+ */
+export function fichaDoFuroSemArea(e: ElementoPacote, fichasDeLaje: readonly Ficha[], preferida?: Ficha): { ficha: Ficha; item: number } | undefined {
+  for (const f of preferida ? [preferida, ...fichasDeLaje] : fichasDeLaje) {
+    const it = itemDoFuroDeLaje(e, f)
+    if (it) return { ficha: f, item: it.item }
+  }
+  return undefined
+}
+
+/**
+ * Situação do furo (de laje ou de viga) pelo registro mais novo dele, em qualquer ficha: o furo marcado
+ * fora de área (numa ficha de laje) e depois contado na área (que pode ter outra ficha) não se perde.
+ */
+export function situacaoDoFuroPeloUltimo(eventos: readonly EventoFvs[]): Situacao {
+  let novo: EventoFvs | undefined
+  for (const e of eventos) if (!novo || maisNovo(e, novo)) novo = e
+  return novo ? situacaoDoFuro(novo.ficha_id, novo.item, eventos) : 'nada'
 }
 
 /**
@@ -278,15 +302,17 @@ export function furosConferiveisPorArea(
     g.pts.push(pt)
     grupos.set(chave, g)
   }
+  const semArea: Array<[string, ElementoPacote]> = []
   for (const [id, area] of furosNasAreas) {
     const e = elementos?.[id]
-    if (!e || !area || !furoConferivel(e, area)) continue
-    juntar(area.id, `a ${area.nome}`, id, centroDoFuro(e))
+    if (!e || !furoConferivel(e, area)) continue
+    if (area) juntar(area.id, `a ${area.nome}`, id, centroDoFuro(e))
+    else semArea.push([id, e]) // furo de laje fora de área (21/11): no quadrado, como o de viga
   }
   const vigas = Object.entries(elementos ?? {})
     .filter(([, e]) => e.tipo === 'F' && !ehFuroDeLaje(e))
     .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
-  for (const [id, e] of vigas) {
+  for (const [id, e] of [...vigas, ...semArea]) {
     const pt = centroDoFuro(e)
     const area = areaDoFuro(pt, areas)
     if (area) juntar(area.id, `a ${area.nome}`, id, pt)
@@ -333,4 +359,32 @@ export function furosNoToque(pontos: ReadonlyArray<{ id: string; x: number; y: n
     .filter((p) => p.d <= raio)
     .sort((a, b) => a.d - b.d)
     .map((p) => p.id)
+}
+
+/**
+ * Avanço dos furos de uma planta, para o menu (21/11/2026, "furos de viga, esgoto e água em etapas similares
+ * às barras de aço"): quantos furos conferíveis da planta estão OK e quantos errados, pelo registro mais novo
+ * de cada um. Fica fora o furo de outra planta (o de laje na forma, quando há plantas de furação) e o só detalhe.
+ */
+export function avancoDosFuros(
+  manifest: { elementos: Record<string, ElementoPacote>; furos_laje?: Instalacao; furos_laje_separados?: boolean },
+  eventosDe: (id: string) => readonly EventoFvs[],
+): { ok: number; errados: number; total: number } {
+  let ok = 0
+  let errados = 0
+  let total = 0
+  for (const [id, e] of Object.entries(manifest.elementos)) {
+    if (e.tipo !== 'F' || e.so_detalhe || furoDeOutraPlanta(e, manifest) || !furoConferivel(e)) continue
+    total++
+    const s = situacaoDoFuroPeloUltimo(eventosDe(id))
+    if (s === 'liberado') ok++
+    else if (s === 'reprovado') errados++
+  }
+  return { ok, errados, total }
+}
+
+/** "1 de 3 furos OK · 1 errado" (o texto do menu). */
+export function textoDoAvancoDosFuros(a: { ok: number; errados: number; total: number }): string {
+  const base = `${a.ok} de ${a.total} ${a.total === 1 ? 'furo' : 'furos'} OK`
+  return a.errados ? `${base} · ${a.errados} ${a.errados === 1 ? 'errado' : 'errados'}` : base
 }

@@ -16,7 +16,7 @@ import { pacotesAManter } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
-import { furoDeOutraPlanta } from '../furos_laje'
+import { avancoDosFuros, furoDeOutraPlanta, textoDoAvancoDosFuros } from '../furos_laje'
 import { disciplinasDoPavimento, ehOpcaoDeAcabamentos, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
@@ -284,8 +284,27 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
 
   // Estrutura com a forma no aparelho: uma opção por aba da forma (Pilares, Vigas, Lajes, Furos de viga),
   // lida do pacote (só as abas que a planta tem). Sem o pacote, a forma aparece como linha, com o Baixar.
-  const [abasDaForma, setAbasDaForma] = useState<Map<string, Array<{ tipo: string; n: number }>>>(new Map())
+  const [abasDaForma, setAbasDaForma] = useState<Map<string, Array<{ tipo: string; n: number; furos?: ReturnType<typeof avancoDosFuros> }>>>(new Map())
   const formasAbertas = discAberta?.id === 'estrutura' ? discAberta.plantas.filter((p) => p.disciplina === 'estrutura') : []
+  // furos de laje e de viga por etapa (21/11/2026, "em etapas similares às barras de aço"): "x de y furos OK"
+  // de cada planta de furação, lido do pacote no aparelho
+  const [avancoDaFuracao, setAvancoDaFuracao] = useState<Map<string, ReturnType<typeof avancoDosFuros>>>(new Map())
+  const furacaoAberta = discAberta?.id === 'estrutura' ? discAberta.plantas.filter(ehDeFuracao) : []
+  useEffect(() => {
+    if (!furacaoAberta.length || !noAparelho) return
+    let vivo = true
+    ;(async () => {
+      const m = new Map<string, ReturnType<typeof avancoDosFuros>>()
+      for (const p of furacaoAberta) {
+        const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
+        if (pac) m.set(p.id, avancoDosFuros(pac.manifest, (id) => dados.eventosDe.get(id) ?? []))
+      }
+      if (vivo) setAvancoDaFuracao(m)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [furacaoAberta.map((p) => p.id).join(','), noAparelho, dados])
   useEffect(() => {
     if (!formasAbertas.length || !noAparelho) return
     let vivo = true
@@ -302,6 +321,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         const abas = OPCOES_DA_FORMA.map(({ tipo }) => ({
           tipo,
           n: tipo === 'L' ? (dados.areasDe.get(pvAberto!.id) ?? []).length : tipo === 'B' ? (temArmaduraPropria ? 0 : nBarras) : quantos(tipo),
+          furos: tipo === 'F' ? avancoDosFuros(pac.manifest, (id) => dados.eventosDe.get(id) ?? []) : undefined,
         })).filter(({ tipo, n }) => n > 0 || (tipo === 'L' && (temLaje || quantos('L') > 0)))
         m.set(p.id, abas)
       }
@@ -369,11 +389,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               {daForma.map((p) =>
                 formaEmOpcoes(p) ? (
                   <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-forma">
-                    {abasDaForma.get(p.id)!.map(({ tipo, n }) =>
+                    {abasDaForma.get(p.id)!.map(({ tipo, n, furos }) =>
                       botaoDaPlanta(p, {
                         chave: `${p.id}:${tipo}`,
                         titulo: OPCOES_DA_FORMA.find((o) => o.tipo === tipo)!.nome,
-                        sub: [daForma.length > 1 ? p.trecho : '', tipo === 'L' ? (n ? `${n} ${n === 1 ? 'área desenhada' : 'áreas desenhadas'}` : 'Desenhe a área na planta') : tipo === 'F' ? `${n} ${n === 1 ? 'furo' : 'furos'}` : tipo === 'B' ? `${n} ${n === 1 ? 'barra' : 'barras'}` : `${n} ${n === 1 ? 'peça' : 'peças'}`].filter(Boolean).join(' · '),
+                        sub: [daForma.length > 1 ? p.trecho : '', tipo === 'L' ? (n ? `${n} ${n === 1 ? 'área desenhada' : 'áreas desenhadas'}` : 'Desenhe a área na planta') : tipo === 'F' ? (furos?.total ? textoDoAvancoDosFuros(furos) : `${n} ${n === 1 ? 'furo' : 'furos'}`) : tipo === 'B' ? `${n} ${n === 1 ? 'barra' : 'barras'}` : `${n} ${n === 1 ? 'peça' : 'peças'}`].filter(Boolean).join(' · '),
                         abrir: { nome: 'planta', plantaId: p.id, tipo },
                         testid: 'fvs-opcao-forma',
                         extra: { 'data-tipo': tipo },
@@ -397,7 +417,10 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           {furacao.length > 0 && (
             <div data-testid="fvs-secao-outra">
               <h3 class="fv-disciplina">Furação de laje</h3>
-              <div class="fv-grade-armadura">{furacao.map((p) => plantaNaLista(p, p.trecho, `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'} · ${p.prancha}`))}</div>
+              <div class="fv-grade-armadura">{furacao.map((p) => {
+                  const a = avancoDaFuracao.get(p.id)
+                  return plantaNaLista(p, p.trecho, `${a?.total ? textoDoAvancoDosFuros(a) : `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'}`} · ${p.prancha}`)
+                })}</div>
             </div>
           )}
           {vedacao.length > 0 && (

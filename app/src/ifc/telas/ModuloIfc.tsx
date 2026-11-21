@@ -5,6 +5,10 @@ import '../ifc.css'
 import { filtroAtivo } from '../motor/indice'
 import { Visor } from '../motor/visor'
 import { Sessao } from '../sessao'
+import { IfcsDaObra, type FonteIfcs } from '../obra'
+import { IfcsDaObraLista } from './IfcsDaObra'
+import { sobDemanda } from '../../telas/SobDemanda'
+import type { ObraLocal, UsuarioLocal } from '../../nucleo/conta'
 import { PainelBusca } from './PainelBusca'
 import { PainelCores } from './PainelCores'
 import { PainelCortes } from './PainelCortes'
@@ -27,14 +31,49 @@ export function usarSessao(s: Sessao): void {
   useEffect(() => s.assinar(() => marcar((v) => v + 1)), [s])
 }
 
+/** A obra aberta no app (com conta): lista "IFCs da obra". Sem conta e na bancada comum, não existe. */
+export interface ContextoObraIfc {
+  obraId: string
+  fonte: FonteIfcs
+  podeEnviar: boolean
+  online: boolean
+  /** Muda quando a sincronização trouxe dados novos: a lista relê. */
+  versao: number
+  /** Depois de pôr um IFC na fila: sincroniza logo. */
+  aoEnviar?: () => void
+}
+
 export interface PropsModuloIfc {
   /** Voltar ao menu do app. Na bancada não existe. */
   aoSair?: () => void
+  usuario?: UsuarioLocal
+  obra?: ObraLocal
+  aoPerderObra?: () => void
+  /** Só a bancada: a lista da obra com uma fonte de mentira. */
+  obraIfc?: ContextoObraIfc
 }
 
-export function ModuloIfc({ aoSair }: PropsModuloIfc) {
+// O que fala com o servidor (sincronização, armazenamento) só carrega quando há obra aberta.
+const ComObra = sobDemanda('IFC', () => import('./ComObra').then((m) => m.ComObra))
+
+export function ModuloIfc(props: PropsModuloIfc) {
+  const { obra, usuario, aoSair, aoPerderObra } = props
+  if (obra && usuario && !props.obraIfc) return <ComObra obra={obra} usuario={usuario} aoSair={aoSair ?? (() => {})} aoPerderObra={aoPerderObra ?? (() => {})} />
+  return <LeitorIfc aoSair={props.aoSair} obraIfc={props.obraIfc} />
+}
+
+export function LeitorIfc({ aoSair, obraIfc }: Pick<PropsModuloIfc, 'aoSair' | 'obraIfc'>) {
   const sessao = useMemo(() => new Sessao(), [])
   usarSessao(sessao)
+  const fonte = obraIfc?.fonte
+  const obraId = obraIfc?.obraId
+  const lista = useMemo(() => (fonte && obraId ? new IfcsDaObra(fonte, obraId, sessao) : null), [fonte, obraId, sessao])
+  const versao = obraIfc?.versao ?? 0
+  const aoEnviar = obraIfc?.aoEnviar
+  useEffect(() => {
+    if (lista && versao > 0) void lista.atualizar()
+  }, [lista, versao])
+  const daObra = lista && obraIfc ? <IfcsDaObraLista lista={lista} podeEnviar={obraIfc.podeEnviar} online={obraIfc.online} aoEnviar={aoEnviar} /> : null
   const canvas = useRef<HTMLCanvasElement>(null)
   const entrada = useRef<HTMLInputElement>(null)
   const [painel, setPainel] = useState<IdPainel | null>(null)
@@ -130,7 +169,7 @@ export function ModuloIfc({ aoSair }: PropsModuloIfc) {
             </button>
           </header>
           <div class="ifc-painel-corpo">
-            {painel === 'modelos' && <PainelModelos sessao={sessao} aoEscolher={escolher} />}
+            {painel === 'modelos' && <PainelModelos sessao={sessao} aoEscolher={escolher} daObra={daObra} />}
             {painel === 'buscar' && <PainelBusca sessao={sessao} />}
             {painel === 'cortes' && <PainelCortes sessao={sessao} aoVer2D={aoVer2D} />}
             {painel === 'cores' && <PainelCores sessao={sessao} />}
@@ -150,6 +189,7 @@ export function ModuloIfc({ aoSair }: PropsModuloIfc) {
               <IcAbrir />
               Importar IFC
             </button>
+            {daObra && <div class="ifc-vazio-guardados">{daObra}</div>}
             {sessao.guardados.length > 0 && (
               <div class="ifc-vazio-guardados">
                 <h2>Guardados neste aparelho</h2>

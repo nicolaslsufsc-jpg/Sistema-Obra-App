@@ -51,7 +51,7 @@ export interface Copia {
   colaborador: string
   devolucao: string | null
   /** entrega registrada no app (não é linha da ficha): a devolução é registrada pela entrega (21/11/2026) */
-  app?: { entregaId: string; documentoId: string; assinaturaId: string | null }
+  app?: { entregaId: string; documentoId: string; assinaturaId: string | null; foraDeUso?: boolean }
 }
 
 export type Resultado = 'em dia' | 'desatualizada' | 'conferir'
@@ -69,6 +69,8 @@ export interface CopiaCruzada {
   dias?: number
   /** a cópia é EX e a vigente é LO com o mesmo número */
   loDepois?: boolean
+  /** a folha não tem mais revisão vigente (todas obsoletas): recolher, sem nada para pôr no lugar */
+  foraDeUso?: boolean
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -304,6 +306,9 @@ export function compararCopia(c: Copia, v: Vigente | null | undefined, hoje: str
 /** Cruza tudo. As devolvidas entram com situação "devolvida" e não pesam no painel. */
 export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], hoje: string): CopiaCruzada[] {
   const saida: CopiaCruzada[] = copias.map((c) => {
+    // Entrega do servidor de uma folha sem revisão vigente (todas obsoletas; decisão do Nicolas, 22/11):
+    // "recolher: prancha fora de uso". Vale a revisão, não a pasta: não procura outra folha de mesmo número.
+    if (c.app?.foraDeUso) return { copia: c, situacao: c.devolucao ? 'devolvida' : 'em campo', resultado: 'desatualizada', foraDeUso: true }
     const v = acharVigente(c, vigentes)
     return { copia: c, situacao: c.devolucao ? 'devolvida' : 'em campo', ...compararCopia(c, v, hoje) }
   })

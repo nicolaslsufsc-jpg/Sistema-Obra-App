@@ -268,7 +268,7 @@ function Barras({ titulo, barras, comAtraso }: { titulo: string; barras: Barra[]
 
 function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }) {
   const c = x.copia
-  const v = x.vigente!
+  const v = x.vigente
   return (
     <li class="pj-linha-painel pj-tocavel" {...tocavel(abrir)}>
       <div>
@@ -277,7 +277,7 @@ function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }
         </b>{' '}
         <span class="discreto">{c.titulo}</span>
         <br />
-        <span class="pj-rev velha">{rotuloRev(c.fase, c.revisao)}</span> → <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span>
+        <span class="pj-rev velha">{rotuloRev(c.fase, c.revisao)}</span> → {v ? <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span> : <b>recolher: prancha fora de uso</b>}
         {x.loDepois && <span class="discreto"> a LO saiu depois da entrega</span>}
         <div class="discreto">
           {c.empresa}
@@ -285,7 +285,13 @@ function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }
         </div>
       </div>
       <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>
-        {x.dias ?? '?'} d<small>desde {dataBR(v.data)}</small>
+        {v ? (
+          <>
+            {x.dias ?? '?'} d<small>desde {dataBR(v.data)}</small>
+          </>
+        ) : (
+          'recolher'
+        )}
       </div>
     </li>
   )

@@ -60,9 +60,9 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
         colunas: ['Folha', 'Em campo', 'Vigente', 'De quem', 'Onde'],
         curtas: [1, 2, 4],
         linhas: (agora?.recolher ?? []).map(({ x, vigente }) => [
-          `${vigente.codigo} ${vigente.titulo}`,
+          vigente ? `${vigente.codigo} ${vigente.titulo}` : `${x.copia.disciplinaNome} ${x.copia.codigo} ${x.copia.titulo}`,
           rotuloRev(x.copia.fase, x.copia.revisao),
-          rotuloRev(vigente.fase, vigente.revisao),
+          vigente ? rotuloRev(vigente.fase, vigente.revisao) : 'fora de uso',
           pessoa(x.copia.empresa, x.copia.colaborador),
           ondeDaCopia(x.copia),
         ]),
@@ -134,13 +134,14 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
               <li key={x.copia.linha} class="pj-linha-painel pj-tocavel" data-testid="agora-recolher-linha" {...tocavel(() => ir({ nome: 'prancha-base', ...alvoDe(x) }))}>
                 <div>
                   <b>
-                    Recolher {vigente.codigo} <span class="pj-rev velha">{rotuloRev(x.copia.fase, x.copia.revisao)}</span>
+                    Recolher {vigente ? vigente.codigo : `${x.copia.disciplinaNome} ${x.copia.codigo}`} <span class="pj-rev velha">{rotuloRev(x.copia.fase, x.copia.revisao)}</span>
                   </b>
                   <div class="discreto">
-                    de <b>{pessoa(x.copia.empresa, x.copia.colaborador)}</b> · vigente {rotuloRev(vigente.fase, vigente.revisao)} · {ondeDaCopia(x.copia)}
+                    de <b>{pessoa(x.copia.empresa, x.copia.colaborador)}</b> ·{' '}
+                    {vigente ? `vigente ${rotuloRev(vigente.fase, vigente.revisao)}` : <b data-testid="agora-fora-de-uso">prancha fora de uso: {x.copia.titulo}</b>} · {ondeDaCopia(x.copia)}
                   </div>
                 </div>
-                <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>{x.dias ?? '?'} d</div>
+                {vigente ? <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>{x.dias ?? '?'} d</div> : <span class="pj-selo des">fora de uso</span>}
               </li>
             ))}
           </ul>

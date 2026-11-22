@@ -85,7 +85,8 @@ export function copiasDoApp(d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' 
       empresa: d.empresaPorId.get(String(e.empresa_id))?.nome ?? 'empresa sem cadastro',
       colaborador: String(e.colaborador ?? ''),
       devolucao: devolucao.get(e.id) ?? null,
-      app: { entregaId: e.id, documentoId: doc.id, assinaturaId: (e.assinatura_id as string | null) ?? null },
+      // sem revisão vigente no servidor (todas obsoletas): a folha saiu de uso
+      app: { entregaId: e.id, documentoId: doc.id, assinaturaId: (e.assinatura_id as string | null) ?? null, ...(vig ? {} : { foraDeUso: true }) },
     })
   })
   return saida

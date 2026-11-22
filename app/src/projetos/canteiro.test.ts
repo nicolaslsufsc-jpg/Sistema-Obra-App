@@ -6,6 +6,7 @@ import type { Documento } from './dados'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 import { abasFichaV2, fichaV2Xlsx, nomeFichaV2 } from './ficha_v2'
 import { cruzar, lerDistribuicao, lerVigentes } from './painel'
+import { oQueFazerAgora } from './agora'
 import { lerGrade } from './planilha_xlsx'
 
 const HOJE = '2026-11-14'
@@ -181,5 +182,28 @@ describe('entregas do app no canteiro (21/11)', () => {
     expect(emCampo).toHaveLength(1)
     expect(emCampo[0].resultado).toBe('em dia')
     expect(emCampo[0].copia.app?.entregaId).toBe('bb')
+  })
+  it('folha sem revisão vigente (todas obsoletas): a cópia em campo é "recolher: prancha fora de uso"', () => {
+    // d2 tem o MESMO número (100) de d1, que continua vigente: a cópia de d2 não pode cruzar com a folha d1
+    const d2 = doc('d2', 'EXE.ES.100.FOROUTROXX')
+    const ex00 = rev('EX', '00', { id: 'ex00', obsoleta: true })
+    const comD2 = {
+      ...dados,
+      eventos: [...eventos, ev('dddd', { tipo: 'entrega', documento_id: 'd2', revisao_id: 'ex00', data_evento: '2026-08-01', colaborador: 'Pedro' })],
+      documentoPorId: new Map([['d1', d1], ['d2', d2]]),
+      revisaoPorId: new Map([['lo01', lo01], ['lo02', lo02], ['ex00', ex00]]),
+    }
+    const copias = copiasDoApp(comD2)
+    expect(copias.map((c) => !!c.app?.foraDeUso)).toEqual([false, false, true])
+    const x = cruzar(copias, vigentesDoServidor({ documentos: [d1, d2], vigentes: comD2.vigentes }), HOJE)
+    const fora = x.find((y) => y.copia.app?.entregaId === 'dddd')!
+    expect(fora).toMatchObject({ situacao: 'em campo', resultado: 'desatualizada', foraDeUso: true })
+    expect(fora.vigente).toBeUndefined()
+    // quem tem a vigente de d1 continua em dia: vale a revisão, não o número nem a pasta
+    expect(x.find((y) => y.copia.app?.entregaId === 'bb')!.resultado).toBe('em dia')
+    // entra no "recolher" do O que fazer agora, com o nome da pessoa, sem nada a plotar
+    const o = oQueFazerAgora([], x)
+    expect(o.recolher.map((r) => [r.x.copia.colaborador, r.vigente])).toEqual([['Pedro', null]])
+    expect(situacaoFicha(fora)).toBe('RECOLHER')
   })
 })

@@ -231,7 +231,10 @@ class TestSemDesenho(unittest.TestCase):
         self.assertNotIn("tipo_de", pecas[0]["furo"])
 
     def test_simbolos_coloridos_da_prancha(self):
-        import pymupdf
+        try:
+            import pymupdf
+        except ImportError:
+            self.skipTest("precisa de pymupdf")
 
         with tempfile.TemporaryDirectory() as d:
             arq = str(pathlib.Path(d) / "EXE.FR.EX.051.4PVTOXXXXA-R00.pdf")

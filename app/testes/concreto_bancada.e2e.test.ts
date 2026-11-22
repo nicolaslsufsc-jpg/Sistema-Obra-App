@@ -585,6 +585,66 @@ suite('Concreto na bancada (Chrome)', () => {
     await contexto.close()
   }, 120_000)
 
+  it('obra de verdade: área gravada com o id da linha de "plantas" aparece na planta do trecho (o S23 de 22/11; celular e tablet)', async () => {
+    const OBRA_BB = 'b0000000-0000-0000-0000-0000000000bb'
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    await p.goto(url.replace('dev/concreto.html', 'dev/fvs.html'))
+    await p.getByText('Pavimento de teste').first().waitFor({ timeout: 60_000 })
+    await p.goto(`${url}?obra=${OBRA_BB}`)
+    await clicar(p, /Pavimento de teste/)
+    await clicar(p, '+ Nova concretagem')
+    await p.getByLabel('Local').fill('Laje pela linha de plantas')
+    await p.getByLabel('fck (MPa)').fill('35')
+    await clicar(p, 'Salvar concretagem')
+    await clicar(p, '+ Caminhão')
+    await p.getByLabel('Nota fiscal').fill('560001')
+    await clicar(p, /^Salvar$/)
+    // como a carga das áreas da obra: planta_ref com o id da LINHA de "plantas" (não o do trecho)
+    const ref = await p.evaluate(`(async () => {
+      const { sincronizador } = await import('/src/nucleo/servicos.ts')
+      const plantas = await sincronizador.linhas('plantas', '${OBRA_BB}')
+      const pl = plantas.find((x) => x.setor_id === 'a1000000-0000-0000-0000-0000000000f1')
+      const cams = await sincronizador.linhas('caminhoes', '${OBRA_BB}')
+      const k = cams.find((x) => x.nota_fiscal === '560001')
+      const contorno = [[130, 95], [430, 95], [430, 145], [130, 145]]
+      await sincronizador.registrar('caminhao_areas', '${OBRA_BB}', 'a0000000-0000-0000-0000-00000000000a', { caminhao_id: k.id, planta_ref: pl.id + '@' + pl.revisao, contorno, alvo: 'vigas_laje', substitui_id: null, cancelado: false })
+      return pl.id + '@' + pl.revisao
+    })()`)
+    expect(String(ref)).not.toMatch(/^a1000000-0000-0000-0000-0000000000f1@/)
+    // abre de novo, como o aparelho depois de sincronizar
+    await p.goto(`${url}?obra=${OBRA_BB}`)
+    await clicar(p, /Pavimento de teste/)
+    await clicar(p, /Laje pela linha de plantas/)
+    await clicar(p, /NF 560001/)
+    await clicar(p, 'Desenhar onde foi')
+    await p.locator('[data-testid=mapa] canvas.leaflet-zoom-animated').first().waitFor()
+    // áreas desenhadas no mapa (as peças são outras camadas: tocáveis)
+    const areasNoMapa = () =>
+      p.evaluate(() => {
+        const m = (document.querySelector('.cc-mapa') as HTMLElement & { __mapa: any }).__mapa
+        let n = 0
+        m.eachLayer((l: any) => {
+          if (l.getLatLngs && l.options?.interactive === false && l.options?.fillOpacity >= 0.35) n++
+        })
+        return n
+      })
+    for (const largura of [1280, 375]) {
+      await p.setViewportSize({ width: largura, height: largura === 375 ? 812 : 800 })
+      await p.getByTestId('laje-desenhada').waitFor()
+      expect(await p.getByTestId('laje-desenhada').innerText()).toMatch(/Laje concretada: 1 área desenhada nesta planta/)
+      expect(await p.getByText('1 área nesta planta').count()).toBe(1)
+      expect(await areasNoMapa()).toBe(1)
+      expect(await p.getByTestId('aviso-sem-planta').count()).toBe(0)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await capturar(p, `laje_pela_linha_de_plantas_${largura}`)
+    }
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 120_000)
+
   it('concretagem de exemplo: EXEMPLO na lista, no título, no aviso e na ficha de concreto (celular e tablet)', async () => {
     for (const largura of [375, 1280]) {
       const contexto = await navegador.newContext({ viewport: { width: largura, height: 812 }, hasTouch: true })

@@ -301,14 +301,12 @@ textarea {
   flex: none;
   padding: 0.4rem 0.75rem;
 }
-/* celular: com "Mouse", "Desfazer" e o "!" de reportar, os botões descem para uma 2ª linha em vez de sair da tela */
+/* celular: só quando os botões sozinhos não cabem (com "Mouse", "Desfazer" e o "!" de reportar) eles descem
+   para uma 2ª linha em vez de sair da tela; o título encolhe primeiro, para a planta não perder altura à toa */
 @media (max-width: 480px) {
   .cc-mapa-linha {
     flex-wrap: wrap;
     row-gap: 0.35rem;
-  }
-  .cc-mapa-linha .cc-titulo {
-    flex: 1 1 7rem;
   }
 }
 .cc-chips {

@@ -356,6 +356,8 @@ export async function guardarPacote(manifestBytes: ArrayBuffer | string, bin: Bl
   }
   await db().pacotes.put(reg)
   lembrarEscala(manifest)
+  mudouNoAparelho()
+  lidos?.set(reg.planta_id, metaDe(reg))
   return reg
 }
 
@@ -375,13 +377,65 @@ export async function abrirPacoteOuAnterior(plantaId: string, anteriores: readon
   return null
 }
 
-/** Quais plantas já estão no aparelho (sem carregar as imagens). */
+interface MetaDoPacote {
+  tamanho: number
+  baixado_em: string
+  obra_id?: string
+  usuario_id?: string
+}
+const metaDe = (p: PacoteGuardado): MetaDoPacote => ({ tamanho: p.tamanho, baixado_em: p.baixado_em, obra_id: p.obra_id, usuario_id: p.usuario_id })
+
+/**
+ * O que há no aparelho, lido uma vez por página. Ler os pacotes traz o manifest de cada planta inteiro:
+ * com a obra inteira baixada, a tela inicial da FVS relia todos duas vezes a cada abertura (pedido do
+ * Nicolas, 21/11: "FVS demora 5s para abrir"). Quem grava ou apaga pacote atualiza esta lista.
+ */
+let lidos: Map<string, MetaDoPacote> | null = null
+let lendo: Promise<Map<string, MetaDoPacote>> | null = null
+let versaoDoAparelho = 0
+function mudouNoAparelho(): void {
+  versaoDoAparelho++
+}
+
+function pacotesLidos(): Promise<Map<string, MetaDoPacote>> {
+  if (lidos) return Promise.resolve(lidos)
+  lendo ??= (async () => {
+    try {
+      for (;;) {
+        const v = versaoDoAparelho
+        const m = new Map<string, MetaDoPacote>()
+        await db().pacotes.each((p) => {
+          m.set(p.planta_id, metaDe(p))
+          lembrarEscala(p.manifest)
+        })
+        // gravou ou apagou pacote durante a leitura: lê de novo
+        if (v === versaoDoAparelho) return (lidos = m)
+      }
+    } finally {
+      lendo = null
+    }
+  })()
+  return lendo
+}
+
+/** Esquece a lista lida (testes que trocam o banco de pacotes por baixo do app). */
+export function esquecerPacotesLidos(): void {
+  lidos = null
+  mudouNoAparelho()
+}
+
+/** As plantas do aparelho se a lista já foi lida nesta página (null = ainda não): a tela começa com ela. */
+export function pacotesJaLidos(): Map<string, { tamanho: number; baixado_em: string }> | null {
+  if (!lidos) return null
+  const m = new Map<string, { tamanho: number; baixado_em: string }>()
+  for (const [id, p] of lidos) m.set(id, { tamanho: p.tamanho, baixado_em: p.baixado_em })
+  return m
+}
+
+/** Quais plantas já estão no aparelho (sem carregar as imagens; os manifests só na primeira vez). */
 export async function pacotesNoAparelho(): Promise<Map<string, { tamanho: number; baixado_em: string }>> {
   const m = new Map<string, { tamanho: number; baixado_em: string }>()
-  await db().pacotes.each((p) => {
-    m.set(p.planta_id, { tamanho: p.tamanho, baixado_em: p.baixado_em })
-    lembrarEscala(p.manifest)
-  })
+  for (const [id, p] of await pacotesLidos()) m.set(id, { tamanho: p.tamanho, baixado_em: p.baixado_em })
   return m
 }
 
@@ -401,6 +455,8 @@ export async function pecasNoAparelho(): Promise<Map<string, string[]>> {
 /** A pessoa pediu para tirar plantas do aparelho (falta de espaço). As marcações não ficam aqui. */
 export async function removerPacotes(ids: readonly string[]): Promise<void> {
   await db().pacotes.bulkDelete([...ids])
+  mudouNoAparelho()
+  for (const id of ids) lidos?.delete(id)
 }
 
 /**
@@ -412,12 +468,12 @@ export async function removerPacotes(ids: readonly string[]): Promise<void> {
  */
 export async function limparPacotes(dono: DonoDoPacote, manter: ReadonlySet<string>): Promise<number> {
   const sair: string[] = []
-  await db().pacotes.each((p) => {
+  for (const [id, p] of await pacotesLidos()) {
     const deOutraPessoa = p.usuario_id !== undefined && p.usuario_id !== dono.usuarioId
     const destaObra = p.obra_id === undefined || p.obra_id === dono.obraId
-    if (deOutraPessoa || (destaObra && !manter.has(p.planta_id))) sair.push(p.planta_id)
-  })
-  if (sair.length) await db().pacotes.bulkDelete(sair)
+    if (deOutraPessoa || (destaObra && !manter.has(id))) sair.push(id)
+  }
+  if (sair.length) await removerPacotes(sair)
   return sair.length
 }
 

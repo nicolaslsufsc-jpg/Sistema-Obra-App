@@ -5,13 +5,14 @@
 //      planta que já existe. Cada planta mostra se já está no aparelho (abre sem internet) ou o Baixar.
 // Os três níveis são esta mesma tela (o download continua ao trocar de nível); o voltar sobe um nível.
 import { resumoDasRegras } from '../regras_tela'
+import { contagemDoEscoramento, listaDoEscoramento } from '../escoramento'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
 import { resumoDasAreas } from '../areas'
-import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
+import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type DadosFvs, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
-import { abrirPacoteOuAnterior, limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
+import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
@@ -32,6 +33,18 @@ import { quantosLocais } from '../locais'
 
 const OBRA_INTEIRA = 'obra-inteira'
 
+/**
+ * Contas da obra inteira (totais, reprovações, para lançar), guardadas junto dos dados: voltar ao início ou
+ * abrir a FVS de novo com os mesmos dados não refaz (pedido do Nicolas, 21/11: "FVS demora 5s para abrir").
+ */
+const contasDe = new WeakMap<DadosFvs, Map<string, unknown>>()
+function conta<T>(dados: DadosFvs, chave: string, fazer: () => T): T {
+  let m = contasDe.get(dados)
+  if (!m) contasDe.set(dados, (m = new Map()))
+  if (!m.has(chave)) m.set(chave, fazer())
+  return m.get(chave) as T
+}
+
 /** Onde a pessoa está: nada = lista de pavimentos; pavimentoId = as disciplinas dele; e disciplina = as opções dela. */
 export interface NivelDoInicio {
   pavimentoId: string
@@ -43,7 +56,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // sem conta, a planta vem do pacote da obra (.zip ou pasta), não da internet: o Baixar não espera a rede
   // (testador, 08/11: no aparelho do .zip a pergunta dizia "é só baixar de novo" e o Baixar pedia internet)
   const semRede = !online && !ctx.local
-  const [noAparelho, setNoAparelho] = useState<Map<string, { tamanho: number }> | null>(null)
+  // já lida nesta página (ModuloFvs pede junto com os dados): a primeira conta já sai certa, sem refazer
+  const [noAparelho, setNoAparelho] = useState<Map<string, { tamanho: number }> | null>(pacotesJaLidos)
   /** download em andamento: planta atual, percentual dela e, no pavimento inteiro, quantas faltam */
   const [baixando, setBaixando] = useState<{ plantaId: string; pct: number; pavimentoId?: string; feitas: number; total: number } | null>(null)
   const [erro, setErro] = useState('')
@@ -53,7 +67,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   useEffect(() => {
     dataDoPacoteGuardado(banco, props.obra.id).then(setGeradoEm, () => setGeradoEm(null))
   }, [props.obra.id])
-  const naFrente = useMemo(() => registroNaFrente(dados), [dados])
+  const naFrente = useMemo(() => conta(dados, 'frente', () => registroNaFrente(dados)), [dados])
   // locais do sistema oficial que não são peça e têm ficha ou marcação (tela "Locais fora da planta")
   const locaisFora = useMemo(() => quantosLocais(dados), [dados])
 
@@ -240,13 +254,17 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // no escritório, com internet boa, baixa tudo de uma vez antes de ir para a obra
   const faltamNaObra = noAparelho ? comPlanta.flatMap((pv) => dados.plantasDe.get(pv.id)!.filter((p) => !noAparelho.has(p.id))) : []
   const baixandoObra = baixando?.pavimentoId === OBRA_INTEIRA ? baixando : null
-  const reprovacoes = useMemo(() => reprovacoesDaObra(dados), [dados])
+  const reprovacoes = useMemo(() => conta(dados, 'reprovacoes', () => reprovacoesDaObra(dados)), [dados])
   const abertas = reprovacoes.filter((r) => r.aberta).length
-  const paraLancar = useMemo(() => paraLancarDaObra(dados, dados.lancados).length, [dados])
+  const paraLancar = useMemo(() => conta(dados, 'lancar', () => paraLancarDaObra(dados, dados.lancados).length), [dados])
+  // escoramento e desforma (3.6, 21/11): quantas peças já podem e quantas aguardam o prazo das regras
+  const escoramento = useMemo(() => (dados.regras.prazos.length ? conta(dados, 'escoramento', () => contagemDoEscoramento(listaDoEscoramento(dados))) : null), [dados])
   const duplicadas = useMemo(() => [...dados.fichasCampoDe.values()].filter((f) => f.length > 1).length, [dados])
   const avisoSistema = avisoDoSistemaOficial(props.obra, dados.fichasCampoDe.size > 0 || dados.fichasCampoSemPeca.length > 0)
   // os resumos percorrem a obra inteira: só refaz quando os dados mudam, não a cada ponto do download
-  const resumos = useMemo(() => {
+  // o que está no aparelho muda a conta (peça só de detalhe sai): entra na chave
+  const chaveDosResumos = noAparelho ? 'resumos|' + [...noAparelho.keys()].sort().join(',') : 'resumos'
+  const resumos = useMemo(() => conta(dados, chaveDosResumos, () => {
     const eventosDe = (id: string) => dados.eventosDe.get(id) ?? []
     const campo = { fichasDe: (id: string) => dados.fichasCampoDe.get(id) ?? [], ficha: (id: string) => dados.fichaPorId.get(id), partesDe: partesDoPilar }
     const locaisDe = new Map<string, Array<{ id: string; tipo: string }>>()
@@ -275,7 +293,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       }),
     )
     // noAparelho: ler os pacotes diz quais peças são só detalhe (pacotesNoAparelho)
-  }, [dados, noAparelho])
+  }), [dados, chaveDosResumos])
   const naObra = [...resumos.values()].reduce((s, { r }) => ({ total: s.total + r.total, liberadas: s.liberadas + r.liberadas }), { total: 0, liberadas: 0 })
 
   // Nível da navegação (21/11/2026): pavimentos → disciplinas do pavimento → opções da disciplina.
@@ -665,6 +683,14 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             {duplicadas} {duplicadas === 1 ? 'peça' : 'peças'} com ficha duplicada no {sistema.nome}
           </b>
           <span>Ver as duas situações de cada uma ›</span>
+        </button>
+      )}
+      {escoramento && escoramento.podem + escoramento.aguardam > 0 && (
+        <button type="button" class="fv-entra-rep" data-testid="fvs-entra-escoramento" onClick={() => ir({ nome: 'escoramento' })}>
+          <b>
+            Escoramento e desforma: {escoramento.podem} {escoramento.podem === 1 ? 'pode retirar' : 'podem retirar'} · {escoramento.aguardam} aguardando
+          </b>
+          <span>Ver por pavimento ›</span>
         </button>
       )}
       {(dados.regras.prazos.length > 0 || dados.regras.ligacoes.length > 0 || !!dados.regras.fora) && (

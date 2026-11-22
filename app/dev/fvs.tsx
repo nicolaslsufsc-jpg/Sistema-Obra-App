@@ -17,6 +17,7 @@ import { camadaDoFuro, ehFuroDeLaje, pecaDosFurosDeLaje } from '../src/fvs/furos
 import { DISCIPLINAS_DE_PONTOS, NOME_DA_DISCIPLINA as NOME_DOS_PONTOS, type DisciplinaDePontos, type PontoPacote, type TipoDePonto } from '../src/fvs/pontos'
 import type { ObraLocal, UsuarioLocal } from '../src/nucleo/conta'
 import { sistemasInstalados } from '../src/integracoes/sistema_oficial'
+import { lerFvsAntes } from '../src/fvs/ler_antes'
 
 const OBRA = 'b0000000-0000-0000-0000-0000000000bb'
 const usuario: UsuarioLocal = { id: '00000000-0000-0000-0000-0000000000a1', email: 'bancada@teste.local' }
@@ -1178,10 +1179,30 @@ async function semearRevisaoNova() {
 
 const pasta = params.get('pasta')
 if (pasta) {
-  semearDaPasta(pasta)
+  // ?ja=1: a obra já está no aparelho (semeada e baixada antes): abre sem semear, como o app de verdade
+  ;(params.get('ja') ? Promise.resolve() : semearDaPasta(pasta))
     .then(() => {
       history.replaceState({ tela: 'fvs' }, '')
-      render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
+      const abrirModulo = () => render(<ModuloFvs usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
+      // ?menu=MS: o menu do app fica MS ms na tela, com a leitura antecipada que ele agenda (ler_antes.ts),
+      // e só então a FVS abre, como o toque no cartão (medir a primeira abertura, 21/11)
+      const menu = Number(params.get('menu') || 0)
+      if (menu) {
+        document.getElementById('app')!.innerHTML = '<main class="tela" data-testid="menu-simulado">Menu (bancada)</main>'
+        lerFvsAntes(obra.id, usuario.id)
+        window.setTimeout(() => {
+          ;(window as unknown as { __tocouFvs: number }).__tocouFvs = performance.now()
+          render(null, document.getElementById('app')!)
+          document.getElementById('app')!.innerHTML = ''
+          abrirModulo()
+        }, menu)
+      } else abrirModulo()
+      // medir a abertura do módulo sem a semeadura (scratchpad mede_abrir): sai e entra de novo, como pelo menu
+      ;(window as unknown as { __reabrirFvs: () => void }).__reabrirFvs = () => {
+        render(null, document.getElementById('app')!)
+        history.replaceState({ tela: 'fvs' }, '')
+        abrirModulo()
+      }
     })
     .catch((e) => {
       document.getElementById('app')!.textContent = `Bancada: não consegui ler ${pasta} (${e}). Rode: py pipeline/fvs/bancada.py PASTA`

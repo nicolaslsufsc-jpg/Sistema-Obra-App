@@ -70,6 +70,9 @@ import {
 } from '../barras'
 import {
   daFichaAberta,
+  eventosDaFichaAberta,
+  fichaDaTela,
+  juntarFichasDoModelo,
   etapasDa,
   itensDasEsquadrias,
   resumoDasEsquadrias,
@@ -107,6 +110,7 @@ import type { Linha } from '../../nucleo/banco_local'
 import { AvisoHora } from './AvisoHora'
 import { CampoNc } from './CampoNc'
 import { pecasDoMesmoDesenho } from '../mesmo_desenho'
+import { ARRASTE_MINIMO_PX, pecasNoRetangulo, retanguloEntre } from '../selecao'
 import { disciplinaDePontos, fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import './escolha.css'
@@ -256,6 +260,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [porItem, setPorItem] = useState<(ItemEscolhido & { tipo: string }) | null>(null)
   /** O que o toque marca no "Por item": OK (tocando de novo, NC) ou NA. */
   const [modoItem, setModoItem] = useState<ModoDoToque>('C')
+  /** "Arrastar" no Pincel ou no "Por item": o dedo desenha um retângulo e marca as peças de dentro (21/11) */
+  const [varios, setVarios] = useState(false)
+  /** marcando as peças do retângulo: os avisos de cada uma viram um só, com um "Desfazer" para todas */
+  const juntandoAvisos = useRef<{ textos: string[]; desfazer: Array<() => void> } | null>(null)
   /** Pilar com o item OK que a pessoa tocou de novo: espera a observação e o Confirmar para gravar o NC. */
   const [ncDoItem, setNcDoItem] = useState<{ id: string; texto: string } | null>(null)
   const [verLegenda, setVerLegenda] = useState(false)
@@ -426,6 +434,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const eventosDe = (id: string): EventoFvs[] => dados.eventosDe.get(id) ?? SEM_EVENTOS
   const fichaPorId = (id: string) => dados.fichaPorId.get(id)
   const abertasDe = (id: string): FichaCampo[] => dados.fichasCampoDe.get(id) ?? SEM_FICHAS
+  /** Peça com fichas de modelos diferentes; duas do mesmo modelo na viga viram uma (21/11). */
+  const duplicadaDe = (id: string) => {
+    const a = abertasDe(id)
+    return a.length > 1 && juntarFichasDoModelo(a, fichaPorId, eventosDe(id)).length > 1
+  }
   /** A ficha desta peça: a vigente ou, se ela já foi marcada numa revisão anterior, essa. A área de laje tem a sua. */
   /** consolo e capitel que o pilar tem nesta planta (o pacote diz) */
   const partesDe = (id: string) => tiposDasPartes(manifest?.elementos[id])
@@ -677,6 +690,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }, [codigoDaFichaDoTipo])
 
   function avisar(texto: string, desfazer?: () => void) {
+    if (juntandoAvisos.current) {
+      juntandoAvisos.current.textos.push(texto)
+      if (desfazer) juntandoAvisos.current.desfazer.push(desfazer)
+      return
+    }
     setMsg({ texto, desfazer })
     window.clearTimeout(relogioDoAviso.current)
     // com o botão de desfazer, dá tempo de ler e de tocar; 8 s ficava tempo demais sobre a planta (obra de demonstração, 13/11)
@@ -1123,7 +1141,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       // ambientes cobrem o pavimento inteiro, parede com parede: o ainda pendente fica com traço
       // fino e quase sem cor, para a prancha continuar legível; o que já tem marcação se destaca
       const pendenteLeve = e.tipo === 'A' && s === 'nada'
-      const duplicada = abertasDe(id).length > 1
+      const duplicada = duplicadaDe(id)
       // parede da modulação pendente (20/11): cinza claro e mais grossa, para aparecer em cima da parede preta da prancha
       const paredePendente = e.tipo === 'M' && s === 'nada' && doItem !== 'NA'
       const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
@@ -1360,6 +1378,125 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
   }, [sel])
 
+  // ------------------------------------------------------------------ várias peças de uma vez (21/11)
+  // A "caneta" do Nicolas: "segurar como o clique de um mouse para selecionar vários elementos ao mesmo
+  // tempo". Com "Arrastar" ligado, um dedo desenha o retângulo (a planta não anda) e dois dedos dão zoom.
+  const arrastarAtivo = varios && !!(pincel || porItemAtivo) && pode
+  useEffect(() => {
+    if (!pincel && !porItemAtivo) setVarios(false)
+  }, [!!pincel, !!porItemAtivo])
+  const marcarVariosRef = useRef<(ids: string[]) => void>(() => {})
+  marcarVariosRef.current = (ids: string[]) => {
+    if (!ids.length) return avisar('Nenhuma peça com o nome dentro do retângulo.')
+    juntandoAvisos.current = { textos: [], desfazer: [] }
+    try {
+      for (const id of ids) tocarRef.current(id)
+    } finally {
+      // a fila grava uma peça depois da outra: este passo roda depois da última
+      executar(async () => {
+        const j = juntandoAvisos.current
+        juntandoAvisos.current = null
+        if (!j) return []
+        const n = j.desfazer.length
+        const resto = ids.length - n
+        const texto = `${n} de ${ids.length} ${ids.length === 1 ? 'peça marcada' : 'peças marcadas'}${resto ? ` · ${resto} sem mudança ou com aviso` : ''}`
+        const desfazerTodas = () => {
+          setMsg(null)
+          juntandoAvisos.current = { textos: [], desfazer: [] }
+          for (const d of j.desfazer) d()
+          executar(async () => {
+            juntandoAvisos.current = null
+            avisar(`Desfeito: ${n} ${n === 1 ? 'peça' : 'peças'}`)
+            return []
+          })
+        }
+        avisar(n === 0 && j.textos.length ? j.textos[0] : texto, n ? desfazerTodas : undefined)
+        return []
+      })
+    }
+  }
+  useEffect(() => {
+    const m = mapa.current
+    const div = divMapa.current
+    if (!arrastarAtivo || !m || !div) return
+    m.dragging.disable()
+    // sem o arrastar do mapa, o navegador rolaria a página com o dedo
+    const antes = { toque: div.style.touchAction, cursor: div.style.cursor }
+    div.style.touchAction = 'none'
+    div.style.cursor = 'crosshair'
+    let inicio: { id: number; x: number; y: number; ll: L.LatLng } | null = null
+    let ret: L.Rectangle | null = null
+    const dedos = new Set<number>()
+    const parar = () => {
+      ret?.remove()
+      ret = null
+      inicio = null
+    }
+    const descer = (ev: PointerEvent) => {
+      dedos.add(ev.pointerId)
+      // segundo dedo: é o zoom de pinça, não seleção
+      if (dedos.size > 1 || (ev.pointerType === 'mouse' && ev.button !== 0)) return parar()
+      inicio = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, ll: m.mouseEventToLatLng(ev) }
+    }
+    const mover = (ev: PointerEvent) => {
+      if (!inicio || ev.pointerId !== inicio.id) return
+      if (!ret && Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y) < ARRASTE_MINIMO_PX) return
+      const b = L.latLngBounds(inicio.ll, m.mouseEventToLatLng(ev))
+      if (ret) ret.setBounds(b)
+      else ret = L.rectangle(b, { interactive: false, weight: 2, dashArray: '6 4', color: '#1f4e79', fillOpacity: 0.08 }).addTo(m)
+    }
+    const subir = (ev: PointerEvent) => {
+      dedos.delete(ev.pointerId)
+      if (!inicio || ev.pointerId !== inicio.id) return
+      const arrastou = !!ret
+      const a = inicio.ll
+      parar()
+      if (!arrastou) return // foi toque: o clique comum segue
+      // o clique que o navegador manda depois do arraste não toca a peça de baixo
+      const engolir = (e: Event) => {
+        e.stopPropagation()
+        e.preventDefault()
+      }
+      div.addEventListener('click', engolir, { capture: true, once: true })
+      window.setTimeout(() => div.removeEventListener('click', engolir, { capture: true }), 400)
+      const b = m.mouseEventToLatLng(ev)
+      marcarVariosRef.current(pecasNoRetangulo(elementos, retanguloEntre([a.lng, -a.lat], [b.lng, -b.lat]), tipo))
+    }
+    const cancelar = (ev: PointerEvent) => {
+      dedos.delete(ev.pointerId)
+      if (inicio?.id === ev.pointerId) parar()
+    }
+    div.addEventListener('pointerdown', descer)
+    div.addEventListener('pointermove', mover)
+    div.addEventListener('pointerup', subir)
+    div.addEventListener('pointercancel', cancelar)
+    return () => {
+      div.removeEventListener('pointerdown', descer)
+      div.removeEventListener('pointermove', mover)
+      div.removeEventListener('pointerup', subir)
+      div.removeEventListener('pointercancel', cancelar)
+      parar()
+      m.dragging.enable()
+      div.style.touchAction = antes.toque
+      div.style.cursor = antes.cursor
+    }
+  }, [arrastarAtivo, tipo, elementos])
+  const botaoVarios = (testid: string) => (
+    <button
+      type="button"
+      data-testid={testid}
+      class={varios ? 'on' : ''}
+      aria-pressed={varios}
+      title="Arraste o dedo na planta: marca as peças com o nome dentro do retângulo"
+      onClick={() => {
+        if (!varios) avisar('Arraste o dedo na planta: as peças com o nome dentro do retângulo são marcadas. Dois dedos continuam dando zoom.')
+        setVarios(!varios)
+      }}
+    >
+      Arrastar
+    </button>
+  )
+
   // ------------------------------------------------------------------ toque na peça
   tocarRef.current = (id: string) => {
     // desenhando, o toque é um canto: quem recebe é o mapa (tocarMapaRef)
@@ -1441,6 +1578,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if ('aviso' in a) return avisar(a.aviso)
     const atual = resultadoDoItem(a.ficha, daFichaAberta(eventosDe(id), a.cx.fichaCampoId ?? null), a.item.n)
     const passo = proximoDoToque(atual, modoItem)
+    // várias de uma vez (arrastando): só marca OK ou NA; errado e desmarcar continuam um por um
+    if (juntandoAvisos.current && (passo === 'pedir-nc' || passo === 'limpar')) return
     if (passo === 'pedir-nc') {
       setNcDoItem({ id, texto: '' })
       abrirSobre(() => setNcDoItem(null))
@@ -1968,7 +2107,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // aviso da sincronização em poucas palavras, no canto do topo (não cobre planta nem painel)
   const quantos = /^(\d+) registro/.exec(aviso)?.[1]
   const avisoCurto = aviso.startsWith('Sem internet') ? 'sem internet' : quantos ? `${quantos} ${aviso.includes('recusado') ? 'recusados' : 'a enviar'}` : ''
-  const temDuplicada = elementos.some(([id]) => abertasDe(id).length > 1)
+  const temDuplicada = elementos.some(([id]) => duplicadaDe(id))
   // a lista da busca não muda com o toque: refazer 800 opções a cada marcação pesa no celular
   const listaDaBusca = useMemo(
     () => (
@@ -2348,6 +2487,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
               {r}
             </button>
           ))}
+          {botaoVarios('fvs-varios')}
           <button type="button" onClick={() => setPincel(null)}>
             Sair
           </button>
@@ -2397,6 +2537,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
               </button>
             ))}
           </span>
+          {botaoVarios('fvs-por-item-varios')}
           <button type="button" data-testid="fvs-por-item-sair" onClick={() => setPorItem(null)}>
             Sair
           </button>
@@ -2802,17 +2943,19 @@ function Painel(p: PropsPainel) {
   const fichaPorId = (id: string) => ctx.dados.fichaPorId.get(id)
   // Peça com ficha aberta: o painel mostra uma de cada vez, começando pela que pede atenção.
   // Marcação feita só no app antes de a ficha do sistema oficial chegar aparece como mais uma.
+  // Viga com duas fichas do mesmo modelo: uma aba só, mesclada item a item (NC prevalece, 21/11)
+  const juntadas = juntarFichasDoModelo(p.abertas, fichaPorId, p.eventos)
   const temDoApp = p.abertas.length > 0 && !!p.ficha && p.eventos.some((e) => !e.ficha_campo_id)
-  const todas = temDoApp ? [...p.abertas, fichaSoNoApp(p.ficha!)] : p.abertas
+  const todas = temDoApp ? [...juntadas, fichaSoNoApp(p.ficha!)] : juntadas
   // a ordem é decidida ao abrir o painel: não pode mudar sob o dedo enquanto a pessoa marca
   const [ordem] = useState(() => ordenarFichasAbertas(todas, fichaPorId, p.eventos).map((a) => a.id))
   const abertas = [...todas].sort((a, b) => ordem.indexOf(a.id) - ordem.indexOf(b.id))
-  const [idAberta, setIdAberta] = useState<string | null>(p.abertaInicial ?? abertas[0]?.id ?? null)
+  const [idAberta, setIdAberta] = useState<string | null>((p.abertaInicial === SO_NO_APP ? SO_NO_APP : fichaDaTela(abertas, p.abertaInicial)?.id) ?? abertas[0]?.id ?? null)
   const aberta = abertas.find((a) => a.id === idAberta) ?? abertas[0]
   const ficha = aberta ? fichaNaPeca(aberta.ficha_id ? fichaPorId(aberta.ficha_id) : undefined, p.partes) : p.ficha
   const vigente = p.fichas.find((f) => f.codigo === ficha?.codigo)
   const trilha = aberta && aberta.id !== SO_NO_APP ? aberta.id : null
-  const eventos = daFichaAberta(p.eventos, trilha)
+  const eventos = aberta ? eventosDaFichaAberta(p.eventos, aberta) : daFichaAberta(p.eventos, trilha)
   const c: Contexto = { ...p.c, fichaCampoId: trilha }
   const det = peca.detalhe ? pacote.manifest.detalhes[peca.detalhe] : undefined
   const imgDet = peca.detalhe ? pacote.url(`d:${peca.detalhe}`) : undefined
@@ -2861,7 +3004,7 @@ function Painel(p: PropsPainel) {
 
   // grava na fila da tela, com os registros mais novos desta peça
   const gravar = (op: (evs: EventoFvs[]) => Promise<Linha | Linha[] | void>) => {
-    const feito = p.executar((eventosDe) => op(daFichaAberta(eventosDe(p.id), trilha)))
+    const feito = p.executar((eventosDe) => op(aberta ? eventosDaFichaAberta(eventosDe(p.id), aberta) : daFichaAberta(eventosDe(p.id), trilha)))
     if (p.aoGravar) p.aoGravar()
     return feito
   }
@@ -3252,9 +3395,9 @@ function Painel(p: PropsPainel) {
         )}
         {abertas.length > 0 && (
           <div class="fv-sec fv-abertas" data-testid="fvs-fichas-abertas">
-            {p.abertas.length > 1 && (
+            {juntadas.length > 1 && (
               <h3 class="fv-dup">
-                <span>Ficha duplicada: {p.abertas.length} fichas nesta peça</span>
+                <span>Ficha duplicada: {juntadas.length} fichas nesta peça</span>
               </h3>
             )}
             {abertas.map((a) => {
@@ -3268,6 +3411,11 @@ function Painel(p: PropsPainel) {
                     {a.atualizada_em && ` · ${quando(a.atualizada_em)}`}
                   </span>
                   {a.ficha_codigo && a.ficha_codigo !== ficha?.codigo && <span>{a.ficha_codigo}</span>}
+                  {a.juntas?.length ? (
+                    <span class="fv-juntas" data-testid="fvs-fichas-juntas">
+                      Junto com {a.juntas.map((j) => j.codigo).join(', ')} (mesma ficha no sistema oficial): vale a mais completa, item a item; NC em qualquer uma aparece.
+                    </span>
+                  ) : null}
                 </>
               )
               return abertas.length > 1 ? (

@@ -14,6 +14,7 @@ import {
 } from '../nucleo/aparelho'
 import { PAPEL, horaCurta } from './rotulos'
 import { modulosDoMenu, type IdModulo } from '../modulos'
+import { lerFvsAntes } from '../fvs/ler_antes'
 import { BarraLocal } from './BarraLocal'
 import { AbrirPacote } from './AbrirPacote'
 import { BotaoTema } from './BotaoTema'
@@ -48,6 +49,9 @@ export function Menu({
 }) {
   const { estado, sincronizarAgora, recontar, marcarDadosNovos } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
   const [menuObra, setMenuObra] = useState(false)
+  // A FVS lê os dados da obra por trás, sem pressa, para abrir na hora (21/11; só lê, ver fvs/ler_antes.ts)
+  const temFvs = modulosDoMenu(estado.local).some((m) => m.id === 'fvs' && m.Tela)
+  useEffect(() => (temFvs ? lerFvsAntes(obra.id, usuario.id) : undefined), [temFvs, obra.id, usuario.id])
 
   // O menu da obra fecha no Esc e ao tocar fora dele (controle do usuário, 20/11/2026). Os ouvintes ficam
   // ligados desde que a tela abre: ligar só depois de abrir perdia o Esc apertado logo em seguida.

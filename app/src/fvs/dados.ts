@@ -377,7 +377,8 @@ function paraFichaCampo(l: Linha): FichaCampo {
 
 /** Lê tudo da FVS da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosFvs> {
-  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras, locs] = await Promise.all([
+  // tudo de uma vez, inclusive os caminhões do Concreto (antes vinham depois, somando o tempo ao abrir)
+  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras, locs, caminhoes] = await Promise.all([
     sincronizador.linhas('pavimentos', obraId),
     sincronizador.linhas('setores', obraId),
     sincronizador.linhas('elementos', obraId),
@@ -392,9 +393,9 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     banco.lerMeta<string[]>(chaveLancados(obraId)),
     sincronizador.linhas('fvs_regras', obraId),
     sincronizador.linhas('locais_sistema', obraId),
+    // caminhões do Concreto por peça (sem Concreto na obra, nenhum): o item do rastreio fica C, só calculado
+    caminhoesDasPecas(obraId).catch(() => new Map<string, CaminhaoDaPeca[]>()),
   ])
-  // caminhões do Concreto por peça (sem Concreto na obra, nenhum): o item do rastreio fica C, só calculado
-  const caminhoes = await caminhoesDasPecas(obraId).catch(() => new Map<string, CaminhaoDaPeca[]>())
   const setor = new Map(set.map((s) => [s.id, { nome: String(s.nome_projeto), disciplina: String(s.disciplina ?? 'estrutura') }]))
   const arquivo = new Map(arqs.map((a) => [a.id, { id: a.id, caminho: String(a.caminho), hash: String(a.hash), tamanho: Number(a.tamanho) }]))
   const substituidas = new Set(pla.map((p) => p.substitui_id as string | null).filter(Boolean) as string[])

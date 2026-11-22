@@ -54,7 +54,10 @@ class TestPilaresDaPrancha(unittest.TestCase):
             furacao_fundo.janela_dos_pilares([], 100, 100, 75)
 
     def test_le_prancha_em_pdf(self):
-        import pymupdf
+        try:
+            import pymupdf
+        except ImportError:
+            self.skipTest("precisa de pymupdf")
 
         with tempfile.TemporaryDirectory() as d:
             arq = str(pathlib.Path(d) / "EXE.FR.EX.011.PILOTISXXA-R00.pdf")
@@ -78,7 +81,10 @@ class TestPilaresDaPrancha(unittest.TestCase):
 
     def test_pilar_em_outro_cinza_tambem_encaixa(self):
         """Prancha que desenha o pilar em cinza claro (sem o cinza médio): vale o tom que encaixar."""
-        import pymupdf
+        try:
+            import pymupdf
+        except ImportError:
+            self.skipTest("precisa de pymupdf")
 
         with tempfile.TemporaryDirectory() as d:
             arq = str(pathlib.Path(d) / "EXE.FR.EX.026.MEZANINOXA-R00.pdf")

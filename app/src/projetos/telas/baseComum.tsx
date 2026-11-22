@@ -9,6 +9,7 @@ import { mesclarEscritorio, vigentesDoServidor } from '../canteiro'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
 import { dataBR, horaBR } from './comum'
 import { FaixaAutodoc } from './FaixaAutodoc'
+import '../../telas/cabecalho.css'
 
 /** A base desta obra (só dela), com as correções aplicadas e o cruzamento feito. */
 export function usarBase(ctx: Contexto) {
@@ -84,11 +85,11 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
   }, [aba])
   return (
     <>
-      <header class="pj-topo">
-        <button type="button" class="pj-voltar" onClick={aoSair} aria-label="Voltar">
-          ‹ Voltar
+      <header class="so-cabecalho pj-topo">
+        <button type="button" class="pj-voltar so-cab-voltar" onClick={aoSair} aria-label="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div class="pj-titulo">
+        <div class="pj-titulo so-cab-titulo">
           <h1>
             Projetos <span class="selo-beta">beta</span>
           </h1>

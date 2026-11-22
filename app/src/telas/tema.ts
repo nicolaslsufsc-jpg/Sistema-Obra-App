@@ -1,18 +1,19 @@
-// Tema do app: escuro por padrão; "Modo sol" deixa claro (igual ao app até 14/11/2026), para o tablet no sol.
+// Tema do app: claro por padrão (guia de estilo, 21/11/2026); o escuro é opção no menu. Até 21/11 o escuro era
+// o padrão: quem tinha escolhido o escuro de volta ("escuro" guardado) continua nele; sem escolha, fica o claro.
 // A escolha fica no aparelho. O index.html aplica a mesma chave antes da primeira pintura, para a tela não piscar.
 export type Tema = 'escuro' | 'claro'
 export const CHAVE_TEMA = 'tema'
 
 export function lerTema(): Tema {
   try {
-    return localStorage.getItem(CHAVE_TEMA) === 'claro' ? 'claro' : 'escuro'
+    return localStorage.getItem(CHAVE_TEMA) === 'escuro' ? 'escuro' : 'claro'
   } catch {
-    return 'escuro'
+    return 'claro'
   }
 }
 
 export function aplicarTema(tema: Tema, raiz: HTMLElement = document.documentElement) {
-  if (tema === 'claro') raiz.dataset.tema = 'claro'
+  if (tema === 'escuro') raiz.dataset.tema = 'escuro'
   else delete raiz.dataset.tema
 }
 

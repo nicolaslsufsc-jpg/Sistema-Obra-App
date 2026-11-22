@@ -20,6 +20,7 @@ import { TelaLaudo } from './TelaLaudo'
 import '../concreto.css'
 import { FaixaLocal } from '../../telas/FaixaLocal'
 import { BotaoReportar } from '../../reportes/BotaoReportar'
+import { AcoesDoModulo } from '../../telas/Cabecalho'
 
 // As pranchas que a FVS baixou para o aparelho. Fica neste arquivo porque ele só carrega quando o
 // módulo abre (SobDemanda.tsx): assim o código da FVS não entra no arquivo principal do app.
@@ -196,9 +197,11 @@ export function ModuloConcreto({
           {avisoSync}
         </p>
       )}
-      {conteudo}
-      {/* Reportar problema (sem servidor): por ora só no Concreto; em toda tela do app é proposta (núcleo) */}
-      <BotaoReportar modulo="concreto" tela={tela.nome} obra={obra} usuario={usuario} estado={estado} />
+      {/* Reportar problema (sem servidor): por ora só no Concreto, no cabeçalho de cada tela (guia de estilo,
+          21/11/2026); em toda tela do app é proposta (núcleo) */}
+      <AcoesDoModulo.Provider value={<BotaoReportar modulo="concreto" tela={tela.nome} obra={obra} usuario={usuario} estado={estado} noCabecalho />}>
+        {conteudo}
+      </AcoesDoModulo.Provider>
     </>
   )
 }

@@ -15,6 +15,7 @@ import {
 import { hojeBr, hojeNoAparelho, quando } from '../formato'
 import { trechoDoRegistro, usarIrAtePeca } from './IrAtePeca'
 import type { ContextoFvs } from './ModuloFvs'
+import '../../telas/cabecalho.css'
 
 const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo' }
 
@@ -93,11 +94,11 @@ export function TelaReprovacoes({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
 
   return (
     <main class="tela fv-inicio fv-reprovacoes">
-      <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+      <header class="so-cabecalho fv-topo-inicio">
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>Reprovações</h1>
           <p class="discreto" data-testid="fvs-rep-contagem">
             {abertas} {abertas === 1 ? 'aberta' : 'abertas'} · {lista.length - abertas} {lista.length - abertas === 1 ? 'reinspecionada' : 'reinspecionadas'}

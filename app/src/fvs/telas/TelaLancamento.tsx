@@ -8,6 +8,7 @@ import { baixarTexto } from '../planilha'
 import { rotuloRodada } from '../situacao'
 import type { ContextoFvs } from './ModuloFvs'
 import type { SistemaOficial } from '../../integracoes/sistema_oficial'
+import '../../telas/cabecalho.css'
 
 const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A: 'Ambiente', F: 'Furo' }
 
@@ -28,11 +29,11 @@ export function TelaLancamento({ ctx, sistema, aviso }: { ctx: ContextoFvs; sist
 
   return (
     <main class="tela fv-inicio fv-lancamento">
-      <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+      <header class="so-cabecalho fv-topo-inicio">
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>Lançar no {sistema.nome}</h1>
           <p class="discreto" data-testid="fvs-lan-contagem">
             {linhas.length} {linhas.length === 1 ? 'marcação' : 'marcações'} em {grupos.length} {grupos.length === 1 ? 'ficha' : 'fichas'}

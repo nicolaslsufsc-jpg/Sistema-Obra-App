@@ -248,11 +248,11 @@ function contrasteBaixo(p: Page): Promise<string[]> {
   })
 }
 
-/** Contraste nos dois temas (escuro, o padrão, e o claro do modo sol). */
+/** Contraste nos dois temas (claro, o padrão desde 21/11/2026, e o escuro). */
 async function contrasteNosDoisTemas(p: Page): Promise<string[]> {
-  const escuro = await contrasteBaixo(p)
-  await p.evaluate(() => (document.documentElement.dataset.tema = 'claro'))
   const claro = await contrasteBaixo(p)
+  await p.evaluate(() => (document.documentElement.dataset.tema = 'escuro'))
+  const escuro = await contrasteBaixo(p)
   await p.evaluate(() => delete document.documentElement.dataset.tema)
   return [...escuro.map((t) => `escuro: ${t}`), ...claro.map((t) => `claro: ${t}`)]
 }
@@ -789,7 +789,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-rot-esq span', { hasText: 'JA120B' }).waitFor()
       for (const tema of ['escuro', 'claro'] as const) {
         await p.evaluate((t: string) => {
-          if (t === 'claro') document.documentElement.dataset.tema = 'claro'
+          if (t === 'escuro') document.documentElement.dataset.tema = 'escuro'
           else delete document.documentElement.dataset.tema
         }, tema)
         const e = await etiqueta()

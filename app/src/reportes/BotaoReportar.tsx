@@ -20,6 +20,8 @@ interface Props {
   estado: EstadoSincronizacao
   /** no mapa o botão sobe para não cobrir o painel e o zoom */
   noMapa?: boolean
+  /** dentro do cabeçalho da tela (guia de estilo, 21/11/2026): não flutua por cima do conteúdo */
+  noCabecalho?: boolean
 }
 
 export function montarContexto(p: Props): ContextoDoReporte {
@@ -55,7 +57,7 @@ export function BotaoReportar(p: Props) {
   const [aberto, setAberto] = useState(false)
   return (
     <>
-      <button type="button" class={`rp-botao${p.noMapa ? ' rp-no-mapa' : ''}`} onClick={() => setAberto(true)} data-testid="reportar" aria-label="Reportar problema">
+      <button type="button" class={`rp-botao${p.noMapa ? ' rp-no-mapa' : ''}${p.noCabecalho ? ' rp-no-cabecalho' : ''}`} onClick={() => setAberto(true)} data-testid="reportar" aria-label="Reportar problema">
         <span aria-hidden="true">!</span>
         <span class="rp-texto">Reportar</span>
       </button>

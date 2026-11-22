@@ -1,12 +1,14 @@
-/* Uso em campo: letra grande, botões grandes, contraste alto (sol na tela). */
+/* Uso em campo: letra grande, botões grandes, contraste alto (sol na tela).
+   A letra da raiz fica em 18px: as alturas de toque (2.75rem...) dependem dela. Os tamanhos do guia
+   (--fs-*, em tema.css) valem no cabeçalho comum e nas tabelas. */
 @import './tema.css';
 :root {
   --fundo: var(--fundo-f4f6f8);
   --superficie: var(--fundo-ffffff);
   --texto: var(--texto-14202b);
   --discreto: var(--texto-52606d);
-  --primaria: var(--fundo-1f4e79);
-  --primaria-texto: var(--texto-ffffff);
+  --primaria: var(--cor-primaria);
+  --primaria-texto: var(--cor-primaria-texto);
   --borda: var(--borda-c9d2da);
   --ok-fundo: var(--fundo-e6f4ea);
   --ok-borda: var(--borda-2e7d32);
@@ -15,7 +17,7 @@
   --atencao-texto: var(--texto-7a4500);
   --erro: var(--texto-b3261e);
   --erro-fundo: var(--fundo-fdecea);
-  --raio: 10px;
+  --raio: var(--raio-max);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 18px;
   line-height: 1.45;

@@ -76,6 +76,30 @@ class TestPilaresDaPrancha(unittest.TestCase):
         self.assertAlmostEqual(abs(d_), 1.5, places=2)
 
 
+    def test_pilar_em_outro_cinza_tambem_encaixa(self):
+        """Prancha que desenha o pilar em cinza claro (sem o cinza médio): vale o tom que encaixar."""
+        import pymupdf
+
+        with tempfile.TemporaryDirectory() as d:
+            arq = str(pathlib.Path(d) / "EXE.FR.EX.026.MEZANINOXA-R00.pdf")
+            doc = pymupdf.open()
+            pg = doc.new_page(width=1200, height=900)
+            k = 50 / 75
+            for _, x, y, w, h in PILARES:
+                pg.draw_rect(pymupdf.Rect(x * k - w * k / 2, y * k - h * k / 2, x * k + w * k / 2, y * k + h * k / 2),
+                             color=None, fill=(0.75, 0.75, 0.75))
+            for i in range(4):  # ruído de outro tom, longe da malha
+                pg.draw_rect(pymupdf.Rect(900 + 40 * i, 700, 920 + 40 * i, 720), color=None, fill=(0.9, 0.9, 0.9))
+            doc.save(arq)
+            lida = furacao_fundo.ler_prancha(arq)
+        self.assertEqual(lida["pilares"], [])
+        self.assertIsNone(lida["janela"])
+        ok, resumo = furacao_fundo.alinhar_pranchas(pecas_da_forma(), [lida])
+        self.assertEqual(len(ok), 1, resumo)
+        self.assertEqual(resumo[0]["alinhamento"]["tom_do_pilar"], 0.75)
+        self.assertIsNotNone(ok[0]["janela"])
+
+
 class TestDesempate(unittest.TestCase):
     def test_orientacao_sem_a_escala(self):
         self.assertEqual(furacao_fundo.orientacao({"matriz": [1.5, 0, 0, 1.5], "t": [0, 0]}), ((1.0, 0.0), (0.0, 1.0)))

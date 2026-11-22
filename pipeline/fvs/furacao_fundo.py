@@ -30,6 +30,8 @@ ESCALA_PADRAO = 75.0  # as pranchas de furação da obra piloto são 1:75
 ESCALA_DA_FORMA = 50.0
 CINZA_DO_PILAR = 0.5
 TOLERANCIA_COR = 0.02
+PILAR_MIN_CM = 12.0  # menor lado de um pilar
+PILAR_MAX_CM = 400.0  # maior lado (pilar parede)
 MARGEM_CM = 400.0  # em volta dos pilares: balanço de laje e furos perto da borda
 
 
@@ -37,26 +39,57 @@ class ErroFuracao(Exception):
     pass
 
 
-def eh_retangulo_de_pilar(desenho: dict) -> bool:
-    """Retângulo cheio de cinza médio (o pilar cortado no Revit)."""
+def eh_retangulo_de_pilar(desenho: dict, cinza: float = CINZA_DO_PILAR) -> bool:
+    """Retângulo cheio do cinza dado (o pilar cortado no Revit; cinza médio na maioria das pranchas)."""
     f = desenho.get("fill")
     itens = desenho.get("items") or []
-    return bool(f) and len(f) == 3 and all(abs(c - CINZA_DO_PILAR) <= TOLERANCIA_COR for c in f) \
-        and bool(itens) and all(i[0] == "re" for i in itens)
+    return bool(f) and len(f) == 3 and all(abs(c - cinza) <= TOLERANCIA_COR for c in f)         and bool(itens) and all(i[0] == "re" for i in itens)
 
 
-def pilares_da_pagina(page) -> list:
+def _cinza(desenho: dict) -> float | None:
+    """O tom de um retângulo cheio de cinza (ou branco), arredondado; None se não for."""
+    f = desenho.get("fill")
+    itens = desenho.get("items") or []
+    if not f or len(f) != 3 or not itens or not all(i[0] == "re" for i in itens):
+        return None
+    if max(f) - min(f) > TOLERANCIA_COR:
+        return None
+    return round(sum(f) / 3, 2)
+
+
+def pilares_da_pagina(page, cinza: float = CINZA_DO_PILAR) -> list:
     """Centros e tamanhos dos pilares da prancha, nas coordenadas da página (já girada)."""
     from alinhamento import alinhar as al
 
     M = page.rotation_matrix
     saida = []
     for d in page.get_drawings():
-        if not eh_retangulo_de_pilar(d):
+        if not eh_retangulo_de_pilar(d, cinza):
             continue
         r = d["rect"] * M
         saida.append(al.Ponto((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, w=r.width, h=r.height))
     return saida
+
+
+def outros_tons(page, escala: float) -> list[tuple[float, list]]:
+    """Quando o cinza médio não basta (algumas pranchas desenham o pilar em cinza claro ou só com o
+    contorno): os retângulos cheios dos outros tons de cinza (e do branco), do tamanho de um pilar
+    (PILAR_MIN_CM a PILAR_MAX_CM de lado), um conjunto por tom, o mais cheio primeiro."""
+    from alinhamento import alinhar as al
+
+    M = page.rotation_matrix
+    k = 72 / 2.54 / escala
+    por_tom: dict[float, list] = {}
+    for d in page.get_drawings():
+        t = _cinza(d)
+        if t is None or abs(t - CINZA_DO_PILAR) <= TOLERANCIA_COR:
+            continue
+        r = d["rect"] * M
+        lados = sorted((r.width / k, r.height / k))
+        if lados[0] < PILAR_MIN_CM or lados[1] > PILAR_MAX_CM:
+            continue
+        por_tom.setdefault(t, []).append(al.Ponto((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, w=r.width, h=r.height))
+    return sorted(((t, ps) for t, ps in por_tom.items() if len(ps) >= 3), key=lambda x: -len(x[1]))
 
 
 def janela_dos_pilares(pilares: list, largura: float, altura: float, escala: float, limite_x: float | None = None) -> tuple[float, float, float, float]:
@@ -83,14 +116,19 @@ def coluna_da_legenda(page) -> float | None:
 
 
 def ler_prancha(pdf: str, escala: float = ESCALA_PADRAO) -> dict:
-    """Pilares e janela de uma prancha de furação."""
+    """Pilares e janela de uma prancha de furação. Os pilares são os retângulos de cinza médio; os de
+    outros tons ficam em "outros" (tom, pilares), para tentar se o cinza médio não encaixar. Prancha sem
+    nenhum candidato fica com janela None (não encaixa e vai para o relatório)."""
     import pymupdf
 
     with pymupdf.open(pdf) as doc:
         page = doc[0]
         pilares = pilares_da_pagina(page)
-        janela = janela_dos_pilares(pilares, page.rect.width, page.rect.height, escala, coluna_da_legenda(page))
-    return {"pdf": pdf, "nome": pathlib.Path(pdf).stem, "pilares": pilares, "janela": janela, "escala": escala}
+        outros = outros_tons(page, escala)
+        pagina = (page.rect.width, page.rect.height, coluna_da_legenda(page))
+    janela = janela_dos_pilares(pilares, pagina[0], pagina[1], escala, pagina[2]) if pilares else None
+    return {"pdf": pdf, "nome": pathlib.Path(pdf).stem, "pilares": pilares, "janela": janela, "escala": escala,
+            "outros": outros, "pagina": pagina}
 
 
 def _cobertos(pr: dict, T: dict, destino: list, tol: float) -> set[int]:
@@ -182,6 +220,16 @@ def alinhar_pranchas(pecas: list[dict], lidas: list[dict], manuais: dict | None 
         esperada = float(pr.get("escala") or ESCALA_PADRAO) / ESCALA_DA_FORMA
         res = al.manual(T, pr["pilares"], destino) if T else al.alinhar(pr["pilares"], destino, escala=esperada)
         d = res.como_dict()
+        if not res.ok and not T and "parecidas" not in (d.get("motivo") or ""):
+            for tom, pts in pr.get("outros") or []:
+                r2 = al.alinhar(pts, destino, escala=esperada)
+                d2 = r2.como_dict()
+                if r2.ok or "parecidas" in (d2.get("motivo") or ""):
+                    larg, alt, lim = pr["pagina"]
+                    pr = {**pr, "pilares": pts, "tom": tom,
+                          "janela": janela_dos_pilares(pts, larg, alt, pr["escala"] or ESCALA_PADRAO, lim)}
+                    res, d = r2, {**d2, "tom_do_pilar": tom}
+                    break
         linha = {"prancha": pr["nome"], "pilares": len(pr["pilares"]), "alinhamento": d}
         resumo.append(linha)
         if res.ok:

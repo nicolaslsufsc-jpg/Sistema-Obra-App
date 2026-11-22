@@ -604,7 +604,8 @@ def por_furacao(cfg: dict, formas: list[dict]) -> dict | None:
     alinhadas, resumo = furacao_fundo.alinhar_pranchas(fm["pecas"], lidas, cfg["furacao"]["alinhamento"])
     for r in resumo:
         a = r["alinhamento"]
-        print(f"  {r['prancha']}: " + (f"{a['pontos']} de {a['total']} pilares batem (erro até {a['residuo_max_cm']} cm)" if a["ok"]
+        print(f"  {r['prancha']}: " + (f"{a['pontos']} de {a['total']} pilares batem (erro até {a['residuo_max_cm']} cm)"
+                                         + (f"; pilar em cinza {a['tom_do_pilar']}" if a.get("tom_do_pilar") is not None else "") if a["ok"]
                                          else f"NÃO ENCAIXOU ({a['motivo']}); fica fora do fundo"))
     folha = furacao_fundo.folha_de_furacao(fm, alinhadas)
     if folha:

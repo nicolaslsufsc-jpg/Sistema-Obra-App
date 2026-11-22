@@ -1,6 +1,6 @@
 // Pontos de instalações (frente INSTALAÇÕES, 20/11/2026). Ficha e pontos fictícios da obra EXE.
 import { describe, expect, it } from 'vitest'
-import { distanciaAoPonto, fichaDosPontos, itemDosPontos, nomeDoPonto, pontoTocado, resumoDosPontos, type PontoPacote } from './pontos'
+import { distanciaAoPonto, fichaDosPontos, itemDosPontos, nomeDoFiltroDePontos, nomeDoPonto, opcoesDoFiltroDePontos, pontosNoFiltro, pontoTocado, resumoDosPontos, textoDoAvancoDosPontos, type PontoPacote } from './pontos'
 import type { Ficha } from './situacao'
 
 const AMB: Ficha = {
@@ -79,5 +79,33 @@ describe('nomes', () => {
       ['caixa', 1],
       ['ralo', 2],
     ])
+  })
+})
+
+describe('filtro por tipo de ponto (SPDA igual aos furos, 22/11)', () => {
+  const spda: Record<string, PontoPacote> = {
+    a: { disciplina: 'spda', tipo: 'haste', ponto: [0, 0], nome: 'H1' },
+    b: { disciplina: 'spda', tipo: 'captor', ponto: [1, 0], nome: 'C1' },
+    c: { disciplina: 'spda', tipo: 'captor', ponto: [2, 0], nome: 'C2' },
+    d: { disciplina: 'spda', tipo: 'conector', ponto: [3, 0], nome: 'X1' },
+  }
+  it('Todos primeiro, depois os tipos na ordem dos nomes, com a contagem', () => {
+    expect(opcoesDoFiltroDePontos(spda)).toEqual([
+      { filtro: 'todos', n: 4 },
+      { filtro: 'captor', n: 2 },
+      { filtro: 'haste', n: 1 },
+      { filtro: 'conector', n: 1 },
+    ])
+    expect(opcoesDoFiltroDePontos(undefined)).toEqual([{ filtro: 'todos', n: 0 }])
+  })
+  it('nomes e pontos do filtro', () => {
+    expect(nomeDoFiltroDePontos('todos')).toBe('Todos')
+    expect(nomeDoFiltroDePontos('conector')).toBe('Conector de aterramento')
+    expect(Object.keys(pontosNoFiltro(spda, 'captor'))).toEqual(['b', 'c'])
+    expect(pontosNoFiltro(spda, 'todos')).toBe(spda)
+  })
+  it('texto do avanço no menu', () => {
+    expect(textoDoAvancoDosPontos({ ok: 0, errados: 0, total: 1 })).toBe('0 de 1 ponto OK')
+    expect(textoDoAvancoDosPontos({ ok: 3, errados: 2, total: 12 })).toBe('3 de 12 pontos OK · 2 errados')
   })
 })

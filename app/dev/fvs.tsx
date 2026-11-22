@@ -940,7 +940,8 @@ const PLANTA_DE_INSTALACOES = (i: number) => uuid('a2000000', 0xd0 + i)
  * ?instalacoes=1: uma planta de pontos por disciplina de instalações (hidro, esgoto, elétrico, preventivo, SPDA;
  * 21/11/2026), como o pipeline/fvs/instalacoes.py publica: setor com a disciplina, pacote com "disciplina" e
  * "pontos" e o fundo da forma. Cada disciplina tem 4 pontos numa linha (y = 200 + 150 * i, x = 300, 600, 900,
- * 1200); o elétrico e o preventivo têm também uma linha (eletroduto, tubulação). A ficha de ambiente de teste
+ * 1200); o elétrico e o preventivo têm também uma linha (eletroduto, tubulação) e o SPDA, mais um captor e um
+ * conector (y + 60, x = 450 e 1050). A ficha de ambiente de teste
  * "Instalações" tem um item por disciplina, marcado com "pontos", menos o preventivo (planta de consulta).
  */
 async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
@@ -961,6 +962,11 @@ async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest,
     if (d === 'eletrico' || d === 'preventivo') {
       const tipo: TipoDePonto = d === 'eletrico' ? 'eletroduto' : 'tubo_incendio'
       pontos[`pt-${d}-linha`] = { disciplina: d, tipo, ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: d === 'eletrico' ? 'Eletroduto 25 mm' : 'Tubo de incêndio 65 mm' }
+    }
+    // SPDA igual aos furos (22/11/2026): mais um captor e um conector, 60 abaixo, para o filtro por tipo e o "+ Área"
+    if (d === 'spda') {
+      pontos['pt-spda-5'] = { disciplina: d, tipo: 'captor', ponto: [450, y + 60], nome: 'CAPTOR 5', modelo_id: 'spda-5' }
+      pontos['pt-spda-6'] = { disciplina: d, tipo: 'conector', ponto: [1050, y + 60], nome: 'CONECTOR 6', modelo_id: 'spda-6' }
     }
     const manifest: Manifest = { ...forma, planta_id: PLANTA_DE_INSTALACOES(i), trecho: NOME_DOS_PONTOS[d], elementos: {}, detalhes: {}, barras: undefined, disciplina: d, pontos, camadas_separadas: undefined, furos_laje_separados: undefined }
     await guardarPacote(JSON.stringify(manifest), bin)

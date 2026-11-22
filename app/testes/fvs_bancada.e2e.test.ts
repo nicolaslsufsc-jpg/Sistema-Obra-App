@@ -2055,7 +2055,7 @@ suite('FVS na bancada (Chrome)', () => {
         ['Esgoto', 'sanitario', 'RALO 1 (ralo)', 4, 2],
         ['Elétrico', 'eletrico', 'CAIXA_PASSAGEM 1 (caixa de passagem)', 5, 3],
         ['Preventivo contra incêndio', 'preventivo', 'HIDRANTE 1 (hidrante)', 5, null],
-        ['SPDA', 'spda', 'CAPTOR 1 (captor)', 4, 4],
+        ['SPDA', 'spda', 'CAPTOR 1 (captor)', 6, 4],
       ] as const
       for (const [i, [secao, d, nomeDoPonto, total, item]] of disciplinas.entries()) {
         await naDisciplina(p, 'instalacoes')
@@ -2106,6 +2106,106 @@ suite('FVS na bancada (Chrome)', () => {
       expect(erros).toEqual([])
       await contexto.close()
     }, 180_000)
+
+    it(`${nome} ${largura}x${altura}: SPDA igual aos furos: filtro por tipo, toque OK, 2º toque NC, "+ Área" e o avanço no menu`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1`)
+      await noInicio(p)
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
+      const doPonto = (id: string) => registros(p).then((rs) => rs.filter((r) => r.barra === id).map((r) => r.r))
+      const secaoSpda = () => p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^SPDA$/ }) })
+      const y = 800
+      // ícones (22/11, "so as lajes tem icones, bota um icone para cada"): cada botão do menu tem o dele
+      const semIcone = () => p.locator('button.fv-bt-armadura:not(:has(svg.fv-bt-icone))').count()
+      await p.getByTestId('fvs-pavimento').first().click()
+      await p.getByTestId('fvs-disciplina').first().waitFor()
+      expect(await semIcone()).toBe(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/icones_${nome}_pavimento.png`, fullPage: true })
+      await noInicio(p)
+      await naDisciplina(p, 'instalacoes')
+      expect(await semIcone()).toBe(0)
+      expect(await p.locator('[data-testid=fvs-opcoes] svg.fv-bt-icone').evaluateAll((s: Element[]) => s.map((e) => e.getAttribute('data-icone')))).toEqual(['hidro', 'sanitario', 'eletrico', 'preventivo', 'spda', 'instalacoes'])
+      // uma entrada só de SPDA, com o avanço lido do pacote
+      expect(await secaoSpda().getByRole('button').count()).toBe(1)
+      await expect.poll(() => secaoSpda().innerText().then((t: string) => t.replace(/\s+/g, ' '))).toContain('0 de 6 pontos OK')
+      await secaoSpda().getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await expect.poll(progresso).toBe('0/6 OK')
+      // filtro por tipo de ponto, com a contagem; o tipo escolhido conta e aparece sozinho
+      const filtro = p.getByTestId('fvs-filtro-pontos')
+      expect(await filtro.locator('option').allTextContents()).toEqual(['Todos (6)', 'Captor (2)', 'Descida (1)', 'Caixa de inspeção (1)', 'Haste de aterramento (1)', 'Conector de aterramento (1)'])
+      expect(await filtro.isVisible()).toBe(true)
+      const noMapa = () =>
+        p.evaluate(() => {
+          let n = 0
+          ;(window as any).__fvMapa.eachLayer((l: any) => void (l.getRadius && l.options.radius === 7 && n++))
+          return n
+        })
+      expect(await noMapa()).toBe(6)
+      await filtro.selectOption('captor')
+      await expect.poll(progresso).toBe('0/2 OK')
+      // os pontos fora do filtro saem do mapa
+      await expect.poll(noMapa).toBe(2)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/spda_${nome}_filtro.png` })
+      // toque = OK
+      await enquadrar(p, [-y, 300], 2)
+      await tocarNaPlanta(p, 300, y)
+      await aviso('CAPTOR 1 (captor): OK')
+      await expect.poll(() => doPonto('pt-spda-1')).toEqual(['C'])
+      await expect.poll(progresso).toBe('1/2 OK')
+      // 2º toque = a caixa do NC: Confirmar (com texto), Desmarcar e Cancelar
+      await tocarNaPlanta(p, 300, y)
+      await p.getByTestId('fvs-nc-ponto').waitFor()
+      for (const b of ['fvs-nc-ponto-confirmar', 'fvs-nc-ponto-desmarcar', 'fvs-nc-ponto-cancelar']) expect(await p.getByTestId(b).count()).toBe(1)
+      expect(await p.getByTestId('fvs-nc-ponto-confirmar').isDisabled()).toBe(true)
+      await p.getByTestId('fvs-nc-ponto-texto').fill('Captor solto')
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/spda_${nome}_nc.png` })
+      await p.getByTestId('fvs-nc-ponto-confirmar').click()
+      await expect.poll(() => doPonto('pt-spda-1')).toEqual(['C', 'NC'])
+      expect(await p.getByTestId('fvs-nc-ponto').count()).toBe(0)
+      // "+ Área" com o filtro Captor: só o CAPTOR 5 (o 1 já está conferido; a descida fica fora do filtro)
+      const desenhar = async () => {
+        await p.getByTestId('fvs-area-pontos').click()
+        await p.getByTestId('fvs-desenho').waitFor()
+        expect(await p.getByTestId('fvs-desenho').innerText()).toContain('Área dos pontos')
+        await enquadrar(p, [-(y + 30), 650], -2)
+        expect(await p.evaluate(() => (window as any).__fvMapa.dragging.enabled())).toBe(true)
+        for (const [x, yy] of [[250, y - 40], [1100, y - 40], [1100, y + 100], [250, y + 100]]) await tocarNaPlanta(p, x, yy)
+        await p.getByTestId('fvs-concluir-area').click()
+        await p.getByTestId('fvs-selecao-furos').waitFor()
+      }
+      await desenhar()
+      expect((await p.getByTestId('fvs-selecao-furos').innerText()).replace(/\s+/g, ' ')).toContain('1 ponto sem conferir nesta área (de 2) · Captor')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/spda_${nome}_selecao.png` })
+      await p.getByTestId('fvs-selecao-confirmar').click()
+      await aviso('1 ponto OK nesta área')
+      await expect.poll(() => doPonto('pt-spda-5')).toEqual(['C'])
+      // todos os tipos: a mesma área pega a descida, a caixa e o conector (a haste, em x = 1200, fica fora)
+      await filtro.selectOption('todos')
+      await desenhar()
+      expect((await p.getByTestId('fvs-selecao-furos').innerText()).replace(/\s+/g, ' ')).toContain('3 pontos sem conferir nesta área (de 5)')
+      await p.getByTestId('fvs-selecao-confirmar').click()
+      await aviso('3 pontos OK nesta área')
+      await expect.poll(progresso).toBe('4/6 OK · 1 errada')
+      // um Desfazer volta os três
+      await p.getByTestId('fvs-desfazer').click()
+      await aviso('Desfeito: 3 pontos')
+      await expect.poll(progresso).toBe('1/6 OK · 1 errada')
+      // no menu, o avanço: 1 OK (CAPTOR 5) e 1 errado (CAPTOR 1)
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+      await naDisciplina(p, 'instalacoes')
+      await expect.poll(() => secaoSpda().innerText().then((t: string) => t.replace(/\s+/g, ' '))).toContain('1 de 6 pontos OK · 1 errado')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/spda_${nome}_menu.png`, fullPage: true })
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 150_000)
 
     it(`${nome} ${largura}x${altura}: furos de laje em plantas próprias: uma por camada, só os furos dela, o item da área da forma`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
@@ -2389,6 +2489,10 @@ suite('FVS na bancada (Chrome)', () => {
           return l.at(-1)?.resultado ?? null
         })()`)
       await naDisciplina(p, 'estrutura')
+      // ícones (22/11): Pilares, Vigas, Lajes, as 4 armaduras e Furos, todos com o dele
+      await p.getByTestId('fvs-secao-outra').first().waitFor()
+      expect(await p.locator('button.fv-bt-armadura:not(:has(svg.fv-bt-icone))').count()).toBe(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/icones_${nome}_estrutura.png`, fullPage: true })
       await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Furos$/ }) }).getByRole('button').first().click()
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await progresso()).toBe('0/10 OK')

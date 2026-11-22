@@ -167,9 +167,22 @@ export class BancoLocal extends Dexie {
 
   /** Apaga tudo que foi baixado (troca de usuário no mesmo aparelho). A fila fica. */
   async esquecerTudoBaixado(): Promise<void> {
-    await this.transaction('rw', this.registros, this.cursores, this.meta, async () => {
+    // Antes percorria registro por registro (filter + delete): com a obra real no S23 (~65 mil
+    // registros) o Sair levava dezenas de segundos sem mudar a tela (22/11/2026). Agora: guarda só
+    // os registros ainda não enviados, esvazia a tabela de uma vez e põe esses de volta.
+    // Todo registro com pendente = 1 tem item na fila (gravados e confirmados na mesma transação),
+    // então a fila diz quais são, sem ler os outros.
+    await this.transaction('rw', this.registros, this.fila, this.cursores, this.meta, async () => {
       await this.avancarGeracao()
-      await this.registros.filter((r) => r.pendente === 0).delete()
+      const chaves: [string, string][] = []
+      await this.fila.each((item) => {
+        chaves.push([item.tabela, item.id])
+      })
+      const guardar = (await this.registros.bulkGet(chaves)).filter(
+        (r): r is RegistroLocal => r !== undefined && r.pendente === 1,
+      )
+      await this.registros.clear()
+      if (guardar.length > 0) await this.registros.bulkPut(guardar)
       await this.cursores.clear()
     })
   }

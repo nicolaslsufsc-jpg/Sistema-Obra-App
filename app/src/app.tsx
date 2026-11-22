@@ -33,7 +33,8 @@ type Tela =
   | { nome: 'carregando' }
   | { nome: 'preparando'; pacote: PacoteLocalizado }
   | { nome: 'confirmar_pacote'; pacote: PacoteLocalizado; comparacao: ComparacaoDoPacote; voltar: Tela }
-  | { nome: 'entrar'; email: string; voltarPara?: UsuarioLocal }
+  | { nome: 'saindo' }
+  | { nome: 'entrar'; email: string; voltarPara?: UsuarioLocal; aviso?: string }
   | { nome: 'codigo'; email: string; voltarPara?: UsuarioLocal }
   | { nome: 'obras'; usuario: UsuarioLocal; aviso?: string }
   | { nome: 'menu'; usuario: UsuarioLocal; obra: ObraLocal }
@@ -233,9 +234,22 @@ export function App() {
 
   const sair = async (u: UsuarioLocal) => {
     if (!(await confirmarSaida(u))) return
-    await conta.sair()
+    // A tela muda na hora: antes o OK parecia não fazer nada enquanto o aparelho apagava (22/11/2026).
+    setTela({ nome: 'saindo' })
     esquecerModulo()
-    setTela({ nome: 'entrar', email: '' })
+    let limpou = false
+    try {
+      limpou = await conta.sair()
+    } catch (e) {
+      console.error('Sair falhou', e)
+    } finally {
+      // Volta para "Entrar" mesmo se a limpeza falhar; o que sobrou é apagado no próximo login.
+      setTela({
+        nome: 'entrar',
+        email: '',
+        aviso: limpou ? undefined : 'Você saiu da conta. Parte do que foi baixado não pôde ser apagada agora; será apagada no próximo login.',
+      })
+    }
   }
 
   // Pacote (.zip) escolhido no aparelho: troca de obra ou pacote mais antigo pedem confirmação antes.
@@ -248,6 +262,12 @@ export function App() {
   switch (tela.nome) {
     case 'carregando':
       return <main class="tela tela-estreita">Carregando…</main>
+    case 'saindo':
+      return (
+        <main class="tela tela-estreita" aria-busy="true">
+          Saindo… apagando deste aparelho o que foi baixado.
+        </main>
+      )
     case 'preparando':
       return (
         <Preparando
@@ -271,6 +291,7 @@ export function App() {
       return (
         <Entrar
           emailInicial={tela.email}
+          aviso={tela.aviso}
           aoEnviar={(email) => setTela({ nome: 'codigo', email, voltarPara: tela.voltarPara })}
           aoVoltar={tela.voltarPara ? async () => setTela(await telaDoUsuario(tela.voltarPara!)) : undefined}
           aoAbrirPacote={tela.voltarPara ? undefined : (pacote) => escolherPacote(pacote, tela)}

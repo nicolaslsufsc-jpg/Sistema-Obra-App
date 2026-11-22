@@ -5,11 +5,14 @@ import { AbrirPacote } from './AbrirPacote'
 
 export function Entrar({
   emailInicial,
+  aviso,
   aoEnviar,
   aoVoltar,
   aoAbrirPacote,
 }: {
   emailInicial: string
+  /** Recado da tela anterior (ex.: a saída não conseguiu apagar tudo). */
+  aviso?: string
   aoEnviar: (email: string) => void
   /** Existe quando a pessoa já estava no app (login vencido): volta sem entrar. */
   aoVoltar?: () => void
@@ -37,6 +40,7 @@ export function Entrar({
   return (
     <main class="tela tela-estreita">
       <h1>Sistema Obra</h1>
+      {aviso && <p class="aviso">{aviso}</p>}
       <p>Digite seu e-mail. Vamos mandar um código por e-mail.</p>
       <p class="discreto">Se o site já pediu um código para abrir, este é outro: o código do app.</p>
       <form onSubmit={enviar}>

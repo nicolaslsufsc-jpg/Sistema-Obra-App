@@ -76,7 +76,7 @@ CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "e
 # (não são peças em "elementos"; a ficha fica no ambiente).
 DISCIPLINAS_DE_PONTOS = ("hidro", "sanitario", "eletrico", "spda")
 TIPOS_DE_PONTO = ("ponto_agua", "registro", "hidrometro", "ralo", "caixa_sifonada", "caixa", "ponto_esgoto",
-                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste", "eletroduto")
+                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste", "conector", "eletroduto")
 # Chave de detalhe vira nome de pedaço: só letras, números, _ e -.
 CHAVE_SEGURA = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 RE_TILE = re.compile(r"^-?\d+/\d+/\d+$")

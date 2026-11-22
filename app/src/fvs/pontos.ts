@@ -34,6 +34,8 @@ export type TipoDePonto =
   | 'descida'
   | 'caixa_inspecao'
   | 'haste'
+  // conector de aterramento do SPDA (combinado com o 20, 22/11/2026)
+  | 'conector'
   // eletroduto como linha (21/11/2026, "eletroduto como linha"): tem "linha" além de "ponto"
   | 'eletroduto'
   // preventivo contra incêndio (21/11/2026; sem PES nem PVS na obra piloto: suposição); a tubulação é linha
@@ -81,6 +83,7 @@ export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
   descida: 'Descida',
   caixa_inspecao: 'Caixa de inspeção',
   haste: 'Haste de aterramento',
+  conector: 'Conector de aterramento',
   eletroduto: 'Eletroduto',
   hidrante: 'Hidrante',
   extintor: 'Extintor',
@@ -90,6 +93,35 @@ export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
   alarme: 'Alarme',
   sinalizacao: 'Sinalização',
   tubo_incendio: 'Tubulação de incêndio',
+}
+
+/** Filtro por tipo de ponto (SPDA igual aos furos, pedido do Nicolas de 22/11/2026). */
+export type FiltroDePontos = 'todos' | TipoDePonto
+
+/** Nome do filtro no seletor: "Todos", "Captor"... (tipo que o app ainda não conhece: o próprio código). */
+export function nomeDoFiltroDePontos(f: FiltroDePontos): string {
+  return f === 'todos' ? 'Todos' : (NOME_DO_TIPO[f] ?? f)
+}
+
+/** As opções do filtro com quantos pontos cada uma tem (só as que têm algum): "todos" primeiro, depois os
+ *  tipos na ordem de NOME_DO_TIPO; tipo novo do pacote, que o app não conhece, vem no fim. */
+export function opcoesDoFiltroDePontos(pontos: Readonly<Record<string, PontoPacote>> | undefined): Array<{ filtro: FiltroDePontos; n: number }> {
+  const n = new Map<TipoDePonto, number>()
+  for (const p of Object.values(pontos ?? {})) n.set(p.tipo, (n.get(p.tipo) ?? 0) + 1)
+  const tipos = (Object.keys(NOME_DO_TIPO) as TipoDePonto[]).filter((t) => n.has(t))
+  for (const t of n.keys()) if (!tipos.includes(t)) tipos.push(t)
+  return [{ filtro: 'todos', n: Object.keys(pontos ?? {}).length }, ...tipos.map((t) => ({ filtro: t, n: n.get(t)! }))]
+}
+
+/** Só os pontos do filtro (com "todos", os mesmos). */
+export function pontosNoFiltro(pontos: Readonly<Record<string, PontoPacote>>, f: FiltroDePontos): Readonly<Record<string, PontoPacote>> {
+  return f === 'todos' ? pontos : Object.fromEntries(Object.entries(pontos).filter(([, p]) => p.tipo === f))
+}
+
+/** "3 de 12 pontos OK · 1 errado" (o texto do menu), como o dos furos. */
+export function textoDoAvancoDosPontos(a: { ok: number; errados: number; total: number }): string {
+  const base = `${a.ok} de ${a.total} ${a.total === 1 ? 'ponto' : 'pontos'} OK`
+  return a.errados ? `${base} · ${a.errados} ${a.errados === 1 ? 'errado' : 'errados'}` : base
 }
 
 type Pt = readonly [number, number]

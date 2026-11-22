@@ -1680,11 +1680,31 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const { ficha, item } = f
     // o painel deste furo aberto (o NC dele): o próximo toque tira a verificação e fecha o painel
     const painelDoFuro = sel === id
+    // a caixa do NC deste furo aberta (sem Confirmar): o próximo toque tira a verificação, como no ponto
+    const caixaDoFuro = ncDaBarra?.id === id
+    if (ncDaBarra && !caixaDoFuro) {
+      // caixa do NC de outro local aberta e sem Confirmar: fecha (o outro fica como estava) e segue o toque
+      setNcDaBarra(null)
+      fecharSobre()
+    }
     executar(async (evs) => {
       const eventos = daFichaAberta(evs(id), null)
       const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === ficha.id)).get(item)
       const r = anterior?.resultado ?? null
-      const passo = passoDoToque(r === 'C' ? 'liberado' : r === 'NC' ? 'reprovado' : 'nada', painelDoFuro && r === 'NC')
+      const passo = passoDoToque(r === 'C' ? 'liberado' : r === 'NC' ? 'reprovado' : 'nada', (painelDoFuro && r === 'NC') || caixaDoFuro)
+      if (passo === 'abrir_nc' && e.tipo === 'F') {
+        // furo OK, 2º toque (testador no tablet, 21/11): a caixa do NC, igual à do ponto e da barra; o NC só é
+        // gravado no Confirmar. Abre do lado oposto ao furo, para não cobri-lo
+        const m = mapa.current
+        const embaixo = !!m && m.latLngToContainerPoint(caixa(e.rotulo).getCenter()).y < m.getSize().y / 2
+        setNcDaBarra({ id, texto: '', embaixo })
+        abrirSobre(() => setNcDaBarra(null))
+        return []
+      }
+      if (passo === 'tirar' && caixaDoFuro) {
+        setNcDaBarra(null)
+        fecharSobre()
+      }
       if (passo === 'tirar' && painelDoFuro) fecharPainel()
       const gravado =
         passo === 'tirar' ? await desmarcarR(c, id, ficha, item, eventos) : await tocarItem(c, id, ficha, item, passo === 'abrir_nc' ? 'NC' : r === 'NA' ? 'NA' : 'C', eventos)
@@ -1703,6 +1723,32 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         setParteAberta(null)
         abrirPainel(id)
       }
+      return gravado
+    })
+    acertarDono(f)
+  }
+
+  /** Confirmar na caixa do NC do furo: grava o NC com o texto e abre o painel (foto). Tem "Desfazer". */
+  const confirmarNcDoFuro = (id: string, texto: string) => {
+    const f = alvoDoFilho(id)
+    const e = elementoDe(id)
+    if (!f || !e) return
+    executar(async (evs) => {
+      const eventos = daFichaAberta(evs(id), null)
+      const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === f.ficha.id)).get(f.item)
+      const gravado = await tocarItem(c, id, f.ficha, f.item, 'NC', eventos, undefined, texto)
+      avisar(`${e.nome}: errado`, () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const volta = await voltarItem(c, gravado, anterior, daFichaAberta(evs2(id), null))
+          avisar(volta ? `Desfeito: ${e.nome}` : 'Nada a desfazer: o furo já mudou.')
+          return volta
+        })
+        acertarDono(f)
+      })
+      // o painel abre para a foto (o texto já foi na caixa)
+      setParteAberta(null)
+      abrirPainel(id)
       return gravado
     })
     acertarDono(f)
@@ -1990,6 +2036,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     setNcDaBarra(null)
     fecharSobre()
     if (pontos?.[id]) gravarPonto(id, 'NC', texto.trim())
+    else if (elementoDe(id)?.tipo === 'F') confirmarNcDoFuro(id, texto.trim())
     else gravarBarra(id, 'NC', texto.trim())
   }
 
@@ -2762,6 +2809,60 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             <button
               type="button"
               data-testid="fvs-nc-ponto-cancelar"
+              onClick={() => {
+                setNcDaBarra(null)
+                fecharSobre()
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {ncDaBarra && elementoDe(ncDaBarra.id)?.tipo === 'F' && (
+        <form
+          class={ncDaBarra.embaixo ? 'fv-caixa-form fv-caixa-embaixo' : 'fv-caixa-form'}
+          data-testid="fvs-nc-furo"
+          onSubmit={(ev) => {
+            ev.preventDefault()
+            confirmarNcDaBarra()
+          }}
+        >
+          <b>Furo errado: {elementoDe(ncDaBarra.id)!.nome}</b>
+          <p class="discreto">O NC só é gravado depois de Confirmar. Desmarcar volta o furo a sem conferir.</p>
+          <label>
+            O que está errado?
+            <textarea
+              data-testid="fvs-nc-furo-texto"
+              required
+              // escrevendo, a caixa sobe: embaixo, o teclado do celular a cobriria
+              onFocus={() => ncDaBarra.embaixo && setNcDaBarra({ ...ncDaBarra, embaixo: false })}
+              maxLength={500}
+              rows={3}
+              value={ncDaBarra.texto}
+              onInput={(ev) => setNcDaBarra({ ...ncDaBarra, texto: (ev.target as HTMLTextAreaElement).value })}
+            />
+          </label>
+          <div class="fv-caixa-acoes">
+            <button type="submit" class="on" data-testid="fvs-nc-furo-confirmar" disabled={!ncDaBarra.texto.trim()}>
+              Confirmar
+            </button>
+            <button
+              type="button"
+              data-testid="fvs-nc-furo-desmarcar"
+              onClick={() => {
+                const id = ncDaBarra.id
+                setNcDaBarra(null)
+                fecharSobre()
+                desmarcarFuro(id)
+              }}
+            >
+              Desmarcar
+            </button>
+            <button
+              type="button"
+              data-testid="fvs-nc-furo-cancelar"
               onClick={() => {
                 setNcDaBarra(null)
                 fecharSobre()

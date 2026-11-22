@@ -197,19 +197,27 @@ export class Sessao {
       try {
         const nome = arquivo.name.toLowerCase()
         if (nome.endsWith('.obra3d')) {
-          const m = await abrirArquivoDePacote(arquivo)
-          await guardar(m)
-          await this.adicionar(m, true)
+          await this.comMarca(arquivo.name, 'Abrindo o pacote', async (marca) => {
+            const m = await abrirArquivoDePacote(arquivo)
+            marca.fase = 'Guardando neste aparelho'
+            this.avisar()
+            await guardar(m)
+            await this.adicionar(m, true, marca)
+          })
         } else if (nome.endsWith('.ifc')) {
           const id = idDoArquivo(arquivo)
           if (this.modelos.some((m) => m.id === id)) continue
           const guardado = await abrirGuardado(id).catch(() => null)
           if (guardado) {
-            await this.adicionar(guardado, true)
+            await this.comMarca(arquivo.name, 'Abrindo o modelo guardado', (marca) => this.adicionar(guardado, true, marca))
           } else {
             const m = await this.lerNoWorker(arquivo, id)
-            const ok = await guardar(m)
-            await this.adicionar(m, ok)
+            // Depois da leitura ainda vêm duas etapas longas nos modelos grandes (guardar e mandar para a
+            // placa de vídeo): a barra continua, senão a tela volta a ficar vazia e parece que falhou.
+            await this.comMarca(arquivo.name, 'Guardando neste aparelho', async (marca) => {
+              const ok = await guardar(m)
+              await this.adicionar(m, ok, marca)
+            })
           }
         } else {
           this.avisarUsuario(`"${arquivo.name}" não é um IFC. Escolha um arquivo .ifc ou .obra3d.`)
@@ -243,6 +251,19 @@ export class Sessao {
   async apagarDoAparelho(id: string): Promise<void> {
     await apagarGuardado(id)
     await this.atualizarGuardados()
+  }
+
+  /** Mostra uma barra (fase inicial em 10%) enquanto `fazer` roda; some no fim, com ou sem erro. */
+  private async comMarca(nome: string, fase: string, fazer: (marca: Leitura) => Promise<void>): Promise<void> {
+    const marca: Leitura = { id: `${nome}#${Date.now()}`, nome, fase, fracao: 0.1 }
+    this.leituras = [...this.leituras, marca]
+    this.avisar()
+    try {
+      await fazer(marca)
+    } finally {
+      this.leituras = this.leituras.filter((l) => l !== marca)
+      this.avisar()
+    }
   }
 
   private lerNoWorker(arquivo: File, id: string): Promise<ModeloIfc> {

@@ -4,7 +4,7 @@
 // (mesmo nome) aparece como "neste aparelho", com Abrir.
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { Sessao } from '../sessao'
-import { avisosAntesDeBaixar, conexaoAtual, lerLista, linkDaPasta, linkDoArquivo, type FonteListaModelos, type ListaModelos, type ModeloDrive } from '../modelos_drive'
+import { avisosAntesDeBaixar, conexaoAtual, lerLista, mesmoArquivo, linkDaPasta, linkDoArquivo, type FonteListaModelos, type ListaModelos, type ModeloDrive } from '../modelos_drive'
 import { tamanhoArquivo } from './PainelModelos'
 import { IcAbrir, IcBaixar } from './icones'
 
@@ -25,7 +25,7 @@ function Modelo({ m, sessao, aberto, aoAbrir, aoBaixou, aoImportar, baixou }: {
   aoImportar: () => void
   baixou: boolean
 }) {
-  const guardado = sessao.guardados.find((g) => g.nome === m.nome)
+  const guardado = sessao.guardados.find((g) => mesmoArquivo(g.nome, m.nome))
   const avisos = aberto ? avisosAntesDeBaixar(m, conexaoAtual()) : []
   return (
     <li class="ifc-da-obra" data-testid="modelo-drive">
@@ -99,6 +99,8 @@ export function ModelosDaObra({ fonte, versao, sessao, aoImportar }: PropsModelo
   const [carregou, setCarregou] = useState(false)
   const [aberto, setAberto] = useState<string | null>(null)
   const [baixou, setBaixou] = useState<string | null>(null)
+  // confirmação discreta na própria seção (os avisos do leitor são só para erro)
+  const [carregada, setCarregada] = useState('')
   const entrada = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -119,7 +121,7 @@ export function ModelosDaObra({ fonte, versao, sessao, aoImportar }: PropsModelo
       const nova = lerLista(texto)
       await fonte.gravar?.(texto)
       setLista(nova)
-      sessao.avisarUsuario(`Lista de modelos carregada: ${nova.modelos.length} modelo(s).`)
+      setCarregada(`Lista de modelos carregada: ${nova.modelos.length} modelo(s).`)
     } catch (e) {
       sessao.avisarUsuario(`Não consegui carregar a lista de modelos: ${e instanceof Error ? e.message : String(e)}`)
     }
@@ -164,11 +166,17 @@ export function ModelosDaObra({ fonte, versao, sessao, aoImportar }: PropsModelo
       ) : (
         <p class="ifc-discreto">Nenhuma lista de modelos carregada para esta obra.</p>
       )}
+      {carregada && (
+        <p class="ifc-discreto" role="status">
+          {carregada}
+        </p>
+      )}
       {fonte.gravar && (
         <>
           <input
             ref={entrada}
             type="file"
+            accept=".json,application/json"
             class="ifc-escondido"
             tabIndex={-1}
             aria-hidden="true"

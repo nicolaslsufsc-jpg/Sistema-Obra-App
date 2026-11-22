@@ -234,3 +234,12 @@ Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baix
 1. A pasta compartilhada como "qualquer pessoa com o link" (feito em 21/11).
 2. Uma chave de API do Google (Drive API) restrita ao endereço do site.
 3. Acrescentar `https://www.googleapis.com` na lista de permissões do navegador (`app/vite.config.ts`).
+
+## 22/11/2026: teste dos pacotes do Drive (frente 13)
+
+- Link de baixar passou a ser o de download do Drive (`drive.usercontent.google.com`, `confirm=t`): no Android o link `drive.google.com` abria o app do Drive.
+- `.obra3d` versão 2: os psets vão em pedaços de 2.000 (antes um JSON só passava do limite de texto do navegador nos modelos de ~1 GB e o "neste aparelho" falhava). Versão 1 continua abrindo.
+- Erro de memória ao abrir modelo grande no celular mostra mensagem clara (abrir no PC ou IFC por pavimento).
+- Tela vazia com barra curta: botão "Importar IFC" não some mais (`safe center`). Mensagem "lista carregada" não sai mais com cara de erro.
+- PC: os 7 modelos abriram. Celular: FR e AR abriram; o de 1,6 GB baixou e não abriu (memória). Tablet: lista e download ok, abertura interrompida.
+- Pendente: confirmar no PC que os modelos de ~1 GB agora ficam "neste aparelho" com o formato v2; teste no site depois do merge do #61.

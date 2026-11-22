@@ -1,7 +1,7 @@
 // Modelos convertidos guardados no próprio aparelho (área privada do navegador, OPFS).
 // Reabrir um modelo guardado é muito mais rápido que ler o IFC de novo, e funciona sem internet.
 // Nada aqui sai do aparelho.
-import { lerMetaDoPacote, lerPacote, pacoteParaBlob } from './pacote'
+import { lerMetaDoPacote, lerPacote, partesDoPacote } from './pacote'
 import type { MetaModelo, ModeloIfc } from './tipos'
 
 const PASTA = 'modelos-ifc'
@@ -62,13 +62,22 @@ export async function guardar(m: ModeloIfc): Promise<boolean> {
   try {
     const h = await p.getFileHandle(`${m.meta.id}.obra3d`, { create: true })
     const w = await h.createWritable()
-    await w.write(pacoteParaBlob(m))
-    await w.close()
+    try {
+      // Parte por parte, direto no arquivo: um Blob do modelo inteiro (1 GB ou mais nos modelos grandes
+      // da obra) pedia essa memória toda de uma vez e falhava calado (teste de 21/11).
+      for (const parte of partesDoPacote(m)) await w.write(parte as FileSystemWriteChunkType)
+      await w.close()
+    } catch (e) {
+      await w.abort().catch(() => {})
+      await p.removeEntry(`${m.meta.id}.obra3d`).catch(() => {})
+      throw e
+    }
     // Pede ao navegador para não limpar os modelos quando o aparelho ficar sem espaço.
     void navigator.storage.persist?.().catch(() => {})
     return true
-  } catch {
+  } catch (e) {
     // sem espaço no aparelho, por exemplo: o modelo continua aberto, só não fica guardado
+    console.warn('Não consegui guardar o modelo neste aparelho:', e)
     return false
   }
 }

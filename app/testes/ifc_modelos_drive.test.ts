@@ -1,6 +1,6 @@
 // "Baixar modelo da obra": a lista do Google Drive é conferida antes de virar link. Obra fictícia EXE.
 import { describe, expect, it } from 'vitest'
-import { avisosAntesDeBaixar, GRANDE_PARA_APARELHO, idDoDrive, lerLista, linkDoArquivo, listaDeExemplo, TIPO_LISTA } from '../src/ifc/modelos_drive'
+import { avisosAntesDeBaixar, GRANDE_PARA_APARELHO, idDoDrive, lerLista, linkDoArquivo, listaDeExemplo, mesmoArquivo, TIPO_LISTA } from '../src/ifc/modelos_drive'
 
 const ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123'
 
@@ -11,6 +11,8 @@ describe('id do Drive', () => {
     expect(idDoDrive(`https://drive.google.com/drive/folders/${ID}`)).toBe(ID)
     expect(idDoDrive(`https://drive.google.com/uc?export=download&id=${ID}`)).toBe(ID)
     expect(idDoDrive(`https://outro.site.com/file/d/${ID}/view`)).toBeNull()
+    expect(idDoDrive(`https://drive.google.com.outro.site/file/d/${ID}/view`)).toBeNull()
+    expect(idDoDrive(`https://drive.usercontent.google.com/download?id=${ID}&export=download`)).toBe(ID)
     expect(idDoDrive(`http://drive.google.com/file/d/${ID}/view`)).toBeNull()
     expect(idDoDrive('javascript:alert(1)')).toBeNull()
     expect(idDoDrive('curto')).toBeNull()
@@ -18,7 +20,9 @@ describe('id do Drive', () => {
   })
 
   it('o link é montado pelo app, só para o Drive', () => {
-    expect(linkDoArquivo(ID)).toBe(`https://drive.google.com/uc?export=download&id=${ID}`)
+    expect(linkDoArquivo(ID)).toBe(`https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t`)
+    // o link que o app monta também é aceito de volta
+    expect(idDoDrive(linkDoArquivo(ID))).toBe(ID)
   })
 })
 
@@ -54,6 +58,16 @@ describe('lista de modelos', () => {
   it('a EXE tem lista de exemplo', () => {
     expect(listaDeExemplo().modelos.length).toBeGreaterThan(0)
     expect(listaDeExemplo().exemplo).toBe(true)
+  })
+})
+
+describe('mesmo arquivo', () => {
+  it('baixar de novo põe " (1)" no nome; continua sendo o mesmo modelo', () => {
+    expect(mesmoArquivo('EXE.HI.ifc', 'EXE.HI.ifc')).toBe(true)
+    expect(mesmoArquivo('EXE.HI (1).ifc', 'EXE.HI.ifc')).toBe(true)
+    expect(mesmoArquivo('EXE.HI (12).IFC', 'EXE.HI.ifc')).toBe(true)
+    expect(mesmoArquivo('EXE.HI-R01.ifc', 'EXE.HI.ifc')).toBe(false)
+    expect(mesmoArquivo('EXE (1) HI.ifc', 'EXE HI.ifc')).toBe(false)
   })
 })
 

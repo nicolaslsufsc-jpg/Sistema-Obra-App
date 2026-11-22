@@ -45,7 +45,7 @@ export function idDoDrive(v: unknown): string | null {
   if (ID_DRIVE.test(t)) return t
   try {
     const u = new URL(t)
-    if (u.protocol !== 'https:' || !/(^|\.)(drive|docs)\.google\.com$/.test(u.hostname)) return null
+    if (u.protocol !== 'https:' || !/^(drive|docs|drive\.usercontent)\.google\.com$/.test(u.hostname)) return null
     const m = /\/(?:file\/d|folders)\/([A-Za-z0-9_-]{10,80})/.exec(u.pathname)
     const id = m?.[1] ?? u.searchParams.get('id')
     return id && ID_DRIVE.test(id) ? id : null
@@ -55,12 +55,24 @@ export function idDoDrive(v: unknown): string | null {
 }
 
 /**
- * O link é montado aqui, nunca copiado do arquivo: só abre o Drive. É o de baixar direto: arquivo
- * pequeno já começa a baixar; grande passa antes pela página "não dá para verificar vírus" do Drive.
- * A pasta precisa estar como "qualquer pessoa com o link: leitor" (ou a pessoa logada com acesso).
+ * O link é montado aqui, nunca copiado do arquivo: só abre o Drive. É o de baixar direto, no endereço
+ * de download do Drive (drive.usercontent.google.com), por dois motivos vistos no teste de 21/11:
+ * - no Android, link de drive.google.com abre o app do Drive (pede para escolher conta) em vez de baixar;
+ * - `confirm=t` pula a página "não dá para verificar vírus" dos arquivos grandes (o app já avisou o
+ *   tamanho e pediu Wi-Fi antes).
+ * A pasta precisa estar como "qualquer pessoa com o link: leitor".
  */
 export function linkDoArquivo(id: string): string {
-  return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`
+  return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`
+}
+
+/**
+ * O arquivo baixado é o mesmo modelo da lista? Compara o nome sem o " (1)" que o Android e o Windows
+ * põem quando já existe um arquivo com esse nome na pasta Downloads (baixar de novo).
+ */
+export function mesmoArquivo(baixado: string, daLista: string): boolean {
+  const limpo = (n: string) => n.trim().replace(/ \(\d+\)(?=\.[^.]+$)/, '').toLowerCase()
+  return limpo(baixado) === limpo(daLista)
 }
 
 export function linkDaPasta(id: string): string {

@@ -7,6 +7,7 @@ import { dataLocal, piorSituacao, situacaoDasIdades, type IdadeCP, type Resultad
 import { idDaLaje, lajeDoTrecho, nomeNaTela, nomeNoBanco } from './lajes'
 import { estadoDasPecas, type EstadoPeca, type MudancaPeca } from './pecas'
 import { montarRastreioDasLajes } from './rastreio'
+import { chavesDasPlantas } from './plantas_equivalentes'
 import { areasVigentes, type LinhaDeArea } from '../fvs/areas'
 import { camposDeCorrecao, vigentes, type Corrigivel, type Vigente } from './vigentes'
 
@@ -112,6 +113,11 @@ export interface DadosConcreto {
   pecaPorId: Map<string, Peca>
   /** áreas de laje da FVS por raiz do caminhão (rastreio.ts); vazio quando a FVS não desenhou laje */
   lajesFvsDe: Map<string, LajeFvsDoCaminhao[]>
+  /**
+   * id de planta (linha de "plantas" ou trecho) → chave: mesma chave = mesma planta na tela
+   * (plantas_equivalentes.ts). Ausente: cada id vale por si.
+   */
+  chavePlanta?: (id: string) => string
 }
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
@@ -129,7 +135,7 @@ function agrupar<T>(itens: readonly T[], chave: (t: T) => string): Map<string, T
 
 /** Lê tudo do Concreto da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosConcreto> {
-  const [pav, conc, cam, areas, regsPecas, res, elem, areasFvs] = await Promise.all([
+  const [pav, conc, cam, areas, regsPecas, res, elem, areasFvs, plantasLinhas] = await Promise.all([
     sincronizador.linhas('pavimentos', obraId),
     sincronizador.linhas('concretagens', obraId),
     sincronizador.linhas('caminhoes', obraId),
@@ -138,7 +144,9 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
     sincronizador.linhas('cp_resultados', obraId),
     sincronizador.linhas('elementos', obraId),
     sincronizador.linhas('fvs_areas', obraId),
+    sincronizador.linhas('plantas', obraId),
   ])
+  const chavePlanta = chavesDasPlantas(plantasLinhas)
   const idsExemplo = await idsDasConcretagensDeExemplo(obraId)
   const pavimentos = pav
     .map((p) => ({ id: p.id, nome: String(p.nome), ordem: Number(p.ordem) }))
@@ -192,7 +200,7 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
   const lajes = areasVigentes(areasFvs as unknown as LinhaDeArea[])
   const nomeDaArea = new Map(lajes.map((a) => [a.id, a.nome]))
   const lajesFvsDe = new Map<string, LajeFvsDoCaminhao[]>()
-  for (const [areaId, r] of montarRastreioDasLajes({ concretagens: conc, caminhoes: cam, caminhao_areas: areas, exemplos: new Set() }, lajes)) {
+  for (const [areaId, r] of montarRastreioDasLajes({ concretagens: conc, caminhoes: cam, caminhao_areas: areas, exemplos: new Set(), chavePlanta }, lajes)) {
     for (const c of r.caminhoes) {
       const item = { area_id: areaId, nome: nomeDaArea.get(areaId) || 'Área de laje', fracao: c.fracao ?? 1, parcial: c.parcial }
       const lista = lajesFvsDe.get(c.caminhao_raiz)
@@ -213,6 +221,7 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
     pecasDoPavimento: agrupar(pecas, (p) => p.pavimento_id),
     pecaPorId: new Map(pecas.map((p) => [p.id, p])),
     lajesFvsDe,
+    chavePlanta,
   }
 }
 

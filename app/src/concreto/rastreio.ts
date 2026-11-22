@@ -163,6 +163,8 @@ export interface RastreioDaLaje {
 
 export interface LinhasDoRastreioDaLaje extends Pick<LinhasDoRastreio, 'concretagens' | 'caminhoes' | 'exemplos'> {
   caminhao_areas: readonly Linha[]
+  /** mesma chave = mesma planta (plantas_equivalentes.ts); sem ela, o id do planta_ref vale por si */
+  chavePlanta?: (id: string) => string
 }
 
 /** Pontos de amostra por área de laje (a laje é grande: mais pontos que uma peça). */
@@ -176,6 +178,7 @@ const AMOSTRAS_LAJE = 400
  */
 export function montarRastreioDasLajes(l: LinhasDoRastreioDaLaje, areas: readonly AreaDeLajeFvs[]): Map<string, RastreioDaLaje> {
   const validos = new Map(caminhoesValidos(l).map((v) => [v.cam.raiz, v]))
+  const chave = l.chavePlanta ?? ((id: string) => id)
   // áreas vigentes dos caminhões válidos, por trecho e por caminhão
   const porSetor = new Map<string, Map<string, AreaPreparada[]>>()
   for (const a of vigentes(l.caminhao_areas as Corrigivel[])) {
@@ -184,7 +187,7 @@ export function montarRastreioDasLajes(l: LinhasDoRastreioDaLaje, areas: readonl
     if (!validos.has(cam)) continue
     const contorno = a.contorno as Ponto[] | undefined
     if (!contorno || contorno.length < 3) continue
-    const setor = idDaRef(String(a.planta_ref))
+    const setor = chave(idDaRef(String(a.planta_ref)))
     const doSetor = porSetor.get(setor) ?? new Map<string, AreaPreparada[]>()
     porSetor.set(setor, doSetor)
     const lista = doSetor.get(cam)
@@ -194,7 +197,7 @@ export function montarRastreioDasLajes(l: LinhasDoRastreioDaLaje, areas: readonl
 
   const saida = new Map<string, RastreioDaLaje>()
   for (const area of areas) {
-    const doSetor = porSetor.get(area.setor_id)
+    const doSetor = porSetor.get(chave(area.setor_id))
     if (!doSetor || area.contorno.length < 3) continue
     const caixa = caixaDe(area.contorno)
     const amostras = amostrasDaPeca([area.contorno], AMOSTRAS_LAJE)

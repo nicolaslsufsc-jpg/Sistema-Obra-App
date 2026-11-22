@@ -217,6 +217,9 @@ export class Sessao {
             await this.comMarca(arquivo.name, 'Guardando neste aparelho', async (marca) => {
               const ok = await guardar(m)
               await this.adicionar(m, ok, marca)
+              // Visto em 22/11 com os modelos de 1 a 1,6 GB: o navegador recusa por falta de espaço. O modelo
+              // abre do mesmo jeito; a pessoa precisa saber que, fechando o app, terá de importar de novo.
+              if (!ok) this.avisarUsuario(`"${arquivo.name}" abriu, mas não coube neste aparelho para ficar guardado. Ao fechar o app, importe o IFC de novo.`)
             })
           }
         } else {

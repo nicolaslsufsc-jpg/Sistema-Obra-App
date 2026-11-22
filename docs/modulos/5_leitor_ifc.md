@@ -242,4 +242,6 @@ Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baix
 - Erro de memória ao abrir modelo grande no celular mostra mensagem clara (abrir no PC ou IFC por pavimento).
 - Tela vazia com barra curta: botão "Importar IFC" não some mais (`safe center`). Mensagem "lista carregada" não sai mais com cara de erro.
 - PC: os 7 modelos abriram. Celular: FR e AR abriram; o de 1,6 GB baixou e não abriu (memória). Tablet: lista e download ok, abertura interrompida.
-- Pendente: confirmar no PC que os modelos de ~1 GB agora ficam "neste aparelho" com o formato v2; teste no site depois do merge do #61.
+- Com o v2 o limite de texto saiu; nos modelos de 939 MB e 1,6 GB o navegador agora recusa por falta de espaço (QuotaExceededError). O modelo abre e o app avisa que não ficou guardado.
+- Testado no build local em 1280, 800x1280 (tablet) e 375 px: lista, download igual byte a byte, abertura e busca ok; sem rolagem lateral.
+- Pendente: ver se dá para guardar os modelos de ~1 GB (tamanho do .obra3d e cota real no celular); teste no site.

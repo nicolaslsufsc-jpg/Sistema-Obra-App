@@ -531,7 +531,8 @@ button.pj-pequeno {
 }
 .pj-rev.nova {
   border-color: var(--ok-borda);
-  color: var(--ok-borda);
+  /* o verde de borda fica no limite de 4,5:1 sobre fundo tingido (linha tocada, CI de 22/11): texto no verde de texto */
+  color: var(--texto-1b5e20);
 }
 .pj-selo {
   display: inline-block;

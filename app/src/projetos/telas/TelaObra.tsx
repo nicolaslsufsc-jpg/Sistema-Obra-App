@@ -5,9 +5,11 @@ import { painelObra, type Contagem, type PainelObra } from '../obra'
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural, rotuloRevisao, Topo } from './comum'
 import { FaixaAutodoc, usarEstadoAutodoc } from './FaixaAutodoc'
-import { tocavel, usarBase } from './baseComum'
+import { tocavel } from './baseComum'
+import { usarAgora } from './TelaAgora'
+import { frasesAgora } from '../agora'
 import { PedidoAutodoc } from './PedidoAutodoc'
-import { podeGerir } from '../dados'
+import { escritorioAtualizado, podeGerir } from '../dados'
 
 const LIMITE_NOVAS = 40
 
@@ -16,7 +18,7 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
   // sobe quando um pedido ao Autodoc fica pronto: relê a última lista e sincroniza
   const [versao, setVersao] = useState(0)
   const estado = usarEstadoAutodoc(obra.id, !semConta, versao)
-  const { resumo, escritorio } = usarBase(ctx)
+  const { resumo, escritorio, agora } = usarAgora(ctx)
   // sem conta não há Autodoc nem servidor: a primeira tela é o painel da base
   useEffect(() => {
     if (semConta) trocar({ nome: 'painel' })
@@ -26,6 +28,10 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
 
   if (semConta) return <main class="tela">Carregando…</main>
   const t = p.totais
+  // cada número abre a lista de projetos só com aquelas pranchas (item D)
+  const comVigente = dados.documentos.filter((d) => dados.vigentes.has(d.id))
+  const abrirLista = (titulo: string, ids: string[]) => ir({ nome: 'lista', titulo, ids })
+  const doEscritorio = (v: boolean) => comVigente.filter((d) => escritorioAtualizado(dados, d.id) === v).map((d) => d.id)
   return (
     <main class="tela pj-painel" data-testid="projetos-obra">
       <Topo titulo="Projetos" sub={`${obra.codigo} · painel da obra`} aoVoltar={aoSair} />
@@ -37,26 +43,27 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
             setVersao((v) => v + 1)
             ctx.sincronizar()
           }}
+          depois={agora ? { texto: frasesAgora(agora), abrir: () => ir({ nome: 'agora' }) } : undefined}
         />
       )}
 
       <ul class="pj-cartoes" aria-label="Resumo da obra" data-testid="obra-resumo">
-        <li class="neutro">
+        <li class="neutro pj-tocavel" {...tocavel(() => abrirLista('vigentes', comVigente.map((d) => d.id)))}>
           <span class="numero" data-testid="obra-vigentes">{t.vigentes}</span>
           <strong>vigentes</strong>
           <span class="discreto">{plural(p.disciplinas.length, 'disciplina', 'disciplinas')}</span>
         </li>
-        <li class={t.novas ? 'atencao' : 'bom'}>
+        <li class={`${t.novas ? 'atencao' : 'bom'} pj-tocavel`} data-testid="obra-cartao-novas" {...tocavel(() => abrirLista('com revisão nova', p.novas.map((n) => n.documento.id)))}>
           <span class="numero" data-testid="obra-novas">{t.novas}</span>
           <strong>com revisão nova</strong>
           <span class="discreto">{textoCriterio(p)}</span>
         </li>
-        <li class={t.escritorioVencida ? 'ruim' : 'bom'}>
+        <li class={`${t.escritorioVencida ? 'ruim' : 'bom'} pj-tocavel`} {...tocavel(() => abrirLista('PC atrás do Autodoc', doEscritorio(false)))}>
           <span class="numero" data-testid="obra-pc-vencida">{t.escritorioVencida}</span>
           <strong>PC atrás do Autodoc</strong>
           <span class="discreto">pasta do escritório com revisão antiga</span>
         </li>
-        <li class="neutro">
+        <li class="neutro pj-tocavel" {...tocavel(() => abrirLista('PC em dia', doEscritorio(true)))}>
           <span class="numero">{t.escritorioEmDia}</span>
           <strong>PC em dia</strong>
           <span class="discreto">{t.escritorioSem ? `${t.escritorioSem} sem registro do escritório` : 'todas com registro'}</span>
@@ -86,6 +93,20 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
               <strong>conferir</strong>
               <span class="discreto">o app não decidiu sozinho</span>
             </li>
+            {agora && (
+              <li class={`${agora.copias ? 'ruim' : 'bom'} pj-tocavel`} {...tocavel(() => ir({ nome: 'agora' }))}>
+                <span class="numero" data-testid="obra-a-plotar">{agora.copias}</span>
+                <strong>a plotar</strong>
+                <span class="discreto">{agora.copias ? `${agora.folhas} ${agora.folhas === 1 ? 'folha' : 'folhas'} para a lista de distribuição` : 'todos da lista com a vigente'}</span>
+              </li>
+            )}
+            {agora && (
+              <li class={`${agora.recolher.length ? 'ruim' : 'bom'} pj-tocavel`} {...tocavel(() => ir({ nome: 'agora' }))}>
+                <span class="numero" data-testid="obra-a-recolher">{agora.recolher.length}</span>
+                <strong>a recolher</strong>
+                <span class="discreto">cópia antiga em campo</span>
+              </li>
+            )}
             {escritorio && (
               <li class={escritorio.desatualizados.length ? 'ruim pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'escritorio' }))}>
                 <span class="numero">{escritorio.desatualizados.length}</span>
@@ -126,7 +147,7 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
             </summary>
             <ul class="pj-lista-painel pj-pavimentos">
               {d.pavimentos.map((pv) => (
-                <li key={pv.pavimento} class="pj-linha-painel">
+                <li key={pv.pavimento} class="pj-linha-painel pj-tocavel" {...tocavel(() => abrirLista(`${d.disciplina} · ${pv.pavimento}`, pv.documentos.map((x) => x.id)))}>
                   <div>
                     <b>{pv.pavimento}</b>
                     <div class="discreto">{plural(pv.vigentes, 'prancha vigente', 'pranchas vigentes')}</div>

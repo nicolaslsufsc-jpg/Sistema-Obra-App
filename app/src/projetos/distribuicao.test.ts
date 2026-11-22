@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import {
   aEntregar,
   chaveAntiga,
+  chaveRegra,
+  pavimentoDaFolha,
   gravarDestinatarios,
   historicoDaRegra,
   lerDestinatarios,
@@ -58,6 +60,36 @@ describe('qual regra vale para a folha', () => {
   })
 })
 
+describe('regra por pavimento (21/11)', () => {
+  const pilotis = { disciplina: 'ESTRUTURAL', pasta: 'LO/Formas', codigo: 'EXE.ES.LO.100.FORPILOTIS', titulo: 'Forma do pilotis' }
+  const terceiro = { disciplina: 'ESTRUTURAL', pasta: 'LO/Formas', codigo: 'EXE.ES.LO.103.FOR3PAV', titulo: 'Forma do 3º pavimento' }
+  it('o pavimento sai do código e do título da folha', () => {
+    expect(pavimentoDaFolha(pilotis)).toBe('Pilotis')
+    expect(pavimentoDaFolha(terceiro)).toBe('3º pavimento')
+  })
+  it('regra de um pavimento só vale para as folhas dele; sem pavimento vale para todas', () => {
+    const so3 = regra({ pasta: 'LO/Formas', pavimento: '3º pavimento' })
+    const todas = regra({ pasta: 'LO/Formas', empresa: 'Formas Delta', colaborador: 'Ana' })
+    expect(regrasDaFolha([so3, todas], terceiro)).toEqual([so3, todas])
+    expect(regrasDaFolha([so3, todas], pilotis)).toEqual([todas])
+  })
+  it('sem regra da pasta para o pavimento, vale a da disciplina inteira', () => {
+    const so3 = regra({ pasta: 'LO/Formas', pavimento: '3º pavimento' })
+    const disc = regra({ empresa: 'Empreiteira Alfa', colaborador: 'Rui' })
+    expect(regrasDaFolha([so3, disc], pilotis)).toEqual([disc])
+  })
+  it('a mesma pessoa em dois pavimentos são duas regras (lista importada)', () => {
+    const csv = ['disciplina;pasta;pavimento;empresa;colaborador;copias', 'ESTRUTURAL;LO/Formas;Térreo;Alfa;João;1', 'ESTRUTURAL;LO/Formas;3º pavimento;Alfa;João;2', 'ESTRUTURAL;LO/Formas;Térreo;Alfa;João;1'].join(String.fromCharCode(10))
+    const lidas = lerListaDestinatarios(csv, HOJE)
+    expect(lidas.map((l) => l.pavimento)).toEqual(['Térreo', '3º pavimento'])
+    const atual = regra({ pasta: 'LO/Formas', pavimento: 'Térreo', empresa: 'Alfa' })
+    const m = mesclarLista([atual], lidas)
+    expect(m).toHaveLength(1)
+    expect(m[0].pavimento).toBe('3º pavimento')
+    expect(chaveRegra(atual)).not.toBe(chaveRegra({ ...atual, pavimento: '' }))
+  })
+})
+
 describe('a entregar', () => {
   const regras = [
     regra({}), // ESTRUTURAL inteira → João (Alfa)
@@ -109,8 +141,8 @@ describe('lista importada e gravada', () => {
   it('lê o arquivo sugerido pelo conversor', () => {
     const l = lerListaDestinatarios(CSV, HOJE)
     expect(l).toEqual([
-      { disciplina: 'ESTRUTURAL', pasta: 'LO/Vigas', empresa: 'Empreiteira Alfa', colaborador: 'João', copias: 2, ativo: true, desde: HOJE },
-      { disciplina: 'HIDRO', pasta: '', empresa: 'Hidráulica Beta', colaborador: '', copias: 1, ativo: false, desde: HOJE },
+      { disciplina: 'ESTRUTURAL', pasta: 'LO/Vigas', pavimento: '', empresa: 'Empreiteira Alfa', colaborador: 'João', copias: 2, ativo: true, desde: HOJE },
+      { disciplina: 'HIDRO', pasta: '', pavimento: '', empresa: 'Hidráulica Beta', colaborador: '', copias: 1, ativo: false, desde: HOJE },
     ])
   })
   it('arquivo sem as colunas: erro claro', () => {

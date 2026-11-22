@@ -7,7 +7,8 @@ import { pedirAtualizacao, textoDoPedido, ultimoPedido, type PedidoAtualizacao }
 /** Enquanto o pedido está aberto, a tela pergunta ao servidor a cada tanto. */
 export const CONSULTA_MS = { valor: 20_000 }
 
-export function PedidoAutodoc({ obraId, aoPronto }: { obraId: string; aoPronto: () => void }) {
+/** depois: a frase do "O que fazer agora" (aparece quando o pedido fica pronto) e o que o toque abre. */
+export function PedidoAutodoc({ obraId, aoPronto, depois }: { obraId: string; aoPronto: () => void; depois?: { texto: string; abrir: () => void } }) {
   const [pedido, setPedido] = useState<PedidoAtualizacao | null | undefined>(undefined)
   const [enviando, setEnviando] = useState(false)
   const [problema, setProblema] = useState('')
@@ -66,6 +67,11 @@ export function PedidoAutodoc({ obraId, aoPronto }: { obraId: string; aoPronto: 
           {t.tipo === 'aberto' && <span class="pj-girando" aria-hidden="true" />}
           {t.texto}
         </span>
+      )}
+      {t?.tipo === 'pronto' && depois && (
+        <button type="button" class="pj-pequeno" onClick={depois.abrir} data-testid="pedido-autodoc-agora">
+          Agora: {depois.texto} ›
+        </button>
       )}
       {t && t.falharam.length > 0 && (
         <details data-testid="pedido-autodoc-falharam">

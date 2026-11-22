@@ -37,6 +37,18 @@ export function pastaCurta(pasta: string | null, fase: Fase): string {
  * Mesmas chaves da lista em CSV: disciplina pelo nome da ficha, número sem zeros; fase que não é de obra
  * (PL, DE, AP...) entra com a fase na frente do número, para não cruzar com cópia de obra.
  */
+/** Folha da lista vigente (chaveFolha do código) → id do documento no servidor: liga a base às telas de entrega. */
+export function documentosPorFolha(d: Pick<DadosProjetos, 'documentos' | 'vigentes'>): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const doc of d.documentos) {
+    const r = d.vigentes.get(doc.id)
+    if (!r) continue
+    const fase = String(r.fase ?? 'EX').toUpperCase()
+    m.set(chaveFolha({ codigo: `${doc.codigo.split('.')[0]}.${doc.disciplina_sigla.toUpperCase()}.${fase}.${doc.numero}.${doc.nome_curto}` }), doc.id)
+  }
+  return m
+}
+
 export function vigentesDoServidor(d: Pick<DadosProjetos, 'documentos' | 'vigentes'>): Vigente[] {
   const saida: Vigente[] = []
   for (const doc of d.documentos) {

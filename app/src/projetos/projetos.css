@@ -921,3 +921,58 @@ button.pj-pequeno {
     width: auto;
   }
 }
+
+/* Sugerir regras pelo que cada um tem (21/11/2026) */
+.pj-sugestoes {
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+}
+.pj-sugestoes .pj-linha-painel {
+  align-items: center;
+}
+.pj-marcar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.pj-marcar input {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: none;
+  margin-top: 0.1rem;
+}
+.pj-copias {
+  width: 4.2rem;
+  min-height: 44px;
+  flex: none;
+  text-align: center;
+}
+.pj-pedido [data-testid='pedido-autodoc-agora'] {
+  text-align: left;
+}
+
+/* "O que fazer agora" no topo do painel (21/11/2026) */
+.pj-agora-topo {
+  display: block;
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--ok-fundo);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.pj-agora-topo.ruim {
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+  color: var(--atencao-texto);
+}

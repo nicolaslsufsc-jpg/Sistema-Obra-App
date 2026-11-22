@@ -15,6 +15,7 @@ import { escritorioDasFolhas, situacaoFicha, SITUACOES_FICHA } from '../canteiro
 import { fichaV2Xlsx, nomeFichaV2 } from '../ficha_v2'
 import type { RegistroEscritorio } from '../edicoes'
 import { baixarBlob } from '../../nucleo/baixar'
+import { frasesAgora, oQueFazerAgora } from '../agora'
 
 const LIMITE = 40
 
@@ -45,7 +46,7 @@ export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: (
         corrigida && (
           <>
             <Canteiro ctx={ctx} cruzadas={cruzadas} vigentes={corrigida.vigentes} escritorio={corrigida.escritorio} fonteVigente={fonteVigente} />
-            <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} />
+            <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} cruzadas={cruzadas} />
           </>
         )
       )}
@@ -60,6 +61,7 @@ function Painel({
   trocar,
   temLista,
   pendentes,
+  cruzadas,
 }: {
   resumo: Resumo
   escritorio: ResumoEscritorio
@@ -67,30 +69,38 @@ function Painel({
   trocar: Contexto['trocar']
   temLista: boolean
   pendentes: GrupoAEntregar[]
+  cruzadas: CopiaCruzada[]
 }) {
   const aEntregar = pendentes.reduce((s, g) => s + g.pendencias.length, 0)
+  const agora = oQueFazerAgora(pendentes, cruzadas)
+  const rolarPara = (testid: string) => document.querySelector(`[data-testid="${testid}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const [todasDes, setTodasDes] = useState(false)
   const [todasConf, setTodasConf] = useState(false)
   const maxFaixa = Math.max(1, ...r.faixas)
   return (
     <>
+      {/* o resumo do "O que fazer agora" no topo do painel (item C); toque abre a lista */}
+      <button type="button" class={`pj-agora-topo ${agora.copias || agora.recolher.length ? 'ruim' : 'bom'}`} onClick={() => trocar({ nome: 'agora' })} data-testid="painel-agora">
+        <strong>O que fazer agora:</strong> {frasesAgora(agora)} ›
+      </button>
+      {/* cada número abre a lista dele (item D) */}
       <ul class="pj-cartoes" aria-label="Resumo" data-testid="painel-resumo">
-        <li class="bom">
+        <li class="bom pj-tocavel" data-testid="painel-cartao-em-dia" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'canteiro' }))}>
           <span class="numero">{r.emDia}</span>
           <strong>em dia</strong>
           <span class="discreto">de {plural(r.emCampo, 'cópia', 'cópias')} em campo</span>
         </li>
-        <li class="ruim">
+        <li class="ruim pj-tocavel" data-testid="painel-cartao-desatualizadas" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'trocar' }))}>
           <span class="numero" data-testid="painel-desatualizadas">{r.desatualizadas.length}</span>
           <strong>desatualizadas</strong>
           <span class="discreto">recolher e entregar a nova</span>
         </li>
-        <li class="atencao">
+        <li class="atencao pj-tocavel" {...tocavel(() => rolarPara('painel-lista-conferir'))}>
           <span class="numero" data-testid="painel-conferir">{r.conferir.length}</span>
           <strong>conferir</strong>
           <span class="discreto">não achada, revisão maior, datas</span>
         </li>
-        <li class="neutro">
+        <li class="neutro pj-tocavel" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'escritorio' }))}>
           <span class="numero" data-testid="painel-escritorio">{esc.desatualizados.length}</span>
           <strong>escritório desatualizado</strong>
           <span class="discreto">

@@ -166,8 +166,8 @@ export function ModuloConcreto({
             caminhaoRaiz={tela.caminhaoRaiz}
             plantaId={tela.plantaId}
             aviso={avisoSync}
+            acoes={<BotaoReportar modulo="concreto" tela="mapa" obra={obra} usuario={usuario} estado={estado} noCabecalho />}
           />
-          <BotaoReportar modulo="concreto" tela="mapa" obra={obra} usuario={usuario} estado={estado} noMapa />
         </>
       )
     case 'relatorio':

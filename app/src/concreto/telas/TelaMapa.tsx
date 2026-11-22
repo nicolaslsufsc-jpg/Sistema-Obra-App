@@ -72,9 +72,11 @@ interface Props {
   caminhaoRaiz?: string
   plantaId?: string
   aviso: string
+  /** botões do módulo no topo (ex.: Reportar problema), para não cobrir a planta */
+  acoes?: ComponentChildren
 }
 
-export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plantaId, aviso }: Props) {
+export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plantaId, aviso, acoes }: Props) {
   const { dados, obra, usuario, ir, trocar, voltar, recarregar } = ctx
   const pav = dados.pavimentos.find((p) => p.id === pavimentoId)
   const pecasCad = dados.pecasDoPavimento.get(pavimentoId) ?? []
@@ -645,6 +647,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
               Desfazer
             </button>
           )}
+          {acoes}
         </div>
         <div class="cc-chips" role="toolbar" aria-label="Caminhões">
           <select

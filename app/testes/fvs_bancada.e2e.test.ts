@@ -3947,6 +3947,8 @@ suite('FVS na bancada (Chrome)', () => {
       const seta = fora.getByRole('button', { name: 'Voltar', exact: true })
       expect((await seta.innerText()).trim()).toBe('‹')
       expect((await seta.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+      // no canto esquerdo da tela dela (no tablet a coluna é centralizada)
+      expect((await seta.boundingBox())!.x - (await fora.boundingBox())!.x).toBeLessThan(40)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_fora_${nome}.png`) })
 

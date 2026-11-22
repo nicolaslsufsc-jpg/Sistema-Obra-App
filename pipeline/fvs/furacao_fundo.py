@@ -347,6 +347,65 @@ def a_conferir(pecas: list[dict], pt_por_cm: float) -> dict:
     return {"fora_do_contorno": fora, "mesmo_ponto": mesmo_ponto, "em_fila": colunas}
 
 
+RAIO_DO_SIMBOLO_CM = 20.0  # no 3º da obra piloto, todo furo do modelo tem o símbolo a até ~13 cm
+SIMBOLO_MAX_CM = 200.0
+COR_MIN = 0.3  # o símbolo do furo é cheio de uma cor (uma por disciplina); cinza e branco não contam
+
+
+def simbolos_de_furo(alinhadas: list[dict]) -> list[tuple[float, float]]:
+    """Os símbolos de furo das pranchas encaixadas, nas coordenadas da folha: os desenhos cheios de cor
+    (azul, ciano, rosa, verde...; nada de cinza ou branco) de até SIMBOLO_MAX_CM."""
+    import pymupdf
+    from alinhamento import alinhar as al
+
+    saida = []
+    for pr in alinhadas:
+        k = 72 / 2.54 / float(pr.get("escala") or ESCALA_PADRAO)
+        with pymupdf.open(pr["pdf"]) as doc:
+            page = doc[0]
+            M = page.rotation_matrix
+            for d in page.get_drawings():
+                f = d.get("fill")
+                if not f or len(f) != 3 or max(f) - min(f) <= COR_MIN:
+                    continue
+                r = d["rect"] * M
+                if max(r.width, r.height) > SIMBOLO_MAX_CM * k:
+                    continue
+                saida.append(al.transformar(pr["transformacao"], (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+    return saida
+
+
+def sem_desenho(pecas: list[dict], simbolos: list[tuple[float, float]], pt_por_cm: float,
+                raio_cm: float = RAIO_DO_SIMBOLO_CM) -> list[str]:
+    """Nomes dos furos sem símbolo de furo da prancha a até raio_cm (furo que a prancha não desenha)."""
+    R = raio_cm * pt_por_cm
+    grade: dict[tuple[int, int], list] = {}
+    for x, y in simbolos:
+        grade.setdefault((int(x // R), int(y // R)), []).append((x, y))
+    saida = []
+    for p in pecas:
+        if p.get("tipo") != "F":
+            continue
+        x0, y0, x1, y1 = p["rotulo"]
+        x, y = (x0 + x1) / 2, (y0 + y1) / 2
+        gx, gy = int(x // R), int(y // R)
+        perto = any((sx - x) ** 2 + (sy - y) ** 2 <= R * R
+                    for i in (-1, 0, 1) for j in (-1, 0, 1) for sx, sy in grade.get((gx + i, gy + j), ()))
+        if not perto:
+            saida.append(p["nome"])
+    return saida
+
+
+def marcar_tipo(furos: list[dict], tipo_de: str, sem: list[str]) -> None:
+    """Pavimento cujos furos vêm de outro (tipo): cada furo leva furo.tipo_de; o que a prancha do próprio
+    pavimento não desenha leva furo.a_conferir (decisão do Nicolas de 21/11: nada se apaga)."""
+    falta = set(sem)
+    for f in furos:
+        f["furo"] = {**(f.get("furo") or {}), "tipo_de": tipo_de}
+        if f["nome"] in falta:
+            f["furo"]["a_conferir"] = True
+
+
 def folha_de_furacao(forma: dict, alinhadas: list[dict], imprimir=print) -> dict | None:
     """A planta de furação do pavimento (no formato de folha_unica.ler_folha_unica). Marca
     forma["furos_separados"] = True. Sem prancha alinhada ou sem furo, não sai planta."""

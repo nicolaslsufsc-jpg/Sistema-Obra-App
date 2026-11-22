@@ -1182,6 +1182,7 @@
 
 .ifc-da-obra-lista p {
   margin: 0;
+  max-width: none;
   font-size: 13px;
 }
 
@@ -1224,4 +1225,29 @@
 
 .ifc-vazio-guardados .ifc-da-obra-lista .ifc-botao-largo {
   width: 100%;
+}
+
+/* ---------- Baixar modelo da obra (Google Drive) ---------- */
+
+.ifc a.ifc-botao {
+  text-decoration: none;
+}
+
+.ifc-baixar-drive {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--ifc-superficie-2);
+  font-size: 13px;
+}
+
+.ifc-baixar-drive p {
+  margin: 0;
+}
+
+.ifc-baixar-aviso {
+  font-weight: 600;
+  color: var(--ifc-erro);
 }

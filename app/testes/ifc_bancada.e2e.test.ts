@@ -341,5 +341,75 @@ suite('Leitor de IFC na bancada (Chrome)', () => {
       expect(erros).toEqual([])
       await contexto.close()
     }, 180_000)
+
+    it(`${nome} ${largura}x${altura}: baixar modelo da obra pelo Drive (tamanho, Wi-Fi, importar)`, async () => {
+      const contexto = await navegador.newContext({ viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      // nada sai para o Google nos testes
+      await contexto.route('**/drive.google.com/**', (r: any) => r.abort())
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const capturar = async (passo: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ifc_drive_${nome}_${passo}.png`) })
+      }
+      await p.goto(`${url}?obra=exe`)
+      await p.evaluate(async () => {
+        const raiz = await navigator.storage.getDirectory()
+        for await (const [n] of (raiz as any).entries()) await raiz.removeEntry(n, { recursive: true })
+        localStorage.clear()
+      })
+      await p.reload()
+
+      // lista de exemplo da EXE: nome, disciplina e tamanho
+      const secao = p.getByTestId('modelos-da-obra').first()
+      await secao.waitFor()
+      expect(await secao.innerText()).toContain('lista de exemplo da obra EXE')
+      const grande = secao.getByTestId('modelo-drive').filter({ hasText: 'EXE.HI.LO.000.GERAL-R00.ifc' })
+      expect(await grande.innerText()).toContain('Hidráulico · 1 GB')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('1_lista')
+
+      // antes de baixar: tamanho, Wi-Fi e o aviso de modelo grande para o aparelho
+      await grande.getByRole('button', { name: 'Baixar', exact: true }).click()
+      const texto = await grande.innerText()
+      expect(texto).toContain('1 GB para baixar')
+      expect(texto).toContain('Wi-Fi')
+      expect(texto).toContain('Prefira abrir no PC')
+      const link = grande.getByRole('link', { name: 'Abrir no Drive para baixar' })
+      expect(await link.getAttribute('href')).toBe('https://drive.google.com/uc?export=download&id=exemplo_exe_hidraulico')
+      expect(await link.getAttribute('target')).toBe('_blank')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('2_avisos')
+      const [aba] = await Promise.all([contexto.waitForEvent('page'), link.click()])
+      await aba.close()
+      await grande.getByText('Quando o Drive terminar de baixar').waitFor()
+      await grande.getByRole('button', { name: 'Cancelar' }).count()
+
+      // a obra carrega a lista dela (JSON); o modelo importado aparece como "neste aparelho"
+      const lista = path.join(pasta, 'modelos_drive.json')
+      writeFileSync(
+        lista,
+        JSON.stringify({ tipo: 'sistema-obra/modelos-drive', versao: 1, modelos: [{ nome: 'amostra_ARQ.ifc', disciplina: 'Arquitetura', tamanho: 4000, drive: 'exemplo_exe_amostra_arq' }] }),
+      )
+      await p.setInputFiles('[data-testid=modelos-drive-arquivo] >> nth=0', lista)
+      const item = secao.getByTestId('modelo-drive').filter({ hasText: 'amostra_ARQ.ifc' })
+      await item.waitFor()
+      expect(await secao.innerText()).not.toContain('lista de exemplo')
+      await item.getByRole('button', { name: 'Baixar', exact: true }).click()
+      expect(await item.innerText()).not.toContain('Wi-Fi')
+      await abrirModelos(p, [arq], 1)
+      await p.waitForFunction(() => (window as any).__ifc.guardados.length === 1, null, { timeout: 30_000 })
+      await abrirAba(p, 'Modelos')
+      const noPainel = p.getByTestId('modelo-drive').filter({ hasText: 'amostra_ARQ.ifc' }).first()
+      await noPainel.getByText('neste aparelho').waitFor()
+      await capturar('3_neste_aparelho')
+
+      // a lista fica no aparelho: recarregar não perde
+      await p.reload()
+      await p.getByTestId('modelo-drive').filter({ hasText: 'amostra_ARQ.ifc' }).first().waitFor()
+
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 180_000)
   }
 })

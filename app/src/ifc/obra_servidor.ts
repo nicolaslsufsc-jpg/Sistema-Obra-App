@@ -5,6 +5,7 @@ import { BUCKET_OBRAS } from '../config'
 import { banco, cliente, sincronizador } from '../nucleo/servicos'
 import { comPrazo, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS } from '../fvs/pacote'
 import type { FonteIfcs, ParteIfc } from './obra'
+import { gravarListaLocal, lerLista, lerListaLocal, listaDeExemplo, NOME_LISTA, type FonteListaModelos } from './modelos_drive'
 
 export function fonteDoServidor(obraId: string, usuarioId: string): FonteIfcs {
   return {
@@ -32,5 +33,45 @@ export function fonteDoServidor(obraId: string, usuarioId: string): FonteIfcs {
     async enviarParte(conteudo, nomeOriginal) {
       await sincronizador.registrarArquivo(obraId, usuarioId, 'ifc', conteudo, nomeOriginal)
     },
+  }
+}
+
+/**
+ * Lista "Baixar modelo da obra" com conta: o JSON mais novo chamado `modelos_drive.json` entre os
+ * arquivos do módulo ifc (ver modelos_drive.ts). Fica também no aparelho, para abrir sem internet.
+ */
+export function fonteListaDoServidor(obraId: string, usuarioId: string, podeGravar: boolean, exemploSeVazia: boolean): FonteListaModelos {
+  return {
+    async ler() {
+      const linhas = (await sincronizador.linhas('arquivos', obraId)).filter(
+        (l) => String(l.caminho ?? '').startsWith(`${obraId}/ifc/`) && l.nome_original === NOME_LISTA,
+      )
+      const quando = (l: (typeof linhas)[number]) => String(l.criado_em_servidor ?? l.criado_em_dispositivo ?? '')
+      const maisNova = linhas.sort((a, b) => (quando(a) < quando(b) ? 1 : -1))[0]
+      if (maisNova) {
+        try {
+          const local = await banco.conteudos.get(maisNova.id)
+          let texto: string | null = local?.bytes ? new TextDecoder().decode(local.bytes) : null
+          if (texto === null && navigator.onLine) {
+            const { data } = await comPrazo(cliente.storage.from(BUCKET_OBRAS).download(String(maisNova.caminho)), LIMITE_SEM_DADOS_MS)
+            texto = data ? await data.text() : null
+          }
+          if (texto !== null) {
+            const lista = lerLista(texto)
+            gravarListaLocal(obraId, texto)
+            return lista
+          }
+        } catch {
+          // sem internet ou arquivo com defeito: fica a cópia do aparelho
+        }
+      }
+      return lerListaLocal(obraId) ?? (exemploSeVazia ? listaDeExemplo() : null)
+    },
+    gravar: podeGravar
+      ? async (texto) => {
+          await sincronizador.registrarArquivo(obraId, usuarioId, 'ifc', new Blob([texto], { type: 'application/json' }), NOME_LISTA)
+          gravarListaLocal(obraId, texto)
+        }
+      : undefined,
   }
 }

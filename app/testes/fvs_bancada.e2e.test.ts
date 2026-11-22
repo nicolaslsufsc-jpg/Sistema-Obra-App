@@ -2065,6 +2065,15 @@ suite('FVS na bancada (Chrome)', () => {
         await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), `${nomeDoPonto}: OK`)
         await expect.poll(() => registros(p).then((rs) => rs.filter((r) => r.barra === `pt-${d}-1`).map((r) => [r.item, r.r]))).toEqual([[item, 'C']])
         await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`1/${total} OK`)
+        if (d === 'hidro') {
+          // "Desmarcar" (bug do testador, 21/11): o 2º toque abre a caixa; Desmarcar grava registro vazio, sem NC
+          await tocarNaPlanta(p, 300, y)
+          await p.getByTestId('fvs-nc-ponto-desmarcar').click()
+          await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), `${nomeDoPonto}: sem conferir`)
+          await expect.poll(() => registros(p).then((rs) => rs.filter((r) => r.barra === `pt-${d}-1`).map((r) => [r.item, r.r]))).toEqual([[item, 'C'], [item, null]])
+          await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe(`0/${total} OK`)
+          expect(await p.getByTestId('fvs-nc-ponto').count()).toBe(0)
+        }
         // a linha (eletroduto, tubulação de incêndio) também se toca, no meio dela
         if (d === 'eletrico') {
           await enquadrar(p, [-(y + 60), 750], 2)
@@ -2089,15 +2098,13 @@ suite('FVS na bancada (Chrome)', () => {
       const pavimento = p.getByTestId('fvs-pavimento')
       await noInicio(p)
       expect(await pavimento.count()).toBe(1)
-      // Estrutura (nível 3, 21/11/2026): seção "Furação" com as três camadas, na ordem da obra, e quantos furos cada uma tem
+      // Estrutura (nível 3): uma aba só, "Furos" (21/11 noite, "compilar as abas em uma só"); as camadas antigas
+      // ficam no seletor do topo da planta
       await naDisciplina(p, 'estrutura')
-      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação' })
+      const secao = p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Furos$/ }) })
       await secao.waitFor()
-      expect(await secao.locator('h3').textContent()).toBe('Furação')
-      const linhas = (await secao.getByRole('button').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
-      expect(linhas.map((t: string) => t.match(/Furos de [^ ]+/)?.[0])).toEqual(['Furos de esgoto', 'Furos de água', 'Furos de elétrica'])
-      expect(linhas[0]).toContain('3 furos')
-      expect(linhas[1]).toContain('1 furo')
+      expect(await secao.getByRole('button').count()).toBe(1)
+      expect((await secao.getByRole('button').innerText()).replace(/\s+/g, ' ')).toMatch(/^Furos /)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_menu.png`, fullPage: true })
 
@@ -2130,12 +2137,19 @@ suite('FVS na bancada (Chrome)', () => {
         if (trecho === 'Trecho 1') await abrirForma(p)
         else {
           await naDisciplina(p, 'estrutura')
-          await p.getByTestId('fvs-secao-outra').getByRole('button', { name: new RegExp(trecho) }).click()
+          await secao.getByRole('button').click()
+          await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+          // a entrada abre a primeira camada (esgoto); as outras pelo seletor do topo
+          if (trecho !== 'Furos de esgoto') await p.getByRole('combobox', { name: 'Trecho' }).selectOption({ label: trecho })
         }
         await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       }
       const voltar = async () => {
-        await p.locator('.fv-topo .fv-voltar').click()
+        // a camada trocada pelo seletor do topo entra no histórico: o Voltar passa por ela antes do menu
+        for (let i = 0; i < 3 && (await p.locator('.fv-mapa').count()); i++) {
+          await p.locator('.fv-topo .fv-voltar').click()
+          await p.waitForTimeout(400)
+        }
         await noInicio(p)
       }
 
@@ -2216,11 +2230,9 @@ suite('FVS na bancada (Chrome)', () => {
       await fechar()
       await voltar()
 
-      // no menu, o avanço de cada etapa da furação (21/11, "em etapas similares às barras de aço")
+      // no menu, o avanço da aba Furos soma as camadas: FL1 OK, FL2 errado
       await naDisciplina(p, 'estrutura')
-      const etapas = async () => (await secao.getByRole('button').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
-      await expect.poll(async () => (await etapas())[0]).toContain('1 de 3 furos OK')
-      expect((await etapas())[1]).toContain('0 de 1 furo OK · 1 errado')
+      await expect.poll(async () => (await secao.getByRole('button').innerText()).replace(/\s+/g, ' ')).toMatch(/1 de \d+ furos OK · 1 errado/)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_menu_avanco.png`, fullPage: true })
 
@@ -2268,9 +2280,10 @@ suite('FVS na bancada (Chrome)', () => {
       await naDisciplina(p, 'estrutura')
       await p.getByTestId('fvs-opcao-forma').first().waitFor()
       expect(await p.locator('[data-testid=fvs-opcao-forma][data-tipo=F]').count()).toBe(0)
-      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação' })
+      const secao = p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Furos$/ }) })
       const linha = () => secao.getByRole('button').first().innerText().then((t: string) => t.replace(/\s+/g, ' '))
-      expect(await linha()).toContain('Furação')
+      expect(await secao.getByRole('button').count()).toBe(1)
+      expect(await linha()).toMatch(/^Furos /)
       await secao.getByRole('button').first().click()
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       // uma aba só; contam os 3 da V1, o FL7 (furo de laje em cima da V1: vai para a viga), a caixinha do P1
@@ -2296,16 +2309,67 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_planta.png` })
 
+      // filtro por tipo dentro da aba (21/11 noite): todos primeiro; "Furos em pilar" conta só a caixinha do P1
+      const filtro = p.getByTestId('fvs-filtro-furos')
+      const opcoes = await filtro.locator('option').allTextContents()
+      expect(opcoes[0]).toBe('Todos (10)')
+      expect(opcoes).toContain('Em pilar (1)')
+      expect(opcoes.length).toBeGreaterThan(2)
+      await filtro.selectOption('pilar')
+      await expect.poll(progresso).toBe('1/1 OK')
+      // o furo de laje some da planta: o toque nele não grava nada
+      const antes = await ultimo('FL2')
+      await furo(600, 640)
+      await p.waitForTimeout(600)
+      expect(await ultimo('FL2')).toEqual(antes)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_filtro_pilar.png` })
+      await filtro.selectOption('todos')
+      await expect.poll(progresso).toBe('3/10 OK')
+
+      // "Desmarcar" no painel do furo (bug do testador, 21/11): registro novo vazio, volta a sem conferir
+      await furo(520, 520)
+      await aviso('FL1: errado')
+      await nomeNoPainel(p, 'FL1')
+      await p.getByTestId('fvs-furo-desmarcar').click()
+      await aviso('FL1: sem conferir')
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+      expect(await ultimo('FL1')).toEqual({ ficha: FICHA_L, item: 6, r: null })
+      await expect.poll(progresso).toBe('2/10 OK')
+
       // no menu, o avanço da furação
       await p.locator('.fv-topo .fv-voltar').click()
       await noInicio(p)
       await naDisciplina(p, 'estrutura')
-      await expect.poll(linha).toContain('3 de 10 furos OK')
+      await expect.poll(linha).toContain('2 de 10 furos OK')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_menu.png`, fullPage: true })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: forma publicada antes da planta "Furação" (sem furos_separados): os furos ficam só na Furação`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furos=1&furoslaje=1&furacaototal=antiga`)
+      await noInicio(p)
+      await naDisciplina(p, 'estrutura')
+      await p.getByTestId('fvs-opcao-forma').first().waitFor()
+      // sem a opção "Furos de viga" na forma, e a aba Furos no menu
+      await p.waitForTimeout(800)
+      expect(await p.locator('[data-testid=fvs-opcao-forma][data-tipo=F]').count()).toBe(0)
+      expect(await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Furos$/ }) }).count()).toBe(1)
+      // na forma, nenhum F: nem aba, nem bolinha
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await p.locator('.fv-seg button').allTextContents()).not.toContain('Furos')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_forma_antiga_${nome}.png` })
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 60_000)
 
     it(`${nome} ${largura}x${altura}: ligação entre peças: o C no item da área de laje marca os pilares e as vigas de dentro dela, mostra a origem e se desfaz`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })

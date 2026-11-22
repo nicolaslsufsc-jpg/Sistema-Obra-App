@@ -36,6 +36,11 @@ import {
   situacaoDoFuroPeloUltimo,
   furoDeLajeEscondido,
   furoDeOutraPlanta,
+  temFuracaoUnica,
+  furoNoFiltro,
+  NOME_DO_FILTRO_DE_FUROS,
+  opcoesDoFiltroDeFuros,
+  type FiltroDeFuros,
   furosConferiveisPorArea,
   juntarNumerosPerto,
   multiploDoQuadrado,
@@ -339,6 +344,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const deArmadura = ehDeArmadura(planta)
   // planta de furos de laje de uma camada (21/11/2026): também nas coordenadas da forma, com as áreas dela
   const deFuracao = ehDeFuracao(planta)
+  // forma de pavimento com a planta "Furação" (todos os furos): os F da forma ficam só lá
+  const formaSemFuros = planta.disciplina === 'estrutura' && temFuracaoUnica(irmas.filter(ehDeFuracao))
   const setorDasAreas =
     deArmadura || deFuracao
       ? (() => {
@@ -372,7 +379,13 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // a modulação (paredes) não tem área de laje
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deFuracao && !deInstalacoes && (pode || areasDaPlanta.length > 0)
   /** Furo de laje de outra planta (forma com os furos de laje separados, ou outra camada): fica escondido aqui. */
-  const deOutraPlanta = (e: ElementoPacote | undefined) => furoDeOutraPlanta(e, manifest)
+  // aba Furos (21/11/2026, "compilar as abas em uma só"): a planta de furação com todos os furos ganha um
+  // filtro por tipo (esgoto, água, elétrica, viga, pilar); o furo fora do filtro fica escondido como o de outra planta
+  const [filtroFuros, setFiltroFuros] = useState<FiltroDeFuros>('todos')
+  const opcoesDoFiltro = useMemo(() => (deFuracao && !manifest?.furos_laje ? opcoesDoFiltroDeFuros(manifest?.elementos) : []), [manifest, deFuracao])
+  const comFiltroDeFuros = opcoesDoFiltro.length > 2
+  const deOutraPlanta = (e: ElementoPacote | undefined) =>
+    furoDeOutraPlanta(e, manifest) || (formaSemFuros && e?.tipo === 'F') || (filtroFuros !== 'todos' && e?.tipo === 'F' && !furoNoFiltro(e, filtroFuros))
   // barras de laje das pranchas de armação (plano A, 18/11): aba Barras, uma camada de cada vez
   const barras = manifest?.barras
   // na planta de armadura, só a direção dela; na forma com a armadura em plantas próprias, nenhuma (sem aba Barras)
@@ -498,14 +511,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const numerosDasAreas = useMemo(() => {
     const escala = manifest?.escala ?? 50
     // só os furos desta planta (a forma com os de laje separados conta só os de viga; a planta de uma camada, os dela)
-    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados || manifest.furos_separados)
+    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados || manifest.furos_separados || formaSemFuros || filtroFuros !== 'todos')
       ? Object.fromEntries(Object.entries(manifest.elementos).filter(([, e]) => !deOutraPlanta(e)))
       : manifest?.elementos
     const grupos = furosConferiveisPorArea(daqui, furosDeLaje, areasDaPlanta, escala, multiploDoQuadrado(zoomDosNumeros, escala))
     // número de 44 px de altura e até ~100 px de largura ("110 furos"), convertido para pontos da folha
     const pt = 1 / 2 ** zoomDosNumeros
     return juntarNumerosPerto(grupos, 104 * pt, 48 * pt)
-  }, [manifest, furosDeLaje, chaveDasAreas, zoomDosNumeros])
+  }, [manifest, furosDeLaje, chaveDasAreas, zoomDosNumeros, filtroFuros])
   /** Onde cada esquadria é desenhada: as que caem juntas se afastam (esquadrias_longe.ts). */
   const ptPorMEsq = useMemo(() => pontosPorMetroDasEsquadrias(manifest?.elementos, manifest?.escala), [manifest])
   const posicoesEsq = useMemo(() => posicoesDasEsquadrias(manifest?.elementos, ptPorMEsq), [manifest, ptPorMEsq])
@@ -1695,6 +1708,42 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     acertarDono(f)
   }
 
+  /** O furo tem resultado (OK, errado ou NA) no item dele: o painel mostra "Desmarcar". */
+  const furoMarcado = (id: string) => {
+    const f = alvoDoFilho(id)
+    if (!f) return false
+    const atual = ultimosPorItem(daFichaAberta(eventosDe(id), null).filter((x) => x.ficha_id === f.ficha.id)).get(f.item)
+    return (atual?.resultado ?? null) !== null
+  }
+
+  /**
+   * "Desmarcar" no painel do furo (bug do testador, 21/11): grava um registro novo vazio no item do furo
+   * (volta a sem conferir) e acerta a peça dona. Vale depois que o "Desfazer" do aviso sumiu.
+   */
+  const desmarcarFuro = (id: string) => {
+    const f = alvoDoFilho(id)
+    const e = elementoDe(id)
+    if (!f || !e) return
+    fecharPainel()
+    executar(async (evs) => {
+      const eventos = daFichaAberta(evs(id), null)
+      const anterior = ultimosPorItem(eventos.filter((x) => x.ficha_id === f.ficha.id)).get(f.item)
+      if ((anterior?.resultado ?? null) === null) return []
+      const gravado = await desmarcarR(c, id, f.ficha, f.item, eventos)
+      avisar(`${e.nome}: sem conferir`, () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const volta = await voltarItem(c, gravado, anterior, daFichaAberta(evs2(id), null))
+          avisar(volta ? `Desfeito: ${e.nome}` : 'Nada a desfazer: o furo já mudou.')
+          return volta
+        })
+        acertarDono(f)
+      })
+      return gravado
+    })
+    acertarDono(f)
+  }
+
   /** Depois do toque num furo: leva o resultado ao item da viga ou, no furo de laje, aos itens da área. */
   const acertarDono = (f: { vigaId: string; item: number; laje?: boolean }) => (f.laje ? f.vigaId && acertarArea(f.vigaId) : acertarViga(f.vigaId, f.item))
 
@@ -2083,7 +2132,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       elementos.filter(
         ([id, e]) => e.tipo === tipo && !e.so_detalhe && !foraDoServico(e) && (e.tipo !== 'F' || (furoConferivel(e, furosDeLaje.get(id)) && !deOutraPlanta(e))),
       ),
-    [elementos, tipo, furosDeLaje, codigoDoServico],
+    [elementos, tipo, furosDeLaje, codigoDoServico, filtroFuros],
   )
   let liberadas = 0
   let paraConcretar = 0
@@ -2199,7 +2248,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
           .map(([id, e]) => ({ id, nome: e.nome, comodo: e.comodo, sit: situacao(id, e) }))
       : []
-  const escolha = tipos.length > 1 ? 'tipos' : fichasTipo.length > 1 ? 'fichas' : 'nada'
+  const escolha = tipos.length > 1 ? 'tipos' : fichasTipo.length > 1 || comFiltroDeFuros ? 'fichas' : 'nada'
   // planta de ambientes com esquadrias: as abas e, ao lado, o serviço (no celular, o topo ganha uma linha)
   const comServico = escolha === 'tipos' && tipos.includes('A') && fichasPara('A', dados.fichas).length > 1
   // pavimento com mais de um trecho: a caixa de escolha (44 px) deixa o topo mais alto (fvs.css)
@@ -2241,7 +2290,23 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             ))}
           </div>
         )}
-        {(escolha === 'fichas' || comServico) && (
+        {comFiltroDeFuros && (
+          // aba Furos: um tipo de furo de cada vez (a contagem do topo e os números de longe seguem o filtro)
+          <select
+            class="fv-servico"
+            aria-label="Tipo de furo"
+            data-testid="fvs-filtro-furos"
+            value={filtroFuros}
+            onChange={(ev) => setFiltroFuros((ev.target as HTMLSelectElement).value as FiltroDeFuros)}
+          >
+            {opcoesDoFiltro.map(({ filtro, n }) => (
+              <option value={filtro} key={filtro}>
+                {NOME_DO_FILTRO_DE_FUROS[filtro]} ({n})
+              </option>
+            ))}
+          </select>
+        )}
+        {(escolha === 'fichas' || comServico) && !comFiltroDeFuros && (
           // planta de ambientes: a cor de cada ambiente é a situação dele na ficha (serviço) escolhida aqui;
           // com esquadrias, a planta tem abas (Ambientes, Esquadrias) e o serviço continua aqui, nas duas
           <select
@@ -2661,7 +2726,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           }}
         >
           <b>Ponto errado: {nomeDoPonto(pontos[ncDaBarra.id])}</b>
-          <p class="discreto">O NC só é gravado depois de Confirmar.</p>
+          <p class="discreto">O NC só é gravado depois de Confirmar. Desmarcar volta o ponto a sem conferir.</p>
           <label>
             O que está errado?
             <textarea
@@ -2679,6 +2744,21 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             <button type="submit" class="on" data-testid="fvs-nc-ponto-confirmar" disabled={!ncDaBarra.texto.trim()}>
               Confirmar
             </button>
+            {situacaoParaToque(ncDaBarra.id) !== 'nada' && (
+              <button
+                type="button"
+                data-testid="fvs-nc-ponto-desmarcar"
+                onClick={() => {
+                  // registro novo vazio: volta a sem conferir sem passar por NC (bug do testador, 21/11)
+                  const id = ncDaBarra.id
+                  setNcDaBarra(null)
+                  fecharSobre()
+                  gravarPonto(id, null, null)
+                }}
+              >
+                Desmarcar
+              </button>
+            )}
             <button
               type="button"
               data-testid="fvs-nc-ponto-cancelar"
@@ -2721,6 +2801,21 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             <button type="submit" class="on" data-testid="fvs-nc-barra-confirmar" disabled={!ncDaBarra.texto.trim()}>
               Confirmar
             </button>
+            {situacaoParaToque(ncDaBarra.id) !== 'nada' && (
+              <button
+                type="button"
+                data-testid="fvs-nc-barra-desmarcar"
+                onClick={() => {
+                  // registro novo vazio: volta a sem conferir sem passar por NC (bug do testador, 21/11)
+                  const id = ncDaBarra.id
+                  setNcDaBarra(null)
+                  fecharSobre()
+                  gravarBarra(id, null, null)
+                }}
+              >
+                Desmarcar
+              </button>
+            )}
             <button
               type="button"
               data-testid="fvs-nc-barra-cancelar"
@@ -2828,6 +2923,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
               ? { area: furosDeLaje.get(sel) ? { id: furosDeLaje.get(sel)!.id, nome: furosDeLaje.get(sel)!.nome } : undefined, aviso: furoSemItem(sel) }
               : undefined
           }
+          aoDesmarcarFuro={pecaSel.tipo === 'F' && furoMarcado(sel) ? () => desmarcarFuro(sel) : undefined}
           area={areaSel}
           aoRedesenhar={areaSel ? () => comecarDesenho(areaSel.id) : undefined}
           aoApagarArea={areaSel ? () => apagarArea(areaSel) : undefined}
@@ -2921,6 +3017,8 @@ interface PropsPainel {
   instalacoes?: Partial<Record<Instalacao, Situacao[]>>
   /** só furo de laje: a área em que ele cai (sem área: fora de área de laje) e por que não marca, se não marcar */
   furoDeLaje?: { area?: { id: string; nome: string }; aviso: string }
+  /** Furo com resultado: "Desmarcar" grava um registro novo vazio (volta a sem conferir). */
+  aoDesmarcarFuro?: () => void
   aoIr: (id: string) => void
   /** abre outra peça trocando a aba (da viga para o furo e de volta) */
   aoIrComTipo: (id: string) => void
@@ -3381,6 +3479,11 @@ function Painel(p: PropsPainel) {
               </p>
             )}
             {!ficha && !(p.furoDeLaje && !p.furoDeLaje.area) && <p class="aviso">{p.furoDeLaje ? p.furoDeLaje.aviso : 'A ficha de viga não tem item de furação: o furo fica só para ver.'}</p>}
+            {p.pode && p.aoDesmarcarFuro && (
+              <button type="button" class="fv-link" data-testid="fvs-furo-desmarcar" onClick={p.aoDesmarcarFuro}>
+                Desmarcar (volta a sem conferir)
+              </button>
+            )}
             {p.furoDeLaje?.area && (
               <button type="button" class="fv-link" data-testid="fvs-ir-area" onClick={() => p.aoIrComTipo(p.furoDeLaje!.area!.id)}>
                 Ver a área {p.furoDeLaje.area.nome}

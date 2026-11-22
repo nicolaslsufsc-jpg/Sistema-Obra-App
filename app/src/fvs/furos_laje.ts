@@ -411,3 +411,59 @@ export function pecaDosFurosDeLaje<M extends { elementos: Record<string, Element
   }
   return novos ? { ...m, elementos: novos } : m
 }
+
+/**
+ * Filtro da aba Furos (21/11/2026, "compilar as abas em uma só"): a planta de furação tem todos os furos do
+ * pavimento; o filtro mostra um tipo de cada vez. Viga e pilar pela peça; laje pela instalação.
+ */
+export type FiltroDeFuros = 'todos' | Instalacao | 'viga' | 'pilar'
+
+export const NOME_DO_FILTRO_DE_FUROS: Record<FiltroDeFuros, string> = {
+  todos: 'Todos',
+  esgoto: 'Esgoto',
+  agua: 'Água',
+  eletrica: 'Elétrica',
+  viga: 'Em viga',
+  pilar: 'Em pilar',
+}
+
+/** O tipo do furo para o filtro (undefined: furo de laje que não é de esgoto, água nem elétrica). */
+export function tipoDoFuro(e: ElementoPacote): Exclude<FiltroDeFuros, 'todos'> | undefined {
+  if (e.tipo !== 'F') return undefined
+  if (e.viga) return 'viga'
+  if (e.pilar) return 'pilar'
+  return camadaDoFuro(e)
+}
+
+/** Planta de furos de uma camada só (as de 21/11 manhã: "Furos de esgoto", "Furos de água", "Furos de elétrica"). */
+export function ehDeCamadaDeFuros(trecho: string): boolean {
+  return /esgoto|água|agua|elétrica|eletrica/i.test(trecho)
+}
+
+/**
+ * O pavimento tem a planta de furação com todos os furos (trecho "Furação", não de camada): a forma esconde
+ * os furos dela mesmo sem "furos_separados" (forma publicada antes, não republicada; combinado com o 20, 21/11).
+ * plantas: as de furação do pavimento.
+ */
+export function temFuracaoUnica(plantas: ReadonlyArray<{ trecho: string }>): boolean {
+  return plantas.some((p) => !ehDeCamadaDeFuros(p.trecho))
+}
+
+/** O furo aparece com este filtro? */
+export function furoNoFiltro(e: ElementoPacote, f: FiltroDeFuros): boolean {
+  return f === 'todos' || tipoDoFuro(e) === f
+}
+
+/** As opções do filtro com quantos furos conferíveis cada uma tem (só as que têm algum), "todos" primeiro. */
+export function opcoesDoFiltroDeFuros(elementos: Record<string, ElementoPacote> | undefined): Array<{ filtro: FiltroDeFuros; n: number }> {
+  const n = new Map<FiltroDeFuros, number>()
+  let todos = 0
+  for (const e of Object.values(elementos ?? {})) {
+    if (e.tipo !== 'F' || e.so_detalhe || !furoConferivel(e)) continue
+    const t = tipoDoFuro(e)
+    todos++
+    if (t) n.set(t, (n.get(t) ?? 0) + 1)
+  }
+  const ordem: FiltroDeFuros[] = ['esgoto', 'agua', 'eletrica', 'viga', 'pilar']
+  return [{ filtro: 'todos' as FiltroDeFuros, n: todos }, ...ordem.filter((f) => n.get(f)).map((f) => ({ filtro: f, n: n.get(f)! }))]
+}

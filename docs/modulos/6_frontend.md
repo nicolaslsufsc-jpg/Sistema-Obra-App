@@ -65,6 +65,11 @@ Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
   - cabeçalho comum em `app/src/telas/Cabecalho.tsx`: só a seta "‹" à esquerda (igual em toda tela; o leitor de tela lê "Voltar" ou "Voltar ao menu"), título que quebra em duas linhas, nunca cortado, e ações à direita. Os `Topo` do Concreto, do Projetos e do Documentos usam ele; as telas da FVS (menos a planta) usam as mesmas classes;
   - o "Reportar" do Concreto saiu de flutuante e foi para o cabeçalho de cada tela (no celular, só o "!"). No mapa do Concreto ele continua no canto, como antes;
   - falta: o topo da planta da FVS (depois da junção da 10), o mapa do Concreto e os passos 3 a 5 (tabelas, Concreto, textos).
+- **Guia de estilo, depois do #61 (22/11):**
+  - o tema, o cabeçalho comum e a tabela comum (passo 3, ainda sem uso em tela) estão na main pelo #61;
+  - prints do cabeçalho em 375 px e no tablet, nos dois temas, na pasta `cabecalho_2026-11-22` (Concreto, Projetos, Documentos e FVS);
+  - lista dos textos fora do guia, por tela: `docs/TEXTOS_FORA_DO_GUIA.md` (110 textos). Só a lista; cada frente troca os textos das telas dela;
+  - falta: o topo da planta da FVS, o mapa do Concreto, a tabela nas telas (Concreto e Projetos, depois das frentes 04, 10 e 11) e a troca dos textos.
 
 ## Pendências
 1. **Um estilo só para aviso, toast e tela vazia.**
@@ -78,4 +83,4 @@ Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
 Uma barra comum em todas as telas, com "‹ Menu" à esquerda, inclusive na planta da FVS. Só depois que o #31 (topo da TelaPlanta, frente 02) entrar na main, e combinado com o Professor.
 
 ## Onde ficam os prints
-Ficam fora do git, na pasta "Frontend" do PC do Nicolas: o levantamento de 18/11, os prints de `menu_pr1`, `menu_ifc_doc_2026-11-20` e `menu_heuristicas_2026-11-20` (com a proposta) `fvs_niveis_2026-11-21` (os 3 níveis da FVS em 375 px e tablet) e `exportar_pdf_2026-11-21` (os PDFs gerados e os botões no celular).
+Ficam fora do git, na pasta "Frontend" do PC do Nicolas: o levantamento de 18/11, os prints de `menu_pr1`, `menu_ifc_doc_2026-11-20` e `menu_heuristicas_2026-11-20` (com a proposta) `fvs_niveis_2026-11-21` (os 3 níveis da FVS em 375 px e tablet) e `exportar_pdf_2026-11-21` (os PDFs gerados e os botões no celular), `guia_estilo_2026-11-21` e `cabecalho_2026-11-22` (o guia de estilo nos dois temas).

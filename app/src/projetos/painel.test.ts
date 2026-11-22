@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chaveNumero, cruzar, lerData, lerDistribuicao, lerRevisao, lerVigentes, resumir, rotuloRev } from './painel'
+import { situacaoPor, chaveNumero, cruzar, lerData, lerDistribuicao, lerRevisao, lerVigentes, resumir, rotuloRev } from './painel'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 
 
@@ -87,5 +87,22 @@ describe('cruzamento (regras de 14/11/2026)', () => {
     expect(r.faixas).toEqual([2, 1, 1, 0])
     expect(r.porEmpresa[0]).toMatchObject({ nome: 'Empreiteira Alfa', quantas: 3 })
     expect(r.porDisciplina.map((b) => b.nome)).toContain('ARQUITETÔNICO')
+  })
+})
+
+describe('quadro de situação (topo do painel)', () => {
+  const x = cruzar(lerDistribuicao(DISTRIBUICAO_EXE), lerVigentes(VIGENTES_EXE), '2026-11-14')
+  it('por disciplina: só cópias em campo; a soma bate com o resumo; quem tem mais a trocar vem primeiro', () => {
+    const d = situacaoPor(x, (y) => y.copia.disciplinaNome || y.copia.disciplina)
+    const r = resumir(x)
+    const soma = (k: 'emDia' | 'trocar' | 'conferir' | 'total') => d.reduce((s, l) => s + l[k], 0)
+    expect([soma('total'), soma('emDia'), soma('trocar'), soma('conferir')]).toEqual([r.emCampo, r.emDia, r.desatualizadas.length, r.conferir.length])
+    expect(d.every((l) => l.total === l.emDia + l.trocar + l.conferir)).toBe(true)
+    expect(d.map((l) => l.trocar)).toEqual([...d.map((l) => l.trocar)].sort((a, b) => b - a))
+  })
+  it('por pessoa: cada pessoa com o que tem a trocar', () => {
+    const p = situacaoPor(x, (y) => `${y.copia.empresa} · ${y.copia.colaborador}`)
+    expect(p.find((l) => l.nome === 'Empreiteira Alfa · João')).toMatchObject({ trocar: 1 })
+    expect(p.find((l) => l.nome === 'Formas Delta · Ana')).toMatchObject({ trocar: 0, emDia: 2 })
   })
 })

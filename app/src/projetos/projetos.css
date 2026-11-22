@@ -1004,3 +1004,79 @@ button.pj-selo.pj-selo-botao {
   text-decoration: underline dotted;
   text-underline-offset: 2px;
 }
+
+/* ---------- Quadro de situação no topo do painel (22/11) ---------- */
+.pj-sit h3 {
+  font-size: 0.95rem;
+  margin: 0.9rem 0 0.2rem;
+}
+.pj-sit-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 0.25rem 0 0;
+}
+.pj-sit-legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.pj-sit-legenda i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.pj-sit i.trocar {
+  background: var(--erro);
+}
+.pj-sit i.conferir {
+  background: var(--atencao-borda);
+}
+.pj-sit i.emdia {
+  background: var(--texto-1b5e20);
+}
+.pj-sit-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pj-sit-lista li + li {
+  border-top: 1px solid var(--borda);
+}
+button.pj-sit-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.15rem;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.5rem 0.25rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.pj-sit-linha:hover,
+button.pj-sit-linha:focus-visible {
+  background: var(--fundo-f3f5f8);
+}
+.pj-sit-linha b {
+  overflow-wrap: anywhere;
+}
+.pj-sit-trilho {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin-top: 0.15rem;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.pj-sit-trilho i {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+}

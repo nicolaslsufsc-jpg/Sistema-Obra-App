@@ -25,7 +25,7 @@ export type TelaProjetos =
   | { nome: 'obra' }
   | { nome: 'painel'; importar?: boolean }
   | { nome: 'pranchas-base'; filtro?: FiltroPrancha }
-  | { nome: 'entregas-base'; filtro?: FiltroEntrega }
+  | { nome: 'entregas-base'; filtro?: FiltroEntrega; busca?: string }
   | { nome: 'a-entregar' }
   | { nome: 'agora' }
   | { nome: 'pessoas' }
@@ -131,7 +131,7 @@ export function ModuloProjetos({
       conteudo = <TelaPranchasBase ctx={ctx} aoSair={aoSair} filtroInicial={tela.filtro} />
       break
     case 'entregas-base':
-      conteudo = <TelaEntregasBase ctx={ctx} aoSair={aoSair} filtroInicial={tela.filtro} />
+      conteudo = <TelaEntregasBase ctx={ctx} aoSair={aoSair} filtroInicial={tela.filtro} buscaInicial={tela.busca} />
       break
     case 'a-entregar':
       conteudo = <TelaAEntregar ctx={ctx} aoSair={aoSair} />

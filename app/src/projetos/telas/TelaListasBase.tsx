@@ -233,9 +233,9 @@ const PASSA: Record<FiltroEntrega, (x: CopiaCruzada) => boolean> = {
   todas: () => true,
 }
 
-export function TelaEntregasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto; aoSair: () => void; filtroInicial?: FiltroEntrega }) {
+export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: { ctx: Contexto; aoSair: () => void; filtroInicial?: FiltroEntrega; buscaInicial?: string }) {
   const { base, cruzadas, resumo } = usarBase(ctx)
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = useState(buscaInicial ?? '')
   const [filtro, setFiltro] = useState<FiltroEntrega>(filtroInicial ?? 'em campo')
   const [quantas, setQuantas] = useState(PAGINA)
 
@@ -245,7 +245,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto
   )
 
   if (base === undefined) return <main class="tela">Carregando…</main>
-  const achadas = ordenadas.filter((x) => contem(busca, x.copia.empresa, x.copia.colaborador, x.copia.codigo, x.copia.titulo, x.copia.disciplinaNome))
+  const achadas = ordenadas.filter((x) => contem(busca, x.copia.empresa, x.copia.colaborador, x.copia.codigo, x.copia.titulo, x.copia.disciplinaNome, x.copia.disciplina))
   const filtradas = achadas.filter(PASSA[filtro])
   const n = (f: FiltroEntrega) => achadas.filter(PASSA[f]).length
   const folha = (): FolhaPdf => ({

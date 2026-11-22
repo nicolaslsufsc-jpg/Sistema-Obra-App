@@ -16,6 +16,7 @@ import { fichaV2Xlsx, nomeFichaV2 } from '../ficha_v2'
 import type { RegistroEscritorio } from '../edicoes'
 import { baixarBlob } from '../../nucleo/baixar'
 import { frasesAgora, oQueFazerAgora } from '../agora'
+import { QuadroSituacao } from './QuadroSituacao'
 
 const LIMITE = 40
 
@@ -83,6 +84,7 @@ function Painel({
       <button type="button" class={`pj-agora-topo ${agora.copias || agora.recolher.length ? 'ruim' : 'bom'}`} onClick={() => trocar({ nome: 'agora' })} data-testid="painel-agora">
         <strong>O que fazer agora:</strong> {frasesAgora(agora)} ›
       </button>
+      <QuadroSituacao cruzadas={cruzadas} ir={ir} />
       {/* cada número abre a lista dele (item D) */}
       <ul class="pj-cartoes" aria-label="Resumo" data-testid="painel-resumo">
         <li class="bom pj-tocavel" data-testid="painel-cartao-em-dia" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'canteiro' }))}>

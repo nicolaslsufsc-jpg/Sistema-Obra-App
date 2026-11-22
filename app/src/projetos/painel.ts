@@ -374,6 +374,34 @@ function barras(itens: readonly CopiaCruzada[], chave: (x: CopiaCruzada) => stri
   return [...m.values()].sort((a, b) => b.quantas - a.quantas || b.maiorAtraso - a.maiorAtraso || a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
+/** Uma linha do quadro de situação: quantas cópias em campo estão em dia, a trocar e a conferir. */
+export interface Situacao {
+  nome: string
+  emDia: number
+  trocar: number
+  conferir: number
+  total: number
+}
+
+/**
+ * Cópias em campo agrupadas (por disciplina, por pessoa...), para o quadro do topo do painel (22/11).
+ * Quem tem mais a trocar vem primeiro; depois quem tem mais cópias.
+ */
+export function situacaoPor(cruzadas: readonly CopiaCruzada[], chave: (x: CopiaCruzada) => string): Situacao[] {
+  const m = new Map<string, Situacao>()
+  for (const x of cruzadas) {
+    if (x.situacao !== 'em campo') continue
+    const k = chave(x)
+    const s = m.get(k) ?? { nome: k, emDia: 0, trocar: 0, conferir: 0, total: 0 }
+    if (x.resultado === 'em dia') s.emDia++
+    else if (x.resultado === 'desatualizada') s.trocar++
+    else s.conferir++
+    s.total++
+    m.set(k, s)
+  }
+  return [...m.values()].sort((a, b) => b.trocar - a.trocar || b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
 export function resumir(cruzadas: readonly CopiaCruzada[]): Resumo {
   const campo = cruzadas.filter((x) => x.situacao === 'em campo')
   const desatualizadas = campo

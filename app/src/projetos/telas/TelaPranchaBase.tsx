@@ -2,7 +2,7 @@
 // todas as cópias dela, a pasta do escritório e o histórico. Quem gere a obra corrige aqui; nada se apaga:
 // cada correção é uma linha nova (projetos/edicoes.ts) e a anterior fica no histórico.
 import { useMemo, useState } from 'preact/hooks'
-import { podeGerir } from '../dados'
+import { podeGerir, podeRegistrar } from '../dados'
 import { chaveFolha, compararEscritorio, historicoDaPrancha, type CorrecaoCopia, type Edicao, type NovaEdicao } from '../edicoes'
 import { chaveNumero, melhor, rotuloRev, type Copia, type CopiaCruzada, type Fase, type Vigente } from '../painel'
 import type { Contexto } from './ModuloProjetos'
@@ -24,6 +24,12 @@ export function alvoDaFolha(v: Vigente): AlvoPrancha {
 /** A prancha de uma linha do painel. */
 export function alvoDe(x: CopiaCruzada): AlvoPrancha {
   return x.vigente ? alvoDaFolha(x.vigente) : { disciplina: x.copia.disciplina, numero: chaveNumero(x.copia.codigo) }
+}
+
+/** Onde a cópia está registrada: a linha da ficha ou a entrega do app (21/11/2026). */
+export function ondeDaCopia(c: Copia): string {
+  if (!c.app) return `linha ${c.linha}`
+  return c.app.assinaturaId ? 'entrega do app, assinada' : 'entrega do app'
 }
 
 export function seloDe(x: CopiaCruzada): { classe: string; texto: string } {
@@ -127,7 +133,7 @@ export function TelaPranchaBase({ ctx, alvo }: { ctx: Contexto; alvo: AlvoPranch
         {emCampo.length === 0 && <p class="discreto">Nenhuma cópia em campo.</p>}
         <ul class="pj-lista-painel" data-testid="prancha-em-campo">
           {emCampo.map((x) => (
-            <LinhaCopia key={x.copia.linha} x={x} gestor={gestor} empresas={empresas} hoje={dados.hoje} aoSalvar={(d, texto) => gravar({ tipo: 'copia', alvo: x.copia.linha, codigo: x.copia.codigo, dados: d }, texto)} />
+            <LinhaCopia key={x.copia.linha} x={x} gestor={gestor} registra={podeRegistrar(obra.papel)} ir={ctx.ir} empresas={empresas} hoje={dados.hoje} aoSalvar={(d, texto) => gravar({ tipo: 'copia', alvo: x.copia.linha, codigo: x.copia.codigo, dados: d }, texto)} />
           ))}
         </ul>
       </section>
@@ -137,7 +143,7 @@ export function TelaPranchaBase({ ctx, alvo }: { ctx: Contexto; alvo: AlvoPranch
           <h2>Fora da conta</h2>
           <ul class="pj-lista-painel" data-testid="prancha-fora">
             {outras.map((x) => (
-              <LinhaCopia key={x.copia.linha} x={x} gestor={gestor} empresas={empresas} hoje={dados.hoje} aoSalvar={(d, texto) => gravar({ tipo: 'copia', alvo: x.copia.linha, codigo: x.copia.codigo, dados: d }, texto)} />
+              <LinhaCopia key={x.copia.linha} x={x} gestor={gestor} registra={podeRegistrar(obra.papel)} ir={ctx.ir} empresas={empresas} hoje={dados.hoje} aoSalvar={(d, texto) => gravar({ tipo: 'copia', alvo: x.copia.linha, codigo: x.copia.codigo, dados: d }, texto)} />
             ))}
           </ul>
         </section>
@@ -237,12 +243,16 @@ function FormVigente({ vigente, aoSalvar }: { vigente: Vigente; aoSalvar: (d: { 
 function LinhaCopia({
   x,
   gestor,
+  registra,
+  ir,
   empresas,
   hoje,
   aoSalvar,
 }: {
   x: CopiaCruzada
   gestor: boolean
+  registra: boolean
+  ir: Contexto['ir']
   empresas: string[]
   hoje: string
   aoSalvar: (d: CorrecaoCopia, texto: string) => Promise<void>
@@ -261,9 +271,24 @@ function LinhaCopia({
         <span class="pj-rev">{rotuloRev(c.fase, c.revisao)}</span> · {plural(c.copias, 'cópia', 'cópias')} · entregue {c.entrega ? dataBR(c.entrega) : `"${c.entregaTexto}"`}
         {c.devolucao ? ` · devolvida ${dataBR(c.devolucao)}` : ''}
         <div class="discreto">
-          linha {c.linha} · {c.titulo}
+          {ondeDaCopia(c)} · {c.titulo}
         </div>
-        {gestor && !modo && (
+        {/* entrega do app: a devolução e o comprovante são da entrega (não se corrige como linha da ficha) */}
+        {c.app && (
+          <div class="pj-botoes-linha" data-testid="copia-do-app">
+            {c.app.assinaturaId && (
+              <button type="button" class="secundario" onClick={() => ir({ nome: 'comprovante', assinaturaId: c.app!.assinaturaId! })}>
+                ✍ Comprovante
+              </button>
+            )}
+            {registra && !c.devolucao && (
+              <button type="button" class="secundario" onClick={() => ir({ nome: 'recolher', documentoId: c.app!.documentoId, entregaId: c.app!.entregaId })}>
+                Registrar devolução
+              </button>
+            )}
+          </div>
+        )}
+        {gestor && !modo && !c.app && (
           <div class="pj-botoes-linha">
             <button type="button" class="secundario" onClick={() => setModo('corrigir')}>
               Corrigir

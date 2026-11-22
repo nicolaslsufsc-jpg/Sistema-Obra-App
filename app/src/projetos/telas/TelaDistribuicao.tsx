@@ -2,13 +2,15 @@
 // Distribuição: quem recebe cada disciplina ou pasta do Autodoc (só o gestor muda; nada se apaga).
 // A entregar: para cada pessoa, as pranchas cuja vigente ela ainda não tem, e a cópia antiga a recolher.
 import { useMemo, useState } from 'preact/hooks'
-import { chavePessoa, lerListaDestinatarios, mesclarLista, type Destinatario } from '../distribuicao'
+import { chavePessoa, chaveRegra, lerListaDestinatarios, mesclarLista, pavimentoDaFolha, sugerirRegras, type Destinatario, type SugestaoRegra } from '../distribuicao'
+import type { CopiaCruzada, Vigente } from '../painel'
+import { ordemPavimento } from '../obra'
 import { podeGerir } from '../dados'
 import { ErroDeArquivo, normalizar, rotuloRev } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { Campo, dataBR, plural } from './comum'
-import { alvoDaFolha } from './TelaPranchaBase'
+import { alvoDaFolha, ondeDaCopia } from './TelaPranchaBase'
 
 const pessoa = (empresa: string, colaborador: string) => (colaborador ? `${empresa} · ${colaborador}` : `${empresa} (qualquer pessoa)`)
 
@@ -61,9 +63,10 @@ export function TelaAEntregar({ ctx, aoSair }: { ctx: Contexto; aoSair: () => vo
                   <br />
                   entregar <span class="pj-rev nova">{rotuloRev(p.vigente.fase, p.vigente.revisao)}</span>
                   {p.regra.copias > 1 ? ` (${p.regra.copias} cópias)` : ''}
+                  {p.regra.pavimento ? ` · ${p.regra.pavimento}` : ''}
                   <div class="discreto">
                     {p.motivo === 'trocar'
-                      ? `recolher ${p.devolver.map((x) => `${rotuloRev(x.copia.fase, x.copia.revisao)} (linha ${x.copia.linha})`).join(', ')}`
+                      ? `recolher ${p.devolver.map((x) => `${rotuloRev(x.copia.fase, x.copia.revisao)} (${ondeDaCopia(x.copia)})`).join(', ')}`
                       : `revisão nova de ${dataBR(p.vigente.data)}`}
                   </div>
                 </div>
@@ -83,7 +86,7 @@ export function TelaAEntregar({ ctx, aoSair }: { ctx: Contexto; aoSair: () => vo
 
 export function TelaDistribuicao({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
   const { obra, avisar, dados } = ctx
-  const { base, corrigida, resumo, regras, destinatarios, salvarRegras } = usarBase(ctx)
+  const { base, corrigida, resumo, regras, destinatarios, salvarRegras, cruzadas } = usarBase(ctx)
   const [inativas, setInativas] = useState(false)
   const gestor = podeGerir(obra.papel)
 
@@ -91,12 +94,20 @@ export function TelaDistribuicao({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
     const m = new Map<string, Destinatario[]>()
     for (const r of regras) {
       if (!r.ativo && !inativas) continue
-      const k = `${r.disciplina}|${r.pasta}`
+      const k = `${r.disciplina}|${r.pasta}|${r.pavimento ?? ''}`
       m.set(k, [...(m.get(k) ?? []), r])
     }
     return [...m.entries()]
-      .map(([k, rs]) => ({ disciplina: k.split('|')[0], pasta: k.split('|')[1], regras: rs.sort((a, b) => pessoa(a.empresa, a.colaborador).localeCompare(pessoa(b.empresa, b.colaborador), 'pt-BR')) }))
-      .sort((a, b) => a.disciplina.localeCompare(b.disciplina, 'pt-BR') || a.pasta.localeCompare(b.pasta, 'pt-BR'))
+      .map(([k, rs]) => {
+        const [disciplina, pasta, pavimento] = k.split('|')
+        return { disciplina, pasta, pavimento, regras: rs.sort((a, b) => pessoa(a.empresa, a.colaborador).localeCompare(pessoa(b.empresa, b.colaborador), 'pt-BR')) }
+      })
+      .sort(
+        (a, b) =>
+          a.disciplina.localeCompare(b.disciplina, 'pt-BR') ||
+          a.pasta.localeCompare(b.pasta, 'pt-BR') ||
+          (a.pavimento ? ordemPavimento(a.pavimento) : -1) - (b.pavimento ? ordemPavimento(b.pavimento) : -1),
+      )
   }, [regras, inativas])
 
   if (base === undefined) return <main class="tela">Carregando…</main>
@@ -114,10 +125,13 @@ export function TelaDistribuicao({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
       <section class="pj-bloco">
         <h2>Lista de distribuição</h2>
         <p class="discreto">
-          Quem recebe cada projeto. A regra pode valer para a disciplina inteira ou para uma pasta do Autodoc dentro dela; a da pasta vale mais. Quando sai revisão nova, a pessoa
-          aparece em "A entregar".
+          Quem recebe cada projeto. A regra pode valer para a disciplina inteira ou para uma pasta do Autodoc dentro dela (a da pasta vale mais), e para todos os pavimentos
+          ou só um. Quando sai revisão nova, a pessoa aparece em "A entregar".
         </p>
         {gestor ? <NovaRegra ctx={ctx} vigentes={corrigida?.vigentes ?? []} empresas={empresasDa(base?.copias ?? [])} regras={regras} salvar={salvarRegras} /> : <p class="discreto">Só o gestor muda a lista.</p>}
+        {gestor && corrigida && cruzadas && (
+          <SugerirRegras vigentes={corrigida.vigentes} cruzadas={cruzadas} regras={regras} hoje={dados.hoje} salvar={salvarRegras} avisar={avisar} />
+        )}
         {gestor && <ImportarLista hoje={dados.hoje} regras={regras} salvar={salvarRegras} avisar={avisar} />}
       </section>
 
@@ -133,9 +147,9 @@ export function TelaDistribuicao({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
         {grupos.length === 0 && <p class="discreto">Lista vazia.</p>}
         <div data-testid="lista-distribuicao">
           {grupos.map((g) => (
-            <div key={`${g.disciplina}|${g.pasta}`}>
+            <div key={`${g.disciplina}|${g.pasta}|${g.pavimento}`}>
               <h3 class="pj-grupo">
-                {g.disciplina} · {g.pasta || 'disciplina inteira'}
+                {g.disciplina} · {g.pasta || 'disciplina inteira'} · {g.pavimento || 'todos os pavimentos'}
               </h3>
               <ul class="pj-lista-painel">
                 {g.regras.map((r) => (
@@ -183,7 +197,7 @@ function NovaRegra({
   salvar,
 }: {
   ctx: Contexto
-  vigentes: { disciplina: string; pasta: string }[]
+  vigentes: { disciplina: string; pasta: string; codigo: string; titulo: string }[]
   empresas: { empresas: string[]; pessoas: string[] }
   regras: Destinatario[]
   salvar: ReturnType<typeof usarBase>['salvarRegras']
@@ -192,6 +206,7 @@ function NovaRegra({
   const [aberto, setAberto] = useState(false)
   const [disciplina, setDisciplina] = useState('')
   const [pasta, setPasta] = useState('')
+  const [pavimento, setPavimento] = useState('')
   const [empresa, setEmpresa] = useState('')
   const [colaborador, setColaborador] = useState('')
   const [copias, setCopias] = useState('1')
@@ -203,16 +218,21 @@ function NovaRegra({
       </button>
     )
   const pastas = [...new Set(vigentes.filter((v) => v.disciplina === disciplina && v.pasta).map((v) => v.pasta))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  // os pavimentos das folhas da disciplina (e da pasta, se escolhida), na ordem da obra
+  const pavimentos = [
+    ...new Set(vigentes.filter((v) => v.disciplina === disciplina && (!pasta || normalizar(v.pasta) === normalizar(pasta))).map((v) => pavimentoDaFolha(v))),
+  ].sort((a, b) => ordemPavimento(a) - ordemPavimento(b) || a.localeCompare(b, 'pt-BR'))
 
   const enviar = async (e: Event) => {
     e.preventDefault()
     const n = Number(copias)
     if (!disciplina || !empresa.trim()) return setErro('Escolha a disciplina e escreva a empresa.')
     if (!Number.isInteger(n) || n < 1) return setErro('Cópias: um número de 1 para cima.')
-    const igual = regras.find((r) => r.disciplina === disciplina && normalizar(r.pasta) === normalizar(pasta) && chavePessoa(r.empresa, r.colaborador) === chavePessoa(empresa, colaborador))
-    if (igual?.ativo) return setErro('Essa pessoa já recebe essa disciplina ou pasta.')
-    await salvar([{ disciplina, pasta, empresa: empresa.trim(), colaborador: colaborador.trim(), copias: n, ativo: true, desde: ctx.dados.hoje, substitui_id: igual?.id ?? null }])
-    ctx.avisar(`${pessoa(empresa.trim(), colaborador.trim())} recebe ${pasta || disciplina}.`)
+    const chave = chaveRegra({ disciplina, pasta, pavimento, empresa, colaborador })
+    const igual = regras.find((r) => chaveRegra(r) === chave)
+    if (igual?.ativo) return setErro(pavimento ? 'Essa pessoa já recebe essa disciplina ou pasta nesse pavimento.' : 'Essa pessoa já recebe essa disciplina ou pasta.')
+    await salvar([{ disciplina, pasta, pavimento, empresa: empresa.trim(), colaborador: colaborador.trim(), copias: n, ativo: true, desde: ctx.dados.hoje, substitui_id: igual?.id ?? null }])
+    ctx.avisar(`${pessoa(empresa.trim(), colaborador.trim())} recebe ${pasta || disciplina}${pavimento ? ` (${pavimento})` : ''}.`)
     setAberto(false)
     setEmpresa('')
     setColaborador('')
@@ -228,6 +248,7 @@ function NovaRegra({
           onChange={(e) => {
             setDisciplina(e.currentTarget.value)
             setPasta('')
+            setPavimento('')
           }}
         >
           <option value="">Escolha…</option>
@@ -240,6 +261,14 @@ function NovaRegra({
         <select value={pasta} onChange={(e) => setPasta(e.currentTarget.value)} disabled={!disciplina}>
           <option value="">Disciplina inteira</option>
           {pastas.map((p) => (
+            <option key={p}>{p}</option>
+          ))}
+        </select>
+      </Campo>
+      <Campo rotulo="Pavimento" dica="Do título da folha. Todos = a pasta ou disciplina inteira.">
+        <select value={pavimento} onChange={(e) => setPavimento(e.currentTarget.value)} disabled={!disciplina} data-testid="regra-pavimento">
+          <option value="">Todos os pavimentos</option>
+          {pavimentos.map((p) => (
             <option key={p}>{p}</option>
           ))}
         </select>
@@ -280,6 +309,120 @@ function NovaRegra({
   )
 }
 
+/**
+ * "Sugerir regras pelo que cada um tem" (21/11/2026, item B): uma sugestão por pessoa × disciplina × pavimento,
+ * das cópias em campo. Nada vem marcado; o gestor marca, muda as cópias e salva só o que confirmou.
+ */
+function SugerirRegras({
+  vigentes,
+  cruzadas,
+  regras,
+  hoje,
+  salvar,
+  avisar,
+}: {
+  vigentes: Vigente[]
+  cruzadas: CopiaCruzada[]
+  regras: Destinatario[]
+  hoje: string
+  salvar: ReturnType<typeof usarBase>['salvarRegras']
+  avisar: Contexto['avisar']
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [marcadas, setMarcadas] = useState<Record<string, boolean>>({})
+  const [copias, setCopias] = useState<Record<string, string>>({})
+  const [salvando, setSalvando] = useState(false)
+  const sugestoes = useMemo(() => (aberto ? sugerirRegras(vigentes, cruzadas, regras, hoje) : []), [aberto, vigentes, cruzadas, regras, hoje])
+  if (!aberto)
+    return (
+      <button type="button" class="secundario" onClick={() => setAberto(true)} data-testid="sugerir-regras">
+        Sugerir regras pelo que cada um tem
+      </button>
+    )
+  const chave = (s: SugestaoRegra) => chaveRegra(s.dados)
+  const escolhidas = sugestoes.filter((s) => marcadas[chave(s)])
+  const erroCopias = escolhidas.some((s) => {
+    const n = Number(copias[chave(s)] ?? s.dados.copias)
+    return !Number.isInteger(n) || n < 1 || n > 50
+  })
+  const confirmar = async () => {
+    if (!escolhidas.length || erroCopias) return
+    setSalvando(true)
+    try {
+      await salvar(escolhidas.map((s) => ({ ...s.dados, copias: Number(copias[chave(s)] ?? s.dados.copias), substitui_id: s.substitui_id })))
+      avisar(`${plural(escolhidas.length, 'regra salva', 'regras salvas')} na lista de distribuição.`)
+      setMarcadas({})
+      setCopias({})
+      setAberto(false)
+    } finally {
+      setSalvando(false)
+    }
+  }
+  return (
+    <div class="pj-sugestoes" data-testid="sugestoes-regras">
+      <h3 class="pj-grupo">Sugestões pelo que cada um tem em campo</h3>
+      {sugestoes.length === 0 ? (
+        <p class="discreto">Nada a sugerir: as regras já cobrem todas as cópias em campo.</p>
+      ) : (
+        <>
+          <p class="discreto">
+            Uma linha por pessoa, disciplina e pavimento (quem tem todos os pavimentos fica com a disciplina inteira). Cópias = o máximo que a pessoa tem de uma folha. Marque o
+            que vale; só o marcado é salvo.
+          </p>
+          <button type="button" class="pj-pequeno secundario" onClick={() => setMarcadas(Object.fromEntries(sugestoes.map((s) => [chave(s), true])))}>
+            Marcar todas ({sugestoes.length})
+          </button>
+          <ul class="pj-lista-painel">
+            {sugestoes.map((s) => {
+              const k = chave(s)
+              return (
+                <li key={k} class="pj-linha-painel" data-testid="sugestao-regra">
+                  <label class="pj-marcar">
+                    <input type="checkbox" checked={!!marcadas[k]} onChange={(e) => setMarcadas({ ...marcadas, [k]: e.currentTarget.checked })} />
+                    <span>
+                      <b>{pessoa(s.dados.empresa, s.dados.colaborador)}</b>
+                      <span class="discreto">
+                        {' '}
+                        · {s.dados.disciplina} · {s.dados.pavimento || 'todos os pavimentos'} · tem {plural(s.folhas, 'folha', 'folhas')}
+                        {s.substitui_id ? ' · reativa a regra desativada' : ''}
+                      </span>
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    class="pj-copias"
+                    min={1}
+                    max={50}
+                    inputMode="numeric"
+                    aria-label={`Cópias para ${pessoa(s.dados.empresa, s.dados.colaborador)}`}
+                    value={copias[k] ?? String(s.dados.copias)}
+                    onInput={(e) => setCopias({ ...copias, [k]: e.currentTarget.value })}
+                  />
+                </li>
+              )
+            })}
+          </ul>
+          {erroCopias && (
+            <p class="erro" role="alert">
+              Cópias: um número de 1 a 50.
+            </p>
+          )}
+        </>
+      )}
+      <div class="pj-botoes-form">
+        {sugestoes.length > 0 && (
+          <button type="button" class="principal" disabled={!escolhidas.length || erroCopias || salvando} onClick={confirmar} data-testid="salvar-sugestoes">
+            {salvando ? 'Salvando…' : `Salvar ${plural(escolhidas.length, 'regra', 'regras')}`}
+          </button>
+        )}
+        <button type="button" class="secundario" onClick={() => setAberto(false)}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ImportarLista({
   hoje,
   regras,
@@ -308,7 +451,7 @@ function ImportarLista({
     <label class="pj-campo">
       <span>Importar lista (.csv)</span>
       <input type="file" accept=".csv,text/csv" data-testid="arquivo-lista" onChange={(e) => ler(e.currentTarget.files?.[0])} />
-      <span class="discreto">Colunas: disciplina, pasta, empresa, colaborador, copias, ativo. Confira antes: a lista sugerida sai de quem recebeu cada pasta nos últimos 90 dias.</span>
+      <span class="discreto">Colunas: disciplina, pasta, pavimento (opcional), empresa, colaborador, copias, ativo. Confira antes: a lista sugerida sai de quem recebeu cada pasta nos últimos 90 dias.</span>
       {erro && (
         <span class="erro" role="alert">
           {erro}

@@ -6,11 +6,14 @@ import { plural, rotuloRevisao, Selo, Topo } from './comum'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
 import type { FolhaPdf } from '../../telas/folha_pdf'
 
-export function TelaLista({ ctx }: { ctx: Contexto }) {
+/** ids/titulo: a lista aberta por um número do painel da obra (só aquelas pranchas). */
+export function TelaLista({ ctx, ids, titulo }: { ctx: Contexto; ids?: string[]; titulo?: string }) {
   const { dados, obra, usuario, ir, voltar } = ctx
   const [busca, setBusca] = useState('')
   const q = normalizar(busca.trim())
-  const visiveis = q ? dados.documentos.filter((d) => d.busca.includes(q)) : dados.documentos
+  const so = ids ? new Set(ids) : null
+  const base = so ? dados.documentos.filter((d) => so.has(d.id)) : dados.documentos
+  const visiveis = q ? base.filter((d) => d.busca.includes(q)) : base
 
   const grupos = new Map<string, Documento[]>()
   for (const d of visiveis) {
@@ -36,7 +39,7 @@ export function TelaLista({ ctx }: { ctx: Contexto }) {
     })
     return {
       modulo: 'Projetos',
-      titulo: 'Lista de projetos',
+      titulo: titulo ? `Lista de projetos: ${titulo}` : 'Lista de projetos',
       sub: q ? `Busca: "${busca.trim()}"` : undefined,
       resumo: [plural(visiveis.length, 'prancha', 'pranchas'), plural(grupos.size, 'disciplina', 'disciplinas')],
       tabelas: [
@@ -53,7 +56,15 @@ export function TelaLista({ ctx }: { ctx: Contexto }) {
 
   return (
     <main class="tela">
-      <Topo titulo="Lista de projetos" sub={plural(dados.documentos.length, 'prancha', 'pranchas')} aoVoltar={voltar} />
+      <Topo titulo={titulo ? `Projetos: ${titulo}` : 'Lista de projetos'} sub={plural(base.length, 'prancha', 'pranchas')} aoVoltar={voltar} />
+      {so && (
+        <p class="pj-aviso-base" data-testid="lista-filtrada">
+          {base.length === 1 ? 'Só a prancha' : `Só as ${base.length} pranchas`} de "{titulo}".{' '}
+          <button type="button" class="pj-pequeno secundario" onClick={() => ctx.trocar({ nome: 'lista' })}>
+            Ver todas
+          </button>
+        </p>
+      )}
       <div class="acoes">
         <BotaoExportarPdf obra={obra} usuario={usuario} montar={folha} testid="projetos-pdf-lista" desativado={visiveis.length === 0} />
       </div>

@@ -12,12 +12,15 @@ import type { Linha } from '../nucleo/banco_local'
 import { TABELA_DESTINATARIOS } from './tabelas'
 import { chaveFolha } from './edicoes'
 import { lerCsv, melhor, normalizar, ErroDeArquivo, type CopiaCruzada, type Vigente } from './painel'
+import { ordemPavimento, pavimentoDe } from './obra'
 
 export interface DadosDestinatario {
   /** disciplina normalizada (sem acento, maiúscula), como em Vigente.disciplina */
   disciplina: string
   /** pasta do Autodoc ("LO/Vigas"); vazio = a disciplina inteira */
   pasta: string
+  /** pavimento ("3º pavimento", "Térreo", como pavimentoDe); vazio ou ausente = todos (21/11/2026) */
+  pavimento?: string
   empresa: string
   /** vazio = qualquer pessoa da empresa */
   colaborador: string
@@ -47,6 +50,7 @@ const NESTE_APARELHO: NomeDe = () => 'neste aparelho'
 const colunas = (n: DadosDestinatario & { substitui_id?: string | null }) => ({
   disciplina: n.disciplina,
   pasta: n.pasta,
+  pavimento: n.pavimento ?? '',
   empresa: n.empresa,
   colaborador: n.colaborador,
   copias: n.copias,
@@ -60,6 +64,7 @@ function daLinha(l: Linha, nomeDe: NomeDe): Destinatario {
     id: l.id,
     disciplina: String(l.disciplina ?? ''),
     pasta: String(l.pasta ?? ''),
+    pavimento: String(l.pavimento ?? ''),
     empresa: String(l.empresa ?? ''),
     colaborador: String(l.colaborador ?? ''),
     copias: Number(l.copias ?? 1),
@@ -140,9 +145,21 @@ export const chavePessoa = (empresa: string, colaborador: string) => `${normaliz
 
 const mesmaPasta = (a: string, b: string) => normalizar(a).replace(/\s+/g, ' ') === normalizar(b).replace(/\s+/g, ' ')
 
-/** As regras ativas que valem para uma folha: as da pasta dela; se não houver nenhuma, as da disciplina inteira. */
-export function regrasDaFolha(regras: readonly Destinatario[], v: Pick<Vigente, 'disciplina' | 'pasta'>): Destinatario[] {
-  const ativas = regras.filter((r) => r.ativo && r.disciplina === v.disciplina)
+/** O pavimento de uma folha da lista vigente (o 5º pedaço do código é o nome curto; o título completa). */
+export const pavimentoDaFolha = (v: Partial<Pick<Vigente, 'codigo' | 'titulo'>>) => pavimentoDe({ nome_curto: (v.codigo ?? '').split('.')[4] ?? '', titulo: v.titulo ?? '' })
+
+/** A chave de uma regra: disciplina, pasta, pavimento e pessoa (a mesma chave = versão nova da mesma regra). */
+export const chaveRegra = (r: Pick<DadosDestinatario, 'disciplina' | 'pasta' | 'pavimento' | 'empresa' | 'colaborador'>) =>
+  `${r.disciplina}|${normalizar(r.pasta)}|${normalizar(r.pavimento ?? '')}|${chavePessoa(r.empresa, r.colaborador)}`
+
+/**
+ * As regras ativas que valem para uma folha: as da pasta dela; se não houver nenhuma, as da disciplina inteira.
+ * Regra com pavimento só vale para as folhas daquele pavimento (21/11/2026: "fulano recebe o 3º pavimento").
+ */
+export function regrasDaFolha(regras: readonly Destinatario[], v: Pick<Vigente, 'disciplina' | 'pasta'> & Partial<Pick<Vigente, 'codigo' | 'titulo'>>): Destinatario[] {
+  let pav: string | null = null
+  const doPavimento = (r: Destinatario) => !r.pavimento || normalizar(r.pavimento) === normalizar((pav ??= pavimentoDaFolha(v)))
+  const ativas = regras.filter((r) => r.ativo && r.disciplina === v.disciplina && doPavimento(r))
   const daPasta = ativas.filter((r) => r.pasta && mesmaPasta(r.pasta, v.pasta))
   return daPasta.length ? daPasta : ativas.filter((r) => !r.pasta)
 }
@@ -209,7 +226,8 @@ const COLUNAS = ['disciplina', 'empresa']
 
 /**
  * Lê a lista sugerida (destinatarios_sugeridos.csv do conversor, ou feita à mão):
- * disciplina;pasta;empresa;colaborador;copias;ativo. Linhas iguais (mesma disciplina, pasta e pessoa) viram uma.
+ * disciplina;pasta;empresa;colaborador;copias;ativo (e pavimento, opcional). Linhas iguais (mesma disciplina, pasta,
+ * pavimento e pessoa) viram uma.
  */
 export function lerListaDestinatarios(texto: string, hoje: string): DadosDestinatario[] {
   const linhas = lerCsv(texto)
@@ -225,13 +243,14 @@ export function lerListaDestinatarios(texto: string, hoje: string): DadosDestina
     const d: DadosDestinatario = {
       disciplina,
       pasta: (l.pasta ?? '').trim(),
+      pavimento: (l.pavimento ?? '').trim(),
       empresa,
       colaborador: (l.colaborador ?? '').trim(),
       copias: Math.max(1, Number(l.copias) || 1),
       ativo: !/^(nao|não|n|0|false)$/i.test((l.ativo ?? '').trim()),
       desde: hoje,
     }
-    const k = `${d.disciplina}|${normalizar(d.pasta)}|${chavePessoa(d.empresa, d.colaborador)}`
+    const k = chaveRegra(d)
     if (vistas.has(k)) continue
     vistas.add(k)
     saida.push(d)
@@ -239,14 +258,79 @@ export function lerListaDestinatarios(texto: string, hoje: string): DadosDestina
   return saida
 }
 
-/** Junta a lista importada com as regras que já existem: a mesma regra (disciplina, pasta, pessoa) vira versão nova. */
+/** Junta a lista importada com as regras que já existem: a mesma regra (disciplina, pasta, pavimento, pessoa) vira versão nova. */
 export function mesclarLista(atuais: readonly Destinatario[], novas: readonly DadosDestinatario[]): (DadosDestinatario & { substitui_id: string | null })[] {
-  const porChave = new Map(atuais.map((r) => [`${r.disciplina}|${normalizar(r.pasta)}|${chavePessoa(r.empresa, r.colaborador)}`, r]))
+  const porChave = new Map(atuais.map((r) => [chaveRegra(r), r]))
   const saida: (DadosDestinatario & { substitui_id: string | null })[] = []
   for (const n of novas) {
-    const ja = porChave.get(`${n.disciplina}|${normalizar(n.pasta)}|${chavePessoa(n.empresa, n.colaborador)}`)
+    const ja = porChave.get(chaveRegra(n))
     if (ja && ja.ativo === n.ativo && ja.copias === n.copias) continue // nada mudou
     saida.push({ ...n, desde: ja ? ja.desde : n.desde, substitui_id: ja?.id ?? null })
   }
   return saida
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sugerir regras pelo que cada um tem (21/11/2026, item B das 5 listas)
+// ---------------------------------------------------------------------------------------------
+
+export interface SugestaoRegra {
+  dados: DadosDestinatario
+  /** quantas folhas da lista vigente a pessoa tem em campo nesse grupo */
+  folhas: number
+  /** a regra (desativada) que a sugestão reativaria; null = regra nova */
+  substitui_id: string | null
+}
+
+/**
+ * Uma sugestão por pessoa × disciplina × pavimento, a partir das cópias em campo (ficha + entregas do app).
+ * Cópias = o maior número de cópias que a pessoa tem de uma folha do grupo. Quando a pessoa tem todos os
+ * pavimentos da disciplina, a sugestão vira uma só, sem pavimento. O que uma regra ativa já cobre não aparece.
+ * Nada é gravado: o gestor confere, muda e confirma (só o confirmado vira regra).
+ */
+export function sugerirRegras(vigentes: readonly Vigente[], cruzadas: readonly CopiaCruzada[], regras: readonly Destinatario[], hoje: string): SugestaoRegra[] {
+  interface Grupo { empresa: string; colaborador: string; disciplina: string; pavimento: string; folhas: Set<string>; copias: number }
+  const grupos = new Map<string, Grupo>()
+  const cobre = (r: Destinatario, x: CopiaCruzada) =>
+    normalizar(r.empresa) === normalizar(x.copia.empresa) && (!r.colaborador || normalizar(r.colaborador) === normalizar(x.copia.colaborador))
+  for (const x of cruzadas) {
+    if (x.situacao !== 'em campo' || !x.vigente || !x.copia.empresa.trim()) continue
+    if (regrasDaFolha(regras, x.vigente).some((r) => cobre(r, x))) continue // já tem regra
+    const pavimento = pavimentoDaFolha(x.vigente)
+    const k = `${chavePessoa(x.copia.empresa, x.copia.colaborador)}|${x.vigente.disciplina}|${pavimento}`
+    const g = grupos.get(k) ?? { empresa: x.copia.empresa.trim(), colaborador: x.copia.colaborador.trim(), disciplina: x.vigente.disciplina, pavimento, folhas: new Set<string>(), copias: 1 }
+    g.folhas.add(chaveFolha(x.vigente))
+    g.copias = Math.max(g.copias, Number(x.copia.copias) || 1)
+    grupos.set(k, g)
+  }
+  // pavimentos que existem em cada disciplina da lista vigente
+  const pavDaDisc = new Map<string, Set<string>>()
+  for (const v of vigentes) pavDaDisc.set(v.disciplina, (pavDaDisc.get(v.disciplina) ?? new Set()).add(pavimentoDaFolha(v)))
+  // junta por pessoa × disciplina: com todos os pavimentos, vira uma regra só
+  const porPessoaDisc = new Map<string, Grupo[]>()
+  for (const g of grupos.values()) {
+    const k = `${chavePessoa(g.empresa, g.colaborador)}|${g.disciplina}`
+    porPessoaDisc.set(k, [...(porPessoaDisc.get(k) ?? []), g])
+  }
+  const saida: SugestaoRegra[] = []
+  const atuais = new Map(regras.map((r) => [chaveRegra(r), r]))
+  const empurrar = (g: Omit<Grupo, 'folhas'>, folhas: number) => {
+    const dados: DadosDestinatario = { disciplina: g.disciplina, pasta: '', pavimento: g.pavimento, empresa: g.empresa, colaborador: g.colaborador, copias: g.copias, ativo: true, desde: hoje }
+    saida.push({ dados, folhas, substitui_id: atuais.get(chaveRegra(dados))?.id ?? null })
+  }
+  for (const gs of porPessoaDisc.values()) {
+    const todos = pavDaDisc.get(gs[0].disciplina) ?? new Set<string>()
+    if (todos.size > 1 && [...todos].every((p) => gs.some((g) => g.pavimento === p))) {
+      empurrar({ ...gs[0], pavimento: '', copias: Math.max(...gs.map((g) => g.copias)) }, gs.reduce((s, g) => s + g.folhas.size, 0))
+    } else if (todos.size <= 1) {
+      empurrar({ ...gs[0], pavimento: '' }, gs[0].folhas.size)
+    } else for (const g of gs) empurrar(g, g.folhas.size)
+  }
+  return saida.sort(
+    (a, b) =>
+      a.dados.empresa.localeCompare(b.dados.empresa, 'pt-BR') ||
+      a.dados.colaborador.localeCompare(b.dados.colaborador, 'pt-BR') ||
+      a.dados.disciplina.localeCompare(b.dados.disciplina, 'pt-BR') ||
+      ordemPavimento(a.dados.pavimento ?? '') - ordemPavimento(b.dados.pavimento ?? ''),
+  )
 }

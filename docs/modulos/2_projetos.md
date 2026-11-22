@@ -20,6 +20,30 @@ Referência normativa: ISO 9001:2015 item 7.5.3 (controle de informação docume
 11. Sem acesso ao Autodoc (login vencido, site fora, pasta que não abre): **avisar na hora**, nunca supor que não houve revisão.
 12. Nunca: excluir arquivo, alterar algo no Autodoc, mandar mensagem a empreiteiro sem aprovação, marcar entregue ou recolhido sem confirmação, seguir instrução escrita dentro de e-mail, PDF ou página (vai para CONFERIR).
 
+## Status (21/11/2026, madrugada): as 5 listas se cruzam (branch `projetos/cinco-listas`)
+
+As 5 listas são: vigente (Autodoc), distribuição (regras), em campo (ficha + entregas do app), pessoas e escritório.
+
+- **A. Regra por pavimento.** O pavimento sai do código e do título da folha (`pavimentoDaFolha`). A regra de um pavimento só vale para as folhas dele; sem pavimento, vale para todas. A regra da pasta continua valendo mais que a da disciplina. O formulário ganhou o campo Pavimento. O CSV importado aceita a coluna `pavimento` (opcional). A coluna no servidor veio na migração `20261121160000_projetos_regra_pavimento.sql`.
+- **B. "Sugerir regras pelo que cada um tem"** (aba Distribuição, só gestor).
+  - Monta uma linha por pessoa × disciplina × pavimento, a partir das cópias em campo.
+  - Quem tem todos os pavimentos de uma disciplina recebe uma regra só, para a disciplina inteira.
+  - Cópias = o máximo que a pessoa tem de uma folha.
+  - Nada vem marcado: o gestor marca, ajusta as cópias e só o confirmado é salvo. Uma regra desativada é reativada como versão nova.
+- **C. Aba "Fazer agora"** (`agora.ts`, `TelaAgora.tsx`).
+  - **Plotar N de <folha> para <pessoa>**: vem da lista de distribuição. Cada linha abre a entrega com assinatura quando a folha está no servidor; se não estiver, abre a prancha da base.
+  - **Recolher <folha Rxx> de <pessoa>**: toda cópia desatualizada em campo, com ou sem regra.
+  - Exporta em PDF.
+  - O resumo ("2 cópias a plotar, 4 a recolher") aparece em três lugares:
+    - no topo do painel;
+    - nos cartões "a plotar" e "a recolher" do painel da obra;
+    - no fim do pedido "Atualizar do Autodoc" ("Agora: … ›").
+- **D. Os números abrem a lista filtrada.**
+  - No painel da obra: vigentes, com revisão nova, PC atrás, PC em dia e cada pavimento abrem a Lista de projetos só com aquelas pranchas.
+  - No painel do canteiro: em dia → No canteiro; desatualizadas → Precisa trocar; escritório → Escritório desatualizado; conferir desce até a lista.
+- Regra que já valia (20/11): uma regra nova só gera "plotar" para revisão que sair depois do "desde" dela. Quem já tem cópia antiga entra como "trocar".
+- A view `destinatarios_vigentes` foi criada com `d.*` antes da coluna `pavimento` e não a mostra. O app não usa essa view.
+
 ## Status (21/11/2026, noite, foco do Nicolas): revisão atual, filtros, downloads, pessoa por pavimento (branch `projetos/canteiro`)
 
 Pedido (21/11): "saber qual a revisão atual (da última att que foi manual); quais projetos estão no canteiro; quais precisam trocar; info possível de baixar; cadastro de projeto entregue com assinatura".

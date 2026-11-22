@@ -14,6 +14,7 @@ import { TelaObra } from './TelaObra'
 import { TelaComprovante } from './TelaComprovante'
 import { TelaEntregasBase, TelaPranchasBase, type FiltroPrancha } from './TelaListasBase'
 import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
+import { TelaAgora } from './TelaAgora'
 import { TelaPessoa, TelaPessoas } from './TelaPessoas'
 import { TelaPranchaBase, type AlvoPrancha } from './TelaPranchaBase'
 import { Mensagem } from './comum'
@@ -26,12 +27,13 @@ export type TelaProjetos =
   | { nome: 'pranchas-base'; filtro?: FiltroPrancha }
   | { nome: 'entregas-base' }
   | { nome: 'a-entregar' }
+  | { nome: 'agora' }
   | { nome: 'pessoas' }
   | { nome: 'pessoa'; chave: string }
   | { nome: 'distribuicao' }
   | { nome: 'inicio' }
   | ({ nome: 'prancha-base' } & AlvoPrancha)
-  | { nome: 'lista' }
+  | { nome: 'lista'; ids?: string[]; titulo?: string }
   | { nome: 'prancha'; documentoId: string }
   | { nome: 'entregar'; documentoId: string; empresaId?: string }
   | { nome: 'comprovante'; assinaturaId: string }
@@ -134,6 +136,9 @@ export function ModuloProjetos({
     case 'a-entregar':
       conteudo = <TelaAEntregar ctx={ctx} aoSair={aoSair} />
       break
+    case 'agora':
+      conteudo = <TelaAgora ctx={ctx} aoSair={aoSair} />
+      break
     case 'pessoas':
       conteudo = <TelaPessoas ctx={ctx} aoSair={aoSair} />
       break
@@ -150,7 +155,7 @@ export function ModuloProjetos({
       conteudo = <TelaInicio ctx={ctx} aoSair={voltar} />
       break
     case 'lista':
-      conteudo = <TelaLista ctx={ctx} />
+      conteudo = <TelaLista ctx={ctx} ids={tela.ids} titulo={tela.titulo} />
       break
     case 'prancha':
       conteudo = <TelaPrancha ctx={ctx} documentoId={tela.documentoId} />

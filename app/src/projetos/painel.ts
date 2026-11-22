@@ -49,6 +49,8 @@ export interface Copia {
   empresa: string
   colaborador: string
   devolucao: string | null
+  /** entrega registrada no app (não é linha da ficha): a devolução é registrada pela entrega (21/11/2026) */
+  app?: { entregaId: string; documentoId: string; assinaturaId: string | null }
 }
 
 export type Resultado = 'em dia' | 'desatualizada' | 'conferir'

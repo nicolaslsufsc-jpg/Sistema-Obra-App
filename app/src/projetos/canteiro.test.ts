@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { abrirXlsx, texto } from '../concreto/xlsx'
-import { escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
+import { copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
 import type { Linha } from '../nucleo/banco_local'
 import type { Documento } from './dados'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
@@ -147,5 +147,39 @@ describe('exportar como a ficha v2 (.xlsx)', () => {
     const xml = texto(a, 'xl/worksheets/sheet1.xml')!
     expect(xml).not.toContain('<f>')
     expect(xml).toContain('t="inlineStr"><is><t xml:space="preserve">=HYPERLINK(&quot;x&quot;)')
+  })
+})
+
+describe('entregas do app no canteiro (21/11)', () => {
+  const d1 = doc('d1', 'EXE.ES.100.FORPILOTIS')
+  const lo01 = rev('LO', '01', { id: 'lo01', cadastrada_em_autodoc: '2026-10-22T10:00:00Z' })
+  const lo02 = rev('LO', '02', { id: 'lo02', cadastrada_em_autodoc: '2026-11-02T10:00:00Z' })
+  const ev = (id: string, extra: Record<string, unknown>) =>
+    ({ id, documento_id: 'd1', empresa_id: 'e1', colaborador: 'João', criado_em_dispositivo: `2026-11-0${id.length}T10:00:00Z`, ...extra }) as unknown as Linha
+  const eventos = [
+    ev('a', { tipo: 'entrega', revisao_id: 'lo01', data_evento: '2026-10-25' }),
+    ev('bb', { tipo: 'entrega', revisao_id: 'lo02', data_evento: '2026-11-05', assinatura_id: 'png1' }),
+    ev('ccc', { tipo: 'devolucao', revisao_id: 'lo01', entrega_id: 'a', data_evento: '2026-11-05' }),
+  ]
+  const dados = {
+    eventos,
+    documentoPorId: new Map([['d1', d1]]),
+    revisaoPorId: new Map([['lo01', lo01], ['lo02', lo02]]),
+    vigentes: new Map([['d1', lo02]]),
+    empresaPorId: new Map([['e1', { id: 'e1', nome: 'Empreiteira Alfa', contato: null, ativa: true }]]),
+  }
+  it('cada entrega vira uma cópia; a devolvida leva a data; a assinada leva a assinatura', () => {
+    const c = copiasDoApp(dados)
+    expect(c.map((x) => [x.linha, x.codigo, x.fase, x.revisao, x.empresa, x.colaborador, x.devolucao, x.app?.assinaturaId])).toEqual([
+      [LINHA_APP, '100', 'LO', 1, 'Empreiteira Alfa', 'João', '2026-11-05', null],
+      [LINHA_APP + 1, '100', 'LO', 2, 'Empreiteira Alfa', 'João', null, 'png1'],
+    ])
+  })
+  it('cruza com a vigente do servidor: a assinada em campo fica em dia', () => {
+    const x = cruzar(copiasDoApp(dados), vigentesDoServidor({ documentos: [d1], vigentes: dados.vigentes }), HOJE)
+    const emCampo = x.filter((y) => y.situacao === 'em campo')
+    expect(emCampo).toHaveLength(1)
+    expect(emCampo[0].resultado).toBe('em dia')
+    expect(emCampo[0].copia.app?.entregaId).toBe('bb')
   })
 })

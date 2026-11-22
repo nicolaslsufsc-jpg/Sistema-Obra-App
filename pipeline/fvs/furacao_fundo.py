@@ -47,10 +47,10 @@ def eh_retangulo_de_pilar(desenho: dict, cinza: float = CINZA_DO_PILAR) -> bool:
 
 
 def _cinza(desenho: dict) -> float | None:
-    """O tom de um retângulo cheio de cinza (ou branco), arredondado; None se não for."""
+    """O tom de um retângulo (ou polígono de linhas) cheio de cinza ou branco, arredondado; None se não for."""
     f = desenho.get("fill")
     itens = desenho.get("items") or []
-    if not f or len(f) != 3 or not itens or not all(i[0] == "re" for i in itens):
+    if not f or len(f) != 3 or not itens or not (all(i[0] == "re" for i in itens) or all(i[0] == "l" for i in itens)):
         return None
     if max(f) - min(f) > TOLERANCIA_COR:
         return None
@@ -72,8 +72,9 @@ def pilares_da_pagina(page, cinza: float = CINZA_DO_PILAR) -> list:
 
 
 def outros_tons(page, escala: float) -> list[tuple[float, list]]:
-    """Quando o cinza médio não basta (algumas pranchas desenham o pilar em cinza claro ou só com o
-    contorno): os retângulos cheios dos outros tons de cinza (e do branco), do tamanho de um pilar
+    """Quando o cinza médio não basta (algumas pranchas desenham o pilar em cinza claro, só com o contorno,
+    ou como polígono de linhas): os desenhos cheios dos outros tons de cinza (e do branco, e o cinza médio
+    em polígono), do tamanho de um pilar
     (PILAR_MIN_CM a PILAR_MAX_CM de lado), um conjunto por tom, o mais cheio primeiro."""
     from alinhamento import alinhar as al
 
@@ -82,7 +83,7 @@ def outros_tons(page, escala: float) -> list[tuple[float, list]]:
     por_tom: dict[float, list] = {}
     for d in page.get_drawings():
         t = _cinza(d)
-        if t is None or abs(t - CINZA_DO_PILAR) <= TOLERANCIA_COR:
+        if t is None or eh_retangulo_de_pilar(d):  # o cinza médio em retângulo já está em "pilares"
             continue
         r = d["rect"] * M
         lados = sorted((r.width / k, r.height / k))

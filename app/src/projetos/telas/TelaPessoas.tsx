@@ -2,7 +2,7 @@
 // uma; tocar numa pessoa abre o painel dela: o que recolher (revisão antiga), o que entregar e tudo o que
 // ela tem em campo, por disciplina e pasta. Só leitura. Ver projetos/pessoas.ts.
 import { useMemo, useState } from 'preact/hooks'
-import { normalizar, rotuloRev, type CopiaCruzada } from '../painel'
+import { normalizar, rotuloRev, type CopiaCruzada, rotuloDaCopia } from '../painel'
 import { pavimentosDaPessoa, pessoasDaObra, porEmpresa, type Pessoa } from '../pessoas'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
@@ -220,7 +220,7 @@ function LinhaCopia({ ctx, x, trocaPor }: { ctx: Contexto; x: CopiaCruzada; troc
       <div>
         <b>{x.vigente?.codigo ?? `${c.disciplinaNome} ${c.codigo}`}</b> <span class="discreto">{x.vigente?.titulo || c.titulo}</span>
         <br />
-        tem <span class="pj-rev">{rotuloRev(c.fase, c.revisao)}</span>
+        tem <span class="pj-rev">{rotuloDaCopia(c)}</span>
         {trocaPor && x.vigente ? (
           <>
             {' '}

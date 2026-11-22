@@ -43,6 +43,8 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
   return (
     <main class="tela pj-painel" data-testid="projetos-obra">
       <Topo titulo="Projetos" sub={`${obra.codigo} · painel da obra`} aoVoltar={aoSair} />
+      {/* o quadro vem logo abaixo do título, antes do Autodoc e dos números (testador, 22/11: em 375 px ficava no fim da 1ª tela) */}
+      {cruzadas && <QuadroSituacao cruzadas={cruzadas} ir={ir} documentos={dados.documentos} />}
       <FaixaAutodoc obraId={obra.id} estado={estado} />
       {podeGerir(obra.papel) && (
         <PedidoAutodoc
@@ -77,9 +79,6 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
           <span class="discreto">{t.escritorioSem ? `${t.escritorioSem} sem registro do escritório` : 'todas com registro'}</span>
         </li>
       </ul>
-
-      {/* o resumo visual vem antes dos números (pedido do Nicolas, 22/11) */}
-      {cruzadas && <QuadroSituacao cruzadas={cruzadas} ir={ir} />}
 
       <section class="pj-bloco" data-testid="obra-canteiro-resumo">
         <h2>No canteiro</h2>

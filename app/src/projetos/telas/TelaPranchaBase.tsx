@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'preact/hooks'
 import { podeGerir, podeRegistrar } from '../dados'
 import { chaveFolha, compararEscritorio, historicoDaPrancha, type CorrecaoCopia, type Edicao, type NovaEdicao } from '../edicoes'
-import { chaveNumero, melhor, rotuloRev, type Copia, type CopiaCruzada, type Fase, type Vigente } from '../painel'
+import { chaveNumero, melhor, rotuloRev, type Copia, type CopiaCruzada, type Fase, type Vigente, rotuloDaCopia } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { usarBase } from './baseComum'
 import { Campo, dataBR, plural, Topo } from './comum'
@@ -269,7 +269,7 @@ function LinhaCopia({
         <b>{c.empresa}</b>
         {c.colaborador ? <span class="discreto"> · {c.colaborador}</span> : null}
         <br />
-        <span class="pj-rev">{rotuloRev(c.fase, c.revisao)}</span> · {plural(c.copias, 'cópia', 'cópias')} · entregue {c.entrega ? dataBR(c.entrega) : `"${c.entregaTexto}"`}
+        <span class="pj-rev">{rotuloDaCopia(c)}</span> · {plural(c.copias, 'cópia', 'cópias')} · entregue {c.entrega ? dataBR(c.entrega) : `"${c.entregaTexto}"`}
         {c.devolucao ? ` · devolvida ${dataBR(c.devolucao)}` : ''}
         <div class="discreto">
           {ondeDaCopia(c)} · {c.titulo}

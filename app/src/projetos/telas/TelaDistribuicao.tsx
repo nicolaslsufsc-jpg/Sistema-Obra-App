@@ -6,7 +6,7 @@ import { chavePessoa, chaveRegra, lerListaDestinatarios, mesclarLista, pavimento
 import type { CopiaCruzada, Vigente } from '../painel'
 import { ordemPavimento } from '../obra'
 import { podeGerir } from '../dados'
-import { ErroDeArquivo, normalizar, rotuloRev } from '../painel'
+import { ErroDeArquivo, normalizar, rotuloRev, rotuloDaCopia } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { Campo, dataBR, plural } from './comum'
@@ -66,7 +66,7 @@ export function TelaAEntregar({ ctx, aoSair }: { ctx: Contexto; aoSair: () => vo
                   {p.regra.pavimento ? ` · ${p.regra.pavimento}` : ''}
                   <div class="discreto">
                     {p.motivo === 'trocar'
-                      ? `recolher ${p.devolver.map((x) => `${rotuloRev(x.copia.fase, x.copia.revisao)} (${ondeDaCopia(x.copia)})`).join(', ')}`
+                      ? `recolher ${p.devolver.map((x) => `${rotuloDaCopia(x.copia)} (${ondeDaCopia(x.copia)})`).join(', ')}`
                       : `revisão nova de ${dataBR(p.vigente.data)}`}
                   </div>
                 </div>

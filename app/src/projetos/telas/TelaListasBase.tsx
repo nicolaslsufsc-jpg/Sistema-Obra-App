@@ -2,7 +2,7 @@
 // inteiras, com busca e filtros. Tocar numa linha abre a prancha.
 import { useMemo, useState } from 'preact/hooks'
 import { chaveFolha, compararEscritorio, type RegistroEscritorio } from '../edicoes'
-import { melhor, normalizar, rotuloRev, type CopiaCruzada, type Vigente } from '../painel'
+import { melhor, normalizar, rotuloRev, type CopiaCruzada, type Vigente, rotuloDaCopia } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
@@ -259,7 +259,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
         curtas: [2, 4, 7, 8],
         linhas: filtradas.map((x) => {
           const c = x.copia
-          return [seloDe(x).texto, c.disciplinaNome, c.codigo, c.titulo, rotuloRev(c.fase, c.revisao), c.empresa, c.colaborador, (c.entrega ? dataBR(c.entrega) : c.entregaTexto) + (c.app?.assinaturaId ? ' (assinada)' : ''), c.devolucao ? dataBR(c.devolucao) : '']
+          return [seloDe(x).texto, c.disciplinaNome, c.codigo, c.titulo, rotuloDaCopia(c), c.empresa, c.colaborador, (c.entrega ? dataBR(c.entrega) : c.entregaTexto) + (c.app?.assinaturaId ? ' (assinada)' : ''), c.devolucao ? dataBR(c.devolucao) : '']
         }),
         vazio: 'Nenhuma entrega.',
       },
@@ -312,7 +312,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
                   </b>{' '}
                   <span class="discreto">{c.titulo}</span>
                   <br />
-                  <span class="pj-rev">{rotuloRev(c.fase, c.revisao)}</span> · {c.empresa}
+                  <span class="pj-rev">{rotuloDaCopia(c)}</span> · {c.empresa}
                   {c.colaborador ? ` · ${c.colaborador}` : ''}
                   <div class="discreto">
                     entregue {c.entrega ? dataBR(c.entrega) : `"${c.entregaTexto}"`}

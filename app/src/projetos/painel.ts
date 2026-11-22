@@ -51,7 +51,7 @@ export interface Copia {
   colaborador: string
   devolucao: string | null
   /** entrega registrada no app (não é linha da ficha): a devolução é registrada pela entrega (21/11/2026) */
-  app?: { entregaId: string; documentoId: string; assinaturaId: string | null; foraDeUso?: boolean }
+  app?: { entregaId: string; documentoId: string; assinaturaId: string | null; foraDeUso?: boolean; fase?: string }
 }
 
 export type Resultado = 'em dia' | 'desatualizada' | 'conferir'
@@ -424,6 +424,16 @@ export function resumir(cruzadas: readonly CopiaCruzada[]): Resumo {
     porEmpresa: barras(desatualizadas, (x) => x.copia.empresa || '(sem empresa)'),
     porDisciplina: barras(desatualizadas, (x) => x.copia.disciplinaNome || x.copia.disciplina),
   }
+}
+
+/**
+ * A revisão que a cópia tem. Entrega do servidor: sempre com a fase ("EX R02", "LO R00"), para ler ao lado de
+ * "vigente LO R00" (achado do testador, 22/11). Cópia da ficha: como a planilha escreve (EX não aparece).
+ */
+export function rotuloDaCopia(c: Pick<Copia, 'fase' | 'revisao' | 'app'>): string {
+  if (!c.app) return rotuloRev(c.fase, c.revisao)
+  const r = c.revisao === null ? '?' : `R${String(c.revisao).padStart(2, '0')}`
+  return `${c.app.fase || c.fase} ${r}`
 }
 
 /** "LO R02", "R00" (EX não aparece, como na planilha). */

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { abrirXlsx, texto } from '../concreto/xlsx'
-import { copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
+import { nomeSemCaixaAlta, nomesDeDisciplina, copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
 import type { Linha } from '../nucleo/banco_local'
 import type { Documento } from './dados'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 import { abasFichaV2, fichaV2Xlsx, nomeFichaV2 } from './ficha_v2'
-import { cruzar, lerDistribuicao, lerVigentes } from './painel'
+import { cruzar, lerDistribuicao, lerVigentes, rotuloDaCopia } from './painel'
 import { oQueFazerAgora } from './agora'
 import { lerGrade } from './planilha_xlsx'
 
@@ -205,5 +205,22 @@ describe('entregas do app no canteiro (21/11)', () => {
     const o = oQueFazerAgora([], x)
     expect(o.recolher.map((r) => [r.x.copia.colaborador, r.vigente])).toEqual([['Pedro', null]])
     expect(situacaoFicha(fora)).toBe('RECOLHER')
+  })
+})
+
+describe('acabamentos do quadro (22/11)', () => {
+  it('a disciplina aparece com o nome do servidor, venha a cópia da ficha ou do servidor', () => {
+    const nomes = nomesDeDisciplina([doc('h1', 'EXE.HI.004.AGUAFRIAXX', { disciplina: 'Hidrossanitário' }), doc('e1', 'EXE.ES.100.FORPILOTIS')])
+    const hidro = cruzar(lerDistribuicao(DISTRIBUICAO_EXE), lerVigentes(VIGENTES_EXE), HOJE).find((x) => x.copia.disciplinaNome === 'HIDRO')!
+    expect(nomes.get(hidro.copia.disciplina)).toBe('Hidrossanitário')
+    expect(nomeSemCaixaAlta('FUNDAÇÃO')).toBe('Fundação')
+    expect(nomeSemCaixaAlta('SPDA')).toBe('SPDA')
+    expect(nomeSemCaixaAlta('Estrutura')).toBe('Estrutura')
+  })
+  it('a revisão da cópia do servidor mostra a fase; a da ficha fica como a planilha escreve', () => {
+    expect(rotuloDaCopia({ fase: 'EX', revisao: 0, app: { entregaId: 'a', documentoId: 'd', assinaturaId: null, fase: 'EX' } })).toBe('EX R00')
+    expect(rotuloDaCopia({ fase: 'EX', revisao: 2, app: { entregaId: 'a', documentoId: 'd', assinaturaId: null, fase: 'PE' } })).toBe('PE R02')
+    expect(rotuloDaCopia({ fase: 'LO', revisao: 1, app: { entregaId: 'a', documentoId: 'd', assinaturaId: null } })).toBe('LO R01')
+    expect(rotuloDaCopia({ fase: 'EX', revisao: 0 })).toBe('R00')
   })
 })

@@ -201,9 +201,17 @@ export function aEntregar(vigentes: readonly Vigente[], cruzadas: readonly Copia
   for (const [k, vs] of folhas) {
     const v = melhor(vs)
     const copias = porFolha.get(k) ?? []
-    for (const r of regrasDaFolha(regras, v)) {
+    const daFolha = regrasDaFolha(regras, v)
+    for (const r of daFolha) {
+      // Regra da empresa inteira não conta (nem manda recolher) a cópia de quem tem regra própria nessa folha:
+      // senão a mesma cópia antiga aparece duas vezes em "recolher na entrega".
+      const comRegraPropria = r.colaborador
+        ? new Set<string>()
+        : new Set(daFolha.filter((o) => o.colaborador && normalizar(o.empresa) === normalizar(r.empresa)).map((o) => normalizar(o.colaborador)))
       const daPessoa = copias.filter(
-        (x) => normalizar(x.copia.empresa) === normalizar(r.empresa) && (!r.colaborador || normalizar(x.copia.colaborador) === normalizar(r.colaborador)),
+        (x) =>
+          normalizar(x.copia.empresa) === normalizar(r.empresa) &&
+          (r.colaborador ? normalizar(x.copia.colaborador) === normalizar(r.colaborador) : !comRegraPropria.has(normalizar(x.copia.colaborador))),
       )
       if (daPessoa.some((x) => x.resultado === 'em dia')) continue
       const antigas = daPessoa.filter((x) => x.resultado === 'desatualizada')

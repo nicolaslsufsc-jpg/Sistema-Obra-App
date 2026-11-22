@@ -144,6 +144,8 @@ export interface NovaEntrega {
   revisao_id: string
   data_evento: string
   observacao: string
+  /** PNG da assinatura de quem retirou (arquivos); o mesmo para todas as pranchas da entrega */
+  assinatura_id?: string | null
 }
 
 export async function registrarEntrega(obraId: string, usuarioId: string, e: NovaEntrega, foto?: File | null): Promise<Linha> {
@@ -158,6 +160,8 @@ export async function registrarEntrega(obraId: string, usuarioId: string, e: Nov
     data_evento: e.data_evento,
     foto_id,
     observacao: e.observacao.trim() || null,
+    // só vai quando há assinatura: a coluna é nova (21/11/2026) e as entregas sem assinatura seguem iguais
+    ...(e.assinatura_id ? { assinatura_id: e.assinatura_id } : {}),
   })
 }
 

@@ -1,17 +1,21 @@
 // Painel da obra (21/11/2026): a primeira tela do Projetos no app com conta. Resumo por disciplina e
 // pavimento, sempre comparado com a última leitura do Autodoc. Só leitura. Ver projetos/obra.ts.
-import { useEffect, useMemo } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import { painelObra, type Contagem, type PainelObra } from '../obra'
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural, rotuloRevisao, Topo } from './comum'
 import { FaixaAutodoc, usarEstadoAutodoc } from './FaixaAutodoc'
 import { tocavel, usarBase } from './baseComum'
+import { PedidoAutodoc } from './PedidoAutodoc'
+import { podeGerir } from '../dados'
 
 const LIMITE_NOVAS = 40
 
 export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
   const { dados, obra, ir, trocar, semConta } = ctx
-  const estado = usarEstadoAutodoc(obra.id, !semConta)
+  // sobe quando um pedido ao Autodoc fica pronto: relê a última lista e sincroniza
+  const [versao, setVersao] = useState(0)
+  const estado = usarEstadoAutodoc(obra.id, !semConta, versao)
   const { resumo, escritorio } = usarBase(ctx)
   // sem conta não há Autodoc nem servidor: a primeira tela é o painel da base
   useEffect(() => {
@@ -26,6 +30,15 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
     <main class="tela pj-painel" data-testid="projetos-obra">
       <Topo titulo="Projetos" sub={`${obra.codigo} · painel da obra`} aoVoltar={aoSair} />
       <FaixaAutodoc obraId={obra.id} estado={estado} />
+      {podeGerir(obra.papel) && (
+        <PedidoAutodoc
+          obraId={obra.id}
+          aoPronto={() => {
+            setVersao((v) => v + 1)
+            ctx.sincronizar()
+          }}
+        />
+      )}
 
       <ul class="pj-cartoes" aria-label="Resumo da obra" data-testid="obra-resumo">
         <li class="neutro">

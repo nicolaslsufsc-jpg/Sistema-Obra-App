@@ -825,3 +825,99 @@ button.pj-pequeno {
   align-items: center;
   margin-bottom: 0.5rem;
 }
+
+/* Entrega com assinatura (21/11/2026) */
+.pj-assinatura-quadro {
+  display: block;
+  width: 100%;
+  height: 170px;
+  border: 2px dashed var(--borda);
+  border-radius: 10px;
+  touch-action: none;
+  cursor: crosshair;
+}
+.pj-assinatura-rodape {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+.pj-mais-pranchas {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.pj-mais-pranchas li label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.45rem 0.2rem;
+  min-height: 44px;
+  border-bottom: 1px solid var(--borda);
+}
+.pj-mais-pranchas input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.pj-assinatura-img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--borda);
+}
+
+/* Botão "Atualizar do Autodoc" e o estado do pedido (21/11/2026) */
+.pj-pedido {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  border: 2px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+  overflow-wrap: anywhere;
+}
+.pj-pedido .principal {
+  width: 100%;
+}
+.pj-pedido.pronto {
+  background: var(--ok-fundo);
+  border-color: var(--ok-borda);
+}
+.pj-pedido.erro,
+.pj-pedido.parado {
+  background: var(--atencao-fundo);
+  border-color: var(--atencao-borda);
+  color: var(--atencao-texto);
+}
+.pj-pedido details ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+}
+.pj-girando {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.4em;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: pj-girar 0.9s linear infinite;
+}
+@keyframes pj-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (min-width: 700px) {
+  .pj-pedido .principal {
+    width: auto;
+  }
+}

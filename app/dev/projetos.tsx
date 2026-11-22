@@ -12,6 +12,8 @@ import { ModuloProjetos } from '../src/projetos/telas/ModuloProjetos'
 import { dataLocal, somarDias } from '../src/projetos/regras'
 import { importarBase } from '../src/projetos/base'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from '../src/projetos/exemplo_exe'
+import { usarServidorDePedidos, type PedidoAtualizacao } from '../src/projetos/pedido_autodoc'
+import { CONSULTA_MS } from '../src/projetos/telas/PedidoAutodoc'
 
 const OBRA = 'b0000000-0000-0000-0000-0000000000bb'
 const papel = (new URLSearchParams(location.search).get('papel') as PapelNaObra | null) ?? 'gestor'
@@ -158,6 +160,47 @@ async function semearBase() {
     escritorio: arquivo(indice, 'indice_escritorio_exe.csv'),
   })
 }
+
+// ?pedido=ciclo|parado|erro|preso: servidor falso do botão "Atualizar do Autodoc" (sem servidor na bancada).
+// ciclo: o pedido passa a buscando em 3 s e a pronto em 6 s (uma revisão falhou); parado: pendente há 20 min
+// (PC não respondeu); erro: o último pedido deu erro de login; preso: buscando há 40 min (interrompido).
+function servidorFalsoDePedidos() {
+  const qual = new URLSearchParams(location.search).get('pedido')
+  if (!qual) return
+  CONSULTA_MS.valor = 1000
+  const ha = (min: number) => new Date(Date.now() - min * 60_000).toISOString()
+  let atual: PedidoAtualizacao | null =
+    qual === 'parado'
+      ? { id: 'p1', estado: 'pendente', criado_em: ha(20), iniciado_em: null, concluido_em: null, resumo: null, erro: null }
+      : qual === 'erro'
+        ? { id: 'p1', estado: 'erro', criado_em: ha(12), iniciado_em: ha(10), concluido_em: ha(9), resumo: null, erro: 'login do Autodoc vencido: entre no PC' }
+        : qual === 'preso'
+          ? { id: 'p1', estado: 'buscando', criado_em: ha(45), iniciado_em: ha(40), concluido_em: null, resumo: null, erro: null }
+          : null
+  usarServidorDePedidos({
+    async ultimo() {
+      return atual
+    },
+    async pedir() {
+      const criado = new Date().toISOString()
+      atual = { id: `p${Date.now()}`, estado: 'pendente', criado_em: criado, iniciado_em: null, concluido_em: null, resumo: null, erro: null }
+      setTimeout(() => atual && (atual = { ...atual, estado: 'buscando', iniciado_em: new Date().toISOString() }), 3000)
+      setTimeout(
+        () =>
+          atual &&
+          (atual = {
+            ...atual,
+            estado: 'pronto',
+            concluido_em: new Date().toISOString(),
+            resumo: { revisoes_novas: 3, baixadas: 2, falharam: [{ codigo: 'TST.ES.EX.130.FOR3PAVTIP-R04', motivo: 'tamanho não confere com o Autodoc' }] },
+          }),
+        6000,
+      )
+      return atual
+    },
+  })
+}
+servidorFalsoDePedidos()
 
 Promise.all([semear(), semearAutodoc(), semearBase()]).then(() => {
   history.replaceState({ tela: 'projetos' }, '')

@@ -21,9 +21,16 @@ describe('pedido de atualização do Autodoc', () => {
 
   it('pronto: novas, baixadas e as que falharam, com o código', () => {
     const t = textoDoPedido(p({ estado: 'pronto', iniciado_em: ha(4), concluido_em: ha(1), resumo: { revisoes_novas: 1, baixadas: 0, falharam: [{ codigo: 'EXE.ES.EX.200.PILSUBSOLO-R00', motivo: 'Em Análise' }] } }), AGORA)!
-    expect(t.texto).toBe('Pronto às 14:59: 1 revisão nova, 0 baixadas, 1 falhou.')
+    expect(t.texto).toBe('Pronto hoje às 14:59: 1 revisão nova, 0 baixadas, 1 falhou.')
     expect(t.falharam.map((f) => f.codigo)).toEqual(['EXE.ES.EX.200.PILSUBSOLO-R00'])
     expect(t.podePedir).toBe(true)
+  })
+
+  it('pronto sem revisão nova: diz que conferiu, quando, e que não há nada novo', () => {
+    const sem = (min: number) => textoDoPedido(p({ estado: 'pronto', iniciado_em: ha(min + 1), concluido_em: ha(min), resumo: { revisoes_novas: 0, baixadas: 0, falharam: [] } }), AGORA)!
+    expect(sem(1)).toMatchObject({ tipo: 'pronto', podePedir: true, texto: 'Conferido hoje às 14:59: o Autodoc não tem revisão nova. A lista do app está igual à do Autodoc.' })
+    expect(sem(24 * 60).texto).toContain('Conferido ontem às 15:00')
+    expect(sem(3 * 24 * 60).texto).toContain('Conferido em 18/11 às 15:00')
   })
 
   it('erro: mostra o motivo que o PC mandou', () => {

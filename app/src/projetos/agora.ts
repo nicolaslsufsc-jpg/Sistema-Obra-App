@@ -19,7 +19,8 @@ export interface APlotar {
 
 export interface ARecolher {
   x: CopiaCruzada
-  vigente: Vigente
+  /** null = prancha fora de uso: a folha não tem mais revisão vigente (só recolher) */
+  vigente: Vigente | null
 }
 
 export interface OQueFazer {
@@ -40,9 +41,9 @@ export function oQueFazerAgora(pendentes: readonly GrupoAEntregar[], cruzadas: r
   // por folha (o plotter imprime uma folha de cada vez) e, dentro dela, por pessoa
   plotar.sort((a, b) => ordem.compare(a.vigente.codigo, b.vigente.codigo) || ordem.compare(`${a.empresa} ${a.colaborador}`, `${b.empresa} ${b.colaborador}`))
   const recolher: ARecolher[] = cruzadas
-    .filter((x) => x.situacao === 'em campo' && x.resultado === 'desatualizada' && !!x.vigente)
-    .map((x) => ({ x, vigente: x.vigente! }))
-    .sort((a, b) => ordem.compare(normalizar(`${a.x.copia.empresa} ${a.x.copia.colaborador}`), normalizar(`${b.x.copia.empresa} ${b.x.copia.colaborador}`)) || ordem.compare(a.vigente.codigo, b.vigente.codigo))
+    .filter((x) => x.situacao === 'em campo' && x.resultado === 'desatualizada' && (!!x.vigente || !!x.foraDeUso))
+    .map((x) => ({ x, vigente: x.vigente ?? null }))
+    .sort((a, b) => ordem.compare(normalizar(`${a.x.copia.empresa} ${a.x.copia.colaborador}`), normalizar(`${b.x.copia.empresa} ${b.x.copia.colaborador}`)) || ordem.compare(a.vigente?.codigo ?? a.x.copia.codigo, b.vigente?.codigo ?? b.x.copia.codigo))
   return { plotar, recolher, copias: plotar.reduce((s, p) => s + p.copias, 0), folhas: new Set(plotar.map((p) => chaveFolha(p.vigente))).size }
 }
 

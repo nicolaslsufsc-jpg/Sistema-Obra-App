@@ -35,6 +35,7 @@ export function ondeDaCopia(c: Copia): string {
 export function seloDe(x: CopiaCruzada): { classe: string; texto: string } {
   if (x.situacao === 'devolvida') return { classe: 'rec', texto: 'devolvida' }
   if (x.situacao === 'recolhida') return { classe: 'rec', texto: 'provavelmente recolhida' }
+  if (x.foraDeUso) return { classe: 'des', texto: 'recolher: prancha fora de uso' }
   if (x.resultado === 'desatualizada') return { classe: 'des', texto: `${x.dias ?? '?'} d desatualizada` }
   if (x.resultado === 'conferir') return { classe: 'conf', texto: x.motivo ?? 'conferir' }
   return { classe: 'ok', texto: 'em dia' }

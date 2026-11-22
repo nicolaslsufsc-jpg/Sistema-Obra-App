@@ -11,9 +11,9 @@
 //     é DESATUALIZADA.
 //  2. Chave da prancha: disciplina + número sem os zeros da frente ("4" = "004").
 //  3. Data de entrega com erro (ano com 3 dígitos) vai para conferir, sem adivinhar.
-//  4. Mesma empresa com 2+ cópias da mesma prancha em campo: fica só a mais nova (maior revisão; no empate,
-//     entrega mais recente). As outras são "provavelmente recolhida" e não pesam no painel.
-//     Exceção (22/11): cópia da mesma revisão da mais nova, para outra pessoa com nome, fica em campo.
+//  4. Mesma PESSOA (empresa + colaborador) com 2+ cópias da mesma prancha em campo: fica só a mais nova
+//     (maior revisão; no empate, entrega mais recente). As outras são "provavelmente recolhida" e não pesam
+//     no painel. Até 22/11 valia por empresa; o Nicolas mudou: cada pessoa troca a cópia que tem.
 //  5. Atraso = hoje − data da revisão vigente. Sem prazo fixo.
 //  6. Cópia que já diz LO, mas o Autodoc tem a mesma LO com data bem depois da entrega: conferir.
 //  7. Número com mais de uma folha (privativas x gerais, cortes x fachadas): escolhe pela semelhança do
@@ -51,7 +51,7 @@ export interface Copia {
   colaborador: string
   devolucao: string | null
   /** entrega registrada no app (não é linha da ficha): a devolução é registrada pela entrega (21/11/2026) */
-  app?: { entregaId: string; documentoId: string; assinaturaId: string | null }
+  app?: { entregaId: string; documentoId: string; assinaturaId: string | null; foraDeUso?: boolean }
 }
 
 export type Resultado = 'em dia' | 'desatualizada' | 'conferir'
@@ -69,6 +69,8 @@ export interface CopiaCruzada {
   dias?: number
   /** a cópia é EX e a vigente é LO com o mesmo número */
   loDepois?: boolean
+  /** a folha não tem mais revisão vigente (todas obsoletas): recolher, sem nada para pôr no lugar */
+  foraDeUso?: boolean
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -304,16 +306,22 @@ export function compararCopia(c: Copia, v: Vigente | null | undefined, hoje: str
 /** Cruza tudo. As devolvidas entram com situação "devolvida" e não pesam no painel. */
 export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], hoje: string): CopiaCruzada[] {
   const saida: CopiaCruzada[] = copias.map((c) => {
+    // Entrega do servidor de uma folha sem revisão vigente (todas obsoletas; decisão do Nicolas, 22/11):
+    // "recolher: prancha fora de uso". Vale a revisão, não a pasta: não procura outra folha de mesmo número.
+    if (c.app?.foraDeUso) return { copia: c, situacao: c.devolucao ? 'devolvida' : 'em campo', resultado: 'desatualizada', foraDeUso: true }
     const v = acharVigente(c, vigentes)
     return { copia: c, situacao: c.devolucao ? 'devolvida' : 'em campo', ...compararCopia(c, v, hoje) }
   })
-  // regra 4: mesma empresa + prancha + folha com 2 ou mais em campo → fica só a mais nova.
-  // Grupo: disciplina + número sem zeros + empresa + folha do Autodoc (o código da vigente achada).
+  // regra 4, POR PESSOA (decisão do Nicolas, 22/11: "cada um deles trocar os projetos deles"): a mesma
+  // pessoa com 2 ou mais cópias da mesma prancha e folha em campo → fica só a mais nova dela; as outras são
+  // "provavelmente recolhida". A cópia antiga de OUTRA pessoa da mesma empresa continua em campo (e aparece
+  // em "recolher de X"). Cópia sem colaborador conta como uma pessoa só da empresa.
+  // Grupo: disciplina + número sem zeros + empresa + colaborador + folha do Autodoc (o código da vigente achada).
   // Desempate (igual à conta do Professor, 14/11): maior revisão; no empate, a entrega mais recente.
   const grupos = new Map<string, CopiaCruzada[]>()
   for (const x of saida) {
     if (x.situacao !== 'em campo') continue
-    const k = `${x.copia.disciplina}|${chaveNumero(x.copia.codigo)}|${normalizar(x.copia.empresa)}|${x.vigente?.codigo ?? ''}`
+    const k = `${x.copia.disciplina}|${chaveNumero(x.copia.codigo)}|${normalizar(x.copia.empresa)}|${normalizar(x.copia.colaborador)}|${x.vigente?.codigo ?? ''}`
     const g = grupos.get(k)
     if (g) g.push(x)
     else grupos.set(k, [x])
@@ -326,19 +334,7 @@ export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], h
         (b.copia.entrega ?? '').localeCompare(a.copia.entrega ?? '') ||
         a.copia.linha - b.copia.linha,
     )
-    // Refinamento (achado do testador, 22/11): cópia da MESMA revisão da mais nova, para outra pessoa com
-    // nome, é outra cópia de verdade (duas pessoas da empresa com a vigente): fica em campo também.
-    const topo = g[0]
-    const pessoas = new Set([normalizar(topo.copia.colaborador)])
-    for (const x of g.slice(1)) {
-      const mesmaRev = x.copia.revisao === topo.copia.revisao && x.copia.fase === topo.copia.fase
-      const pessoa = normalizar(x.copia.colaborador)
-      if (mesmaRev && pessoa && !pessoas.has(pessoa) && !pessoas.has('')) {
-        pessoas.add(pessoa)
-        continue
-      }
-      x.situacao = 'recolhida'
-    }
+    for (const x of g.slice(1)) x.situacao = 'recolhida'
   }
   return saida
 }
@@ -381,6 +377,34 @@ function barras(itens: readonly CopiaCruzada[], chave: (x: CopiaCruzada) => stri
     m.set(k, b)
   }
   return [...m.values()].sort((a, b) => b.quantas - a.quantas || b.maiorAtraso - a.maiorAtraso || a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
+/** Uma linha do quadro de situação: quantas cópias em campo estão em dia, a trocar e a conferir. */
+export interface Situacao {
+  nome: string
+  emDia: number
+  trocar: number
+  conferir: number
+  total: number
+}
+
+/**
+ * Cópias em campo agrupadas (por disciplina, por pessoa...), para o quadro do topo do painel (22/11).
+ * Quem tem mais a trocar vem primeiro; depois quem tem mais cópias.
+ */
+export function situacaoPor(cruzadas: readonly CopiaCruzada[], chave: (x: CopiaCruzada) => string): Situacao[] {
+  const m = new Map<string, Situacao>()
+  for (const x of cruzadas) {
+    if (x.situacao !== 'em campo') continue
+    const k = chave(x)
+    const s = m.get(k) ?? { nome: k, emDia: 0, trocar: 0, conferir: 0, total: 0 }
+    if (x.resultado === 'em dia') s.emDia++
+    else if (x.resultado === 'desatualizada') s.trocar++
+    else s.conferir++
+    s.total++
+    m.set(k, s)
+  }
+  return [...m.values()].sort((a, b) => b.trocar - a.trocar || b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
 export function resumir(cruzadas: readonly CopiaCruzada[]): Resumo {

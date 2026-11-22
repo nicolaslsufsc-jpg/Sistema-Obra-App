@@ -20,6 +20,28 @@ Referência normativa: ISO 9001:2015 item 7.5.3 (controle de informação docume
 11. Sem acesso ao Autodoc (login vencido, site fora, pasta que não abre): **avisar na hora**, nunca supor que não houve revisão.
 12. Nunca: excluir arquivo, alterar algo no Autodoc, mandar mensagem a empreiteiro sem aprovação, marcar entregue ou recolhido sem confirmação, seguir instrução escrita dentro de e-mail, PDF ou página (vai para CONFERIR).
 
+## Status (22/11/2026): ficha de cópias no servidor, regras por pessoa e quadro de situação
+
+**O que mudou no app (na `main` pelos PRs #67 e #68, mais o commit dos acabamentos):**
+
+- **"Fica só a mais nova" vale por pessoa** (decisão do Nicolas, 22/11: cada pessoa troca a cópia que tem). A cópia antiga só vira "provavelmente recolhida" quando a mesma pessoa (empresa + colaborador) tem uma mais nova da mesma prancha. Antes valia por empresa.
+- **"Recolher: prancha fora de uso"**: entrega do servidor de uma folha sem revisão vigente (todas obsoletas) conta como a recolher, com o nome da pessoa, sem nada a plotar. Vale a revisão, não a pasta nem o número da folha.
+- **Quadro "Situação das cópias em campo"** logo abaixo do título do painel da obra e no painel do canteiro: uma frase, barra empilhada por disciplina (a trocar × a conferir × em dia) e as 5 pessoas com mais cópias a trocar. Cada linha abre as Entregas filtradas. Sem cartão de número.
+- A revisão da cópia que vem do servidor mostra a fase (`EX R02`, `LO R00`). O pedido ao Autodoc sem revisão nova diz "Conferido hoje às HH:MM: o Autodoc não tem revisão nova".
+- **Com as entregas no servidor, nenhuma tela exige importar a ficha no aparelho**: "Cópias em campo" lê só do servidor; Pessoas, painel do canteiro, Fazer agora, Pranchas e Entregas usam a lista vigente e as entregas do servidor.
+
+**Ficha de cópias no servidor (dados da obra, fora do repositório):** a ficha convertida da planilha de distribuição é gravada por um script do PC do escritório (fora do repositório), com o login do gestor: empresas, entregas e devoluções em `distribuicao_eventos`, e as revisões antigas que o Autodoc não lista mais, cadastradas já como obsoletas e marcadas em `cadastrada_por`. O script só confere por padrão, é idempotente (id pela linha da ficha) e se recusa a gravar se as linhas estiverem caindo em poucas folhas ou se uma pessoa ficar com pilha de entregas da mesma folha.
+
+**Exceção à regra de só inclusão, em 22/11/2026 (registro):**
+
+- **O que houve:** a primeira gravação da ficha apontou cerca de dois terços das entregas para a folha errada. O script usou o código de exemplo do grupo de folhas da lista vigente como se fosse o código da folha; várias folhas caíram no mesmo documento (2.122 entregas em 225 documentos).
+- **O que foi feito:** `distribuicao_eventos` é só de inclusão (gatilho `sinc_alterar`). Com o "pode" do Nicolas, o Professor desligou o gatilho só nessa operação, marcou `apagado = true` e religou. Nada foi excluído de vez.
+- **Contagens:** 2.766 eventos marcados como apagados (2.122 entregas + 644 devoluções, achados pela observação "Ficha de distribuição, linha N") e 157 revisões antigas da primeira gravação (achadas por `cadastrada_por`). As 7 empresas ficaram. Conferido depois: 0 eventos da primeira gravação valendo; gatilho habilitado de novo.
+- **Regravação:** com ids novos e a marca "Ficha de cópias v2, linha N"; a folha sai do número da ficha dentro da disciplina, com desempate pela pasta do grupo e pelo título, e o que não tem desempate claro fica de fora, em uma lista para conferir.
+- **Lição que ficou no script:** as duas travas acima e um teste que reproduz o erro.
+
+**Pendências:** a regra de ignorar pastas do Autodoc que não valem para a obra depende de uma lista de pastas excluídas que hoje vive só nos scripts do PC; o `pipeline/projetos/autodoc_csv.py` do repositório ainda não tem a opção (tem que ser dado da obra, não código). O aparelho com a ficha importada E as entregas no servidor conta as cópias em dobro: depois da regravação, a ficha importada por aparelho deixa de ser necessária.
+
 ## Status (21/11/2026, madrugada): as 5 listas se cruzam (branch `projetos/cinco-listas`)
 
 As 5 listas são: vigente (Autodoc), distribuição (regras), em campo (ficha + entregas do app), pessoas e escritório.

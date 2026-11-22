@@ -153,6 +153,29 @@ class TestClassificar(unittest.TestCase):
         self.assertEqual(c("spda", "IfcBuildingElementProxy", "Haste de aterramento 5/8"), "haste")
         self.assertIsNone(c("spda", "IfcCableSegment", "Cabo de cobre nu"))
 
+    def test_spda_nomes_do_ifc_real(self):
+        """Nomes do IFC real (22/11): minicaptor, BEP (conta como caixa), conector embutido e eletroduto da descida."""
+        c = instalacoes.classificar
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "Minicaptor em barra chata de alumínio"), "captor")
+        self.assertEqual(c("spda", "IfcBuildingElementProxy", "Caixa de Barramento Equipotencial - BEP1"), "caixa_inspecao")
+        self.assertEqual(c("spda", "IfcFlowFitting", "SPDA_Conector ATERRINSERT"), "conector")
+        self.assertEqual(c("spda", "IfcFlowFitting", "SPDA_Conector Minigar Estanhado"), "conector")
+        self.assertEqual(c("spda", "IfcFlowSegment", "Conduit without Fittings"), "descida_vertical")
+        for nome in ("SPDA_Barra Chata", "SPDA_Curva 90° de Barra Chata", "SPDA_Clips de aço Galvanizado",
+                     "SPDA_Terminais Estanhados 1 Furo 1 Compressão", "x.SPDA_Curva Generica para barra redondal"):
+            self.assertIsNone(c("spda", "IfcFlowFitting", nome), nome)
+        # nas outras disciplinas a conexão continua fora
+        self.assertIsNone(c("eletrico", "IfcFlowFitting", "SPDA_Conector ATERRINSERT"))
+
+    def test_descida_longe_de_pilar(self):
+        pt = instalacoes.PT_POR_CM
+        pecas = [{"tipo": "P", "nome": "P1", "polys": [[[0, 0], [20 * pt, 0], [20 * pt, 20 * pt], [0, 20 * pt]]]}]
+        pontos = {"a": {"tipo": "descida", "ponto": [10 * pt, 10 * pt], "modelo_id": "1"},
+                  "b": {"tipo": "descida", "ponto": [120 * pt, 10 * pt], "modelo_id": "2"},
+                  "c": {"tipo": "captor", "ponto": [500 * pt, 10 * pt], "modelo_id": "3"}}
+        longe = instalacoes.a_conferir(pontos, pecas)["descida_longe_de_pilar"]
+        self.assertEqual([(x["id"], x["distancia_cm"]) for x in longe], [("b", 100)])
+
     def test_trecho_de_tubo_nao_e_ponto(self):
         c = instalacoes.classificar
         self.assertIsNone(c("hidro", "IfcFlowSegment", "Saída tubo"))

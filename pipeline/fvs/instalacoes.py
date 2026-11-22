@@ -40,7 +40,7 @@ DISCIPLINAS = {
     "hidro": "Água fria e quente",
     "sanitario": "Esgoto e pluvial",
     "eletrico": "Caixas, quadros e eletrodutos",
-    "spda": "Captores e descidas",
+    "spda": "SPDA",
 }
 
 # Tipo de ponto -> nome para a pessoa
@@ -59,6 +59,7 @@ TIPOS_DE_PONTO = {
     "descida": "Descida",
     "caixa_inspecao": "Caixa de inspeção",
     "haste": "Haste de aterramento",
+    "conector": "Conector de aterramento",
     "eletroduto": "Eletroduto",
 }
 # Tipos que vão na planta como linha (com "linha" além de "ponto").
@@ -96,7 +97,7 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     """O tipo do ponto (chave de TIPOS_DE_PONTO), ou None se o objeto não é ponto desta disciplina."""
     # o Revit põe prefixo com sublinhado (HID_, SAN_): vira espaço para o \b das buscas funcionar
     n = re.sub(r"_+", " ", _sem_acento(nome)).strip()
-    if classe in CONEXOES:
+    if classe in CONEXOES and disciplina != "spda":
         return None
     if disciplina == "eletrico" and classe in SEGMENTOS:
         if re.search(r"ELETROCALHA|\bLEITO\b|PERFILADO|\bCABO\b", n):
@@ -119,9 +120,15 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
             return "caixa_passagem"
         return None
     if disciplina == "spda":
+        if classe in CONEXOES:
+            # IFC real (22/11): das conexões do SPDA, só o conector embutido no pilar (ATERRINSERT) e o da malha
+            # (Minigar) são ponto; curvas, barras, terminais, clips e parafusos ficam fora
+            return "conector" if re.search(r"ATERRINSERT|MINIGAR", n) else None
+        if classe in SEGMENTOS and re.search(r"CONDUIT|ELETRODUTO|BARRA REDONDA", n) and "DESCIDA" not in n:
+            return "descida_vertical"  # só o trecho vertical é descida (ler_ifc confere); o horizontal fica fora
         if re.search(r"CAPTOR|FRANKLIN|TERMINAL AEREO|MASTRO", n):
             return "captor"
-        if re.search(r"C(AI)?XA?\.? ?(DE )?INSP|EQUALIZ|\bBEP\b", n):
+        if re.search(r"C(AI)?XA?\.? ?(DE )?INSP|EQUALIZ|EQUIPOTENCIAL|\bBEP\d*\b", n):  # IFC real: "...Equipotencial - BEP1"
             return "caixa_inspecao"
         if re.search(r"\bHASTE\b|ATERRAMENTO", n):
             return "haste"
@@ -229,6 +236,30 @@ def _linha_do_segmento(el, m, cm_por_unidade: float) -> list[list[float]] | None
     return linha
 
 
+DESCIDA_MINIMA_CM = 50.0  # trecho com menos altura que isto não é descida
+
+
+def _vertical(el, m, cm_por_unidade: float) -> tuple[float, float] | None:
+    """(x, y) em cm do trecho que sobe (corpo extrudado com mais de DESCIDA_MINIMA_CM de altura e quase nada na
+    planta); None se não sobe."""
+    import numpy as np
+
+    for r in (el.Representation.Representations if el.Representation else ()):
+        for it in r.Items:
+            if it.is_a("IfcExtrudedAreaSolid") and it.Depth:
+                pos = _posicao(it.Position)
+                d = np.array(list(it.ExtrudedDirection.DirectionRatios), dtype=float)
+                d = d / (np.linalg.norm(d) or 1.0) * float(it.Depth)
+                a = m @ pos @ np.array([0.0, 0.0, 0.0, 1.0])
+                b = m @ pos @ np.array([*d, 1.0])
+                dz = abs(float(b[2] - a[2])) * cm_por_unidade
+                dh = float(np.hypot(b[0] - a[0], b[1] - a[1])) * cm_por_unidade
+                if dz >= DESCIDA_MINIMA_CM and dh < LINHA_MINIMA_CM * 4:
+                    return float(a[0]) * cm_por_unidade, float(a[1]) * cm_por_unidade
+                return None
+    return None
+
+
 # Faixa de altura do pavimento: de um pouco abaixo do piso (ralo, caixa sifonada sob a laje) até o pavimento de cima.
 ABAIXO_DO_PISO_CM = 150.0
 SEM_PAVIMENTO_ACIMA_CM = 400.0
@@ -277,7 +308,9 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
 
     f = ifcopenshell.open(caminho)
     cm_por_unidade = uu.calculate_unit_scale(f) * 100.0
-    faixa = _faixa_de_altura(f, niveis, cm_por_unidade)
+    # SPDA (IFC real, 22/11): o objeto está no pavimento que o projetista escolheu, mas a altura dele não bate com
+    # a do nível (a descida do 2º fica uns 6 m abaixo do 2º); vale só o nome do nível que o contém
+    faixa = None if disciplina == "spda" else _faixa_de_altura(f, niveis, cm_por_unidade)
     vistos: set[str] = set()
     # o mesmo modelo vinculado mais de uma vez no mesmo lugar: o objeto igual na mesma posição entra uma vez;
     # o Tag repetido em outra posição (outra cópia) usa o GlobalId, para o id do ponto não se repetir
@@ -309,14 +342,24 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
                 if cont is not None and cont.is_a("IfcBuildingStorey") and cont.ObjectPlacement and abs(
                         float(up.get_local_placement(cont.ObjectPlacement)[2, 3]) * cm_por_unidade - faixa[2]) > 50.0:
                     continue  # num nível de outra altura: é do andar de baixo ou de cima (forro, cópia vinculada)
-            item = {"modelo_id": str(el.Tag or el.GlobalId), "tipo": tipo, "nome": (el.Name or "").split(":")[0].strip(),
-                    "x": float(m[0, 3]) * cm_por_unidade, "y": float(m[1, 3]) * cm_por_unidade}
+            xy = (float(m[0, 3]) * cm_por_unidade, float(m[1, 3]) * cm_por_unidade)
+            if tipo == "descida_vertical":
+                xy = _vertical(el, m, cm_por_unidade)
+                if not xy:
+                    continue  # trecho horizontal ou inclinado: malha, não descida
+                tipo = "descida"
+            nome = "Descida" if el.is_a() in SEGMENTOS and tipo == "descida" else (el.Name or "").split(":")[0].strip()
+            item = {"modelo_id": str(el.Tag or el.GlobalId), "tipo": tipo, "nome": nome,
+                    "x": xy[0], "y": xy[1]}
             if tipo in TIPOS_DE_LINHA:
                 linha = _linha_do_segmento(el, m, cm_por_unidade)
                 if not linha:
                     continue
                 item.update({"linha": linha, "x": (linha[0][0] + linha[1][0]) / 2, "y": (linha[0][1] + linha[1][1]) / 2})
-            lugar = (tipo, round(float(m[2, 3]) * cm_por_unidade), *(round(c) for p in item.get("linha") or [[item["x"], item["y"]]] for c in p))
+            if tipo == "descida":  # a descida vem em trechos, um em cima do outro: um ponto por lugar na planta
+                lugar = (tipo, round(item["x"] / 10), round(item["y"] / 10))
+            else:
+                lugar = (tipo, round(float(m[2, 3]) * cm_por_unidade), *(round(c) for p in item.get("linha") or [[item["x"], item["y"]]] for c in p))
             if lugar in lugares:
                 continue
             lugares.add(lugar)
@@ -374,3 +417,30 @@ def resumo(pontos: dict, fora: list[dict]) -> dict:
     for p in pontos.values():
         por_tipo[p["tipo"]] = por_tipo.get(p["tipo"], 0) + 1
     return {"pontos": len(pontos), "por_tipo": dict(sorted(por_tipo.items())), "fora_da_folha": fora}
+
+
+# A descida do SPDA corre no pilar: a que fica mais longe que isto do contorno de um pilar vai para "a conferir"
+# (encaixe errado, descida pela fachada ou pilar fora da forma).
+DESCIDA_LONGE_CM = 30.0
+PT_POR_CM = 72 / 2.54 / 50  # folha na escala 1:50
+
+
+def a_conferir(pontos: dict, pecas: list[dict]) -> dict:
+    """O que a pessoa confere na obra, além do toque: descidas longe de pilar."""
+    caixas = []
+    for p in pecas:
+        if p.get("tipo") == "P":
+            for poly in p.get("polys") or []:
+                if len(poly) >= 3:
+                    xs, ys = [q[0] for q in poly], [q[1] for q in poly]
+                    caixas.append((min(xs), min(ys), max(xs), max(ys)))
+    lim = DESCIDA_LONGE_CM * PT_POR_CM
+    longe = []
+    for pid, p in pontos.items():
+        if p["tipo"] != "descida" or not caixas:
+            continue
+        x, y = p["ponto"]
+        d = min(((max(c[0] - x, 0, x - c[2]) ** 2 + max(c[1] - y, 0, y - c[3]) ** 2) ** 0.5) for c in caixas)
+        if d > lim:
+            longe.append({"id": pid, "modelo_id": p["modelo_id"], "distancia_cm": round(d / PT_POR_CM)})
+    return {"descida_longe_de_pilar": longe}

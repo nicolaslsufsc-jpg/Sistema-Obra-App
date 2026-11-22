@@ -303,6 +303,12 @@ suite('Leitor de IFC na bancada (Chrome)', () => {
       expect(await item.innerText()).toContain('para baixar')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       await capturar('1_lista')
+      // tela baixa (celular com a barra do Chrome): o topo da tela vazia, com o Importar IFC, continua alcançável
+      await p.setViewportSize({ width: largura, height: 420 })
+      const importar = p.getByTestId('ifc-importar').getByRole('button', { name: 'Importar IFC' })
+      await importar.scrollIntoViewIfNeeded()
+      expect((await importar.boundingBox())!.y).toBeGreaterThanOrEqual(0)
+      await p.setViewportSize({ width: largura, height: altura })
 
       // baixar: barra de progresso, depois o modelo abre e fica guardado
       await item.getByRole('button', { name: 'Baixar para usar offline' }).click()
@@ -345,7 +351,7 @@ suite('Leitor de IFC na bancada (Chrome)', () => {
     it(`${nome} ${largura}x${altura}: baixar modelo da obra pelo Drive (tamanho, Wi-Fi, importar)`, async () => {
       const contexto = await navegador.newContext({ viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       // nada sai para o Google nos testes
-      await contexto.route('**/drive.google.com/**', (r: any) => r.abort())
+      await contexto.route(/google\.com/, (r: any) => r.abort())
       const p: Page = await contexto.newPage()
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
@@ -376,7 +382,7 @@ suite('Leitor de IFC na bancada (Chrome)', () => {
       expect(texto).toContain('Wi-Fi')
       expect(texto).toContain('Prefira abrir no PC')
       const link = grande.getByRole('link', { name: 'Abrir no Drive para baixar' })
-      expect(await link.getAttribute('href')).toBe('https://drive.google.com/uc?export=download&id=exemplo_exe_hidraulico')
+      expect(await link.getAttribute('href')).toBe('https://drive.usercontent.google.com/download?id=exemplo_exe_hidraulico&export=download&confirm=t')
       expect(await link.getAttribute('target')).toBe('_blank')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       await capturar('2_avisos')
@@ -395,6 +401,9 @@ suite('Leitor de IFC na bancada (Chrome)', () => {
       const item = secao.getByTestId('modelo-drive').filter({ hasText: 'amostra_ARQ.ifc' })
       await item.waitFor()
       expect(await secao.innerText()).not.toContain('lista de exemplo')
+      // a confirmação fica na seção, discreta; o aviso vermelho do leitor é só para erro
+      await secao.getByRole('status').getByText('Lista de modelos carregada: 1 modelo(s).').waitFor()
+      expect(await p.locator('.ifc-avisos').count()).toBe(0)
       await item.getByRole('button', { name: 'Baixar', exact: true }).click()
       expect(await item.innerText()).not.toContain('Wi-Fi')
       await abrirModelos(p, [arq], 1)

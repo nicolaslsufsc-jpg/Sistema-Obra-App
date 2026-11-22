@@ -1,6 +1,7 @@
 // Thread separada: ler um IFC grande leva dezenas de segundos e a tela não pode travar.
 // Cada arquivo usa um worker novo, que é encerrado no fim: o WebAssembly só devolve a memória assim.
 import { IfcAPI, LogLevel } from 'web-ifc'
+import { mensagemDeErroDaLeitura } from './erro_leitura'
 import wasmUrl from 'web-ifc/web-ifc.wasm?url'
 import { lerModelo } from './leitor'
 import { buffersDoModelo } from './tipos'
@@ -53,7 +54,6 @@ escopo.onmessage = async (e) => {
     if (modelo.tabela.expressIds.length === 0) throw new Error('O arquivo abriu, mas não tem nenhum elemento com geometria.')
     escopo.postMessage({ tipo: 'pronto', modelo }, buffersDoModelo(modelo))
   } catch (erro) {
-    const m = erro instanceof Error ? erro.message : String(erro)
-    escopo.postMessage({ tipo: 'erro', mensagem: m })
+    escopo.postMessage({ tipo: 'erro', mensagem: mensagemDeErroDaLeitura(erro, arquivo.size) })
   }
 }

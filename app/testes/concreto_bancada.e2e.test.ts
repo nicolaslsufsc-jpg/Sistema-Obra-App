@@ -977,14 +977,18 @@ suite('Concreto na bancada (Chrome)', () => {
       await clicar(p, /Trecho 2 · Vigas/)
       await clicar(p, 'Desenhar na planta')
       await p.locator('[data-testid=mapa] canvas.leaflet-zoom-animated').first().waitFor()
+      // desde 22/11 o botão fica na barra de cima do mapa: não cobre a planta, o zoom, o painel nem os outros botões da barra
       const sobreposto = await p.evaluate(() => {
-        const b = document.querySelector('.rp-botao')!.getBoundingClientRect()
-        return [...document.querySelectorAll('.cc-zoom button, .cc-painel, .cc-mapa-topo button')].filter((e) => {
-          const q = e.getBoundingClientRect()
-          return q.width > 0 && !(q.right <= b.left || q.left >= b.right || q.bottom <= b.top || q.top >= b.bottom)
-        }).length
+        const botao = document.querySelector('.rp-botao')!
+        const b = botao.getBoundingClientRect()
+        const cobre = (q: DOMRect) => q.width > 0 && !(q.right <= b.left || q.left >= b.right || q.bottom <= b.top || q.top >= b.bottom)
+        return {
+          naBarra: !!botao.closest('.cc-mapa-topo'),
+          naTela: b.width > 0 && b.left >= 0 && b.right <= window.innerWidth && b.top >= 0,
+          outros: [...document.querySelectorAll('.cc-zoom button, .cc-painel, .cc-mapa-topo button, [data-testid=mapa]')].filter((e) => e !== botao && cobre(e.getBoundingClientRect())).length,
+        }
       })
-      expect(sobreposto).toBe(0)
+      expect(sobreposto).toEqual({ naBarra: true, naTela: true, outros: 0 })
       await capturar(p, `reportar_mapa_${largura}`)
       expect(erros).toEqual([])
       await contexto.close()
@@ -1135,6 +1139,12 @@ suite('Concreto na bancada (Chrome)', () => {
       const zoom = () => p.evaluate(() => (document.querySelector('.cc-mapa') as HTMLElement & { __mapa: any }).__mapa.getZoom())
       const mais = p.getByTestId('zoom-mais')
       const menos = p.getByTestId('zoom-menos')
+      // sem mouse, a barra de cima do mapa (Voltar, título, Desfazer, "!") cabe numa linha: a planta não perde altura
+      const barra = await p.evaluate(() => {
+        const l = document.querySelector('.cc-mapa-linha')!
+        return { altura: l.getBoundingClientRect().height, botao: Math.max(...[...l.children].map((c) => c.getBoundingClientRect().height)) }
+      })
+      expect(barra.altura, 'barra do mapa numa linha').toBeLessThan(barra.botao * 1.5)
       // os botões estão visíveis, grandes e não ficam por baixo do painel
       for (const b of [mais, menos]) {
         const r = await b.boundingBox()

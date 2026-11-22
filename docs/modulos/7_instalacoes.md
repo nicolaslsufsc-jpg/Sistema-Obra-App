@@ -112,6 +112,7 @@ Pedido do Nicolas ("faça a mesma coisa dos furos"): uma planta "SPDA" por pavim
   - Haste e caixa de inspeção com esse nome não existem no modelo.
 - **Pavimento:** no IFC do SPDA a altura do objeto não bate com a do nível. Vale só o nome do nível que o contém (sem a faixa de altura das outras disciplinas).
 - **A conferir:** descida a mais de 30 cm do contorno de um pilar vai para `a_conferir.descida_longe_de_pilar` no relatório.
+- **Gerado na obra piloto (22/11), sem publicar:** 8 pavimentos (subsolo, pilotis, mezanino, 2º a 6º), 241 pontos: 204 descidas, 20 captores (mezanino), 13 conectores, 4 BEP. Fundo: todas as pranchas encaixaram no mezanino e do 2º ao 6º; no subsolo 2 de 3, no pilotis 1 de 3 (as outras ficam fora). Descidas longe de pilar: 8 no subsolo (todas), 9 no 2º, 5 no mezanino, 5 no 6º, 1 no pilotis.
 - **Publicar:** `PUBLICAR_SPDA.bat` na pasta da FVS da obra, fora do repositório. Ele desliga o vigia do Autodoc (mesmo login), publica um pavimento por vez (`--so-spda --aceita-ambientes`), para no primeiro erro e religa o vigia.
 
 ## Plano do SPDA como aba (22/11/2026, só o plano)

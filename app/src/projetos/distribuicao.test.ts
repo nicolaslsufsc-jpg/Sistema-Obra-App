@@ -127,6 +127,13 @@ describe('a entregar', () => {
     expect(g[0].pendencias[0].motivo).toBe('nova')
     expect(g[0].pendencias[0].devolver).toEqual([])
   })
+  it('regra da empresa e regra da pessoa na mesma folha: a cópia antiga da pessoa só aparece uma vez', () => {
+    const r = [regra({ colaborador: '' }), regra({})] // Alfa inteira + João, ESTRUTURAL
+    const g = aEntregar(vigentes, cruzadas, r)
+    const devolver = g.flatMap((x) => x.pendencias.flatMap((p) => p.devolver.map((d) => d.copia.linha)))
+    expect(devolver).toEqual([...new Set(devolver)])
+    expect(g.find((x) => x.colaborador === 'João')!.pendencias[0].devolver.map((x) => x.copia.linha)).toEqual([1])
+  })
 })
 
 describe('lista importada e gravada', () => {

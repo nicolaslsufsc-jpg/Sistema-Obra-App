@@ -10,7 +10,7 @@ import { normalizar, rotuloRev } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { plural } from './comum'
-import { alvoDaFolha, alvoDe } from './TelaPranchaBase'
+import { alvoDaFolha, alvoDe, ondeDaCopia } from './TelaPranchaBase'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
 import type { FolhaPdf } from '../../telas/folha_pdf'
 
@@ -57,14 +57,14 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
       },
       {
         titulo: 'Recolher',
-        colunas: ['Folha', 'Em campo', 'Vigente', 'De quem', 'Linha da ficha'],
+        colunas: ['Folha', 'Em campo', 'Vigente', 'De quem', 'Onde'],
         curtas: [1, 2, 4],
         linhas: (agora?.recolher ?? []).map(({ x, vigente }) => [
           `${vigente.codigo} ${vigente.titulo}`,
           rotuloRev(x.copia.fase, x.copia.revisao),
           rotuloRev(vigente.fase, vigente.revisao),
           pessoa(x.copia.empresa, x.copia.colaborador),
-          x.copia.linha,
+          ondeDaCopia(x.copia),
         ]),
         vazio: 'Nada a recolher.',
       },
@@ -137,7 +137,7 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
                     Recolher {vigente.codigo} <span class="pj-rev velha">{rotuloRev(x.copia.fase, x.copia.revisao)}</span>
                   </b>
                   <div class="discreto">
-                    de <b>{pessoa(x.copia.empresa, x.copia.colaborador)}</b> · vigente {rotuloRev(vigente.fase, vigente.revisao)} · linha {x.copia.linha}
+                    de <b>{pessoa(x.copia.empresa, x.copia.colaborador)}</b> · vigente {rotuloRev(vigente.fase, vigente.revisao)} · {ondeDaCopia(x.copia)}
                   </div>
                 </div>
                 <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>{x.dias ?? '?'} d</div>

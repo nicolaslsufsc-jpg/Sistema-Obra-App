@@ -10,7 +10,7 @@ import { ErroDeArquivo, normalizar, rotuloRev } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { Campo, dataBR, plural } from './comum'
-import { alvoDaFolha } from './TelaPranchaBase'
+import { alvoDaFolha, ondeDaCopia } from './TelaPranchaBase'
 
 const pessoa = (empresa: string, colaborador: string) => (colaborador ? `${empresa} · ${colaborador}` : `${empresa} (qualquer pessoa)`)
 
@@ -66,7 +66,7 @@ export function TelaAEntregar({ ctx, aoSair }: { ctx: Contexto; aoSair: () => vo
                   {p.regra.pavimento ? ` · ${p.regra.pavimento}` : ''}
                   <div class="discreto">
                     {p.motivo === 'trocar'
-                      ? `recolher ${p.devolver.map((x) => `${rotuloRev(x.copia.fase, x.copia.revisao)} (linha ${x.copia.linha})`).join(', ')}`
+                      ? `recolher ${p.devolver.map((x) => `${rotuloRev(x.copia.fase, x.copia.revisao)} (${ondeDaCopia(x.copia)})`).join(', ')}`
                       : `revisão nova de ${dataBR(p.vigente.data)}`}
                   </div>
                 </div>

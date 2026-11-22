@@ -976,3 +976,13 @@ button.pj-pequeno {
   border-color: var(--atencao-borda);
   color: var(--atencao-texto);
 }
+
+/* 375 px: o "Limpar" da assinatura não quebra a palavra (achado do testador, 21/11) */
+.pj-assinatura-rodape button {
+  flex: none;
+  white-space: nowrap;
+  width: auto;
+}
+.pj-assinatura-rodape .discreto {
+  min-width: 0;
+}

@@ -120,14 +120,18 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const indiceConc = useMemo(() => new Map(concs.map((c, i) => [c.raiz, i])), [concs])
   // peças de cada planta, preparadas uma vez (cálculo das frações)
   const pecasPorPlanta = useMemo(() => new Map((plantas ?? []).map((p) => [p.id, prepararPecas(p.elementos)])), [plantas])
+  // mesma planta: pelo trecho, pela linha de "plantas" que é dele ou pela cópia da mesma prancha
+  // no pavimento (plantas_equivalentes.ts); não só pelo id exato
+  const chaveDe = dados.chavePlanta ?? ((id: string) => id)
+  const naPlanta = (a: Area, plantaId: string) => chaveDe(idDaRef(a.planta_ref)) === chaveDe(plantaId)
   /** Áreas do caminhão em cada planta (id da planta → áreas). */
   const areasPorPlanta = (camRaiz: string) => {
     const m = new Map<string, Area[]>()
     for (const a of dados.areasDe.get(camRaiz) ?? []) {
-      const id = idDaRef(a.planta_ref)
-      m.set(id, [...(m.get(id) ?? []), a])
+      const k = chaveDe(idDaRef(a.planta_ref))
+      m.set(k, [...(m.get(k) ?? []), a])
     }
-    return m
+    return { get: (plantaId: string) => m.get(chaveDe(plantaId)) }
   }
 
   // caminhão escolhido: abre no trecho onde ele tem área (a mais recente), se não for o pedido
@@ -135,8 +139,9 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     if (!camSel || !plantas || plantas.length < 2) return
     const areas = [...(dados.areasDe.get(camSel) ?? [])].sort((a, b) => a.criado_em_dispositivo.localeCompare(b.criado_em_dispositivo))
     const ultima = areas.at(-1)
-    if (!ultima || idDaRef(ultima.planta_ref) === planta?.id) return
-    if (plantas.some((p) => p.id === idDaRef(ultima.planta_ref))) setPlantaSel(idDaRef(ultima.planta_ref))
+    if (!ultima || (planta && naPlanta(ultima, planta.id))) return
+    const alvo = plantas.find((p) => naPlanta(ultima, p.id))
+    if (alvo) setPlantaSel(alvo.id)
   }, [camSel, plantas])
   const [pecaSel, setPecaSel] = useState<string | null>(null)
   const [painel, setPainel] = useState(true)
@@ -444,7 +449,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const tipoDe = (pl: PlantaPavimento, id: string) => d.pecaPorId.get(id)?.tipo ?? pl.elementos.find((e) => e.id === id)?.tipo ?? ''
     const porPlanta = (plantas ?? []).flatMap((pl) => {
       const pecas = pecasPorPlanta.get(pl.id) ?? []
-      const daPlanta = areas.filter((a) => idDaRef(a.planta_ref) === pl.id)
+      const daPlanta = areas.filter((a) => naPlanta(a, pl.id))
       const preparadas = (alvo: AlvoDaArea | null) => daPlanta.filter((a) => (a.alvo ?? null) === alvo).map((a) => prepararArea(a.contorno as Ponto[]))
       return [
         { pecas, areas: preparadas(null) },
@@ -465,7 +470,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const acertarLaje = async (camRaiz: string, pavId: string, trecho: string): Promise<'entrou' | 'saiu' | null> => {
     const d = await carregar(obra.id)
     const doTrecho = new Set((plantas ?? []).filter((pl) => pl.trecho === trecho).map((pl) => pl.id))
-    const temArea = (d.areasDe.get(camRaiz) ?? []).some((a) => a.alvo === 'vigas_laje' && doTrecho.has(idDaRef(a.planta_ref)))
+    const temArea = (d.areasDe.get(camRaiz) ?? []).some((a) => a.alvo === 'vigas_laje' && [...doTrecho].some((id) => naPlanta(a, id)))
     const pecasPav = d.pecasDoPavimento.get(pavId) ?? []
     let lajeId = lajeDoTrecho(pecasPav, trecho)?.id
     if (!lajeId && temArea && podeCriar) lajeId = await garantirLaje(obra.id, usuario.id, pavId, trecho, pecasPav)
@@ -576,7 +581,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     enfileirar(async () => {
       const d = await carregar(obra.id)
       const areas = (d.areasDe.get(cam.raiz) ?? [])
-        .filter((a) => idDaRef(a.planta_ref) === plantaId)
+        .filter((a) => naPlanta(a, plantaId))
         .sort((a, b) => a.criado_em_dispositivo.localeCompare(b.criado_em_dispositivo))
       const ultima = areas.at(-1)
       if (!ultima) return setMsg('Este caminhão não tem área desenhada nesta planta.')
@@ -600,7 +605,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     enfileirar(async () => {
       const d = await carregar(obra.id)
       for (const a of d.areasDe.get(cam.raiz) ?? []) {
-        if (idDaRef(a.planta_ref) === plantaId) await cancelar('caminhao_areas', obra.id, usuario.id, a)
+        if (naPlanta(a, plantaId)) await cancelar('caminhao_areas', obra.id, usuario.id, a)
       }
       await recalcular(cam.raiz)
       const laje = pavId ? await acertarLaje(cam.raiz, pavId, trecho) : null
@@ -610,7 +615,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   }
 
   // áreas em trecho que não está neste aparelho: não aparecem nem recalculam peça (avisa)
-  const areasSemPlanta = camAtual && plantas ? (dados.areasDe.get(camAtual.raiz) ?? []).filter((a) => !plantas.some((p) => p.id === idDaRef(a.planta_ref))) : []
+  const areasSemPlanta = camAtual && plantas ? (dados.areasDe.get(camAtual.raiz) ?? []).filter((a) => !plantas.some((p) => naPlanta(a, p.id))) : []
 
   // áreas desenhadas numa revisão anterior desta planta: avisa (a peça pode ter mudado)
   const areasRevisaoAntiga =

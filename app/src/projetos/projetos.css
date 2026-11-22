@@ -989,10 +989,12 @@ button.pj-pequeno {
 
 /* selos do painel da obra que abrem a lista (22/11): continuam com cara de selo, alvo de toque maior */
 button.pj-selo.pj-selo-botao {
+  display: inline-flex;
+  align-items: center;
   width: auto;
-  min-height: 0;
-  margin: 0;
-  padding: 0.3rem 0.6rem;
+  min-height: 40px; /* alvo de toque (achado do testador, 22/11: eram 28 px) */
+  margin: 0.15rem 0;
+  padding: 0.3rem 0.7rem;
   font: inherit;
   font-size: 0.75rem;
   font-weight: 700;

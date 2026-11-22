@@ -72,7 +72,11 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
     if (!confirm(`Registrar a entrega de ${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${colaborador.trim() ? ` (${colaborador.trim()})` : ''} em ${dataBR(data)}?${alerta}${semAssinatura}`)) return
     setSalvando(true)
     // A empresa ainda tem outra cópia desta prancha? Lembrar de recolher (senão fica em CONFERIR).
-    const antigas = (dados.situacoesDe.get(doc.id) ?? []).filter((s) => s.empresa_id === empresa).flatMap((s) => s.entregas_abertas)
+    // Só revisão anterior: a vigente (ou a que está sendo entregue) em campo não é para recolher (achado de 22/11).
+    const antigas = (dados.situacoesDe.get(doc.id) ?? [])
+      .filter((s) => s.empresa_id === empresa)
+      .flatMap((s) => s.entregas_abertas)
+      .filter((a) => String(a.revisao_id) !== revisao && String(a.revisao_id) !== vigente?.id)
     try {
       // UMA assinatura por entrega: o mesmo arquivo vale para todas as pranchas
       const png = assinado ? await pegar.current?.() : null

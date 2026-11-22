@@ -428,6 +428,13 @@
   color: var(--texto-ffffff);
   font-weight: 700;
 }
+/* ✕ do aviso fixo (Desfazer do "+ Área", 22/11): quadrado de 44 px, sem borda, depois do Desfazer */
+.fv-planta .fv-toast .fv-toast-fechar {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-color: transparent;
+}
 /* O aviso nunca fica por cima do painel nem dos botões do topo (achado do Testador de 09/11):
    tablet deitado com painel: só sobre a planta, à esquerda do painel;
    celular ou tablet em pé: embaixo da planta (acima do painel aberto ou do botão Legenda).
@@ -2221,9 +2228,14 @@
 .fv-rep.fv-esc-linha {
   border-left-color: var(--borda-c27800);
 }
-.fv-rep-res.fvs-esc-espera {
-  color: var(--texto-7a4500);
+/* a situação quebra linha em vez de cortar no fim ("aguardando (faltam 3 dias, libera em 25/11)" em 375 px,
+   22/11): o seletor antigo (.fvs-esc-espera) não batia com a classe da tela (fv-esc-espera) */
+.fv-esc-linha .fv-rep-res {
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.fv-rep-res.fv-esc-espera {
+  color: var(--texto-7a4500);
 }
 /* cabeçalho comum dentro da FVS (22/11/2026): sempre numa linha, a seta no canto esquerdo. O topo do
    Escoramento ficava em coluna abaixo de 700 px e, com o "align-self: center" da seta do cabeçalho comum

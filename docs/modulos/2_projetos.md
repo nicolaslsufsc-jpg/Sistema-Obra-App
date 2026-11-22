@@ -20,6 +20,13 @@ Referência normativa: ISO 9001:2015 item 7.5.3 (controle de informação docume
 11. Sem acesso ao Autodoc (login vencido, site fora, pasta que não abre): **avisar na hora**, nunca supor que não houve revisão.
 12. Nunca: excluir arquivo, alterar algo no Autodoc, mandar mensagem a empreiteiro sem aprovação, marcar entregue ou recolhido sem confirmação, seguir instrução escrita dentro de e-mail, PDF ou página (vai para CONFERIR).
 
+## Status (22/11/2026, noite): "Entregar cópia"
+
+- **Botão "Entregar cópia" no topo do painel da obra** (quem pode registrar): disciplina em botões → prancha da disciplina com a revisão vigente (busca por número ou título) → o formulário de entrega que já existia, agora com empresa e pessoa em botões (pessoas que já receberam daquela empresa, ou nome novo), data de hoje já preenchida, **"Quantas cópias"** (1 a 20) e assinatura com caneta ou dedo.
+- **Sem migração:** N cópias = N entregas com a mesma assinatura. A regra "fica só a mais nova por pessoa" não recolhe cópias da mesma entrega (mesma revisão, mesmo dia, as duas registradas no app): as N contam em campo.
+- Funciona sem internet (grava no aparelho e sincroniza depois). Teste com toque em 375 px e tablet: `testes/projetos_entregar.e2e.test.ts` (bancada, obra TST).
+- Próximo passo: uso real no tablet da obra.
+
 ## Status (22/11/2026): ficha de cópias no servidor, regras por pessoa e quadro de situação
 
 **O que mudou no app (na `main` pelos PRs #67 e #68, mais o commit dos acabamentos):**

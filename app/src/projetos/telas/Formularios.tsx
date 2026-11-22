@@ -2,12 +2,16 @@ import { useRef, useState } from 'preact/hooks'
 import type { Linha } from '../../nucleo/banco_local'
 import { guardarAssinatura } from '../assinatura'
 import { registrarDevolucao, registrarEntrega } from '../dados'
+import { COPIAS_MAXIMO, lerCopias, pessoasDaEmpresa } from '../entregar'
 import { normalizar } from '../regras'
 import { QuadroAssinatura, type PegarAssinatura } from './Assinatura'
 import type { Contexto } from './ModuloProjetos'
 import { Campo, dataBR, rotuloRevisao, Topo } from './comum'
 
 type Erros = Record<string, string>
+
+const EMPRESAS_EM_BOTOES = 12
+const PESSOAS_EM_BOTOES = 12
 
 function CampoFoto({ foto, setFoto }: { foto: File | null; setFoto: (f: File | null) => void }) {
   return (
@@ -30,6 +34,8 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
 
   const [empresa, setEmpresa] = useState(empresaId ?? (empresas.length === 1 ? empresas[0].id : ''))
   const [colaborador, setColaborador] = useState('')
+  // quantas cópias de cada prancha: uma entrega por cópia, com a mesma assinatura (a entrega não tem quantidade)
+  const [copias, setCopias] = useState('1')
   const [revisao, setRevisao] = useState(vigente?.id ?? '')
   const [data, setData] = useState(dados.hoje)
   const [foto, setFoto] = useState<File | null>(null)
@@ -41,6 +47,7 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
   const [buscaOutras, setBuscaOutras] = useState('')
   const pegar = useRef<PegarAssinatura | null>(null)
   const [assinado, setAssinado] = useState(false)
+  const pessoas = empresa ? pessoasDaEmpresa(dados, empresa).slice(0, PESSOAS_EM_BOTOES) : []
 
   if (!doc) {
     return (
@@ -57,8 +64,10 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
     if (!empresa) e.empresa = 'Escolha a empresa.'
     if (!revisao) e.revisao = 'Escolha a revisão.'
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) e.data = 'Informe a data.'
+    const n = lerCopias(copias)
+    if (!n) e.copias = `Informe de 1 a ${COPIAS_MAXIMO} cópias.`
     setErros(e)
-    if (Object.keys(e).length > 0) return
+    if (Object.keys(e).length > 0 || !n) return
     const rev = dados.revisaoPorId.get(revisao)
     const nomeEmpresa = dados.empresaPorId.get(empresa)?.nome ?? ''
     const alerta = rev && vigente && rev.id !== vigente.id ? `\n\nATENÇÃO: ${rotuloRevisao(rev)} não é a vigente (${rotuloRevisao(vigente)}). Só registre se for isso mesmo.` : ''
@@ -69,7 +78,8 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
     })
     const semAssinatura = assinado ? '' : '\n\n⚠ Sem assinatura de quem retira. É opcional, mas sem ela não há comprovante assinado.'
     const mais = extras.length ? ` e mais ${extras.length} ${extras.length === 1 ? 'prancha' : 'pranchas'}` : ''
-    if (!confirm(`Registrar a entrega de ${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${colaborador.trim() ? ` (${colaborador.trim()})` : ''} em ${dataBR(data)}?${alerta}${semAssinatura}`)) return
+    const quantas = n > 1 ? `${n} cópias de ` : ''
+    if (!confirm(`Registrar a entrega de ${quantas}${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${colaborador.trim() ? ` (${colaborador.trim()})` : ''} em ${dataBR(data)}?${alerta}${semAssinatura}`)) return
     setSalvando(true)
     // A empresa ainda tem outra cópia desta prancha? Lembrar de recolher (senão fica em CONFERIR).
     // Só revisão anterior: a vigente (ou a que está sendo entregue) em campo não é para recolher (achado de 22/11).
@@ -82,11 +92,12 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
       const png = assinado ? await pegar.current?.() : null
       const assinatura_id = png ? await guardarAssinatura(obra.id, usuario.id, png) : null
       const base = { empresa_id: empresa, colaborador, data_evento: data, observacao: obs, assinatura_id }
-      await registrarEntrega(obra.id, usuario.id, { ...base, documento_id: doc.id, revisao_id: revisao }, foto)
-      for (const x of extras) await registrarEntrega(obra.id, usuario.id, { ...base, ...x })
+      // uma entrega por cópia (a foto do formulário vai só na primeira)
+      for (let k = 0; k < n; k++) await registrarEntrega(obra.id, usuario.id, { ...base, documento_id: doc.id, revisao_id: revisao }, k === 0 ? foto : null)
+      for (const x of extras) for (let k = 0; k < n; k++) await registrarEntrega(obra.id, usuario.id, { ...base, ...x })
       await recarregar()
       const lembrete = antigas.length > 0 ? ` Falta recolher ${antigas.map((a) => rotuloRevisao(dados.revisaoPorId.get(String(a.revisao_id)))).join(', ')} de ${nomeEmpresa}.` : ''
-      avisar(`Entrega registrada: ${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${assinatura_id ? ', com assinatura' : ''}.${lembrete}`)
+      avisar(`Entrega registrada: ${quantas}${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${assinatura_id ? ', com assinatura' : ''}.${lembrete}`)
       if (assinatura_id) trocar({ nome: 'comprovante', assinaturaId: assinatura_id })
       else trocar({ nome: 'prancha', documentoId: doc.id })
     } catch (err) {
@@ -103,19 +114,60 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
       )}
       <form onSubmit={salvar} class="pj-form" noValidate>
         <div class="pj-campos">
-          <Campo rotulo="Empresa" erro={erros.empresa}>
-            <select value={empresa} onChange={(e) => setEmpresa(e.currentTarget.value)}>
-              <option value="">Escolha…</option>
-              {empresas.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nome}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <Campo rotulo="Quem recebeu (colaborador)">
-            <input value={colaborador} onInput={(e) => setColaborador(e.currentTarget.value)} maxLength={120} />
-          </Campo>
+          {/* para quem: empresa e pessoa em botões (Nicolas, 22/11); com muitas empresas, volta a ser lista */}
+          {empresas.length > 0 && empresas.length <= EMPRESAS_EM_BOTOES ? (
+            <div class={`pj-campo${erros.empresa ? ' com-erro' : ''}`} role="group" aria-label="Empresa">
+              <span>Para qual empresa</span>
+              <div class="pj-filtros pj-escolha" data-testid="entrega-empresas">
+                {empresas.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    aria-pressed={e.id === empresa}
+                    data-testid="entrega-empresa"
+                    onClick={() => {
+                      if (e.id !== empresa) setColaborador('')
+                      setEmpresa(e.id)
+                    }}
+                  >
+                    {e.nome}
+                  </button>
+                ))}
+              </div>
+              {erros.empresa && <span class="erro">{erros.empresa}</span>}
+            </div>
+          ) : (
+            <Campo rotulo="Empresa" erro={erros.empresa}>
+              <select value={empresa} onChange={(e) => setEmpresa(e.currentTarget.value)}>
+                <option value="">Escolha…</option>
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
+          <div class="pj-campo" role="group" aria-label="Quem recebeu">
+            <span>Quem recebeu</span>
+            {pessoas.length > 0 && (
+              <div class="pj-filtros pj-escolha" data-testid="entrega-pessoas">
+                {pessoas.map((nome) => (
+                  <button key={nome} type="button" aria-pressed={normalizar(nome) === normalizar(colaborador)} data-testid="entrega-pessoa" onClick={() => setColaborador(nome)}>
+                    {nome}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              value={colaborador}
+              onInput={(e) => setColaborador(e.currentTarget.value)}
+              maxLength={120}
+              placeholder={pessoas.length ? 'ou digite um nome novo' : 'nome de quem recebeu'}
+              aria-label="Nome de quem recebeu"
+              data-testid="entrega-nome"
+            />
+          </div>
           <Campo rotulo="Revisão entregue" erro={erros.revisao} dica={vigente ? `Vigente: ${rotuloRevisao(vigente)}` : undefined}>
             <select value={revisao} onChange={(e) => setRevisao(e.currentTarget.value)}>
               <option value="">Escolha…</option>
@@ -129,6 +181,9 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
           </Campo>
           <Campo rotulo="Data da entrega" erro={erros.data}>
             <input type="date" value={data} onInput={(e) => setData(e.currentTarget.value)} required />
+          </Campo>
+          <Campo rotulo="Quantas cópias" erro={erros.copias} dica={outras.length ? 'De cada prancha desta entrega.' : undefined}>
+            <input type="number" inputMode="numeric" min={1} max={COPIAS_MAXIMO} step={1} value={copias} onInput={(e) => setCopias(e.currentTarget.value)} data-testid="entrega-copias" />
           </Campo>
         </div>
         <MaisPranchas ctx={ctx} principal={doc.id} outras={outras} setOutras={setOutras} busca={buscaOutras} setBusca={setBuscaOutras} />

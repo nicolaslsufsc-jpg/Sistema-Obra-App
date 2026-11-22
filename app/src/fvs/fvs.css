@@ -85,6 +85,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* título nunca cortado com reticências (docs/DESIGN.md): o nome do pavimento quebra em duas linhas
+   (testador no tablet, 22/11). 13 px e linha de 1,0: duas linhas e a caixa do trecho cabem nos 70 px */
+.fv-nomes b {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13px;
+  line-height: 1;
+}
+.fv-nomes b + select {
+  margin-top: 0;
+}
 .fv-nomes select {
   /* 44 px como os outros alvos (teste com cabo 20/11: tinha 30 px); o topo cresce (com-trecho) */
   height: 44px !important;
@@ -1728,11 +1743,12 @@
   }
   /* com a caixa de trecho, o título não cede ao progresso: em 384 px a caixa mostrava só "Trecho",
      sem o número (teste com cabo 20/11). O progresso quebra em mais linhas (a linha 1 é mais alta) */
+  /* o nome do pavimento em duas linhas (22/11) deixa a linha 1 com 70 px: +6 px nos topos com a caixa de trecho */
   .fv-planta.com-trecho {
-    --fv-hdr: 118px;
+    --fv-hdr: 124px;
   }
   .fv-planta.com-servico.com-trecho {
-    --fv-hdr: 222px;
+    --fv-hdr: 228px;
   }
   .fv-topo.com-item.com-trecho .fv-tit {
     grid-column: 1 / 6;
@@ -1851,7 +1867,7 @@
     --fv-hdr: 158px;
   }
   .fv-planta.muitas-abas.com-trecho {
-    --fv-hdr: 172px;
+    --fv-hdr: 178px;
   }
   .fv-topo.muitas-abas .fv-seg {
     grid-column: 1 / 13;

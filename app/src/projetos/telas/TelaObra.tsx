@@ -6,6 +6,7 @@ import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural, rotuloRevisao, Topo } from './comum'
 import { FaixaAutodoc, usarEstadoAutodoc } from './FaixaAutodoc'
 import { tocavel } from './baseComum'
+import { QuadroSituacao } from './QuadroSituacao'
 import { usarAgora } from './TelaAgora'
 import { frasesAgora } from '../agora'
 import { PedidoAutodoc } from './PedidoAutodoc'
@@ -18,7 +19,7 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
   // sobe quando um pedido ao Autodoc fica pronto: relê a última lista e sincroniza
   const [versao, setVersao] = useState(0)
   const estado = usarEstadoAutodoc(obra.id, !semConta, versao)
-  const { resumo, escritorio, agora } = usarAgora(ctx)
+  const { resumo, escritorio, agora, cruzadas } = usarAgora(ctx)
   // sem conta não há Autodoc nem servidor: a primeira tela é o painel da base
   useEffect(() => {
     if (semConta) trocar({ nome: 'painel' })
@@ -76,6 +77,9 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
           <span class="discreto">{t.escritorioSem ? `${t.escritorioSem} sem registro do escritório` : 'todas com registro'}</span>
         </li>
       </ul>
+
+      {/* o resumo visual vem antes dos números (pedido do Nicolas, 22/11) */}
+      {cruzadas && <QuadroSituacao cruzadas={cruzadas} ir={ir} />}
 
       <section class="pj-bloco" data-testid="obra-canteiro-resumo">
         <h2>No canteiro</h2>

@@ -16,6 +16,7 @@ import { fichaV2Xlsx, nomeFichaV2 } from '../ficha_v2'
 import type { RegistroEscritorio } from '../edicoes'
 import { baixarBlob } from '../../nucleo/baixar'
 import { frasesAgora, oQueFazerAgora } from '../agora'
+import { QuadroSituacao } from './QuadroSituacao'
 
 const LIMITE = 40
 
@@ -83,6 +84,7 @@ function Painel({
       <button type="button" class={`pj-agora-topo ${agora.copias || agora.recolher.length ? 'ruim' : 'bom'}`} onClick={() => trocar({ nome: 'agora' })} data-testid="painel-agora">
         <strong>O que fazer agora:</strong> {frasesAgora(agora)} ›
       </button>
+      <QuadroSituacao cruzadas={cruzadas} ir={ir} />
       {/* cada número abre a lista dele (item D) */}
       <ul class="pj-cartoes" aria-label="Resumo" data-testid="painel-resumo">
         <li class="bom pj-tocavel" data-testid="painel-cartao-em-dia" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'canteiro' }))}>
@@ -196,7 +198,7 @@ function Painel({
       </section>
 
       <p class="discreto pj-nota" data-testid="painel-recolhidas">
-        {plural(r.recolhidas, 'cópia ficou', 'cópias ficaram')} fora da conta como <span class="pj-selo rec">provavelmente recolhida</span>: a mesma empresa tem uma cópia mais nova da mesma prancha.
+        {plural(r.recolhidas, 'cópia ficou', 'cópias ficaram')} fora da conta como <span class="pj-selo rec">provavelmente recolhida</span>: a mesma pessoa tem uma cópia mais nova da mesma prancha.
       </p>
     </>
   )
@@ -266,7 +268,7 @@ function Barras({ titulo, barras, comAtraso }: { titulo: string; barras: Barra[]
 
 function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }) {
   const c = x.copia
-  const v = x.vigente!
+  const v = x.vigente
   return (
     <li class="pj-linha-painel pj-tocavel" {...tocavel(abrir)}>
       <div>
@@ -275,7 +277,7 @@ function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }
         </b>{' '}
         <span class="discreto">{c.titulo}</span>
         <br />
-        <span class="pj-rev velha">{rotuloRev(c.fase, c.revisao)}</span> → <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span>
+        <span class="pj-rev velha">{rotuloRev(c.fase, c.revisao)}</span> → {v ? <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span> : <b>recolher: prancha fora de uso</b>}
         {x.loDepois && <span class="discreto"> a LO saiu depois da entrega</span>}
         <div class="discreto">
           {c.empresa}
@@ -283,7 +285,13 @@ function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }
         </div>
       </div>
       <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>
-        {x.dias ?? '?'} d<small>desde {dataBR(v.data)}</small>
+        {v ? (
+          <>
+            {x.dias ?? '?'} d<small>desde {dataBR(v.data)}</small>
+          </>
+        ) : (
+          'recolher'
+        )}
       </div>
     </li>
   )

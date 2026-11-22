@@ -14,6 +14,7 @@ import 'leaflet/dist/leaflet.css'
 import {
   areaComoElemento,
   centroDoContorno,
+  dentro,
   fichaInicialDaCaixa,
   fichasDaCaixa,
   problemaDoContorno,
@@ -246,7 +247,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
   const [tipoEscolhido, setTipo] = useState(abaInicial === 'esquadrias' ? 'E' : abaInicial === 'ambientes' ? 'A' : (tipoInicial ?? 'P'))
   /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
-  const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string } | null>(null)
+  // selecao: o "+ Área" da planta de furos (22/11): só uma seleção, sem ficha nem registro de área
+  const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string; selecao?: boolean } | null>(null)
+  /** Furos dentro da área de seleção: os sem conferir (ids) e quantos furos há nela (total). */
+  const [selecaoFuros, setSelecaoFuros] = useState<{ contorno: Ponto[]; ids: string[]; total: number } | null>(null)
   /** A caixa que liga o polígono desenhado a uma ficha. */
   const [caixaNova, setCaixaNova] = useState<{ contorno: Ponto[]; nome: string; fichaId: string; codigo: string } | null>(null)
   const [etapa, setEtapa] = useState('')
@@ -1273,6 +1277,18 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
   }, [desenho])
 
+  // a área de seleção dos furos concluída fica na planta enquanto a barra do "Confirmar" está aberta
+  useEffect(() => {
+    const m = mapa.current
+    const rend = rendRef.current
+    if (!m || !rend || !selecaoFuros) return
+    const g = L.layerGroup().addTo(m)
+    L.polygon(selecaoFuros.contorno.map(ll), { renderer: rend, color: COR_TRACADO, weight: 3, dashArray: '6 4', fillColor: COR_TRACADO, fillOpacity: 0.12, interactive: false }).addTo(g)
+    return () => {
+      g.remove()
+    }
+  }, [selecaoFuros])
+
   // desenhando, dois toques rápidos são dois cantos, e não zoom; nas abas Barras e Pontos, dois toques
   // rápidos são o 2º passo do ciclo (vermelho), e não zoom (21/11)
   const semZoomNoDuplo = !!desenho || tipo === 'B' || tipo === 'I'
@@ -1286,16 +1302,18 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }, [semZoomNoDuplo])
 
   /** Começa o desenho de uma área. O voltar do aparelho cancela, sem sair da planta. */
-  const comecarDesenho = (areaId?: string) => {
+  const comecarDesenho = (areaId?: string, selecao?: boolean) => {
     setPincel(null)
     setPorItem(null)
     setCaixaNova(null)
+    setSelecaoFuros(null)
     fecharPainel()
     abrirSobre(() => {
       setDesenho(null)
       setCaixaNova(null)
+      setSelecaoFuros(null)
     })
-    setDesenho({ pontos: [], areaId })
+    setDesenho({ pontos: [], areaId, selecao })
   }
 
   const cancelarDesenho = () => {
@@ -1309,6 +1327,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const concluirDesenho = (pontos: Ponto[]) => {
     const problema = problemaDoContorno(pontos)
     if (problema) return avisar(problema)
+    if (desenho?.selecao) {
+      // área de seleção dos furos: os que aparecem (filtro "Tipo de furo" ativo) com o centro dentro dela
+      setDesenho(null)
+      const naArea = doTipo.filter(([, e]) => e.tipo === 'F' && dentro([(e.rotulo[0] + e.rotulo[2]) / 2, (e.rotulo[1] + e.rotulo[3]) / 2], pontos))
+      const ids = naArea.map(([id]) => id).filter((id) => furoSemConferir(id))
+      setSelecaoFuros({ contorno: pontos, ids, total: naArea.length })
+      // o aviso de antes (ex.: "FL1: OK") ficaria por cima da barra do Confirmar no celular
+      setMsg(null)
+      return
+    }
     const areaId = desenho?.areaId
     setDesenho(null)
     const area = areaId ? dados.areaPorId.get(areaId) : undefined
@@ -1752,6 +1780,62 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       return gravado
     })
     acertarDono(f)
+  }
+
+  /** O furo tem item de ficha e ainda está sem conferir nele (vale o registro mais novo). */
+  const furoSemConferir = (id: string) => {
+    const f = alvoDoFilho(id)
+    if (!f) return false
+    const atual = ultimosPorItem(daFichaAberta(eventosDe(id), null).filter((x) => x.ficha_id === f.ficha.id)).get(f.item)
+    return (atual?.resultado ?? null) === null
+  }
+
+  /**
+   * "Confirmar OK em todos" da área de seleção dos furos (pedido do Nicolas, 22/11): C em cada furo ainda sem
+   * conferir, um aviso só e um "Desfazer" que volta todos; depois acerta as peças donas (viga, pilar, área).
+   */
+  const confirmarSelecaoFuros = () => {
+    if (!selecaoFuros) return
+    const alvos = selecaoFuros.ids.flatMap((id) => {
+      const f = alvoDoFilho(id)
+      return f ? [{ id, f }] : []
+    })
+    setSelecaoFuros(null)
+    fecharSobre()
+    const acertarDonos = () => {
+      const vistos = new Set<string>()
+      for (const { f } of alvos) {
+        const chave = `${f.vigaId}|${f.item}`
+        if (vistos.has(chave)) continue
+        vistos.add(chave)
+        acertarDono(f)
+      }
+    }
+    executar(async (evs) => {
+      const gravados: Linha[] = []
+      for (const { id, f } of alvos) {
+        const eventos = daFichaAberta(evs(id), null)
+        const atual = ultimosPorItem(eventos.filter((x) => x.ficha_id === f.ficha.id)).get(f.item)
+        if ((atual?.resultado ?? null) !== null) continue
+        gravados.push(await tocarItem(c, id, f.ficha, f.item, 'C', eventos))
+      }
+      const n = gravados.length
+      if (!n) {
+        avisar('Nada a marcar: os furos desta área já estavam conferidos.')
+        return gravados
+      }
+      avisar(`${n} ${n === 1 ? 'furo OK' : 'furos OK'} nesta área`, () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const desfeitos = await desfazerLote(c, gravados, evs2)
+          avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? 'furo' : 'furos'}` : 'Nada a desfazer: os furos já mudaram.')
+          return desfeitos
+        })
+        acertarDonos()
+      })
+      return gravados
+    })
+    acertarDonos()
   }
 
   /** O furo tem resultado (OK, errado ou NA) no item dele: o painel mostra "Desmarcar". */
@@ -2486,6 +2570,23 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             >
               + Área
             </button>
+          ) : deFuracao ? (
+            // planta de furos (22/11): o "+ Área" seleciona os furos de uma área para o OK em todos; o Pincel e o
+            // Arrastar não servem aqui (marcam a ficha da peça, e o furo não tem ficha própria)
+            <button
+              type="button"
+              class={`fv-bpincel${desenho || selecaoFuros ? ' on' : ''}`}
+              data-testid="fvs-area-furos"
+              onClick={() => {
+                if (desenho || selecaoFuros) {
+                  setDesenho(null)
+                  setSelecaoFuros(null)
+                  fecharSobre()
+                } else comecarDesenho(undefined, true)
+              }}
+            >
+              + Área
+            </button>
           ) : (
             <>
               <button
@@ -2701,7 +2802,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       {desenho && (
         <div class="fv-barpincel" data-testid="fvs-desenho">
           <b>
-            {desenho.areaId ? `Novo contorno de ${dados.areaPorId.get(desenho.areaId)?.nome ?? 'área'}` : 'Nova área de laje'}: toque nos cantos da área ({desenho.pontos.length}{' '}
+            {desenho.selecao ? 'Área dos furos' : desenho.areaId ? `Novo contorno de ${dados.areaPorId.get(desenho.areaId)?.nome ?? 'área'}` : 'Nova área de laje'}: toque nos cantos da área ({desenho.pontos.length}{' '}
             {desenho.pontos.length === 1 ? 'canto' : 'cantos'}). Arrastar move a planta.
           </b>
           <button type="button" data-testid="fvs-desfazer-ponto" disabled={!desenho.pontos.length} onClick={() => setDesenho({ ...desenho, pontos: desenho.pontos.slice(0, -1) })}>
@@ -2711,6 +2812,29 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             Concluir
           </button>
           <button type="button" onClick={cancelarDesenho}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {selecaoFuros && (
+        <div class="fv-barpincel" data-testid="fvs-selecao-furos">
+          <b>
+            {selecaoFuros.ids.length} {selecaoFuros.ids.length === 1 ? 'furo sem conferir' : 'furos sem conferir'} nesta área
+            {selecaoFuros.total > selecaoFuros.ids.length ? ` (de ${selecaoFuros.total})` : ''}
+            {filtroFuros !== 'todos' ? ` · ${NOME_DO_FILTRO_DE_FUROS[filtroFuros]}` : ''}
+          </b>
+          <button type="button" class="on" data-testid="fvs-selecao-confirmar" disabled={!selecaoFuros.ids.length} onClick={confirmarSelecaoFuros}>
+            Confirmar OK em todos
+          </button>
+          <button
+            type="button"
+            data-testid="fvs-selecao-cancelar"
+            onClick={() => {
+              setSelecaoFuros(null)
+              fecharSobre()
+            }}
+          >
             Cancelar
           </button>
         </div>

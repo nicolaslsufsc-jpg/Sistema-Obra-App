@@ -132,7 +132,10 @@ export class Conta {
    * Sai da conta neste aparelho. Apaga o que foi baixado; a fila de envio fica guardada
    * e é enviada quando a mesma pessoa entrar de novo.
    */
-  async sair(): Promise<void> {
+  async sair(): Promise<boolean> {
+    // Primeiro esquece quem entrou: se o app fechar no meio da limpeza, ele reabre em "Entrar",
+    // e o próximo login apaga o que tiver sobrado (confirmarCodigo, sem usuário anterior).
+    await this.banco.apagarMeta('usuario')
     // Avisa o servidor só com internet, e sem esperar mais que 2 s: sem internet e com token
     // vencido, o supabase-js fica ~25 s tentando renovar. Se a sessão antiga reaparecer depois
     // (corrida rara), estadoSessao() devolve 'outro' e nada é enviado com ela.
@@ -149,11 +152,17 @@ export class Conta {
     } catch {
       // sem localStorage
     }
-    await this.banco.esquecerTudoBaixado()
-    await this.banco.apagarMeta('usuario')
-    await this.banco.apagarMeta('obras')
-    await this.banco.apagarMeta('obra_atual')
-    await this.banco.apagarMeta('login_pendente')
+    try {
+      await this.banco.esquecerTudoBaixado()
+      await this.banco.apagarMeta('obras')
+      await this.banco.apagarMeta('obra_atual')
+      await this.banco.apagarMeta('login_pendente')
+      return true
+    } catch (e) {
+      // A saída vale mesmo assim (a tela volta para "Entrar"); o que sobrou é apagado no próximo login.
+      console.error('Sair: limpeza do aparelho falhou', e)
+      return false
+    }
   }
 
   // ---------------------------------------------------------------

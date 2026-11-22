@@ -192,6 +192,11 @@ export interface FichaCampo {
   qtd_a: number
   qtd_r: number
   qtd_na: number
+  /**
+   * Só na tela: as outras fichas do mesmo modelo nesta peça, juntadas nesta (a mais completa) na leitura
+   * (juntarFichasDoModelo). Os registros continuam gravados cada um na sua ficha.
+   */
+  juntas?: readonly FichaCampo[]
 }
 
 export type Situacao = 'nada' | 'andamento' | 'concretagem' | 'liberado' | 'reprovado'
@@ -370,6 +375,105 @@ export function daFichaAberta(eventos: readonly EventoFvs[], fichaCampoId: strin
   return eventos.filter((e) => (e.ficha_campo_id ?? null) === fichaCampoId)
 }
 
+/**
+ * Tipos de peça em que duas fichas do mesmo modelo viram uma só na tela (pedido do Nicolas de 21/11:
+ * a viga com duas fichas do sistema oficial). Pilar fica como está (duas abas) até ele pedir.
+ */
+const TIPOS_QUE_JUNTAM: readonly string[] = ['V']
+
+/** Quantos itens a ficha tem com C ou NC, e com qualquer resultado: a "mais completa" ganha. */
+function completude(eventos: readonly EventoFvs[], fc: FichaCampo): [number, number] {
+  let marcados = 0
+  let todos = 0
+  for (const e of ultimosPorItem(daFichaAberta(eventos, fc.id)).values()) {
+    if (!e.resultado) continue
+    todos++
+    if (e.resultado !== 'NA') marcados++
+  }
+  return [marcados, todos]
+}
+
+/**
+ * Fichas abertas da peça com as do mesmo modelo juntadas (decisão do Nicolas de 21/11): fica uma por
+ * modelo, a mais completa (mais itens com C ou NC, depois com qualquer resultado, depois a mais nova), e as
+ * outras vão em `juntas`. Só na leitura: nada é apagado nem regravado. Só para os tipos de TIPOS_QUE_JUNTAM.
+ */
+export function juntarFichasDoModelo(fichasAbertas: readonly FichaCampo[], fichaPorId: (id: string) => Ficha | undefined, eventos: readonly EventoFvs[]): FichaCampo[] {
+  if (fichasAbertas.length < 2 || fichasAbertas.some((fc) => fc.juntas)) return fichasAbertas as FichaCampo[]
+  const porModelo = new Map<string, FichaCampo[]>()
+  for (const fc of fichasAbertas) {
+    const modelo = fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined
+    if (!modelo || !modelo.aplica_a.some((t) => TIPOS_QUE_JUNTAM.includes(t))) continue
+    porModelo.set(modelo.id, [...(porModelo.get(modelo.id) ?? []), fc])
+  }
+  if (![...porModelo.values()].some((l) => l.length > 1)) return fichasAbertas as FichaCampo[]
+  const saida: FichaCampo[] = []
+  const feitos = new Set<string>()
+  for (const fc of fichasAbertas) {
+    const grupo = fc.ficha_id ? porModelo.get(fc.ficha_id) : undefined
+    if (!grupo || grupo.length < 2) {
+      saida.push(fc)
+      continue
+    }
+    if (feitos.has(fc.ficha_id!)) continue
+    feitos.add(fc.ficha_id!)
+    const nota = new Map(grupo.map((g) => [g.id, completude(eventos, g)]))
+    const [base, ...juntas] = [...grupo].sort((a, b) => {
+      const [ma, ta] = nota.get(a.id)!
+      const [mb, tb] = nota.get(b.id)!
+      return mb - ma || tb - ta || (b.atualizada_em ?? '').localeCompare(a.atualizada_em ?? '') || a.codigo.localeCompare(b.codigo)
+    })
+    saida.push({ ...base, juntas })
+  }
+  return saida
+}
+
+/**
+ * Registros de uma ficha aberta como a tela mostra. Ficha com outras juntadas: item a item, os registros
+ * da ficha que vence o item. Quem vence: (1) o registro mais novo, se foi marcado no app (é a correção
+ * feita depois do que veio do sistema oficial; o app grava na ficha da base); (2) senão, a ficha com NC
+ * no item (o NC prevalece sobre o C, decisão do Nicolas de 21/11); (3) senão, a base, se tem resultado;
+ * (4) senão, a primeira das outras que tem. SO_NO_APP = os marcados no app sem ficha aberta.
+ */
+export function eventosDaFichaAberta(eventos: readonly EventoFvs[], fc: FichaCampo): EventoFvs[] {
+  const proprios = daFichaAberta(eventos, fc.id === SO_NO_APP ? null : fc.id)
+  if (!fc.juntas?.length) return proprios
+  const porFicha = [proprios, ...fc.juntas.map((j) => daFichaAberta(eventos, j.id))].map((evs) => {
+    const m = new Map<number, EventoFvs[]>()
+    for (const e of evs) m.set(e.item, [...(m.get(e.item) ?? []), e])
+    return m
+  })
+  const itens = new Set(porFicha.flatMap((m) => [...m.keys()]))
+  const saida: EventoFvs[] = []
+  for (const item of itens) {
+    const ultimos = porFicha.map((m) => {
+      let u: EventoFvs | undefined
+      for (const e of m.get(item) ?? []) if (!u || maisNovo(e, u)) u = e
+      return u
+    })
+    let novo = -1
+    ultimos.forEach((u, i) => {
+      if (u && (novo < 0 || maisNovo(u, ultimos[novo]!))) novo = i
+    })
+    // correção feita no app: o histórico do item junta as fichas (o NC de lá e a reinspeção daqui)
+    if (novo >= 0 && !ultimos[novo]!.origem_id) {
+      for (const m of porFicha) saida.push(...(m.get(item) ?? []))
+      continue
+    }
+    let vence = ultimos.findIndex((u) => u?.resultado === 'NC')
+    if (vence < 0) vence = ultimos.findIndex((u) => !!u?.resultado)
+    if (vence < 0) vence = novo >= 0 ? novo : 0
+    saida.push(...(porFicha[vence].get(item) ?? []))
+  }
+  return saida
+}
+
+/** A ficha da tela que mostra esta ficha aberta (ela mesma ou a base em que ela foi juntada). */
+export function fichaDaTela(fichasDaTela: readonly FichaCampo[], id: string | null | undefined): FichaCampo | undefined {
+  if (!id) return undefined
+  return fichasDaTela.find((fc) => fc.id === id || fc.juntas?.some((j) => j.id === id))
+}
+
 /** Situação de várias fichas juntas: com NC ganha de tudo; só é liberado se todas estiverem. */
 export function combinarSituacoes(lista: readonly Situacao[]): Situacao {
   if (lista.includes('reprovado')) return 'reprovado'
@@ -438,7 +542,7 @@ export function resumoDosFuros(furos: readonly Situacao[]): { total: number; ok:
 /** Situação de uma ficha aberta, com os registros dela. Ficha modelo não cadastrada = sem marcação. */
 export function situacaoDaFichaAberta(fc: FichaCampo, fichaPorId: (id: string) => Ficha | undefined, eventos: readonly EventoFvs[], etapa?: string, partes?: readonly string[]): Situacao {
   const ficha = fichaNaPeca(fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined, partes)
-  return ficha ? situacaoDaPeca(ficha, daFichaAberta(eventos, fc.id === SO_NO_APP ? null : fc.id), etapa) : 'nada'
+  return ficha ? situacaoDaPeca(ficha, eventosDaFichaAberta(eventos, fc), etapa) : 'nada'
 }
 
 /**
@@ -459,7 +563,7 @@ export function situacaoDoLocal(
   const padrao = fichaNaPeca(fichaPadrao, partes)
   const situacaoDoApp = padrao ? situacaoDaPeca(padrao, doApp, etapa) : 'nada'
   if (!fichasAbertas.length) return situacaoDoApp
-  const delas = fichasAbertas.map((fc) => situacaoDaFichaAberta(fc, fichaPorId, eventos, etapa, partes))
+  const delas = juntarFichasDoModelo(fichasAbertas, fichaPorId, eventos).map((fc) => situacaoDaFichaAberta(fc, fichaPorId, eventos, etapa, partes))
   return combinarSituacoes(doApp.length ? [...delas, situacaoDoApp] : delas)
 }
 

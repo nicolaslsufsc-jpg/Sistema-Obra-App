@@ -7,6 +7,8 @@ import { Visor } from '../motor/visor'
 import { Sessao } from '../sessao'
 import { IfcsDaObra, type FonteIfcs } from '../obra'
 import { IfcsDaObraLista } from './IfcsDaObra'
+import { ModelosDaObra } from './ModelosDaObra'
+import type { FonteListaModelos } from '../modelos_drive'
 import { sobDemanda } from '../../telas/SobDemanda'
 import type { ObraLocal, UsuarioLocal } from '../../nucleo/conta'
 import { PainelBusca } from './PainelBusca'
@@ -51,6 +53,8 @@ export interface PropsModuloIfc {
   aoPerderObra?: () => void
   /** Só a bancada: a lista da obra com uma fonte de mentira. */
   obraIfc?: ContextoObraIfc
+  /** "Baixar modelo da obra" (lista do Google Drive): com e sem conta. Na bancada, com ?obra=exe. */
+  modelosDrive?: { fonte: FonteListaModelos; versao: number }
 }
 
 // O que fala com o servidor (sincronização, armazenamento) só carrega quando há obra aberta.
@@ -58,11 +62,11 @@ const ComObra = sobDemanda('IFC', () => import('./ComObra').then((m) => m.ComObr
 
 export function ModuloIfc(props: PropsModuloIfc) {
   const { obra, usuario, aoSair, aoPerderObra } = props
-  if (obra && usuario && !props.obraIfc) return <ComObra obra={obra} usuario={usuario} aoSair={aoSair ?? (() => {})} aoPerderObra={aoPerderObra ?? (() => {})} />
-  return <LeitorIfc aoSair={props.aoSair} obraIfc={props.obraIfc} />
+  if (obra && usuario && !props.obraIfc && !props.modelosDrive) return <ComObra obra={obra} usuario={usuario} aoSair={aoSair ?? (() => {})} aoPerderObra={aoPerderObra ?? (() => {})} />
+  return <LeitorIfc aoSair={props.aoSair} obraIfc={props.obraIfc} modelosDrive={props.modelosDrive} />
 }
 
-export function LeitorIfc({ aoSair, obraIfc }: Pick<PropsModuloIfc, 'aoSair' | 'obraIfc'>) {
+export function LeitorIfc({ aoSair, obraIfc, modelosDrive }: Pick<PropsModuloIfc, 'aoSair' | 'obraIfc' | 'modelosDrive'>) {
   const sessao = useMemo(() => new Sessao(), [])
   usarSessao(sessao)
   const fonte = obraIfc?.fonte
@@ -94,6 +98,7 @@ export function LeitorIfc({ aoSair, obraIfc }: Pick<PropsModuloIfc, 'aoSair' | '
   }, [sessao])
 
   const escolher = useCallback(() => entrada.current?.click(), [])
+  const doDrive = modelosDrive ? <ModelosDaObra fonte={modelosDrive.fonte} versao={modelosDrive.versao} sessao={sessao} aoImportar={escolher} /> : null
   const aoEscolher = useCallback(
     (e: Event) => {
       const alvo = e.target as HTMLInputElement
@@ -169,7 +174,7 @@ export function LeitorIfc({ aoSair, obraIfc }: Pick<PropsModuloIfc, 'aoSair' | '
             </button>
           </header>
           <div class="ifc-painel-corpo">
-            {painel === 'modelos' && <PainelModelos sessao={sessao} aoEscolher={escolher} daObra={daObra} />}
+            {painel === 'modelos' && <PainelModelos sessao={sessao} aoEscolher={escolher} daObra={<>{doDrive}{daObra}</>} />}
             {painel === 'buscar' && <PainelBusca sessao={sessao} />}
             {painel === 'cortes' && <PainelCortes sessao={sessao} aoVer2D={aoVer2D} />}
             {painel === 'cores' && <PainelCores sessao={sessao} />}
@@ -189,6 +194,7 @@ export function LeitorIfc({ aoSair, obraIfc }: Pick<PropsModuloIfc, 'aoSair' | '
               <IcAbrir />
               Importar IFC
             </button>
+            {doDrive && <div class="ifc-vazio-guardados">{doDrive}</div>}
             {daObra && <div class="ifc-vazio-guardados">{daObra}</div>}
             {sessao.guardados.length > 0 && (
               <div class="ifc-vazio-guardados">

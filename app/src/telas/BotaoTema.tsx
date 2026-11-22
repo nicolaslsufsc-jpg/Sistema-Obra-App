@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks'
 import { definirTema, lerTema } from './tema'
 
-/** Botão do menu: no escuro oferece o "Modo sol (claro)"; no claro, volta ao escuro. */
+/** Botão do menu: no claro (padrão) oferece o "Tema escuro"; no escuro, volta ao claro. */
 export function BotaoTema() {
   const [tema, setTema] = useState(lerTema)
   const trocar = () => {
@@ -10,9 +10,9 @@ export function BotaoTema() {
     setTema(novo)
   }
   // No topo só cabe o ícone (20/11/2026): o nome completo fica no aria-label e na dica.
-  const nome = tema === 'claro' ? 'Modo escuro' : 'Modo sol (claro)'
+  const nome = tema === 'claro' ? 'Tema escuro' : 'Tema claro'
   return (
-    <button type="button" class="botao-tema" data-testid="botao-tema" aria-pressed={tema === 'claro'} aria-label={nome} title={nome} onClick={trocar}>
+    <button type="button" class="botao-tema" data-testid="botao-tema" aria-pressed={tema === 'escuro'} aria-label={nome} title={nome} onClick={trocar}>
       {tema === 'claro' ? <IconeLua /> : <IconeSol />}
     </button>
   )

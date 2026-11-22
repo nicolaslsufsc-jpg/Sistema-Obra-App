@@ -1,0 +1,80 @@
+/* Tabela comum (docs/DESIGN.md). Cores e tamanhos só pelas variáveis de tema.css. */
+.so-tabela-caixa {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+}
+.so-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-texto);
+}
+.so-tabela th,
+.so-tabela td {
+  height: var(--linha-tabela);
+  padding: 0 0.6rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--borda);
+}
+/* cabeçalho fixo ao rolar */
+.so-tabela thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--superficie);
+  color: var(--discreto);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.so-tabela .so-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.so-tabela tbody tr:last-child td {
+  border-bottom: 0;
+}
+.so-tabela tr.so-tocavel {
+  cursor: pointer;
+}
+.so-tabela tr.so-tocavel:focus-visible {
+  outline: 2px solid var(--primaria);
+  outline-offset: -2px;
+}
+.so-tabela tr.so-selecionada td {
+  background: var(--cor-selecionado);
+  color: var(--cor-selecionado-texto);
+}
+.so-resumo {
+  margin: 0 0 0.4rem;
+  font-size: var(--fs-texto);
+  color: var(--discreto);
+  font-variant-numeric: tabular-nums;
+}
+.so-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+.so-status-bola {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.so-status-liberado .so-status-bola {
+  background: var(--status-liberado);
+}
+.so-status-pendente .so-status-bola {
+  background: var(--status-pendente);
+}
+.so-status-nc .so-status-bola {
+  background: var(--status-nc);
+}
+.so-status-sem-dado .so-status-bola {
+  background: var(--status-sem-dado);
+}

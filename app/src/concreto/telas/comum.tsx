@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact'
 import { ROTULO_SITUACAO, type SituacaoCP } from '../cps'
+import { Cabecalho } from '../../telas/Cabecalho'
 
 export function dataBR(data: string | null | undefined): string {
   if (!data) return ''
@@ -63,7 +64,7 @@ export function Selo({ situacao, texto }: { situacao: SituacaoCP; texto?: string
   )
 }
 
-/** `paraMenu`: na primeira tela do módulo o botão leva ao menu do app e diz isso ("‹ Menu", 20/11/2026). */
+/** Cabeçalho do módulo: o comum do app (telas/Cabecalho.tsx, guia de estilo 21/11/2026). `paraMenu`: a seta leva ao menu do app. */
 export function Topo({
   titulo,
   sub,
@@ -78,16 +79,9 @@ export function Topo({
   children?: ComponentChildren
 }) {
   return (
-    <header class="cc-topo">
-      <button type="button" class="cc-voltar" onClick={aoVoltar} aria-label={paraMenu ? 'Voltar ao menu' : 'Voltar'}>
-        {paraMenu ? '‹ Menu' : '‹ Voltar'}
-      </button>
-      <div class="cc-titulo">
-        <h1>{titulo}</h1>
-        {sub && <p class="discreto">{sub}</p>}
-      </div>
+    <Cabecalho titulo={titulo} sub={sub} aoVoltar={aoVoltar} paraMenu={paraMenu} classe="cc-topo">
       {children}
-    </header>
+    </Cabecalho>
   )
 }
 

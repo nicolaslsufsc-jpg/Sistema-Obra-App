@@ -11,6 +11,7 @@ import { TelaEmpresas } from './TelaEmpresas'
 import { TelaAcoes } from './TelaAcoes'
 import { TelaPainel } from './TelaPainel'
 import { TelaObra } from './TelaObra'
+import { TelaComprovante } from './TelaComprovante'
 import { TelaEntregasBase, TelaPranchasBase, type FiltroPrancha } from './TelaListasBase'
 import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
 import { TelaPessoa, TelaPessoas } from './TelaPessoas'
@@ -33,6 +34,7 @@ export type TelaProjetos =
   | { nome: 'lista' }
   | { nome: 'prancha'; documentoId: string }
   | { nome: 'entregar'; documentoId: string; empresaId?: string }
+  | { nome: 'comprovante'; assinaturaId: string }
   | { nome: 'recolher'; documentoId: string; entregaId?: string }
   | { nome: 'empresas' }
   | { nome: 'acoes' }
@@ -47,6 +49,8 @@ export interface Contexto {
   voltar: () => void
   /** Relê o banco do aparelho (depois de registrar algo). */
   recarregar: () => Promise<void>
+  /** Sincroniza com o servidor agora (ex.: o pedido ao Autodoc ficou pronto). */
+  sincronizar: () => Promise<void>
   /** Mensagem no alto da próxima tela ("Entrega registrada."). */
   avisar: (texto: string, tipo?: 'ok' | 'erro') => void
   /** App sem conta (um usuário, sem servidor): nada chega pela sincronização. */
@@ -64,7 +68,7 @@ export function ModuloProjetos({
   aoSair: () => void
   aoPerderObra: () => void
 }) {
-  const { estado } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
+  const { estado, sincronizarAgora } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
   const [tela, setTela] = useState<TelaProjetos>(() => (history.state?.projetos as TelaProjetos) ?? { nome: 'obra' })
   const [dados, setDados] = useState<DadosProjetos | null>(null)
   const [mensagem, setMensagem] = useState<{ texto: string; tipo: 'ok' | 'erro' } | null>(null)
@@ -108,7 +112,7 @@ export function ModuloProjetos({
   const avisar = (texto: string, tipo: 'ok' | 'erro' = 'ok') => setMensagem({ texto, tipo })
 
   if (!dados) return <main class="tela">Carregando…</main>
-  const ctx: Contexto = { usuario, obra, dados, ir, trocar, voltar, recarregar, avisar, semConta: estado.local }
+  const ctx: Contexto = { usuario, obra, dados, ir, trocar, voltar, recarregar, sincronizar: async () => void (await sincronizarAgora()), avisar, semConta: estado.local }
 
   // sem conta (estado.local) não há servidor: nenhum aviso de envio (projetos/aviso_sync.ts)
   const avisoSync = avisoDoEnvio(estado)
@@ -153,6 +157,9 @@ export function ModuloProjetos({
       break
     case 'entregar':
       conteudo = <FormEntrega ctx={ctx} documentoId={tela.documentoId} empresaId={tela.empresaId} />
+      break
+    case 'comprovante':
+      conteudo = <TelaComprovante ctx={ctx} assinaturaId={tela.assinaturaId} />
       break
     case 'recolher':
       conteudo = <FormDevolucao ctx={ctx} documentoId={tela.documentoId} entregaId={tela.entregaId} />

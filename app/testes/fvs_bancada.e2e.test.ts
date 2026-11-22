@@ -115,28 +115,32 @@ async function tocarNaPlanta(p: Page, x: number, y: number) {
  *  ao novo tamanho (o efeito do painel, 60 ms depois, faz invalidateSize). Com o processador lento do
  *  GitHub, esse ajuste podia cair entre a conta do ponto e o toque, e o dedo caía fora da peça.
  *  Aqui: espera o mapa saber o próprio tamanho e não ter animação, enquadra, e espera 150 ms sem movimento. */
-async function enquadrar(p: Page, centro: [number, number], zoom: number) {
-  const assentou = () =>
-    p.waitForFunction(() => {
-      const w = window as any
-      const m = w.__fvMapa
-      const c = m.getContainer()
-      const s = m.getSize()
-      const parado = !m._animatingZoom && !(m._panAnim && m._panAnim._inProgress)
-      return s.x === c.clientWidth && s.y === c.clientHeight && parado && performance.now() - (w.__ultimoMovimento ?? 0) > 150
-    })
+/** Espera o mapa parar: tamanho certo, sem animação e 150 ms sem movimento (o voo mexe o mapa a cada quadro). */
+async function mapaParado(p: Page) {
   await p.evaluate(() => {
     const w = window as any
     const m = w.__fvMapa
     if (!m.__vigiaMovimento) {
       m.__vigiaMovimento = true
       m.on('move resize zoom', () => (w.__ultimoMovimento = performance.now()))
+      w.__ultimoMovimento = performance.now()
     }
-    w.__ultimoMovimento = performance.now()
   })
-  await assentou()
+  await p.waitForFunction(() => {
+    const w = window as any
+    const m = w.__fvMapa
+    const c = m.getContainer()
+    const s = m.getSize()
+    const parado = !m._animatingZoom && !(m._panAnim && m._panAnim._inProgress)
+    return s.x === c.clientWidth && s.y === c.clientHeight && parado && performance.now() - (w.__ultimoMovimento ?? 0) > 150
+  })
+}
+
+async function enquadrar(p: Page, centro: [number, number], zoom: number) {
+  await p.evaluate(() => void ((window as any).__ultimoMovimento = performance.now()))
+  await mapaParado(p)
   await p.evaluate(([c, z]: [[number, number], number]) => void (window as any).__fvMapa.setView(c, z, { animate: false }), [centro, zoom] as [[number, number], number])
-  await assentou()
+  await mapaParado(p)
 }
 
 /** Enquadra a folha inteira (a busca deixa o zoom em cima de um local só). */
@@ -144,6 +148,9 @@ async function verFolhaInteira(p: Page) {
   // Falha rara (09/11, 1 em 20 suítes no celular): o enquadro pega (-2,5) e, até 250 ms depois, o mapa
   // volta ao zoom 0, alvo do voo da busca do P2 que estava terminando. Para a próxima vez dizer quem mexeu,
   // registra cada movimento do mapa nesses 250 ms (quem chamou, e o zoom).
+  // Antes de enquadrar, espera o voo da busca acabar: com a máquina lenta (CI, 21/11 à noite) a espera
+  // fixa de quem chama não bastava, o voo continuava depois do enquadro e o toque seguinte caía fora
+  await mapaParado(p)
   const antes = await p.evaluate(() => {
     const m = (window as any).__fvMapa
     const w = window as any
@@ -170,6 +177,7 @@ async function verFolhaInteira(p: Page) {
     return r
   })
   if (z > -1) throw new Error(`DIAG verFolhaInteira não pegou: ${JSON.stringify({ ...antes, z250: z, movimentos })}`)
+  await mapaParado(p)
 }
 
 async function buscar(p: Page, texto: string) {
@@ -248,11 +256,11 @@ function contrasteBaixo(p: Page): Promise<string[]> {
   })
 }
 
-/** Contraste nos dois temas (escuro, o padrão, e o claro do modo sol). */
+/** Contraste nos dois temas (claro, o padrão desde 21/11/2026, e o escuro). */
 async function contrasteNosDoisTemas(p: Page): Promise<string[]> {
-  const escuro = await contrasteBaixo(p)
-  await p.evaluate(() => (document.documentElement.dataset.tema = 'claro'))
   const claro = await contrasteBaixo(p)
+  await p.evaluate(() => (document.documentElement.dataset.tema = 'escuro'))
+  const escuro = await contrasteBaixo(p)
   await p.evaluate(() => delete document.documentElement.dataset.tema)
   return [...escuro.map((t) => `escuro: ${t}`), ...claro.map((t) => `claro: ${t}`)]
 }
@@ -789,7 +797,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.locator('.fv-rot-esq span', { hasText: 'JA120B' }).waitFor()
       for (const tema of ['escuro', 'claro'] as const) {
         await p.evaluate((t: string) => {
-          if (t === 'claro') document.documentElement.dataset.tema = 'claro'
+          if (t === 'escuro') document.documentElement.dataset.tema = 'escuro'
           else delete document.documentElement.dataset.tema
         }, tema)
         const e = await etiqueta()
@@ -1884,11 +1892,11 @@ suite('FVS na bancada (Chrome)', () => {
       if (filaNoInicio.cabe) expect(filaNoInicio).toEqual({ esq: false, dir: false, cabe: true })
       else expect(filaNoInicio).toEqual({ esq: false, dir: true, cabe: false })
 
-      // antes da área: o furo fica fora de área de laje, não marca nada e diz por quê
+      // antes da área (21/11, "furos esgoto/água não funcionando"): o furo de laje fora de área já grava, no
+      // próprio furo, na ficha de laje que tem o item da instalação dele; contam FL1 a FL5 (FL6, de Geral, nunca)
       await aba('Furos')
       if (!filaNoInicio.cabe) await expect.poll(fila).toEqual({ esq: true, dir: false, cabe: false })
-      // fora de área nenhum furo de laje conta (FL6, de Geral, nunca conta)
-      expect(await progresso()).toBe('0/0 OK')
+      expect(await progresso()).toBe('0/5 OK')
       // FL4 e FL5 a 8 pontos um do outro (32 px no zoom 2): o toque entre os dois pega os dois alvos e
       // pergunta qual (20/11)
       await furo(604, 400)
@@ -1898,19 +1906,33 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await qual.locator('.fv-escolha-pecas button').evaluateAll((l: Element[]) => l.every((b) => b.getBoundingClientRect().height >= 44))).toBe(true)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_qual_furo.png` })
-      await qual.locator('.fv-escolha-pecas button', { hasText: 'FL4' }).click()
-      await qual.waitFor({ state: 'detached' })
-      await aviso('fora de área de laje')
+      const escolherFL4 = async () => {
+        await qual.waitFor()
+        await qual.locator('.fv-escolha-pecas button', { hasText: 'FL4' }).click()
+        await qual.waitFor({ state: 'detached' })
+      }
+      await escolherFL4()
+      await aviso('FL4: OK')
+      await expect.poll(progresso).toBe('1/5 OK')
       // o aviso quebra linha em vez de cortar o fim, e cabe na tela
       const avisoCabe = await p.locator('.fv-toast').evaluate((t: HTMLElement) => {
         const s = t.querySelector('span')!
         return s.scrollWidth <= s.clientWidth + 1 && s.scrollHeight <= s.clientHeight + 1 && t.getBoundingClientRect().right <= innerWidth + 0.5
       })
       expect(avisoCabe).toBe(true)
+      // 2º toque: errado; o painel abre e diz onde ficou o registro
+      await tocarNaPlanta(p, 604, 400)
+      await escolherFL4()
+      await aviso('FL4: errado')
       await nomeNoPainel(p, 'FL4')
-      await p.getByTestId('fvs-furo-fora-area').waitFor()
+      expect(await p.getByTestId('fvs-furo-fora-area').textContent()).toContain('o registro fica no furo')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       await fechar()
+      // 3º toque: sem conferir
+      await furo(604, 400)
+      await escolherFL4()
+      await aviso('FL4: sem conferir')
+      await expect.poll(progresso).toBe('0/5 OK')
 
       // área de laje no vão de P8, P9, P14 e P15: pega FL1 (esgoto), FL2 (água) e FL3 (elétrica)
       await aba('Lajes')
@@ -1933,19 +1955,20 @@ suite('FVS na bancada (Chrome)', () => {
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_area.png` })
       await fechar()
 
-      // longe (zoom 0): no lugar dos furos, o número da área (FL1, FL2 e FL3; FL6 de Geral fica de fora);
-      // a conta da aba é dos 3 conferíveis; o toque no número aproxima até os furos aparecerem
+      // longe (zoom 0): no lugar dos furos, o número da área (FL1, FL2 e FL3; FL6 de Geral fica de fora) e o
+      // do quadrado de FL4 e FL5 (fora de área); a conta da aba é dos 5; o toque no número aproxima até os furos
       await aba('Furos')
       await enquadrar(p, [-600, 600], 0)
       const numero = p.getByTestId('fvs-numero-furos')
-      await numero.waitFor()
-      expect(await numero.allTextContents()).toEqual(['3 furos'])
-      expect(await progresso()).toBe('0/3 OK')
-      const caixaDoNumero = await numero.boundingBox()
+      await numero.first().waitFor()
+      expect((await numero.allTextContents()).sort()).toEqual(['2 furos', '3 furos'])
+      expect(await progresso()).toBe('0/5 OK')
+      const daArea = numero.filter({ hasText: '3 furos' })
+      const caixaDoNumero = await daArea.boundingBox()
       expect(caixaDoNumero!.height).toBeGreaterThanOrEqual(44)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_laje_${nome}_numero.png` })
-      await numero.click()
-      await numero.waitFor({ state: 'detached' })
+      await daArea.click()
+      await daArea.waitFor({ state: 'detached' })
       expect(await p.evaluate(() => (window as any).__fvMapa.getZoom())).toBeGreaterThanOrEqual(1.5)
 
       // FL1 (esgoto) OK: o item 6 da área fica C
@@ -2066,11 +2089,11 @@ suite('FVS na bancada (Chrome)', () => {
       const pavimento = p.getByTestId('fvs-pavimento')
       await noInicio(p)
       expect(await pavimento.count()).toBe(1)
-      // Estrutura (nível 3, 21/11/2026): seção "Furação de laje" com as três camadas, na ordem da obra, e quantos furos cada uma tem
+      // Estrutura (nível 3, 21/11/2026): seção "Furação" com as três camadas, na ordem da obra, e quantos furos cada uma tem
       await naDisciplina(p, 'estrutura')
-      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação de laje' })
+      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação' })
       await secao.waitFor()
-      expect(await secao.locator('h3').textContent()).toBe('Furação de laje')
+      expect(await secao.locator('h3').textContent()).toBe('Furação')
       const linhas = (await secao.getByRole('button').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
       expect(linhas.map((t: string) => t.match(/Furos de [^ ]+/)?.[0])).toEqual(['Furos de esgoto', 'Furos de água', 'Furos de elétrica'])
       expect(linhas[0]).toContain('3 furos')
@@ -2134,14 +2157,15 @@ suite('FVS na bancada (Chrome)', () => {
       await fechar()
       await voltar()
 
-      // planta de esgoto: só a aba Furos; longe, o número da área conta só o FL1 (FL4 e FL5 estão fora dela)
+      // planta de esgoto: só a aba Furos; longe, o número da área conta o FL1 e o do quadrado, FL4 e FL5 (fora
+      // dela, gravam no próprio furo, 21/11)
       await abrir('Furos de esgoto')
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual([]) // uma aba só: sem a fila de abas, como na armadura
       await enquadrar(p, [-600, 600], 0)
       const numero = p.getByTestId('fvs-numero-furos')
-      await numero.waitFor()
-      expect(await numero.allTextContents()).toEqual(['1 furo'])
-      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/1 OK')
+      await numero.first().waitFor()
+      expect((await numero.allTextContents()).sort()).toEqual(['1 furo', '2 furos'])
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/3 OK')
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_esgoto_longe.png` })
       // o FL2 (água) não aparece aqui: o toque nele não grava nada
       await furo(600, 640)
@@ -2192,6 +2216,14 @@ suite('FVS na bancada (Chrome)', () => {
       await fechar()
       await voltar()
 
+      // no menu, o avanço de cada etapa da furação (21/11, "em etapas similares às barras de aço")
+      await naDisciplina(p, 'estrutura')
+      const etapas = async () => (await secao.getByRole('button').allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' '))
+      await expect.poll(async () => (await etapas())[0]).toContain('1 de 3 furos OK')
+      expect((await etapas())[1]).toContain('0 de 1 furo OK · 1 errado')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_${nome}_menu_avanco.png`, fullPage: true })
+
       // de volta na forma: o painel da área mostra o que as plantas de furação marcaram
       await abrir('Trecho 1')
       await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
@@ -2200,6 +2232,77 @@ suite('FVS na bancada (Chrome)', () => {
       await nomeNoPainel(p, 'Laje dos furos')
       expect(await p.locator('.fv-item[data-item="6"]').getByTestId('fvs-item-pelos-furos-laje').textContent()).toContain('1 de 1 OK')
       expect(await contrasteNosDoisTemas(p), 'contraste do painel da área').toEqual([])
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: furação numa planta só, igual à armadura: cada furo grava na ficha da peça (pilar, viga ou laje)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furos=1&furoslaje=1&furacaototal=1`)
+      await noInicio(p)
+      const FICHA_P = 'f0000000-0000-0000-0000-000000000001'
+      const FICHA_V = 'f0000000-0000-0000-0000-000000000002'
+      const FICHA_L = 'f0000000-0000-0000-0000-000000000009'
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
+      // o último registro de um local (pelo nome): a ficha, o item e o resultado
+      const ultimo = (nomeDoLocal: string) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const els = await sincronizador.linhas('elementos', '${OBRA}')
+          const ids = new Set(els.filter((e) => e.nome === '${nomeDoLocal}').map((e) => e.id))
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => ids.has(e.elemento_id))
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          const u = l.at(-1)
+          return u ? { ficha: u.ficha_id, item: u.item, r: u.resultado } : null
+        })()`)
+      const furo = async (x: number, y: number) => {
+        await enquadrar(p, [-y, x], 2)
+        await tocarNaPlanta(p, x, y)
+      }
+
+      // forma: sem a opção "Furos de viga" (todos os furos foram para a planta de furação)
+      await naDisciplina(p, 'estrutura')
+      await p.getByTestId('fvs-opcao-forma').first().waitFor()
+      expect(await p.locator('[data-testid=fvs-opcao-forma][data-tipo=F]').count()).toBe(0)
+      const secao = p.getByTestId('fvs-secao-outra').filter({ hasText: 'Furação' })
+      const linha = () => secao.getByRole('button').first().innerText().then((t: string) => t.replace(/\s+/g, ' '))
+      expect(await linha()).toContain('Furação')
+      await secao.getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      // uma aba só; contam os 3 da V1, o FL7 (furo de laje em cima da V1: vai para a viga), a caixinha do P1
+      // e FL1 a FL5 (FL6, de Geral, fica de fora)
+      expect(await p.locator('.fv-seg button').allTextContents()).toEqual([])
+      expect(await progresso()).toBe('0/10 OK')
+
+      // caixinha no pilar: o item de furos da ficha do pilar
+      await furo(150, 150)
+      await aviso('P1-F1: OK')
+      expect(await ultimo('P1-F1')).toEqual({ ficha: FICHA_P, item: 8, r: 'C' })
+      await expect.poll(() => ultimo('P1'), { timeout: 5000 }).toEqual({ ficha: FICHA_P, item: 8, r: 'C' })
+      // furo de laje em cima da viga: o item de furação da ficha da viga
+      await furo(260, 150)
+      await aviso('FL7: OK')
+      expect(await ultimo('FL7')).toEqual({ ficha: FICHA_V, item: 5, r: 'C' })
+      // furo de laje fora de área: o item de esgoto da ficha de laje
+      await furo(520, 520)
+      await aviso('FL1: OK')
+      expect(await ultimo('FL1')).toEqual({ ficha: FICHA_L, item: 6, r: 'C' })
+      await expect.poll(progresso).toBe('3/10 OK')
+      // furo bem visível: bolinha de 20 px
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_planta.png` })
+
+      // no menu, o avanço da furação
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+      await naDisciplina(p, 'estrutura')
+      await expect.poll(linha).toContain('3 de 10 furos OK')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furacao_total_${nome}_menu.png`, fullPage: true })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)

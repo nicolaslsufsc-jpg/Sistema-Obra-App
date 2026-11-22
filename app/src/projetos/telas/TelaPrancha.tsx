@@ -93,6 +93,13 @@ export function TelaPrancha({ ctx, documentoId }: { ctx: Contexto; documentoId: 
                     {s.entregas_abertas.length > 1 && ` (${s.entregas_abertas.length} entregas abertas)`}
                   </span>
                   {s.ultimo_evento && <span class="quando">{dataBR(s.ultimo_evento)}</span>}
+                  {s.entregas_abertas
+                    .filter((e) => e.assinatura_id)
+                    .map((e) => (
+                      <button key={e.id} type="button" class="pj-pequeno" data-testid="entrega-assinada" onClick={() => ctx.ir({ nome: 'comprovante', assinaturaId: String(e.assinatura_id) })}>
+                        ✍ assinada · comprovante
+                      </button>
+                    ))}
                 </li>
               )
             })}

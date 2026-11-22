@@ -79,6 +79,8 @@ CLASSES = ("IfcSanitaryTerminal", "IfcWasteTerminal", "IfcValve", "IfcFlowTermin
            "IfcFlowSegment", "IfcDiscreteAccessory", "IfcMember")
 # Trecho de tubo, cabo ou eletroduto: só serve como ponto na descida do SPDA (vertical: na planta, um ponto).
 SEGMENTOS = ("IfcCableSegment", "IfcCableCarrierSegment", "IfcFlowSegment", "IfcMember")
+# conexões (joelho, tê, luva, adaptador): não são ponto de conferência em disciplina nenhuma
+CONEXOES = ("IfcFlowFitting", "IfcPipeFitting", "IfcDuctFitting", "IfcCableCarrierFitting", "IfcCableFitting")
 
 
 class ErroInstalacoes(Exception):
@@ -92,7 +94,10 @@ def _sem_acento(s: str) -> str:
 
 def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     """O tipo do ponto (chave de TIPOS_DE_PONTO), ou None se o objeto não é ponto desta disciplina."""
-    n = _sem_acento(nome)
+    # o Revit põe prefixo com sublinhado (HID_, SAN_): vira espaço para o \b das buscas funcionar
+    n = re.sub(r"_+", " ", _sem_acento(nome)).strip()
+    if classe in CONEXOES:
+        return None
     if disciplina == "eletrico" and classe in SEGMENTOS:
         if re.search(r"ELETROCALHA|\bLEITO\b|PERFILADO|\bCABO\b", n):
             return None
@@ -109,6 +114,9 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
             return "ponto_luz"
         if re.search(r"\bC(AI)?XA?\b.*(PASSAGEM|4 ?X ?[24]|ELETRIC)|\bCAIXA DE PASSAGEM\b", n) or classe == "IfcJunctionBox":
             return "caixa_passagem"
+        # Revit (21/11): a caixa 4x2/4x4 da tomada de teto ou de piso fica na laje
+        if re.search(r"TOMADAS? DE (TETO|PISO)", n):
+            return "caixa_passagem"
         return None
     if disciplina == "spda":
         if re.search(r"CAPTOR|FRANKLIN|TERMINAL AEREO|MASTRO", n):
@@ -121,6 +129,9 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
             return "descida"
         return None
     if disciplina == "sanitario":
+        # acessório da caixa (prolongamento) e nicho de parede não são ponto
+        if re.search(r"PROLONGAMENTO|\bNICHO\b", n):
+            return None
         if "RALO" in n or classe == "IfcWasteTerminal":
             return "ralo"
         if re.search(r"\bC(AI)?XA?\.? ?SIF", n):
@@ -133,8 +144,13 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
     if disciplina == "hidro":
         if "HIDROMETRO" in n or classe == "IfcFlowMeter":
             return "hidrometro"
-        if "REGISTRO" in n or classe == "IfcValve":
+        # peça de barrilete e de incêndio no meio do tubo: não é ponto do ambiente
+        if re.search(r"\bPCI\b|FLANGE|FILTRO|VENTOSA", n):
+            return None
+        if re.search(r"REGISTRO|VALVULA", n) or classe == "IfcValve":
             return "registro"
+        if re.search(r"MISTURADOR|DUCHA|CHUVEIRO|TORNEIRA", n):
+            return "ponto_agua"
         if classe in ("IfcSanitaryTerminal", "IfcFlowTerminal") or re.search(r"\bPONTO\b|\bSAIDA\b", n):
             return "ponto_agua"
         return None
@@ -213,6 +229,40 @@ def _linha_do_segmento(el, m, cm_por_unidade: float) -> list[list[float]] | None
     return linha
 
 
+# Faixa de altura do pavimento: de um pouco abaixo do piso (ralo, caixa sifonada sob a laje) até o pavimento de cima.
+ABAIXO_DO_PISO_CM = 150.0
+SEM_PAVIMENTO_ACIMA_CM = 400.0
+# Elétrico: só o que fica na laje do pavimento (embutido), de 50 cm abaixo do nível até 20 cm acima. No IFC
+# real, o eletroduto do teto do andar de baixo fica 36 cm abaixo do nível de cima e a caixa da tomada de
+# teto, no nível: são da laje deste pavimento, mesmo contidos no nível de baixo (suposição de 21/11: embutido
+# na laje, e não no forro; a confirmar com o Nicolas).
+LAJE_ABAIXO_CM = 50.0
+LAJE_ACIMA_CM = 20.0
+
+
+def _faixa_de_altura(f, niveis: list[str], cm_por_unidade: float) -> tuple[float, float, float] | None:
+    """(z mínimo, z máximo, z do piso) em cm do pavimento pedido, ou None se o arquivo não tem esse nível.
+
+    O nome do nível não basta: no Revit, o modelo do pavimento tipo vinculado no 2º, 3º... 6º chega no IFC com
+    cinco IfcBuildingStorey de mesmo nome ("2° PAVIMENTO"), cada um na altura real do andar (piloto do 2º,
+    21/11). O pavimento certo é o mais baixo dos de mesmo nome; a faixa vai até o próximo nível acima. Com a
+    faixa, o objeto entra se o nível que o contém está na altura do piso, seja qual for o nome dele (o 3º do
+    tipo vinculado vem num nível chamado "2° PAVIMENTO", na altura do 3º), e se ele mesmo está na faixa."""
+    import ifcopenshell.util.placement as up
+    from furos import mesmo_nivel
+
+    def z(s):
+        return float(up.get_local_placement(s.ObjectPlacement)[2, 3]) * cm_por_unidade
+
+    andares = [s for s in f.by_type("IfcBuildingStorey") if s.ObjectPlacement]
+    alvo = [z(s) for s in andares if any(mesmo_nivel(s.Name or "", n) for n in niveis)]
+    if not alvo:
+        return None
+    z0 = min(alvo)
+    acima = sorted(z(s) for s in andares if z(s) > z0 + 50.0)
+    return z0 - ABAIXO_DO_PISO_CM, acima[0] if acima else z0 + SEM_PAVIMENTO_ACIMA_CM, z0
+
+
 def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
     """Os pontos da disciplina no modelo, nos níveis pedidos: [{modelo_id, tipo, nome, x, y}] (x, y em cm).
     O eletroduto vem com "linha" ([[x, y], [x, y]] em cm) e x, y no meio dele."""
@@ -227,7 +277,12 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
 
     f = ifcopenshell.open(caminho)
     cm_por_unidade = uu.calculate_unit_scale(f) * 100.0
+    faixa = _faixa_de_altura(f, niveis, cm_por_unidade)
     vistos: set[str] = set()
+    # o mesmo modelo vinculado mais de uma vez no mesmo lugar: o objeto igual na mesma posição entra uma vez;
+    # o Tag repetido em outra posição (outra cópia) usa o GlobalId, para o id do ponto não se repetir
+    lugares: set[tuple] = set()
+    tags: set[str] = set()
     saida = []
     for classe in CLASSES:
         try:
@@ -241,10 +296,19 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
             tipo = classificar(disciplina, el.is_a(), f"{el.Name or ''} {el.ObjectType or ''}")
             if not tipo:
                 continue
-            psets = ue.get_psets(el)
-            if not any(mesmo_nivel(_nivel_do(el, psets), n) for n in niveis):
+            if not faixa and not any(mesmo_nivel(_nivel_do(el, ue.get_psets(el)), n) for n in niveis):
                 continue
             m = up.get_local_placement(el.ObjectPlacement)
+            if faixa and disciplina == "eletrico":
+                if not faixa[2] - LAJE_ABAIXO_CM <= float(m[2, 3]) * cm_por_unidade <= faixa[2] + LAJE_ACIMA_CM:
+                    continue  # fora da laje deste pavimento
+            elif faixa:
+                if not faixa[0] <= float(m[2, 3]) * cm_por_unidade < faixa[1]:
+                    continue  # de outro pavimento
+                cont = ue.get_container(el)
+                if cont is not None and cont.is_a("IfcBuildingStorey") and cont.ObjectPlacement and abs(
+                        float(up.get_local_placement(cont.ObjectPlacement)[2, 3]) * cm_por_unidade - faixa[2]) > 50.0:
+                    continue  # num nível de outra altura: é do andar de baixo ou de cima (forro, cópia vinculada)
             item = {"modelo_id": str(el.Tag or el.GlobalId), "tipo": tipo, "nome": (el.Name or "").split(":")[0].strip(),
                     "x": float(m[0, 3]) * cm_por_unidade, "y": float(m[1, 3]) * cm_por_unidade}
             if tipo in TIPOS_DE_LINHA:
@@ -252,6 +316,13 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
                 if not linha:
                     continue
                 item.update({"linha": linha, "x": (linha[0][0] + linha[1][0]) / 2, "y": (linha[0][1] + linha[1][1]) / 2})
+            lugar = (tipo, round(float(m[2, 3]) * cm_por_unidade), *(round(c) for p in item.get("linha") or [[item["x"], item["y"]]] for c in p))
+            if lugar in lugares:
+                continue
+            lugares.add(lugar)
+            if item["modelo_id"] in tags:
+                item["modelo_id"] = str(el.GlobalId)
+            tags.add(item["modelo_id"])
             saida.append(item)
     return saida
 

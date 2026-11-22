@@ -5,7 +5,8 @@ import type { PropsModulo } from '../../modulos'
 import { usarSincronizacao } from '../../nucleo/usarSincronizacao'
 import { ehModoLocal } from '../../nucleo/local'
 import { banco } from '../../nucleo/servicos'
-import { fonteDoServidor } from '../obra_servidor'
+import { fonteDoServidor, fonteListaDoServidor } from '../obra_servidor'
+import { fonteLocal } from '../modelos_drive'
 import { LeitorIfc, type ContextoObraIfc } from './ModuloIfc'
 
 export function ComObra({ usuario, obra, aoSair, aoPerderObra }: PropsModulo) {
@@ -33,5 +34,13 @@ export function ComObra({ usuario, obra, aoSair, aoPerderObra }: PropsModulo) {
         aoEnviar: () => void sincronizarAgora(),
       }
     : undefined
-  return <LeitorIfc aoSair={aoSair} obraIfc={obraIfc} />
+  // "Baixar modelo da obra": com conta a lista vem do servidor (gestor e admin trocam); sem conta, do aparelho.
+  const ehExe = obra.codigo === 'EXE'
+  const podeGravar = obra.papel === 'admin' || obra.papel === 'gestor'
+  const fonteModelos = useMemo(
+    () => (semConta === null ? null : semConta ? fonteLocal(obra.id, ehExe) : fonteListaDoServidor(obra.id, usuario.id, podeGravar, ehExe)),
+    [semConta, obra.id, usuario.id, podeGravar, ehExe],
+  )
+  const modelosDrive = fonteModelos ? { fonte: fonteModelos, versao: estado.versaoDados } : undefined
+  return <LeitorIfc aoSair={aoSair} obraIfc={obraIfc} modelosDrive={modelosDrive} />
 }

@@ -1,8 +1,8 @@
 # Front end: aparência e componentes comuns (frente 06)
 
-Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar. A FVS em 3 níveis está no PR #56. Na branch `app/exportar-pdf`, com commit local, entra o botão "Exportar PDF" na FVS, no Concreto, no Projetos e no Documentos.
+Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale o app" (#41) estão na main. Na branch `app/projetos-com-conta`, com commit local, o Projetos aparece no menu também com conta. Ela só sobe depois que o #44 (lista de distribuição no servidor) entrar. A FVS em 3 níveis está no PR #56. Na branch `app/exportar-pdf`, com commit local, entra o botão "Exportar PDF" na FVS, no Concreto, no Projetos e no Documentos. Na branch `front/guia-estilo` (commits locais), o guia de estilo do Nicolas (`docs/DESIGN.md`): passo 1 (tema) pronto; passo 2 (cabeçalho comum) num commit WIP em cima dele.
 
-**O que esta frente cuida:** casca do app, menu, entrada, tema (escuro e modo sol), estilos comuns em `app/src/style.css` e `app/src/tema.css`, e a regra de 375 px e tablet.
+**O que esta frente cuida:** casca do app, menu, entrada, tema (claro e escuro), estilos comuns em `app/src/style.css` e `app/src/tema.css`, e a regra de 375 px e tablet.
 - Cada tela de módulo nasce e muda na frente do próprio módulo. A 06 só aponta o problema para a frente dona.
 - O texto das telas de entrada (`Entrar.tsx`, `Codigo.tsx`, `Obras.tsx`) é da 07 · LOGIN. O estilo dessas telas é da 06.
 
@@ -54,6 +54,17 @@ Status em 21/11/2026: o menu refeito pelas heurísticas (#38) e a faixa "Instale
   - a folha fica escondida na tela e só ela sai na impressão. Ela sai da página no próximo toque ou tecla, e não no "terminou de imprimir", porque no Chrome do Android esse aviso pode vir antes de o PDF ser desenhado;
   - as impressões que os módulos já tinham (ficha de concreto deitada, lista mestra) não mudaram: a folha usa páginas com nome (`@page folha` e `deitada`);
   - o teste de tela (`local.e2e`, "Exportar PDF...") confere, em 375 px e no tablet, nos quatro módulos: o botão com 44 px ou mais, sem rolagem para o lado, o cabeçalho, o conteúdo e a limpeza depois. No tablet ele gera os PDFs de verdade.
+
+- **Guia de estilo, passo 1 pronto e passo 2 em WIP (21/11, branch `front/guia-estilo`, pedido do Nicolas):**
+  - o guia foi para `docs/DESIGN.md`, sem o nome da marca (no repositório ela é a "paleta do app");
+  - tema: a paleta do app (azul-marinho, areia, creme, cinzas) e as cores de status ficam no topo de `tema.css` (`--cor-*`, `--status-*`), com os tamanhos (`--fs-*`, `--raio-max` 4 px, `--linha-tabela` 40 px). As variáveis antigas (`--fundo-ffffff`...) apontam para as cores do guia;
+  - o claro passou a ser o padrão; o escuro fica no ícone de lua do topo do menu, lembrado pelo aparelho. Quem não tinha escolhido nada passa para o claro;
+  - a letra da raiz continua em 18 px, porque as alturas de toque dependem dela; os tamanhos do guia valem no cabeçalho e nas tabelas;
+  - na planta da FVS o azul (liberado para concretar) e o laranja (em andamento) não mudaram, por regra do módulo; o verde e o vermelho usam as cores de status;
+  - as cores dos desenhos sobre a planta (caminhões, tipos de peça) ficam no código, porque o Leaflet não lê variável de CSS;
+  - cabeçalho comum em `app/src/telas/Cabecalho.tsx`: só a seta "‹" à esquerda (igual em toda tela; o leitor de tela lê "Voltar" ou "Voltar ao menu"), título que quebra em duas linhas, nunca cortado, e ações à direita. Os `Topo` do Concreto, do Projetos e do Documentos usam ele; as telas da FVS (menos a planta) usam as mesmas classes;
+  - o "Reportar" do Concreto saiu de flutuante e foi para o cabeçalho de cada tela (no celular, só o "!"). No mapa do Concreto ele continua no canto, como antes;
+  - falta: o topo da planta da FVS (depois da junção da 10), o mapa do Concreto e os passos 3 a 5 (tabelas, Concreto, textos).
 
 ## Pendências
 1. **Um estilo só para aviso, toast e tela vazia.**

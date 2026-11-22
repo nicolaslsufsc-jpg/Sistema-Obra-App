@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { dataBR, diaDaSemana } from '../regras'
 import type { Opcao } from '../tipos'
+import { Cabecalho } from '../../telas/Cabecalho'
 
 export function plural(n: number, um: string, varios: string): string {
   return `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`
@@ -17,7 +18,7 @@ export function dataPorExtenso(data: string): string {
   return `${diaDaSemana(data)}, ${dataBR(data)}`
 }
 
-/** `paraMenu`: na primeira tela do módulo o botão leva ao menu do app e diz isso ("‹ Menu", 20/11/2026). */
+/** Cabeçalho do módulo: o comum do app (telas/Cabecalho.tsx, guia de estilo 21/11/2026). `paraMenu`: a seta leva ao menu do app. */
 export function Topo({
   titulo,
   sub,
@@ -32,16 +33,9 @@ export function Topo({
   children?: ComponentChildren
 }) {
   return (
-    <header class="rl-topo nao-imprimir">
-      <button type="button" class="rl-voltar" onClick={aoVoltar} aria-label={paraMenu ? 'Voltar ao menu' : 'Voltar'}>
-        {paraMenu ? '‹ Menu' : '‹ Voltar'}
-      </button>
-      <div class="rl-titulo">
-        <h1>{titulo}</h1>
-        {sub && <p class="discreto">{sub}</p>}
-      </div>
+    <Cabecalho titulo={titulo} sub={sub} aoVoltar={aoVoltar} paraMenu={paraMenu} classe="rl-topo nao-imprimir">
       {children}
-    </header>
+    </Cabecalho>
   )
 }
 

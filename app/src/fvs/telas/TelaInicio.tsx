@@ -5,18 +5,19 @@
 //      planta que já existe. Cada planta mostra se já está no aparelho (abre sem internet) ou o Baixar.
 // Os três níveis são esta mesma tela (o download continua ao trocar de nível); o voltar sobe um nível.
 import { resumoDasRegras } from '../regras_tela'
+import { contagemDoEscoramento, listaDoEscoramento } from '../escoramento'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
 import { resumoDasAreas } from '../areas'
-import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type Planta } from '../dados'
+import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type DadosFvs, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
-import { abrirPacoteOuAnterior, limparPacotes, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
+import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
-import { furoDeOutraPlanta } from '../furos_laje'
+import { avancoDosFuros, furoDeOutraPlanta, textoDoAvancoDosFuros } from '../furos_laje'
 import { disciplinasDoPavimento, ehOpcaoDeAcabamentos, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
@@ -29,8 +30,21 @@ import { avisoDoSistemaOficial } from '../../integracoes/sistema_oficial'
 import type { ContextoFvs, TelaFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { quantosLocais } from '../locais'
+import '../../telas/cabecalho.css'
 
 const OBRA_INTEIRA = 'obra-inteira'
+
+/**
+ * Contas da obra inteira (totais, reprovações, para lançar), guardadas junto dos dados: voltar ao início ou
+ * abrir a FVS de novo com os mesmos dados não refaz (pedido do Nicolas, 21/11: "FVS demora 5s para abrir").
+ */
+const contasDe = new WeakMap<DadosFvs, Map<string, unknown>>()
+function conta<T>(dados: DadosFvs, chave: string, fazer: () => T): T {
+  let m = contasDe.get(dados)
+  if (!m) contasDe.set(dados, (m = new Map()))
+  if (!m.has(chave)) m.set(chave, fazer())
+  return m.get(chave) as T
+}
 
 /** Onde a pessoa está: nada = lista de pavimentos; pavimentoId = as disciplinas dele; e disciplina = as opções dela. */
 export interface NivelDoInicio {
@@ -43,7 +57,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // sem conta, a planta vem do pacote da obra (.zip ou pasta), não da internet: o Baixar não espera a rede
   // (testador, 08/11: no aparelho do .zip a pergunta dizia "é só baixar de novo" e o Baixar pedia internet)
   const semRede = !online && !ctx.local
-  const [noAparelho, setNoAparelho] = useState<Map<string, { tamanho: number }> | null>(null)
+  // já lida nesta página (ModuloFvs pede junto com os dados): a primeira conta já sai certa, sem refazer
+  const [noAparelho, setNoAparelho] = useState<Map<string, { tamanho: number }> | null>(pacotesJaLidos)
   /** download em andamento: planta atual, percentual dela e, no pavimento inteiro, quantas faltam */
   const [baixando, setBaixando] = useState<{ plantaId: string; pct: number; pavimentoId?: string; feitas: number; total: number } | null>(null)
   const [erro, setErro] = useState('')
@@ -53,7 +68,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   useEffect(() => {
     dataDoPacoteGuardado(banco, props.obra.id).then(setGeradoEm, () => setGeradoEm(null))
   }, [props.obra.id])
-  const naFrente = useMemo(() => registroNaFrente(dados), [dados])
+  const naFrente = useMemo(() => conta(dados, 'frente', () => registroNaFrente(dados)), [dados])
   // locais do sistema oficial que não são peça e têm ficha ou marcação (tela "Locais fora da planta")
   const locaisFora = useMemo(() => quantosLocais(dados), [dados])
 
@@ -240,13 +255,17 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // no escritório, com internet boa, baixa tudo de uma vez antes de ir para a obra
   const faltamNaObra = noAparelho ? comPlanta.flatMap((pv) => dados.plantasDe.get(pv.id)!.filter((p) => !noAparelho.has(p.id))) : []
   const baixandoObra = baixando?.pavimentoId === OBRA_INTEIRA ? baixando : null
-  const reprovacoes = useMemo(() => reprovacoesDaObra(dados), [dados])
+  const reprovacoes = useMemo(() => conta(dados, 'reprovacoes', () => reprovacoesDaObra(dados)), [dados])
   const abertas = reprovacoes.filter((r) => r.aberta).length
-  const paraLancar = useMemo(() => paraLancarDaObra(dados, dados.lancados).length, [dados])
+  const paraLancar = useMemo(() => conta(dados, 'lancar', () => paraLancarDaObra(dados, dados.lancados).length), [dados])
+  // escoramento e desforma (3.6, 21/11): quantas peças já podem e quantas aguardam o prazo das regras
+  const escoramento = useMemo(() => (dados.regras.prazos.length ? conta(dados, 'escoramento', () => contagemDoEscoramento(listaDoEscoramento(dados))) : null), [dados])
   const duplicadas = useMemo(() => [...dados.fichasCampoDe.values()].filter((f) => f.length > 1).length, [dados])
   const avisoSistema = avisoDoSistemaOficial(props.obra, dados.fichasCampoDe.size > 0 || dados.fichasCampoSemPeca.length > 0)
   // os resumos percorrem a obra inteira: só refaz quando os dados mudam, não a cada ponto do download
-  const resumos = useMemo(() => {
+  // o que está no aparelho muda a conta (peça só de detalhe sai): entra na chave
+  const chaveDosResumos = noAparelho ? 'resumos|' + [...noAparelho.keys()].sort().join(',') : 'resumos'
+  const resumos = useMemo(() => conta(dados, chaveDosResumos, () => {
     const eventosDe = (id: string) => dados.eventosDe.get(id) ?? []
     const campo = { fichasDe: (id: string) => dados.fichasCampoDe.get(id) ?? [], ficha: (id: string) => dados.fichaPorId.get(id), partesDe: partesDoPilar }
     const locaisDe = new Map<string, Array<{ id: string; tipo: string }>>()
@@ -275,7 +294,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       }),
     )
     // noAparelho: ler os pacotes diz quais peças são só detalhe (pacotesNoAparelho)
-  }, [dados, noAparelho])
+  }), [dados, chaveDosResumos])
   const naObra = [...resumos.values()].reduce((s, { r }) => ({ total: s.total + r.total, liberadas: s.liberadas + r.liberadas }), { total: 0, liberadas: 0 })
 
   // Nível da navegação (21/11/2026): pavimentos → disciplinas do pavimento → opções da disciplina.
@@ -287,8 +306,27 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
 
   // Estrutura com a forma no aparelho: uma opção por aba da forma (Pilares, Vigas, Lajes, Furos de viga),
   // lida do pacote (só as abas que a planta tem). Sem o pacote, a forma aparece como linha, com o Baixar.
-  const [abasDaForma, setAbasDaForma] = useState<Map<string, Array<{ tipo: string; n: number }>>>(new Map())
+  const [abasDaForma, setAbasDaForma] = useState<Map<string, Array<{ tipo: string; n: number; furos?: ReturnType<typeof avancoDosFuros> }>>>(new Map())
   const formasAbertas = discAberta?.id === 'estrutura' ? discAberta.plantas.filter((p) => p.disciplina === 'estrutura') : []
+  // furos de laje e de viga por etapa (21/11/2026, "em etapas similares às barras de aço"): "x de y furos OK"
+  // de cada planta de furação, lido do pacote no aparelho
+  const [avancoDaFuracao, setAvancoDaFuracao] = useState<Map<string, ReturnType<typeof avancoDosFuros>>>(new Map())
+  const furacaoAberta = discAberta?.id === 'estrutura' ? discAberta.plantas.filter(ehDeFuracao) : []
+  useEffect(() => {
+    if (!furacaoAberta.length || !noAparelho) return
+    let vivo = true
+    ;(async () => {
+      const m = new Map<string, ReturnType<typeof avancoDosFuros>>()
+      for (const p of furacaoAberta) {
+        const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
+        if (pac) m.set(p.id, avancoDosFuros(pac.manifest, (id) => dados.eventosDe.get(id) ?? []))
+      }
+      if (vivo) setAvancoDaFuracao(m)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [furacaoAberta.map((p) => p.id).join(','), noAparelho, dados])
   useEffect(() => {
     if (!formasAbertas.length || !noAparelho) return
     let vivo = true
@@ -305,6 +343,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         const abas = OPCOES_DA_FORMA.map(({ tipo }) => ({
           tipo,
           n: tipo === 'L' ? (dados.areasDe.get(pvAberto!.id) ?? []).length : tipo === 'B' ? (temArmaduraPropria ? 0 : nBarras) : quantos(tipo),
+          furos: tipo === 'F' ? avancoDosFuros(pac.manifest, (id) => dados.eventosDe.get(id) ?? []) : undefined,
         })).filter(({ tipo, n }) => n > 0 || (tipo === 'L' && (temLaje || quantos('L') > 0)))
         m.set(p.id, abas)
       }
@@ -334,11 +373,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
 
   /** Topo dos níveis 2 e 3: o voltar sobe um nível (o voltar do Android também). */
   const topo = (voltarPara: string, titulo: string, sub: string) => (
-    <header class="fv-topo-inicio fv-topo-nivel">
-      <button type="button" class="fv-voltar" onClick={voltar} aria-label={`Voltar para ${voltarPara}`}>
-        ‹ {voltarPara}
+    <header class="so-cabecalho fv-topo-inicio fv-topo-nivel">
+      <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label={`Voltar para ${voltarPara}`}>
+        <span aria-hidden="true">‹</span>
       </button>
-      <div>
+      <div class="so-cab-titulo">
         <h1>{titulo}</h1>
         <p class="discreto">{sub}</p>
       </div>
@@ -372,11 +411,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               {daForma.map((p) =>
                 formaEmOpcoes(p) ? (
                   <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-forma">
-                    {abasDaForma.get(p.id)!.map(({ tipo, n }) =>
+                    {abasDaForma.get(p.id)!.map(({ tipo, n, furos }) =>
                       botaoDaPlanta(p, {
                         chave: `${p.id}:${tipo}`,
                         titulo: OPCOES_DA_FORMA.find((o) => o.tipo === tipo)!.nome,
-                        sub: [daForma.length > 1 ? p.trecho : '', tipo === 'L' ? (n ? `${n} ${n === 1 ? 'área desenhada' : 'áreas desenhadas'}` : 'Desenhe a área na planta') : tipo === 'F' ? `${n} ${n === 1 ? 'furo' : 'furos'}` : tipo === 'B' ? `${n} ${n === 1 ? 'barra' : 'barras'}` : `${n} ${n === 1 ? 'peça' : 'peças'}`].filter(Boolean).join(' · '),
+                        sub: [daForma.length > 1 ? p.trecho : '', tipo === 'L' ? (n ? `${n} ${n === 1 ? 'área desenhada' : 'áreas desenhadas'}` : 'Desenhe a área na planta') : tipo === 'F' ? (furos?.total ? textoDoAvancoDosFuros(furos) : `${n} ${n === 1 ? 'furo' : 'furos'}`) : tipo === 'B' ? `${n} ${n === 1 ? 'barra' : 'barras'}` : `${n} ${n === 1 ? 'peça' : 'peças'}`].filter(Boolean).join(' · '),
                         abrir: { nome: 'planta', plantaId: p.id, tipo },
                         testid: 'fvs-opcao-forma',
                         extra: { 'data-tipo': tipo },
@@ -399,8 +438,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           )}
           {furacao.length > 0 && (
             <div data-testid="fvs-secao-outra">
-              <h3 class="fv-disciplina">Furação de laje</h3>
-              <div class="fv-grade-armadura">{furacao.map((p) => plantaNaLista(p, p.trecho, `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'} · ${p.prancha}`))}</div>
+              <h3 class="fv-disciplina">Furação</h3>
+              <div class="fv-grade-armadura">{furacao.map((p) => {
+                  const a = avancoDaFuracao.get(p.id)
+                  return plantaNaLista(p, p.trecho, `${a?.total ? textoDoAvancoDosFuros(a) : `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'}`} · ${p.prancha}`)
+                })}</div>
             </div>
           )}
           {vedacao.length > 0 && (
@@ -475,7 +517,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       const ps = d.plantas
       const ops = (f: (op: OpcaoDosAmbientes) => boolean) => ps.filter(ehDeAmbientes).flatMap((p) => (opcoesAmb.get(p.id) ?? []).filter(f).map((o) => o.titulo))
       if (d.id === 'estrutura') {
-        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furos de laje'].filter(Boolean)
+        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furação'].filter(Boolean)
         return { tem: partes.join(', '), andamento: r.total > 0 ? `${r.liberadas} de ${r.total} peças liberadas${r.comR > 0 ? ` · ${r.comR} com NC` : ''}` : null }
       }
       if (d.id === 'alvenaria') {
@@ -577,12 +619,12 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // ---------- nível 1: pavimentos ----------
   return (
     <main class="tela fv-inicio">
-      <header class="fv-topo-inicio">
+      <header class="so-cabecalho fv-topo-inicio">
         {/* Primeira tela do módulo: o botão leva ao menu do app e diz isso (20/11/2026) */}
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar ao menu">
-          ‹ Menu
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar ao menu">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>FVS</h1>
           <p class="discreto" data-testid="fvs-resumo-obra">
             {props.obra.codigo}
@@ -642,6 +684,14 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             {duplicadas} {duplicadas === 1 ? 'peça' : 'peças'} com ficha duplicada no {sistema.nome}
           </b>
           <span>Ver as duas situações de cada uma ›</span>
+        </button>
+      )}
+      {escoramento && escoramento.podem + escoramento.aguardam > 0 && (
+        <button type="button" class="fv-entra-rep" data-testid="fvs-entra-escoramento" onClick={() => ir({ nome: 'escoramento' })}>
+          <b>
+            Escoramento e desforma: {escoramento.podem} {escoramento.podem === 1 ? 'pode retirar' : 'podem retirar'} · {escoramento.aguardam} aguardando
+          </b>
+          <span>Ver por pavimento ›</span>
         </button>
       )}
       {(dados.regras.prazos.length > 0 || dados.regras.ligacoes.length > 0 || !!dados.regras.fora) && (
@@ -809,7 +859,7 @@ const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', san
 /** Plantas de furos de laje na ordem da obra: esgoto, água, elétrica (o nome vem do pipeline/fvs/furos.py). */
 const ordemDoFuro = (trecho: string) => { const t = trecho.toLowerCase(); return t.includes('esgoto') ? 0 : t.includes('água') || t.includes('agua') ? 1 : t.includes('elétrica') || t.includes('eletrica') ? 2 : 3 }
 /** Seções depois da estrutura: os furos de laje por camada (21/11/2026), depois as instalações. */
-const SECOES: Record<string, string> = { furacao: 'Furação de laje', ...SECAO_DE_INSTALACOES }
+const SECOES: Record<string, string> = { furacao: 'Furação', ...SECAO_DE_INSTALACOES }
 /** Na ordem do menu (furação, hidro, esgoto, elétrico, preventivo, SPDA); disciplina que o app não conhece vem depois. */
 const ordemDaSecao = (d: string) => { const i = Object.keys(SECOES).indexOf(d); return i < 0 ? 99 : i }
 

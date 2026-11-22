@@ -27,6 +27,7 @@ import {
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import { CampoNc } from './CampoNc'
 import type { ContextoFvs } from './ModuloFvs'
+import '../../telas/cabecalho.css'
 
 export function TelaLocais({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) {
   const { dados, voltar, ir, sistema } = ctx
@@ -37,11 +38,11 @@ export function TelaLocais({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
 
   return (
     <main class="tela fv-inicio fv-locais">
-      <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+      <header class="so-cabecalho fv-topo-inicio">
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>Locais fora da planta</h1>
           <p class="discreto">
             Blocos, cortinas, paredes e outros locais {sistema ? `do ${sistema.nome}` : 'do sistema oficial'} que não são peça da prancha.
@@ -113,9 +114,9 @@ export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: 
   if (!local) {
     return (
       <main class="tela fv-inicio fv-local">
-        <header class="fv-topo-inicio">
-          <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-            ‹ Voltar
+        <header class="so-cabecalho fv-topo-inicio">
+          <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar">
+            <span aria-hidden="true">‹</span>
           </button>
           <h1>Local não encontrado</h1>
         </header>
@@ -174,11 +175,11 @@ export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: 
 
   return (
     <main class="tela fv-inicio fv-local" data-testid="fvs-tela-local">
-      <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+      <header class="so-cabecalho fv-topo-inicio">
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>{local.nome}</h1>
           <p class="discreto">{local.nome_completo}</p>
         </div>

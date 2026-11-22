@@ -658,6 +658,11 @@
 .fv-aberta b {
   color: var(--texto-1b1c1e);
 }
+/* viga com duas fichas do mesmo modelo, mescladas numa só (21/11) */
+.fv-juntas {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
 .fv-planta button.fv-aberta {
   padding: 8px 10px;
   margin-bottom: 6px;
@@ -1963,13 +1968,7 @@
 .fv-regras-lista {
   max-width: 720px;
 }
-/* celular: o Voltar numa linha e o título embaixo (ao lado, o título e o subtítulo iam para 3 linhas) */
-@media (max-width: 700px) {
-  .fv-regras .fv-topo-inicio {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+/* (21/11/2026) o voltar virou só a seta (cabeçalho comum): o título da tela de regras cabe ao lado */
 .fv-regras-lista li {
   display: flex;
   flex-direction: column;
@@ -2177,4 +2176,42 @@
   margin: 16px 0 4px;
   font-size: 1rem;
   overflow-wrap: anywhere;
+}
+
+/* Escoramento e desforma por pavimento (3.6, 21/11): só aviso, mesma cara da lista de reprovações */
+.fv-escoramento .fv-esc-pavimento,
+.fv-escoramento .fv-esc-filtro,
+.fv-escoramento .fv-esc-dica {
+  max-width: 720px;
+}
+.fv-esc-filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 14px;
+}
+.fv-esc-pavimento {
+  margin-top: 12px;
+}
+.fv-esc-pavimento h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+.fv-esc-grupo h3 {
+  margin: 8px 0 6px;
+  font-size: 14px;
+}
+.fv-rep.fv-esc-linha {
+  border-left-color: var(--borda-c27800);
+}
+.fv-rep-res.fvs-esc-espera {
+  color: var(--texto-7a4500);
+  white-space: normal;
+}
+@media (max-width: 700px) {
+  .fv-escoramento .fv-topo-inicio {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

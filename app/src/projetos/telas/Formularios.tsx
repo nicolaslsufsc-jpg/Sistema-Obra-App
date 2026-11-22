@@ -1,6 +1,9 @@
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
 import type { Linha } from '../../nucleo/banco_local'
+import { guardarAssinatura } from '../assinatura'
 import { registrarDevolucao, registrarEntrega } from '../dados'
+import { normalizar } from '../regras'
+import { QuadroAssinatura, type PegarAssinatura } from './Assinatura'
 import type { Contexto } from './ModuloProjetos'
 import { Campo, dataBR, rotuloRevisao, Topo } from './comum'
 
@@ -33,6 +36,11 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
   const [obs, setObs] = useState('')
   const [erros, setErros] = useState<Erros>({})
   const [salvando, setSalvando] = useState(false)
+  // mais pranchas na mesma entrega (a pessoa leva várias de uma vez e assina uma vez só)
+  const [outras, setOutras] = useState<string[]>([])
+  const [buscaOutras, setBuscaOutras] = useState('')
+  const pegar = useRef<PegarAssinatura | null>(null)
+  const [assinado, setAssinado] = useState(false)
 
   if (!doc) {
     return (
@@ -54,16 +62,29 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
     const rev = dados.revisaoPorId.get(revisao)
     const nomeEmpresa = dados.empresaPorId.get(empresa)?.nome ?? ''
     const alerta = rev && vigente && rev.id !== vigente.id ? `\n\nATENÇÃO: ${rotuloRevisao(rev)} não é a vigente (${rotuloRevisao(vigente)}). Só registre se for isso mesmo.` : ''
-    if (!confirm(`Registrar a entrega de ${doc.codigo} ${rotuloRevisao(rev)} para ${nomeEmpresa}${colaborador.trim() ? ` (${colaborador.trim()})` : ''} em ${dataBR(data)}?${alerta}`)) return
+    // as outras pranchas vão na revisão vigente de cada uma
+    const extras = outras.flatMap((id) => {
+      const v = dados.vigentes.get(id)
+      return v ? [{ documento_id: id, revisao_id: v.id }] : []
+    })
+    const semAssinatura = assinado ? '' : '\n\n⚠ Sem assinatura de quem retira. É opcional, mas sem ela não há comprovante assinado.'
+    const mais = extras.length ? ` e mais ${extras.length} ${extras.length === 1 ? 'prancha' : 'pranchas'}` : ''
+    if (!confirm(`Registrar a entrega de ${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${colaborador.trim() ? ` (${colaborador.trim()})` : ''} em ${dataBR(data)}?${alerta}${semAssinatura}`)) return
     setSalvando(true)
     // A empresa ainda tem outra cópia desta prancha? Lembrar de recolher (senão fica em CONFERIR).
     const antigas = (dados.situacoesDe.get(doc.id) ?? []).filter((s) => s.empresa_id === empresa).flatMap((s) => s.entregas_abertas)
     try {
-      await registrarEntrega(obra.id, usuario.id, { empresa_id: empresa, colaborador, documento_id: doc.id, revisao_id: revisao, data_evento: data, observacao: obs }, foto)
+      // UMA assinatura por entrega: o mesmo arquivo vale para todas as pranchas
+      const png = assinado ? await pegar.current?.() : null
+      const assinatura_id = png ? await guardarAssinatura(obra.id, usuario.id, png) : null
+      const base = { empresa_id: empresa, colaborador, data_evento: data, observacao: obs, assinatura_id }
+      await registrarEntrega(obra.id, usuario.id, { ...base, documento_id: doc.id, revisao_id: revisao }, foto)
+      for (const x of extras) await registrarEntrega(obra.id, usuario.id, { ...base, ...x })
       await recarregar()
       const lembrete = antigas.length > 0 ? ` Falta recolher ${antigas.map((a) => rotuloRevisao(dados.revisaoPorId.get(String(a.revisao_id)))).join(', ')} de ${nomeEmpresa}.` : ''
-      avisar(`Entrega registrada: ${doc.codigo} ${rotuloRevisao(rev)} para ${nomeEmpresa}.${lembrete}`)
-      trocar({ nome: 'prancha', documentoId: doc.id })
+      avisar(`Entrega registrada: ${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${assinatura_id ? ', com assinatura' : ''}.${lembrete}`)
+      if (assinatura_id) trocar({ nome: 'comprovante', assinaturaId: assinatura_id })
+      else trocar({ nome: 'prancha', documentoId: doc.id })
     } catch (err) {
       setSalvando(false)
       avisar(`Não foi possível registrar: ${err instanceof Error ? err.message : String(err)}`, 'erro')
@@ -106,15 +127,69 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
             <input type="date" value={data} onInput={(e) => setData(e.currentTarget.value)} required />
           </Campo>
         </div>
+        <MaisPranchas ctx={ctx} principal={doc.id} outras={outras} setOutras={setOutras} busca={buscaOutras} setBusca={setBuscaOutras} />
+        {/* fora de <label> (Campo): dentro dele, tocar no quadro "clicava" no Limpar */}
+        <div class="pj-campo" role="group" aria-label="Assinatura de quem retira">
+          <span>Assinatura de quem retira</span>
+          <QuadroAssinatura pegar={pegar} aoMudar={setAssinado} />
+          <span class="discreto">Opcional. Uma assinatura vale para todas as pranchas desta entrega; data e hora ficam guardadas.</span>
+        </div>
+        {!assinado && <p class="discreto" data-testid="entrega-sem-assinatura">⚠ Sem assinatura: a entrega fica registrada, mas sem comprovante assinado.</p>}
         <CampoFoto foto={foto} setFoto={setFoto} />
         <Campo rotulo="Observação">
           <textarea value={obs} onInput={(e) => setObs(e.currentTarget.value)} maxLength={2000} rows={2} />
         </Campo>
         <button type="submit" class="principal" disabled={salvando || empresas.length === 0}>
-          Registrar entrega
+          {outras.length ? `Registrar entrega (${outras.length + 1} pranchas)` : 'Registrar entrega'}
         </button>
       </form>
     </main>
+  )
+}
+
+/** Outras pranchas que vão na mesma entrega (na revisão vigente de cada uma). */
+function MaisPranchas({
+  ctx,
+  principal,
+  outras,
+  setOutras,
+  busca,
+  setBusca,
+}: {
+  ctx: Contexto
+  principal: string
+  outras: string[]
+  setOutras: (v: string[]) => void
+  busca: string
+  setBusca: (v: string) => void
+}) {
+  const { dados } = ctx
+  const q = normalizar(busca.trim())
+  const marcadas = new Set(outras)
+  const candidatas = dados.documentos.filter((d) => d.id !== principal && dados.vigentes.has(d.id))
+  // as marcadas sempre aparecem; as outras só com a busca (a lista inteira é grande demais no celular)
+  const visiveis = candidatas.filter((d) => marcadas.has(d.id) || (q.length >= 2 && d.busca.includes(q))).slice(0, 40)
+  const alternar = (id: string) => setOutras(marcadas.has(id) ? outras.filter((x) => x !== id) : [...outras, id])
+  return (
+    <details class="pj-disc" open={outras.length > 0} data-testid="entrega-mais-pranchas">
+      <summary>
+        <b>Mais pranchas nesta entrega</b> {outras.length > 0 && <span class="pj-selo rec">{outras.length}</span>}
+      </summary>
+      <input type="search" value={busca} onInput={(e) => setBusca(e.currentTarget.value)} placeholder="Buscar código ou título" aria-label="Buscar outra prancha" />
+      <ul class="pj-mais-pranchas">
+        {visiveis.map((d) => (
+          <li key={d.id}>
+            <label>
+              <input type="checkbox" checked={marcadas.has(d.id)} onChange={() => alternar(d.id)} />
+              <span>
+                <b>{d.codigo}</b> <span class="discreto">{d.titulo}</span> <span class="pj-selo ok">{rotuloRevisao(dados.vigentes.get(d.id))}</span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {q.length < 2 && outras.length === 0 && <p class="discreto">Digite parte do código ou do título para achar a prancha. Vai a revisão vigente.</p>}
+    </details>
   )
 }
 

@@ -114,6 +114,25 @@
   font-size: 8.5pt;
   margin: 0.2rem 0 0;
 }
+.sf-imagem {
+  margin: 1rem 0 0;
+  break-inside: avoid;
+}
+.sf-imagem img {
+  display: block;
+  max-width: 9cm;
+  max-height: 4cm;
+  border-bottom: 1px solid currentColor;
+}
+.sf-linha-assinar {
+  width: 9cm;
+  height: 2.5cm;
+  border-bottom: 1px solid currentColor;
+}
+.sf-imagem figcaption {
+  font-size: 8.5pt;
+  margin-top: 0.2rem;
+}
 .sf-rodape {
   margin-top: 1rem;
   padding-top: 0.3rem;

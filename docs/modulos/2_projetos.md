@@ -84,6 +84,17 @@ Pedido do Nicolas (21/11, pelo Professor): "da inicio as outras etapas que havia
   - Lista das revisões novas; tocar abre a prancha.
   - Sem migração nova.
 
+## Status (21/11/2026, fim da noite): botão "Atualizar do Autodoc" (branch `projetos/canteiro`)
+
+Pedido do Nicolas (prioridade 1): "um botão para baixar os projetos e montar os dashboards".
+
+- **App**: no topo do painel da obra, só gestor e com conta, o botão "Atualizar do Autodoc". O toque grava um pedido no servidor e a tela acompanha: "Pedido às hh:mm" → "Buscando no Autodoc" → "Pronto às hh:mm: N revisões novas, N baixadas, N falharam" (com a lista das que falharam, pelo código) ou o erro. Ao ficar pronto, o app sincroniza e o painel se refaz. Pendente há mais de 15 min: "o PC do escritório não respondeu". Buscando há mais de 30 min: "interrompido", e o gestor pode pedir de novo. Código: `projetos/pedido_autodoc.ts` e `telas/PedidoAutodoc.tsx`; na bancada, `?pedido=ciclo|parado|erro|preso`.
+- **Servidor**: migração `20261121150000_projetos_pedidos_atualizacao.sql` (fora da sincronização; o app só insere a obra; o PC usa `projetos_pegar_pedido` e `projetos_concluir_pedido`; um pedido aberto por obra) e teste `testes_x_projetos_pedidos.sql`. **Não aplicada**: espera o "pode" do Nicolas.
+- **PC** (fora do repositório, junto do script do Autodoc): vigia a cada 5 min pela tarefa do Windows, sem janela. Pega o pedido e roda relatório → lista vigente → publicação → revisões novas para o CFL_Projetos (índice + md5). Usa o login do app já guardado e um perfil só do Autodoc (login feito uma vez na mão; fica a sessão, nunca a senha). A janela do Chrome abre fora da tela, porque escondida a página não carrega. A tarefa só é criada com o ok do Nicolas.
+- Falta: o ponta a ponta real (depois da migração, do login no perfil e da tarefa).
+
+4. **Entrega com assinatura** ("pode" do Nicolas em 21/11, opcional com aviso): migração `20261121140000_projetos_assinatura_entrega.sql` (só acrescenta `distribuicao_eventos.assinatura_id` → `arquivos`) e teste `testes_x_projetos_assinatura.sql`. No formulário de entrega: quadro para assinar com o dedo ou a caneta e "Mais pranchas nesta entrega" (vai a vigente de cada uma). **Uma assinatura por entrega**: o PNG é guardado uma vez e o mesmo `assinatura_id` vai em todas as linhas; data e hora = `criado_em_dispositivo`. Sem assinatura: aviso na tela e na confirmação, e a entrega é registrada igual. Depois de salvar abre o **Comprovante de entrega** (pranchas, quem, quando, assinatura) com Exportar PDF; na prancha, "✍ assinada · comprovante". A ficha v2 (planilha importada) não tem assinatura: ela vem do Excel, não das entregas do app. **Aplicar a migração junto com o merge**: o app só manda `assinatura_id` quando há assinatura, mas uma entrega assinada não sobe enquanto a coluna não existir no servidor.
+
 ## Status (21/11/2026): atualização automática do Autodoc (branch `projetos/autodoc-com-conta`)
 Pedido do Nicolas (21/11, pelo Professor): "coloca esse script no programa, a única coisa que a pessoa vai fazer é executar ele".
 - **Fora do repositório** (entra no Autodoc, regra do CLAUDE.md): um atalho na área de trabalho, "Atualizar projetos do Autodoc", roda o exportador.

@@ -3,6 +3,7 @@
 // O banco do núcleo não é usado para isto (são megabytes de imagem, não registros).
 
 import { lembrarComodo } from './comodos'
+import { pecaDosFurosDeLaje } from './furos_laje'
 import Dexie, { type Table } from 'dexie'
 import type { BarraPacote, CamadaDeBarras } from './barras'
 import type { DisciplinaDePontos, PontoPacote } from './pontos'
@@ -74,6 +75,9 @@ export interface ElementoPacote {
   partes?: ParteDoPilar[]
   /** só furo: id (no manifest) da viga em que ele fica */
   viga?: string
+  /** só furo (21/11/2026): id (no manifest) do pilar em que ele (ou a caixinha) fica; marca o item de furos
+   *  (`"furos": true`) da ficha do pilar, como o de viga marca o da viga */
+  pilar?: string
   /** só furo: posição, tamanho e disciplinas do modelo */
   furo?: DadosDoFuro
   /** só ambiente: recortes de outros projetos (paginação de piso, impermeabilização...), chaves em `detalhes`;
@@ -90,7 +94,7 @@ export const TIPOS_FILHOS = ['F', 'E'] as const
 
 /** O local pai de um filho: a viga do furo, o ambiente da esquadria. */
 export function paiDe(e: ElementoPacote | undefined): string | undefined {
-  return e?.tipo === 'F' ? e.viga : e?.tipo === 'E' ? e.ambiente : undefined
+  return e?.tipo === 'F' ? (e.viga ?? e.pilar) : e?.tipo === 'E' ? e.ambiente : undefined
 }
 
 /** Nomes das disciplinas do furo (pipeline/fvs/furos.py, DISCIPLINAS). */
@@ -182,8 +186,11 @@ export interface Manifest {
   furos_laje?: 'esgoto' | 'agua' | 'eletrica'
   /** forma com os furos de laje em plantas próprias: eles ficam no pacote, escondidos */
   furos_laje_separados?: boolean
+  /** forma com TODOS os furos (laje, viga e pilar) na planta de furação própria (21/11/2026, "igual à
+   *  armadura"): eles ficam no pacote, para o item da viga e do pilar contar, mas não aparecem aqui */
+  furos_separados?: boolean
   /** planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela */
-  disciplina?: DisciplinaDePontos
+  disciplina?: DisciplinaDePontos | 'furacao' | 'armadura'
   /** pontos de instalações do modelo, já na folha (aba Pontos); chave = id do ponto (registro em barra_id) */
   pontos?: Record<string, PontoPacote>
   /** nome do pedaço → [início, tamanho] dentro do pacote.bin */
@@ -349,13 +356,16 @@ export async function guardarPacote(manifestBytes: ArrayBuffer | string, bin: Bl
   }
   await db().pacotes.put(reg)
   lembrarEscala(manifest)
+  mudouNoAparelho()
+  lidos?.set(reg.planta_id, metaDe(reg))
   return reg
 }
 
 export async function abrirPacote(plantaId: string): Promise<PacoteAberto | null> {
   const p = await db().pacotes.get(plantaId)
   if (p) lembrarEscala(p.manifest)
-  return p ? new PacoteAberto(p.manifest, p.bin) : null
+  // furo de laje em cima de viga ou pilar vai para a ficha da peça (regra de 21/11/2026, pacote antigo)
+  return p ? new PacoteAberto(pecaDosFurosDeLaje(p.manifest), p.bin) : null
 }
 
 /** Abre o pacote da planta ou, se ele ainda não foi baixado, o da revisão anterior mais nova. */
@@ -367,13 +377,65 @@ export async function abrirPacoteOuAnterior(plantaId: string, anteriores: readon
   return null
 }
 
-/** Quais plantas já estão no aparelho (sem carregar as imagens). */
+interface MetaDoPacote {
+  tamanho: number
+  baixado_em: string
+  obra_id?: string
+  usuario_id?: string
+}
+const metaDe = (p: PacoteGuardado): MetaDoPacote => ({ tamanho: p.tamanho, baixado_em: p.baixado_em, obra_id: p.obra_id, usuario_id: p.usuario_id })
+
+/**
+ * O que há no aparelho, lido uma vez por página. Ler os pacotes traz o manifest de cada planta inteiro:
+ * com a obra inteira baixada, a tela inicial da FVS relia todos duas vezes a cada abertura (pedido do
+ * Nicolas, 21/11: "FVS demora 5s para abrir"). Quem grava ou apaga pacote atualiza esta lista.
+ */
+let lidos: Map<string, MetaDoPacote> | null = null
+let lendo: Promise<Map<string, MetaDoPacote>> | null = null
+let versaoDoAparelho = 0
+function mudouNoAparelho(): void {
+  versaoDoAparelho++
+}
+
+function pacotesLidos(): Promise<Map<string, MetaDoPacote>> {
+  if (lidos) return Promise.resolve(lidos)
+  lendo ??= (async () => {
+    try {
+      for (;;) {
+        const v = versaoDoAparelho
+        const m = new Map<string, MetaDoPacote>()
+        await db().pacotes.each((p) => {
+          m.set(p.planta_id, metaDe(p))
+          lembrarEscala(p.manifest)
+        })
+        // gravou ou apagou pacote durante a leitura: lê de novo
+        if (v === versaoDoAparelho) return (lidos = m)
+      }
+    } finally {
+      lendo = null
+    }
+  })()
+  return lendo
+}
+
+/** Esquece a lista lida (testes que trocam o banco de pacotes por baixo do app). */
+export function esquecerPacotesLidos(): void {
+  lidos = null
+  mudouNoAparelho()
+}
+
+/** As plantas do aparelho se a lista já foi lida nesta página (null = ainda não): a tela começa com ela. */
+export function pacotesJaLidos(): Map<string, { tamanho: number; baixado_em: string }> | null {
+  if (!lidos) return null
+  const m = new Map<string, { tamanho: number; baixado_em: string }>()
+  for (const [id, p] of lidos) m.set(id, { tamanho: p.tamanho, baixado_em: p.baixado_em })
+  return m
+}
+
+/** Quais plantas já estão no aparelho (sem carregar as imagens; os manifests só na primeira vez). */
 export async function pacotesNoAparelho(): Promise<Map<string, { tamanho: number; baixado_em: string }>> {
   const m = new Map<string, { tamanho: number; baixado_em: string }>()
-  await db().pacotes.each((p) => {
-    m.set(p.planta_id, { tamanho: p.tamanho, baixado_em: p.baixado_em })
-    lembrarEscala(p.manifest)
-  })
+  for (const [id, p] of await pacotesLidos()) m.set(id, { tamanho: p.tamanho, baixado_em: p.baixado_em })
   return m
 }
 
@@ -393,6 +455,8 @@ export async function pecasNoAparelho(): Promise<Map<string, string[]>> {
 /** A pessoa pediu para tirar plantas do aparelho (falta de espaço). As marcações não ficam aqui. */
 export async function removerPacotes(ids: readonly string[]): Promise<void> {
   await db().pacotes.bulkDelete([...ids])
+  mudouNoAparelho()
+  for (const id of ids) lidos?.delete(id)
 }
 
 /**
@@ -404,12 +468,12 @@ export async function removerPacotes(ids: readonly string[]): Promise<void> {
  */
 export async function limparPacotes(dono: DonoDoPacote, manter: ReadonlySet<string>): Promise<number> {
   const sair: string[] = []
-  await db().pacotes.each((p) => {
+  for (const [id, p] of await pacotesLidos()) {
     const deOutraPessoa = p.usuario_id !== undefined && p.usuario_id !== dono.usuarioId
     const destaObra = p.obra_id === undefined || p.obra_id === dono.obraId
-    if (deOutraPessoa || (destaObra && !manter.has(p.planta_id))) sair.push(p.planta_id)
-  })
-  if (sair.length) await db().pacotes.bulkDelete(sair)
+    if (deOutraPessoa || (destaObra && !manter.has(id))) sair.push(id)
+  }
+  if (sair.length) await removerPacotes(sair)
   return sair.length
 }
 

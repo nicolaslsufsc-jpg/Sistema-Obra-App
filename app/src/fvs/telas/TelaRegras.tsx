@@ -3,6 +3,7 @@
 import { useMemo } from 'preact/hooks'
 import { regrasNaTela, type ItemDaRegra } from '../regras_tela'
 import type { ContextoFvs } from './ModuloFvs'
+import '../../telas/cabecalho.css'
 
 function Item({ i }: { i: ItemDaRegra }) {
   return (
@@ -20,11 +21,11 @@ export function TelaRegras({ ctx }: { ctx: ContextoFvs }) {
 
   return (
     <main class="tela fv-inicio fv-regras">
-      <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+      <header class="so-cabecalho fv-topo-inicio">
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>Regras da obra</h1>
           <p class="discreto">Prazos e ligações entre os itens das fichas. Só leitura.</p>
         </div>

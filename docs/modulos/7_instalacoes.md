@@ -23,7 +23,11 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - **Eletroduto como linha** (decisão do Nicolas, 21/11: "eletroduto como linha"): no elétrico, o trecho de eletroduto entra na mesma planta, com `"linha"` (começo e fim na folha) além de `"ponto"` (o meio). Na tela é uma linha, como a barra; o toque e o registro são os do ponto (`barra_id`, mesmo item da ficha). A linha sai do eixo do objeto no IFC ("Axis") ou do sólido extrudado do corpo ("Body"); trecho vertical (menos de 5 cm na planta) fica fora. Eletrocalha, leito, perfilado e cabo não entram. O setor passa a se chamar "Caixas, quadros e eletrodutos". Classificação ainda **suposição** até o IFC real.
   - Em `setores.disciplina` o texto é livre.
 - **De onde vêm os pontos:** do IFC da disciplina (`pipeline/fvs/instalacoes.py`), no nível do pavimento. O nível é o pavimento que contém o objeto ou o "Level" das propriedades. A posição é a do objeto no modelo, em cm.
-  - Classificação, **suposição** a conferir com o IFC real: pela classe IFC (IfcWasteTerminal, IfcSanitaryTerminal, IfcValve, IfcFlowMeter...) e pelo nome ("RALO", "CAIXA SIFONADA", "REGISTRO"...).
+  - **Nível pela altura, não só pelo nome** (piloto do 2º, 21/11): no IFC do Revit, o modelo do pavimento tipo vinculado do 2º ao 6º vem com cinco níveis de mesmo nome ("2° PAVIMENTO"), cada um na altura real do andar (972, 1296, 1620, 1944 e 2268 cm). Fica o mais baixo dos de mesmo nome, e só os objetos de 150 cm abaixo do piso dele até o nível seguinte acima (sem nível acima: até 400 cm). Sem esse filtro, o 2º vinha com os pontos de cinco andares.
+  - No IFC o nome vem com o sinal de grau ("2° PAVIMENTO"), e o `pavimento.json` da estrutura usa o ordinal ("2º PAVIMENTO (NO)"): eles não casam. Em `"instalacoes"`, use em `"nivel"` o nome como está no IFC de instalações.
+  - Classificação, conferida no IFC real de hidráulica e de esgoto (21/11). O Revit põe prefixo com sublinhado ("HID_", "SAN_"), que vira espaço antes de comparar. Conexões (IfcFlowFitting: joelho, tê, adaptador) e tubos não entram.
+    - sanitário: "SAN_Ralo Linear" → ralo; "HID_Caixa Sifonada" → caixa sifonada; o "Prolongamento para Caixa Sifonada" (acessório) e o "Nicho" ficam fora;
+    - hidro (IfcFlowController): "Valvula Esfera", "Registro Gaveta", "Registro Pressao", válvula redutora e de alívio → registro; "Misturador", "Ducha", "Chuveiro", "Torneira" → ponto de água; "Hidrometro" → hidrômetro; filtro, ventosa e flange de incêndio ("PCI_") ficam fora.
   - No elétrico e no SPDA, também suposição, porque ainda não abri os IFC reais. Pelas classes de elétrica (IfcJunctionBox, IfcElectricDistributionBoard, IfcLightFixture...) e pelo nome ("CAIXA DE PASSAGEM", "OCTOGONAL", "QDL", "CAPTOR", "DESCIDA", "CAIXA DE INSPEÇÃO", "HASTE").
   - Trecho de tubo ou cabo só vira ponto no SPDA, e só se o nome disser "descida". O eletroduto vira linha no elétrico (acima).
 - **Encaixe (modelo para a folha):** o mesmo dos furos do pavimento, ou `"encaixe"` à mão. Encaixe duvidoso não serve.
@@ -38,6 +42,38 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
                 "encaixe": {...}}
 ```
 
+### Planta de furação (pedido do Nicolas de 21/11/2026, via Professor)
+
+O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de lajes".
+
+- **Planta.** Abrir os furos leva a uma planta só deles (setor "Furação", disciplina `furacao`). Os pontos não vão mais por cima da planta de forma.
+- **Fundo.** É a prancha de furação do Autodoc, na pasta **Furação > Modelagem > Projeto Executivo**. A pasta "Furação première" não vale, mesmo sendo mais nova.
+  - Uma prancha por setor, que o pipeline cola numa folha só (`pipeline/fvs/furacao_fundo.py`).
+- **Encaixe pelos pilares.**
+  - Cada prancha é encaixada na folha de forma pelos centros dos pilares (o alinhamento das barras, `pipeline/alinhamento`).
+  - As pranchas saem do Revit sem camadas, na escala 1:75. Os pilares são os retângulos cheios de cinza médio.
+  - Algumas pranchas desenham o pilar em outro tom (cinza claro, ou branco com contorno). Se o cinza médio não encaixa, o pipeline tenta os outros tons, só com retângulos do tamanho de um pilar (12 a 400 cm de lado). O relatório diz o tom usado.
+  - Prancha que não encaixa fica fora do fundo, e o relatório diz por quê. Isso não para os outros setores.
+  - **Desempate.** O prédio repete a malha de pilares (torres iguais), e um setor pode encaixar quase igual em dois lugares. O pipeline então fica com a solução que:
+    - está na mesma orientação dos setores já encaixados;
+    - cai na parte da folha ainda livre (pelo menos 10 pontos percentuais menos sobreposta);
+    - tem pelo menos tantos pilares batendo quanto a outra.
+  - Na obra piloto, o setor A do subsolo encaixou com 64 de 66 pilares e erro de até 0,2 cm.
+- **A conferir (nada é apagado).** O relatório lista, sem tirar da planta:
+  - furos fora do contorno da forma: numa das quatro direções não há pilar nem viga a menos de 3 m;
+  - pilhas: furos no mesmo ponto (até 5 cm);
+  - filas: 5 ou mais furos na mesma linha, a até 50 cm um do outro.
+- **Limite do modelo de furação da obra piloto.** O IFC (R03, de 17/08) só tem furos até o 3º pavimento. No 4º, no 5º, no 6º e na cobertura dá 0 furo, e a cobertura também não tem prancha de forma. Decisão do Nicolas (21/11, via Professor): os furos do 3º valem como tipo no 4º, no 5º e no 6º. O fundo de cada pavimento é o PDF dele, e cada furo é comparado com esse PDF; onde não houver desenho, o furo fica "a conferir", com a contagem no relatório. A cobertura fica de fora até ter planta de forma. A fazer.
+- **Furos e peças.**
+  - Os furos são os mesmos da forma, com os mesmos ids. Saem do modelo de furação, pelo `furos.py`.
+  - Cada furo traz a peça: `viga` (furo de viga), `furo.laje` (furo de laje) e, novo, `pilar` (furo ou caixinha de laje que cai dentro do contorno de um pilar).
+  - A forma continua com os furos (o item de furação da viga conta por eles), marcada com `furos_separados` para o app não mostrá-los lá.
+- **No pavimento.json:** `"furacao": {"pdf": "../04_Furacao/*.FR.EX.01[1-7].*.pdf", "escala": 75}`. Precisa de `"furos"` e da folha única. O `"alinhamento"` pode ser passado à mão, por prancha.
+- **Publicação:** `--so-furacao` publica só essa planta.
+- **App (com o chat 10, dono da tela):**
+  - o furo tocado grava na ficha da peça: viga (item dos furos), pilar ou laje (item `instalacao` da área de laje; sem área, a primeira ficha de laje com o item);
+  - a regra de que peça fica com um ponto está em `app/src/fvs/instalacao_no_elemento.ts`.
+
 ## Status (21/11/2026)
 
 - **Feito:**
@@ -49,6 +85,7 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - `eletrico` e `spda` no pipeline (`--so-eletrico`, `--so-spda`) e no app. Na `main` pelo #52.
   - correção do revisor (21/11): o id do ponto leva obra e pavimento. Branch `instalacoes/id-ponto-planta`. Os pontos publicados antes mudam de id, mas nenhum foi publicado no servidor.
   - 21/11: toque de barras e pontos em 1 verde, 2 vermelho, 3 tira (também com a caixa do NC aberta) e eletroduto como linha. Branch `instalacoes/toque-e-eletroduto`, testada na bancada em 375 px e em tablet, com toques rápidos e lentos.
+  - 21/11: download das 125 pranchas e modelos vigentes de HI, SA e EL, guardados e no índice. Piloto do 2º, fora do repositório, com hidráulica e esgoto: 546 pontos de água e 196 de esgoto. O encaixe está certo: 111 das 123 caixas sifonadas caem sobre um furo de laje Ø20 (distância mediana de 0,1 cm). Branch `instalacoes/classificar-ifc-real`.
 - **Falta:**
   1. O download das pranchas e modelos vigentes. O Nicolas deu o ok no chat da frente em 20/11.
   2. O piloto no 2º pavimento real, fora do repositório. Depende do download e serve para conferir a classificação e o encaixe; no elétrico e no SPDA, também os nomes reais.
@@ -56,5 +93,5 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
      - hidro e sanitário: PVS 010.2, 010.4, 010.5 e 010.6;
      - elétrico: PVS 009.x, mais a laje elétrica como suposição;
      - SPDA: PVS 009.2.1 e 009.2.2.
-  4. Conferir no IFC real do elétrico se o eletroduto vem com eixo ou corpo extrudado e com que nome (piloto do 2º).
+  4. Elétrico no IFC real (piloto do 2º, 21/11): o eletroduto vem como "Conduit with/without Fittings" (IfcFlowSegment, com corpo extrudado; já casa com a regra) e a eletrocalha como "Cable Tray" (fica fora). Caixas na laje: "Tomada de Teto" e "Tomada de Piso" (Conjunto 4x2 e 4x4, IfcBuildingElementProxy), "CAIXA DE PASSAGEM", "Quadro de Distribuição". **Pendente de decisão do Nicolas:** os eletrodutos horizontais do 2º ficam cerca de 36 cm abaixo do piso do 3º (12,60 m; o 3º está em 12,96 m), e a tomada de teto do 2º fica em 12,96 m. Isso é a laje do 3º (embutido) ou o forro do 2º? Conforme a resposta, o elétrico passa a ser escolhido pela altura da laje e não pelo pavimento que contém o objeto. As tomadas e os interruptores de parede vêm uns 15 m acima do andar (erro do IFC) e não entram na laje.
   5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição. **App pronto (21/11):** disciplina `preventivo` (setor "Hidrantes, extintores e sprinklers"), tipos `hidrante`, `extintor`, `sprinkler`, `detector`, `iluminacao_emergencia`, `alarme`, `sinalizacao` e a tubulação como linha (`tubo_incendio`), item da ficha `"pontos": "preventivo"`; tipo desconhecido aparece com o nome do objeto. **Planta de consulta (decisão do Nicolas, 21/11: "se não tiver [ficha] vamos fazer que nem aço, mas não vai para ficha"):** a planta da disciplina que nenhuma ficha marca (PPCI; SPDA enquanto não tiver ficha) aparece no menu para olhar e conferir no local; o topo diz "Só consulta", o toque mostra o nome do ponto e nada grava em `fvs_eventos`. Marcação "visto" fica para depois, com o Nicolas. **Falta no pipeline** (`instalacoes.py` e `publicar_fichas.py`, que têm de ter a mesma lista de disciplinas): ler o IFC do preventivo e aceitar `"pontos": "preventivo"` na ficha.

@@ -15,7 +15,7 @@
 // O registro do furo fica no próprio furo, no item do tema dele na ficha da área.
 
 import type { AreaDeLaje } from './areas'
-import { areaDoPonto } from './areas'
+import { areaDoPonto, dentro } from './areas'
 import type { ElementoPacote } from './pacote'
 import { maisNovo, situacaoDoFuro, type EventoFvs, type Ficha, type ItemFicha, type Resultado, type Situacao } from './situacao'
 
@@ -44,7 +44,7 @@ export function instalacaoDaDisciplina(d: string): Instalacao | undefined {
 
 /** Furo de laje do pacote (sem viga, `furo.laje`). */
 export function ehFuroDeLaje(e: ElementoPacote | undefined): boolean {
-  return !!e && e.tipo === 'F' && !e.viga && e.furo?.laje === true
+  return !!e && e.tipo === 'F' && !e.viga && !e.pilar && e.furo?.laje === true
 }
 
 /** As instalações do furo, na ordem das disciplinas, sem repetir. */
@@ -70,7 +70,9 @@ export function camadaDoFuro(e: ElementoPacote): Instalacao | undefined {
  * próprias, todos; na planta de uma camada, os das outras camadas. O furo continua no pacote, para o
  * item da área ser calculado por todos os furos dela (como as barras nas plantas de armadura).
  */
-export function furoDeOutraPlanta(e: ElementoPacote | undefined, m: { furos_laje?: Instalacao; furos_laje_separados?: boolean } | undefined): boolean {
+export function furoDeOutraPlanta(e: ElementoPacote | undefined, m: { furos_laje?: Instalacao; furos_laje_separados?: boolean; furos_separados?: boolean } | undefined): boolean {
+  // forma com todos os furos na planta de furação (21/11/2026): nenhum aparece aqui
+  if (e?.tipo === 'F' && m?.furos_separados) return true
   if (!ehFuroDeLaje(e) || !m) return false
   if (m.furos_laje_separados) return true
   return !!m.furos_laje && camadaDoFuro(e!) !== m.furos_laje
@@ -180,12 +182,36 @@ export function furoDeLajeEscondido(e: ElementoPacote | undefined): boolean {
 }
 
 /**
- * Furo que entra no "x/y OK" da aba Furos: o de viga sempre; o de laje só dentro de área de laje e de
- * esgoto, água ou elétrica.
+ * Furo que entra no "x/y OK" da aba Furos: o de viga sempre; o de laje se for de esgoto, água ou elétrica.
+ * Desde 21/11/2026 (testador: "furos esgotos/água não funcionando", nenhum pavimento tinha área desenhada),
+ * o de laje conta e se marca também fora de área: o registro fica no furo, na ficha de laje (ver
+ * fichaDoFuroSemArea); quando a área for desenhada, o item dela conta os furos de dentro.
  */
-export function furoConferivel(e: ElementoPacote, area: AreaDeLaje | undefined): boolean {
+export function furoConferivel(e: ElementoPacote, _area?: AreaDeLaje): boolean {
   if (!ehFuroDeLaje(e)) return true
-  return !!area && instalacoesDoFuro(e).length > 0
+  return instalacoesDoFuro(e).length > 0
+}
+
+/**
+ * A ficha de laje em que fica o registro do furo de laje fora de área: a preferida (a do serviço escolhido,
+ * se tiver o item da instalação do furo), senão a primeira ficha de laje que tem. Sem nenhuma: undefined.
+ */
+export function fichaDoFuroSemArea(e: ElementoPacote, fichasDeLaje: readonly Ficha[], preferida?: Ficha): { ficha: Ficha; item: number } | undefined {
+  for (const f of preferida ? [preferida, ...fichasDeLaje] : fichasDeLaje) {
+    const it = itemDoFuroDeLaje(e, f)
+    if (it) return { ficha: f, item: it.item }
+  }
+  return undefined
+}
+
+/**
+ * Situação do furo (de laje ou de viga) pelo registro mais novo dele, em qualquer ficha: o furo marcado
+ * fora de área (numa ficha de laje) e depois contado na área (que pode ter outra ficha) não se perde.
+ */
+export function situacaoDoFuroPeloUltimo(eventos: readonly EventoFvs[]): Situacao {
+  let novo: EventoFvs | undefined
+  for (const e of eventos) if (!novo || maisNovo(e, novo)) novo = e
+  return novo ? situacaoDoFuro(novo.ficha_id, novo.item, eventos) : 'nada'
 }
 
 /**
@@ -278,15 +304,17 @@ export function furosConferiveisPorArea(
     g.pts.push(pt)
     grupos.set(chave, g)
   }
+  const semArea: Array<[string, ElementoPacote]> = []
   for (const [id, area] of furosNasAreas) {
     const e = elementos?.[id]
-    if (!e || !area || !furoConferivel(e, area)) continue
-    juntar(area.id, `a ${area.nome}`, id, centroDoFuro(e))
+    if (!e || !furoConferivel(e, area)) continue
+    if (area) juntar(area.id, `a ${area.nome}`, id, centroDoFuro(e))
+    else semArea.push([id, e]) // furo de laje fora de área (21/11): no quadrado, como o de viga
   }
   const vigas = Object.entries(elementos ?? {})
     .filter(([, e]) => e.tipo === 'F' && !ehFuroDeLaje(e))
     .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
-  for (const [id, e] of vigas) {
+  for (const [id, e] of [...vigas, ...semArea]) {
     const pt = centroDoFuro(e)
     const area = areaDoFuro(pt, areas)
     if (area) juntar(area.id, `a ${area.nome}`, id, pt)
@@ -333,4 +361,53 @@ export function furosNoToque(pontos: ReadonlyArray<{ id: string; x: number; y: n
     .filter((p) => p.d <= raio)
     .sort((a, b) => a.d - b.d)
     .map((p) => p.id)
+}
+
+/**
+ * Avanço dos furos de uma planta, para o menu (21/11/2026, "furos de viga, esgoto e água em etapas similares
+ * às barras de aço"): quantos furos conferíveis da planta estão OK e quantos errados, pelo registro mais novo
+ * de cada um. Fica fora o furo de outra planta (o de laje na forma, quando há plantas de furação) e o só detalhe.
+ */
+export function avancoDosFuros(
+  manifest: { elementos: Record<string, ElementoPacote>; furos_laje?: Instalacao; furos_laje_separados?: boolean; furos_separados?: boolean },
+  eventosDe: (id: string) => readonly EventoFvs[],
+): { ok: number; errados: number; total: number } {
+  let ok = 0
+  let errados = 0
+  let total = 0
+  for (const [id, e] of Object.entries(manifest.elementos)) {
+    if (e.tipo !== 'F' || e.so_detalhe || furoDeOutraPlanta(e, manifest) || !furoConferivel(e)) continue
+    total++
+    const s = situacaoDoFuroPeloUltimo(eventosDe(id))
+    if (s === 'liberado') ok++
+    else if (s === 'reprovado') errados++
+  }
+  return { ok, errados, total }
+}
+
+/** "1 de 3 furos OK · 1 errado" (o texto do menu). */
+export function textoDoAvancoDosFuros(a: { ok: number; errados: number; total: number }): string {
+  const base = `${a.ok} de ${a.total} ${a.total === 1 ? 'furo' : 'furos'} OK`
+  return a.errados ? `${base} · ${a.errados} ${a.errados === 1 ? 'errado' : 'errados'}` : base
+}
+
+/**
+ * Regra do Nicolas (21/11/2026): "elementos em cima de viga preenchem ficha de viga, em laje preenchem a
+ * laje". O pipeline novo já manda o furo com "viga" ou "pilar"; para pacote antigo, o furo de laje cujo
+ * centro cai no contorno de um pilar ou de uma viga da planta passa a ser dela (o pilar primeiro: a caixinha
+ * no pilar). Devolve o mesmo manifest quando nada muda.
+ */
+export function pecaDosFurosDeLaje<M extends { elementos: Record<string, ElementoPacote> }>(m: M): M {
+  const pecas = Object.entries(m.elementos ?? {}).filter(([, e]) => e.tipo === 'P' || e.tipo === 'V')
+  pecas.sort(([, a], [, b]) => (a.tipo === b.tipo ? 0 : a.tipo === 'P' ? -1 : 1))
+  let novos: Record<string, ElementoPacote> | undefined
+  for (const [id, e] of Object.entries(m.elementos ?? {})) {
+    if (!ehFuroDeLaje(e)) continue
+    const c: [number, number] = [(e.rotulo[0] + e.rotulo[2]) / 2, (e.rotulo[1] + e.rotulo[3]) / 2]
+    const dona = pecas.find(([, p]) => p.polys.some((poly) => poly.length >= 3 && dentro(c, poly)))
+    if (!dona) continue
+    novos ??= { ...m.elementos }
+    novos[id] = { ...e, [dona[1].tipo === 'P' ? 'pilar' : 'viga']: dona[0] }
+  }
+  return novos ? { ...m, elementos: novos } : m
 }

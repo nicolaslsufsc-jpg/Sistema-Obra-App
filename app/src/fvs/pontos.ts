@@ -12,6 +12,12 @@ import type { Ficha, ItemFicha } from './situacao'
 export type DisciplinaDePontos = 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
 /** Na ordem do menu (pedido do Nicolas, 21/11/2026: hidráulico, esgoto, elétrico, preventivo, SPDA). */
 export const DISCIPLINAS_DE_PONTOS: readonly DisciplinaDePontos[] = ['hidro', 'sanitario', 'eletrico', 'preventivo', 'spda']
+
+/** A disciplina de pontos do manifest. A planta de furação também vem com "disciplina" ("furacao", pacote do
+ *  20 de 21/11/2026) e não é planta de pontos: devolve undefined. */
+export function disciplinaDePontos(d: string | undefined): DisciplinaDePontos | undefined {
+  return (DISCIPLINAS_DE_PONTOS as readonly string[]).includes(d ?? '') ? (d as DisciplinaDePontos) : undefined
+}
 export type TipoDePonto =
   | 'ponto_agua'
   | 'registro'
@@ -139,10 +145,31 @@ export function itemDosPontos(ficha: Ficha | undefined, disciplina: DisciplinaDe
   return ficha?.itens.find((i) => i.pontos === disciplina)
 }
 
-/** A primeira ficha (das de ambiente) com o item dos pontos da disciplina, e o número do item. */
-export function fichaDosPontos(fichas: readonly Ficha[], disciplina: DisciplinaDePontos): { ficha: Ficha; item: number } | undefined {
+/** O item da ficha de laje que é da instalação da disciplina (`"instalacao"` no item; o SPDA não tem). */
+const INSTALACAO_DA_DISCIPLINA: Partial<Record<DisciplinaDePontos, NonNullable<ItemFicha['instalacao']>>> = {
+  hidro: 'agua',
+  sanitario: 'esgoto',
+  eletrico: 'eletrica',
+}
+
+/**
+ * A ficha e o item que os pontos da disciplina marcam: a primeira ficha de ambiente com `"pontos"`; sem ela, a
+ * primeira ficha de laje com o item da instalação (`"instalacao": "agua"`, `"esgoto"` ou `"eletrica"`, os
+ * mesmos itens dos furos de laje), porque ralo, caixa e ponto de água ficam na laje (21/11/2026).
+ */
+export function fichaDosPontos(
+  fichas: readonly Ficha[],
+  disciplina: DisciplinaDePontos,
+  fichasDeLaje: readonly Ficha[] = [],
+): { ficha: Ficha; item: number } | undefined {
   for (const f of fichas) {
     const it = itemDosPontos(f, disciplina)
+    if (it) return { ficha: f, item: it.n }
+  }
+  const inst = INSTALACAO_DA_DISCIPLINA[disciplina]
+  if (!inst) return undefined
+  for (const f of fichasDeLaje) {
+    const it = f.itens.find((i) => i.instalacao === inst)
     if (it) return { ficha: f, item: it.n }
   }
   return undefined

@@ -261,7 +261,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Aba Esquadrias: o item de vão ou esquadria da ficha do serviço que as esquadrias marcam. */
   const [itemDaEsquadria, setItemDaEsquadria] = useState<{ n: number; titulo: string } | null>(null)
   const [pincel, setPincel] = useState<{ etapa: string; resultado: 'C' | 'NA' } | null>(null)
-  const [msg, setMsg] = useState<{ texto: string; desfazer?: () => void } | null>(null)
+  const [msg, setMsg] = useState<{ texto: string; desfazer?: () => void; fixo?: boolean } | null>(null)
   const relogioDoAviso = useRef<number | undefined>(undefined)
   useEffect(() => () => window.clearTimeout(relogioDoAviso.current), [])
   const ultimaDoPincel = useRef<string | null>(null)
@@ -711,14 +711,18 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     else setPorItem(null)
   }, [codigoDaFichaDoTipo])
 
-  function avisar(texto: string, desfazer?: () => void) {
+  /** `fixo`: o aviso (com o Desfazer) fica até o próximo aviso ou até fechar no ✕, sem relógio. É o do
+   *  "Confirmar OK em todos" do "+ Área" (22/11, testador): dezenas de furos ou pontos de uma vez é a ação
+   *  mais arriscada da tela, e 5 s não davam para conferir na planta antes de desfazer. */
+  function avisar(texto: string, desfazer?: () => void, fixo?: boolean) {
     if (juntandoAvisos.current) {
       juntandoAvisos.current.textos.push(texto)
       if (desfazer) juntandoAvisos.current.desfazer.push(desfazer)
       return
     }
-    setMsg({ texto, desfazer })
+    setMsg({ texto, desfazer, fixo: fixo && !!desfazer })
     window.clearTimeout(relogioDoAviso.current)
+    if (fixo && desfazer) return
     // com o botão de desfazer, dá tempo de ler e de tocar; 8 s ficava tempo demais sobre a planta (obra de demonstração, 13/11)
     relogioDoAviso.current = window.setTimeout(() => setMsg(null), desfazer ? 5000 : 4000)
   }
@@ -1823,15 +1827,19 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const avisarSelecao = (gravados: Linha[], um: string, varios: string, depois?: () => void) => {
     const n = gravados.length
     if (!n) return avisar(`Nada a marcar: os ${varios} desta área já estavam conferidos.`)
-    avisar(`${n} ${n === 1 ? um : varios} OK nesta área`, () => {
-      setMsg(null)
-      executar(async (evs2) => {
-        const desfeitos = await desfazerLote(c, gravados, evs2)
-        avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? um : varios}` : `Nada a desfazer: os ${varios} já mudaram.`)
-        return desfeitos
-      })
-      depois?.()
-    })
+    avisar(
+      `${n} ${n === 1 ? um : varios} OK nesta área`,
+      () => {
+        setMsg(null)
+        executar(async (evs2) => {
+          const desfeitos = await desfazerLote(c, gravados, evs2)
+          avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? um : varios}` : `Nada a desfazer: os ${varios} já mudaram.`)
+          return desfeitos
+        })
+        depois?.()
+      },
+      true,
+    )
   }
 
   /** "Confirmar OK em todos" dos pontos de instalação: C no item dos pontos, em cada um ainda sem conferir. */
@@ -2743,6 +2751,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           {msg.desfazer && (
             <button type="button" data-testid="fvs-desfazer" onClick={msg.desfazer}>
               Desfazer
+            </button>
+          )}
+          {msg.fixo && (
+            // sem relógio, o aviso fixo fecha aqui (ou no próximo aviso)
+            <button type="button" class="fv-toast-fechar" data-testid="fvs-aviso-fechar" aria-label="Fechar aviso" title="Fechar aviso" onClick={() => setMsg(null)}>
+              <span aria-hidden="true">✕</span>
             </button>
           )}
         </p>

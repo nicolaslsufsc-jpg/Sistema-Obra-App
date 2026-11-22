@@ -638,6 +638,16 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await seta.getAttribute('aria-label')).toBe('Voltar')
       expect((await seta.boundingBox())!.width).toBeGreaterThanOrEqual(44)
       expect(await seta.evaluate((e: HTMLElement) => e.getBoundingClientRect().left)).toBeLessThan(40)
+      // a situação da peça não corta no fim: quebra linha dentro do botão (22/11, 375 px)
+      const situacao = p.getByTestId('fvs-esc-situacao').first()
+      expect(await situacao.innerText()).toMatch(/aguardando \(faltam 3 dias, libera em \d\d\/\d\d\)/)
+      expect(
+        await situacao.evaluate((e: HTMLElement) => {
+          const b = e.closest('button')!.getBoundingClientRect()
+          const r = e.getBoundingClientRect()
+          return e.scrollWidth <= e.clientWidth + 1 && r.right <= b.right + 1
+        }),
+      ).toBe(true)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_escoramento_${largura}.png`), fullPage: true })
@@ -2212,6 +2222,10 @@ suite('FVS na bancada (Chrome)', () => {
       await p.getByTestId('fvs-selecao-confirmar').click()
       await aviso('3 pontos OK nesta área')
       await expect.poll(progresso).toBe('4/6 OK · 1 errada')
+      // o aviso do lote fica (sem relógio) e fecha no ✕; o Desfazer de antes já não está mais
+      await p.waitForTimeout(6000)
+      expect(await p.getByTestId('fvs-desfazer').isVisible()).toBe(true)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/spda_${nome}_desfazer.png` })
       // um Desfazer volta os três
       await p.getByTestId('fvs-desfazer').click()
       await aviso('Desfeito: 3 pontos')
@@ -2545,6 +2559,11 @@ suite('FVS na bancada (Chrome)', () => {
       await expect.poll(progresso).toBe('3/10 OK')
       expect([await ultimoR('FL2'), await ultimoR('FL3'), await ultimoR('FL4')]).toEqual(['C', 'C', null])
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_area_${nome}_ok.png` })
+      // o Desfazer não some sozinho (22/11, testador: sumia em menos de 8 s): fica até o próximo aviso ou o ✕
+      await p.waitForTimeout(9000)
+      expect(await p.getByTestId('fvs-desfazer').isVisible()).toBe(true)
+      expect((await p.getByTestId('fvs-aviso-fechar').boundingBox())!.width).toBeGreaterThanOrEqual(44)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       // um Desfazer volta todos (o FL1, marcado antes, continua)
       await p.getByTestId('fvs-desfazer').click()
       await aviso('Desfeito: 2 furos')

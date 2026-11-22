@@ -4,7 +4,7 @@
 // escritório são importados no aparelho; a vigente vem do servidor quando há conta.
 // Plano aprovado pelo Nicolas em 21/11/2026 (docs/modulos/2_projetos.md).
 
-import type { DadosProjetos } from './dados'
+import type { DadosProjetos, Documento } from './dados'
 import { chaveFolha, compararEscritorio, type RegistroEscritorio } from './edicoes'
 import { chaveNumero, lerCsv, melhor, normalizar, type Copia, type CopiaCruzada, type Fase, type Vigente } from './painel'
 
@@ -22,6 +22,25 @@ export const DISCIPLINAS_FICHA: Record<string, string> = {
 }
 
 const FASES_DE_OBRA = new Set(['LO', 'EX'])
+
+/**
+ * Chave da disciplina (a mesma das cópias e da lista vigente) → o nome como o servidor escreve ("Hidrossanitário").
+ * Para as telas mostrarem a disciplina com uma grafia só, venha a cópia da ficha ou do servidor.
+ */
+export function nomesDeDisciplina(documentos: readonly Pick<Documento, 'disciplina_sigla' | 'disciplina'>[]): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const d of documentos) {
+    if (!d.disciplina) continue
+    const k = normalizar(DISCIPLINAS_FICHA[d.disciplina_sigla.toUpperCase()] ?? d.disciplina)
+    if (!m.has(k)) m.set(k, d.disciplina)
+  }
+  return m
+}
+
+/** "FUNDAÇÃO" → "Fundação": nome que só existe na ficha, na mesma grafia dos nomes do servidor. */
+export function nomeSemCaixaAlta(nome: string): string {
+  return nome === nome.toUpperCase() && nome.length > 4 ? nome.charAt(0) + nome.slice(1).toLowerCase() : nome
+}
 
 /** "…/PROJETOS/Estrutura/Liberado Obra/Formas/" → "LO/Formas" (o que a lista vigente chama de pasta). */
 export function pastaCurta(pasta: string | null, fase: Fase): string {
@@ -86,10 +105,20 @@ export function copiasDoApp(d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' 
       colaborador: String(e.colaborador ?? ''),
       devolucao: devolucao.get(e.id) ?? null,
       // sem revisão vigente no servidor (todas obsoletas): a folha saiu de uso
-      app: { entregaId: e.id, documentoId: doc.id, assinaturaId: (e.assinatura_id as string | null) ?? null, ...(vig ? {} : { foraDeUso: true }) },
+      app: { entregaId: e.id, documentoId: doc.id, assinaturaId: (e.assinatura_id as string | null) ?? null, fase: String(rev.fase ?? 'EX').toUpperCase(), ...(vig ? {} : { foraDeUso: true }) },
     })
   })
   return saida
+}
+
+/**
+ * De onde saem as cópias do canteiro (22/11/2026). Quando o servidor já tem entregas da obra, valem SÓ elas:
+ * a ficha importada no aparelho é a mesma informação (a ficha foi gravada no servidor) e somar as duas contava
+ * cada cópia em dobro. Sem entregas no servidor (ou sem conta), vale a ficha importada no aparelho.
+ */
+export function copiasDoCanteiro(daFicha: readonly Copia[], doServidor: readonly Copia[]): { copias: Copia[]; fonte: 'servidor' | 'ficha'; ignoradas: number } {
+  if (doServidor.length) return { copias: [...doServidor], fonte: 'servidor', ignoradas: daFicha.length }
+  return { copias: [...daFicha], fonte: 'ficha', ignoradas: 0 }
 }
 
 /**

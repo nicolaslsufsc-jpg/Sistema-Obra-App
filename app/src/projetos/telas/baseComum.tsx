@@ -82,6 +82,9 @@ const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos }[] = [
 export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: Contexto; aba: AbaBase; aoSair: () => void; base: BaseProjetos | null; temCruzamento: boolean }) {
   const { obra, ir, trocar } = ctx
   const vigenteDoServidor = !ctx.semConta && ctx.dados.vigentes.size > 0
+  // a data vale também para as entregas registradas no app (achado do testador, 22/11)
+  const doApp = useMemo(() => (ctx.semConta ? [] : copiasDoApp(ctx.dados)), [ctx.semConta, ctx.dados])
+  const todasCopias = [...(base?.copias ?? []), ...doApp]
   // no celular as abas não cabem: a ativa rola para dentro da tela
   const abas = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -109,7 +112,7 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
             : base.vigentesImportadaEm
               ? `Revisão vigente da lista importada em ${horaBR(base.vigentesImportadaEm)} (última atualização manual).`
               : 'Falta a lista vigente.'}{' '}
-          {base.copias.length ? `Distribuição com entregas até ${dataBR(ultimaEntrega(base))}.` : 'Falta a distribuição.'}
+          {todasCopias.length ? `Distribuição com entregas até ${dataBR(ultimaEntrega(todasCopias))}.` : 'Falta a distribuição.'}
         </p>
       )}
 
@@ -133,9 +136,9 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
   )
 }
 
-function ultimaEntrega(b: BaseProjetos): string {
+function ultimaEntrega(copias: readonly { entrega: string | null }[]): string {
   let m = ''
-  for (const c of b.copias) if (c.entrega && c.entrega > m) m = c.entrega
+  for (const c of copias) if (c.entrega && c.entrega > m) m = c.entrega
   return m
 }
 

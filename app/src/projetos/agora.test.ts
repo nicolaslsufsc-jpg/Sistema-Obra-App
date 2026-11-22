@@ -35,6 +35,19 @@ describe('sugerir regras pelo que cada um tem', () => {
     const r = sugerirRegras(vigentes, cruzadas, [desativada], HOJE).find((x) => x.dados.colaborador === 'Ana')!
     expect(r.substitui_id).toBe(desativada.id)
   })
+  it('"qualquer pessoa" não é sugerida quando a empresa já tem pessoa com nome na disciplina e pavimento', () => {
+    // linha 13: cópia da Empreiteira Alfa sem colaborador, na mesma folha que o João tem (FORMAS DO PILOTIS)
+    const csv = DISTRIBUICAO_EXE + String.fromCharCode(10) + '13;101;R02 LO;FORMAS DO PILOTIS;ESTRUTURAL;1;2026-10-24;Empreiteira Alfa;;'
+    const cz = cruzar(lerDistribuicao(csv), vigentes, HOJE)
+    const sug = sugerirRegras(vigentes, cz, [], HOJE).filter((x) => x.dados.empresa === 'Empreiteira Alfa' && x.dados.disciplina === 'ESTRUTURAL')
+    expect(sug.map((x) => x.dados.colaborador).sort()).toEqual(['João', 'Pedro'])
+    // sem o João na sugestão, mas com ele já na lista: também não
+    const com = sugerirRegras(vigentes, cz, [regra({ pavimento: 'Pilotis' })], HOJE)
+    expect(com.some((x) => x.dados.empresa === 'Empreiteira Alfa' && !x.dados.colaborador)).toBe(false)
+    // empresa sem ninguém com nome: "qualquer pessoa" continua
+    const so = cruzar(lerDistribuicao(csv.replace(/Empreiteira Alfa;(João|Pedro)/g, 'Outra;$1')), vigentes, HOJE)
+    expect(sugerirRegras(vigentes, so, [], HOJE).some((x) => x.dados.empresa === 'Empreiteira Alfa' && !x.dados.colaborador)).toBe(true)
+  })
 })
 
 describe('o que fazer agora', () => {

@@ -209,5 +209,44 @@ class TestPacoteDaFuracao(unittest.TestCase):
         self.assertTrue(json.loads(man)["furos_separados"])
 
 
+
+class TestSemDesenho(unittest.TestCase):
+    """Furo do modelo conferido contra os símbolos da prancha (4º ao 6º com o 3º como tipo, 21/11)."""
+
+    def test_furo_sem_simbolo_perto_fica_a_conferir(self):
+        k = 72 / 2.54 / 50
+        pecas = [{"tipo": "F", "nome": "a", "rotulo": [0, 0, 2, 2], "furo": {"laje": True}},
+                 {"tipo": "F", "nome": "b", "rotulo": [1000, 1000, 1002, 1002], "furo": {"laje": True}},
+                 {"tipo": "V", "nome": "V1", "rotulo": [0, 0, 1, 1]}]
+        sem = furacao_fundo.sem_desenho(pecas, [(1 + 15 * k, 1)], k)
+        self.assertEqual(sem, ["b"])
+        self.assertEqual(furacao_fundo.sem_desenho(pecas, [(1 + 25 * k, 1)], k), ["a", "b"])
+
+    def test_marcar_tipo_nao_mexe_na_forma(self):
+        pecas = [{"tipo": "F", "nome": "a", "furo": {"laje": True}}, {"tipo": "F", "nome": "b", "furo": {"laje": True}}]
+        furos = [dict(p) for p in pecas]
+        furacao_fundo.marcar_tipo(furos, "3º Pavimento", ["b"])
+        self.assertEqual(furos[0]["furo"], {"laje": True, "tipo_de": "3º Pavimento"})
+        self.assertTrue(furos[1]["furo"]["a_conferir"])
+        self.assertNotIn("tipo_de", pecas[0]["furo"])
+
+    def test_simbolos_coloridos_da_prancha(self):
+        import pymupdf
+
+        with tempfile.TemporaryDirectory() as d:
+            arq = str(pathlib.Path(d) / "EXE.FR.EX.051.4PVTOXXXXA-R00.pdf")
+            doc = pymupdf.open()
+            pg = doc.new_page(width=600, height=400)
+            pg.draw_circle((100, 100), 3, color=None, fill=(0, 0, 1))  # furo de esgoto (azul)
+            pg.draw_circle((200, 100), 3, color=None, fill=(0.5, 0.5, 0.5))  # pilar ou hachura: não conta
+            pg.draw_rect(pymupdf.Rect(0, 300, 590, 390), color=None, fill=(1, 0, 0))  # grande demais
+            doc.save(arq)
+            pr = {"pdf": arq, "escala": 75, "transformacao": {"matriz": [1.5, 0, 0, 1.5], "t": [10, 0]}}
+            pts = furacao_fundo.simbolos_de_furo([pr])
+        self.assertEqual(len(pts), 1)
+        self.assertAlmostEqual(pts[0][0], 160, places=1)
+        self.assertAlmostEqual(pts[0][1], 150, places=1)
+
+
 if __name__ == "__main__":
     unittest.main()

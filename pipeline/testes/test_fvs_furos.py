@@ -499,7 +499,7 @@ class TestPlantasDeFurosDeLaje(unittest.TestCase):
         detalhes = {"P": {}, "V": {}, "furos": [furo("a", 20, 5), laje("s", 100, 300, "p.FURO.SAN"), laje("e", 200, 300, "p.FURO.ELT/TEL")]}
         lida = {"nome": "EXE.FR.EX.031.2PVTOXXXXA-R00", "pdf": "x.pdf", "pilares": [], "janela": (0, 0, 1, 1), "escala": 75}
         alinhada = {**lida, "transformacao": {"matriz": [1.5, 0, 0, 1.5], "t": [0, 0]}}
-        with tempfile.TemporaryDirectory() as d,                 mock.patch.object(furacao_fundo, "ler_prancha", lambda pdf, escala: lida),                 mock.patch.object(furacao_fundo, "alinhar_pranchas", lambda pecas, lidas, manuais: ([alinhada], [{"prancha": lida["nome"], "pilares": 0, "alinhamento": {"ok": True, "pontos": 5, "total": 5, "residuo_max_cm": 0.1}}])),                 mock.patch.object(armadura_laje, "tiles_da_camada", lambda pranchas, niveis: fm["tiles"]):
+        with tempfile.TemporaryDirectory() as d,                 mock.patch.object(furacao_fundo, "ler_prancha", lambda pdf, escala: lida),                 mock.patch.object(furacao_fundo, "alinhar_pranchas", lambda pecas, lidas, manuais: ([alinhada], [{"prancha": lida["nome"], "pilares": 0, "alinhamento": {"ok": True, "pontos": 5, "total": 5, "residuo_max_cm": 0.1}}])),                 mock.patch.object(furacao_fundo, "simbolos_de_furo", lambda alinhadas: []),                 mock.patch.object(armadura_laje, "tiles_da_camada", lambda pranchas, niveis: fm["tiles"]):
             rels = publicar_planta.publicar_lidas(cfg, detalhes, [fm], argparse.Namespace(so_gerar=d))
             self.assertEqual([r["pasta"] for r in rels], ["Planta_inteira", "Furação"])
             self.assertEqual(rels[1]["elementos"], 3)

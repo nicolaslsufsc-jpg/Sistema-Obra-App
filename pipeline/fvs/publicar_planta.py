@@ -225,7 +225,8 @@ def ler_config(caminho: pathlib.Path) -> dict:
         achados = arquivos(bruto.get("pdf"))
         if not achados:
             raise ErroPublicacao("furacao: nenhuma prancha de furação achada (\"pdf\")")
-        furacao = {"pdfs": achados, "escala": float(bruto.get("escala") or 75), "alinhamento": bruto.get("alinhamento") or {}}
+        furacao = {"pdfs": achados, "escala": float(bruto.get("escala") or 75), "alinhamento": bruto.get("alinhamento") or {},
+                   "tipo_de": bruto.get("tipo_de")}
     inst = None
     if cfg.get("instalacoes"):
         bruto = dict(cfg["instalacoes"])
@@ -471,7 +472,8 @@ def encaixe_da_referencia(pasta: str, pecas: list[dict]) -> dict:
         raise mod_furos.ErroFuros(f"o pavimento de referência ({pasta_ref.name}) não tem furos encaixados")
     if enc_ref.get("duvidoso"):
         raise mod_furos.ErroFuros(f"o encaixe dos furos do pavimento de referência ({pasta_ref.name}) é duvidoso")
-    trechos = rel.get("trechos") or []
+    # só a planta de estrutura (a de furação, armadura ou instalações do mesmo pavimento não conta)
+    trechos = [t for t in rel.get("trechos") or [] if (t.get("disciplina") or DISCIPLINA) == DISCIPLINA]
     if len(trechos) != 1:
         raise mod_furos.ErroFuros(f"o pavimento de referência ({pasta_ref.name}) tem que estar numa folha só")
     man = json.loads((pasta_ref / trechos[0]["pasta"] / "manifest.json").read_text(encoding="utf-8"))
@@ -612,7 +614,16 @@ def por_furacao(cfg: dict, formas: list[dict]) -> dict | None:
         formas.append(folha)
     else:
         print("  sem planta de furação (nenhuma prancha encaixou ou o pavimento não tem furos)")
-    conferir = furacao_fundo.a_conferir(fm["pecas"], 72 / 2.54 / 50)
+    pt_por_cm = 72 / 2.54 / 50
+    conferir = furacao_fundo.a_conferir(fm["pecas"], pt_por_cm)
+    conferir["sem_desenho"] = furacao_fundo.sem_desenho(fm["pecas"], furacao_fundo.simbolos_de_furo(alinhadas), pt_por_cm) if alinhadas else []
+    tipo_de = cfg["furacao"].get("tipo_de")
+    if folha and tipo_de:
+        furacao_fundo.marcar_tipo(folha["pecas"], tipo_de, conferir["sem_desenho"])
+        print(f"  furos do {tipo_de} (tipo): {len(folha['pecas']) - len(conferir['sem_desenho'])} batem com a prancha deste pavimento,"
+              f" {len(conferir['sem_desenho'])} sem desenho (marcados a conferir)")
+    elif conferir["sem_desenho"]:
+        print(f"  {len(conferir['sem_desenho'])} furos do modelo sem símbolo na prancha de furação")
     if any(conferir.values()):
         print(f"  a conferir (ficam na planta; lista no relatorio.json): {len(conferir['fora_do_contorno'])} furos fora do contorno da forma,"
               f" {len(conferir['mesmo_ponto'])} pontos com furos repetidos ({sum(len(g) for g in conferir['mesmo_ponto'])} furos),"

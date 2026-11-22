@@ -63,7 +63,8 @@ FORMATO = 1
 TIPOS = ("P", "V", "L", "A", "F", "E", "M")
 # Partes do pilar concretadas com a laje (pipeline/fvs/partes.py): itens na ficha do pilar, toque próprio na planta.
 TIPOS_DE_PARTE = ("consolo", "capitel")
-CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id")
+CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id",
+                  "tipo_de", "a_conferir")
 CAMPOS_DA_ESQUADRIA = ("codigo", "classe", "modelo", "outro_lado")
 CLASSES_DE_ESQUADRIA = ("porta", "janela")
 # Camadas das plantas de furos de laje (pipeline/fvs/furos.py, CAMADAS_DE_FURO)

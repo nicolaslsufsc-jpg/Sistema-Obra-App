@@ -47,10 +47,10 @@ def eh_retangulo_de_pilar(desenho: dict, cinza: float = CINZA_DO_PILAR) -> bool:
 
 
 def _cinza(desenho: dict) -> float | None:
-    """O tom de um retângulo cheio de cinza (ou branco), arredondado; None se não for."""
+    """O tom de um retângulo (ou polígono de linhas) cheio de cinza ou branco, arredondado; None se não for."""
     f = desenho.get("fill")
     itens = desenho.get("items") or []
-    if not f or len(f) != 3 or not itens or not all(i[0] == "re" for i in itens):
+    if not f or len(f) != 3 or not itens or not (all(i[0] == "re" for i in itens) or all(i[0] == "l" for i in itens)):
         return None
     if max(f) - min(f) > TOLERANCIA_COR:
         return None
@@ -72,8 +72,9 @@ def pilares_da_pagina(page, cinza: float = CINZA_DO_PILAR) -> list:
 
 
 def outros_tons(page, escala: float) -> list[tuple[float, list]]:
-    """Quando o cinza médio não basta (algumas pranchas desenham o pilar em cinza claro ou só com o
-    contorno): os retângulos cheios dos outros tons de cinza (e do branco), do tamanho de um pilar
+    """Quando o cinza médio não basta (algumas pranchas desenham o pilar em cinza claro, só com o contorno,
+    ou como polígono de linhas): os desenhos cheios dos outros tons de cinza (e do branco, e o cinza médio
+    em polígono), do tamanho de um pilar
     (PILAR_MIN_CM a PILAR_MAX_CM de lado), um conjunto por tom, o mais cheio primeiro."""
     from alinhamento import alinhar as al
 
@@ -82,7 +83,7 @@ def outros_tons(page, escala: float) -> list[tuple[float, list]]:
     por_tom: dict[float, list] = {}
     for d in page.get_drawings():
         t = _cinza(d)
-        if t is None or abs(t - CINZA_DO_PILAR) <= TOLERANCIA_COR:
+        if t is None or eh_retangulo_de_pilar(d):  # o cinza médio em retângulo já está em "pilares"
             continue
         r = d["rect"] * M
         lados = sorted((r.width / k, r.height / k))
@@ -345,6 +346,65 @@ def a_conferir(pecas: list[dict], pt_por_cm: float) -> dict:
                     colunas.append({"direcao": "vertical" if eixo == 0 else "horizontal", "furos": [n for _, n in atual]})
                 atual = [item]
     return {"fora_do_contorno": fora, "mesmo_ponto": mesmo_ponto, "em_fila": colunas}
+
+
+RAIO_DO_SIMBOLO_CM = 20.0  # no 3º da obra piloto, todo furo do modelo tem o símbolo a até ~13 cm
+SIMBOLO_MAX_CM = 200.0
+COR_MIN = 0.3  # o símbolo do furo é cheio de uma cor (uma por disciplina); cinza e branco não contam
+
+
+def simbolos_de_furo(alinhadas: list[dict]) -> list[tuple[float, float]]:
+    """Os símbolos de furo das pranchas encaixadas, nas coordenadas da folha: os desenhos cheios de cor
+    (azul, ciano, rosa, verde...; nada de cinza ou branco) de até SIMBOLO_MAX_CM."""
+    import pymupdf
+    from alinhamento import alinhar as al
+
+    saida = []
+    for pr in alinhadas:
+        k = 72 / 2.54 / float(pr.get("escala") or ESCALA_PADRAO)
+        with pymupdf.open(pr["pdf"]) as doc:
+            page = doc[0]
+            M = page.rotation_matrix
+            for d in page.get_drawings():
+                f = d.get("fill")
+                if not f or len(f) != 3 or max(f) - min(f) <= COR_MIN:
+                    continue
+                r = d["rect"] * M
+                if max(r.width, r.height) > SIMBOLO_MAX_CM * k:
+                    continue
+                saida.append(al.transformar(pr["transformacao"], (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+    return saida
+
+
+def sem_desenho(pecas: list[dict], simbolos: list[tuple[float, float]], pt_por_cm: float,
+                raio_cm: float = RAIO_DO_SIMBOLO_CM) -> list[str]:
+    """Nomes dos furos sem símbolo de furo da prancha a até raio_cm (furo que a prancha não desenha)."""
+    R = raio_cm * pt_por_cm
+    grade: dict[tuple[int, int], list] = {}
+    for x, y in simbolos:
+        grade.setdefault((int(x // R), int(y // R)), []).append((x, y))
+    saida = []
+    for p in pecas:
+        if p.get("tipo") != "F":
+            continue
+        x0, y0, x1, y1 = p["rotulo"]
+        x, y = (x0 + x1) / 2, (y0 + y1) / 2
+        gx, gy = int(x // R), int(y // R)
+        perto = any((sx - x) ** 2 + (sy - y) ** 2 <= R * R
+                    for i in (-1, 0, 1) for j in (-1, 0, 1) for sx, sy in grade.get((gx + i, gy + j), ()))
+        if not perto:
+            saida.append(p["nome"])
+    return saida
+
+
+def marcar_tipo(furos: list[dict], tipo_de: str, sem: list[str]) -> None:
+    """Pavimento cujos furos vêm de outro (tipo): cada furo leva furo.tipo_de; o que a prancha do próprio
+    pavimento não desenha leva furo.a_conferir (decisão do Nicolas de 21/11: nada se apaga)."""
+    falta = set(sem)
+    for f in furos:
+        f["furo"] = {**(f.get("furo") or {}), "tipo_de": tipo_de}
+        if f["nome"] in falta:
+            f["furo"]["a_conferir"] = True
 
 
 def folha_de_furacao(forma: dict, alinhadas: list[dict], imprimir=print) -> dict | None:

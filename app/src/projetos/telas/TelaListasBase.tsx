@@ -222,7 +222,7 @@ export function TelaPranchasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto
 // Entregas
 // ---------------------------------------------------------------------------------------------
 
-type FiltroEntrega = 'em campo' | 'desatualizada' | 'conferir' | 'recolhida' | 'devolvida' | 'todas'
+export type FiltroEntrega = 'em campo' | 'desatualizada' | 'conferir' | 'recolhida' | 'devolvida' | 'todas'
 
 const PASSA: Record<FiltroEntrega, (x: CopiaCruzada) => boolean> = {
   'em campo': (x) => x.situacao === 'em campo',
@@ -233,10 +233,10 @@ const PASSA: Record<FiltroEntrega, (x: CopiaCruzada) => boolean> = {
   todas: () => true,
 }
 
-export function TelaEntregasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
+export function TelaEntregasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto; aoSair: () => void; filtroInicial?: FiltroEntrega }) {
   const { base, cruzadas, resumo } = usarBase(ctx)
   const [busca, setBusca] = useState('')
-  const [filtro, setFiltro] = useState<FiltroEntrega>('em campo')
+  const [filtro, setFiltro] = useState<FiltroEntrega>(filtroInicial ?? 'em campo')
   const [quantas, setQuantas] = useState(PAGINA)
 
   const ordenadas = useMemo(
@@ -259,7 +259,7 @@ export function TelaEntregasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
         curtas: [2, 4, 7, 8],
         linhas: filtradas.map((x) => {
           const c = x.copia
-          return [seloDe(x).texto, c.disciplinaNome, c.codigo, c.titulo, rotuloRev(c.fase, c.revisao), c.empresa, c.colaborador, c.entrega ? dataBR(c.entrega) : c.entregaTexto, c.devolucao ? dataBR(c.devolucao) : '']
+          return [seloDe(x).texto, c.disciplinaNome, c.codigo, c.titulo, rotuloRev(c.fase, c.revisao), c.empresa, c.colaborador, (c.entrega ? dataBR(c.entrega) : c.entregaTexto) + (c.app?.assinaturaId ? ' (assinada)' : ''), c.devolucao ? dataBR(c.devolucao) : '']
         }),
         vazio: 'Nenhuma entrega.',
       },
@@ -316,7 +316,13 @@ export function TelaEntregasBase({ ctx, aoSair }: { ctx: Contexto; aoSair: () =>
                   {c.colaborador ? ` · ${c.colaborador}` : ''}
                   <div class="discreto">
                     entregue {c.entrega ? dataBR(c.entrega) : `"${c.entregaTexto}"`}
-                    {c.devolucao ? ` · devolvida ${dataBR(c.devolucao)}` : ''}
+                    {c.app ? ' pelo app' : ''}
+                    {c.devolucao ? ` · devolvida ${dataBR(c.devolucao)}` : ''}{' '}
+                    {c.app?.assinaturaId && (
+                      <span class="pj-selo ok" data-testid="entrega-assinada">
+                        ✍ assinada
+                      </span>
+                    )}
                   </div>
                 </div>
               </li>

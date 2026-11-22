@@ -334,7 +334,17 @@ export function sugerirRegras(vigentes: readonly Vigente[], cruzadas: readonly C
       empurrar({ ...gs[0], pavimento: '' }, gs[0].folhas.size)
     } else for (const g of gs) empurrar(g, g.folhas.size)
   }
-  return saida.sort(
+  // "qualquer pessoa" da empresa não entra quando já há pessoa com nome dela na mesma disciplina e pavimento
+  // (sugerida agora ou já na lista): senão a empresa recebe uma cópia a mais.
+  const comNome = [...saida.map((s) => s.dados), ...regras.filter((r) => r.ativo)].filter((d) => d.colaborador.trim())
+  const temPessoa = (d: DadosDestinatario) =>
+    comNome.some(
+      (o) =>
+        normalizar(o.empresa) === normalizar(d.empresa) &&
+        o.disciplina === d.disciplina &&
+        (!o.pavimento || !d.pavimento || o.pavimento === d.pavimento),
+    )
+  return saida.filter((s) => s.dados.colaborador.trim() || !temPessoa(s.dados)).sort(
     (a, b) =>
       a.dados.empresa.localeCompare(b.dados.empresa, 'pt-BR') ||
       a.dados.colaborador.localeCompare(b.dados.colaborador, 'pt-BR') ||

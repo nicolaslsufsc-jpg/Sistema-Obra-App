@@ -32,6 +32,13 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
   const comVigente = dados.documentos.filter((d) => dados.vigentes.has(d.id))
   const abrirLista = (titulo: string, ids: string[]) => ir({ nome: 'lista', titulo, ids })
   const doEscritorio = (v: boolean) => comVigente.filter((d) => escritorioAtualizado(dados, d.id) === v).map((d) => d.id)
+  // os selos de cada disciplina e pavimento também abrem a lista (achado do testador, 22/11)
+  const idsNovas = new Set(p.novas.map((n) => n.documento.id))
+  const abrirParte = (onde: string, ids: string[], qual: Selo) => {
+    if (qual === 'vigentes') abrirLista(`${onde} · vigentes`, ids)
+    else if (qual === 'novas') abrirLista(`${onde} · com revisão nova`, ids.filter((id) => idsNovas.has(id)))
+    else abrirLista(`${onde} · PC atrás do Autodoc`, ids.filter((id) => escritorioAtualizado(dados, id) === false))
+  }
   return (
     <main class="tela pj-painel" data-testid="projetos-obra">
       <Topo titulo="Projetos" sub={`${obra.codigo} · painel da obra`} aoVoltar={aoSair} />
@@ -88,7 +95,7 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
               <strong>precisam trocar</strong>
               <span class="discreto">cópia em campo com revisão antiga</span>
             </li>
-            <li class={resumo.conferir.length ? 'atencao pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'painel' }))}>
+            <li class={resumo.conferir.length ? 'atencao pj-tocavel' : 'bom pj-tocavel'} data-testid="obra-cartao-conferir" {...tocavel(() => ir({ nome: 'entregas-base', filtro: 'conferir' }))}>
               <span class="numero">{resumo.conferir.length}</span>
               <strong>conferir</strong>
               <span class="discreto">o app não decidiu sozinho</span>
@@ -143,7 +150,7 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
         {p.disciplinas.map((d) => (
           <details key={d.disciplina} class="pj-disc" open={p.disciplinas.length <= 2}>
             <summary>
-              <b>{d.disciplina}</b> <Numeros c={d} />
+              <b>{d.disciplina}</b> <Numeros c={d} abrir={(q) => abrirParte(d.disciplina, d.pavimentos.flatMap((pv) => pv.documentos.map((x) => x.id)), q)} />
             </summary>
             <ul class="pj-lista-painel pj-pavimentos">
               {d.pavimentos.map((pv) => (
@@ -152,7 +159,7 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
                     <b>{pv.pavimento}</b>
                     <div class="discreto">{plural(pv.vigentes, 'prancha vigente', 'pranchas vigentes')}</div>
                   </div>
-                  <Numeros c={pv} curto />
+                  <Numeros c={pv} curto abrir={(q) => abrirParte(`${d.disciplina} · ${pv.pavimento}`, pv.documentos.map((x) => x.id), q)} />
                 </li>
               ))}
             </ul>
@@ -189,12 +196,30 @@ export function textoCriterio(p: Pick<PainelObra, 'criterio' | 'desde'>): string
   return 'últimos 7 dias'
 }
 
-function Numeros({ c, curto }: { c: Contagem; curto?: boolean }) {
+type Selo = 'vigentes' | 'novas' | 'pc'
+
+function Numeros({ c, curto, abrir }: { c: Contagem; curto?: boolean; abrir: (qual: Selo) => void }) {
+  // botão dentro do resumo (summary) ou da linha tocável: abre a lista sem abrir/fechar a disciplina
+  const selo = (qual: Selo, classe: string, texto: string) => (
+    <button
+      type="button"
+      class={`pj-selo ${classe} pj-selo-botao`}
+      data-testid={`obra-selo-${qual}`}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        abrir(qual)
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      {texto}
+    </button>
+  )
   return (
     <span class="pj-contagens">
-      {!curto && <span class="pj-selo rec">{plural(c.vigentes, 'vigente', 'vigentes')}</span>}
-      {c.novas > 0 && <span class="pj-selo conf">{plural(c.novas, 'nova', 'novas')}</span>}
-      {c.escritorioVencida > 0 && <span class="pj-selo des">{c.escritorioVencida} PC atrás</span>}
+      {!curto && selo('vigentes', 'rec', plural(c.vigentes, 'vigente', 'vigentes'))}
+      {c.novas > 0 && selo('novas', 'conf', plural(c.novas, 'nova', 'novas'))}
+      {c.escritorioVencida > 0 && selo('pc', 'des', `${c.escritorioVencida} PC atrás`)}
       {c.novas === 0 && c.escritorioVencida === 0 && <span class="pj-selo ok">em dia</span>}
     </span>
   )

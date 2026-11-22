@@ -275,6 +275,7 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
   for (let c = 0; c < colunas; c++) g.strokeRect(m0 + c * vao, 40, 0.1, A - 80)
   g.setLineDash([])
   g.font = '14px sans-serif'
+  const nomesDeFuros: Array<[number, number, number, number]> = []
   for (const e of Object.values(elementos)) {
     const p = e.polys[0]
     g.fillStyle = e.tipo === 'P' ? '#555' : '#ccc'
@@ -285,6 +286,13 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     g.fill()
     g.stroke()
     g.fillStyle = '#111'
+    if (e.tipo === 'F') {
+      // furos colados (FL4 e FL5): o nome que encostaria no de outro furo fica de fora (testador, 21/11)
+      const larg = g.measureText(e.nome).width
+      const r: [number, number, number, number] = [e.rotulo[0], e.rotulo[3] - 14, e.rotulo[0] + larg, e.rotulo[3]]
+      if (nomesDeFuros.some((o) => r[0] < o[2] + 2 && o[0] < r[2] + 2 && r[1] < o[3] && o[1] < r[3])) continue
+      nomesDeFuros.push(r)
+    }
     g.fillText(e.nome, e.rotulo[0], e.rotulo[3] - 3)
   }
   for (const e of Object.values(elementos))

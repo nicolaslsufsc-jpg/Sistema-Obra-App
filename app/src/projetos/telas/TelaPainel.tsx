@@ -3,7 +3,7 @@
 // conferir, faixas de atraso, barras por empresa e por disciplina e as listas.
 import { useState } from 'preact/hooks'
 import { importarBase, type BaseProjetos } from '../base'
-import { chaveNumero, ErroDeArquivo, FAIXAS, rotuloRev, type Barra, type CopiaCruzada, type Resumo, type Vigente } from '../painel'
+import { chaveNumero, ErroDeArquivo, FAIXAS, rotuloRev, type Barra, type CopiaCruzada, type Resumo, type Vigente, rotuloDaCopia } from '../painel'
 import type { ResumoEscritorio } from '../edicoes'
 import type { GrupoAEntregar } from '../distribuicao'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
@@ -47,7 +47,7 @@ export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: (
         corrigida && (
           <>
             <Canteiro ctx={ctx} cruzadas={cruzadas} vigentes={corrigida.vigentes} escritorio={corrigida.escritorio} fonteVigente={fonteVigente} />
-            <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} cruzadas={cruzadas} />
+            <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} cruzadas={cruzadas} documentos={ctx.dados.documentos} />
           </>
         )
       )}
@@ -63,6 +63,7 @@ function Painel({
   temLista,
   pendentes,
   cruzadas,
+  documentos,
 }: {
   resumo: Resumo
   escritorio: ResumoEscritorio
@@ -71,6 +72,7 @@ function Painel({
   temLista: boolean
   pendentes: GrupoAEntregar[]
   cruzadas: CopiaCruzada[]
+  documentos: Contexto['dados']['documentos']
 }) {
   const aEntregar = pendentes.reduce((s, g) => s + g.pendencias.length, 0)
   const agora = oQueFazerAgora(pendentes, cruzadas)
@@ -84,7 +86,7 @@ function Painel({
       <button type="button" class={`pj-agora-topo ${agora.copias || agora.recolher.length ? 'ruim' : 'bom'}`} onClick={() => trocar({ nome: 'agora' })} data-testid="painel-agora">
         <strong>O que fazer agora:</strong> {frasesAgora(agora)} ›
       </button>
-      <QuadroSituacao cruzadas={cruzadas} ir={ir} />
+      <QuadroSituacao cruzadas={cruzadas} ir={ir} documentos={documentos} />
       {/* cada número abre a lista dele (item D) */}
       <ul class="pj-cartoes" aria-label="Resumo" data-testid="painel-resumo">
         <li class="bom pj-tocavel" data-testid="painel-cartao-em-dia" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'canteiro' }))}>
@@ -277,7 +279,7 @@ function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }
         </b>{' '}
         <span class="discreto">{c.titulo}</span>
         <br />
-        <span class="pj-rev velha">{rotuloRev(c.fase, c.revisao)}</span> → {v ? <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span> : <b>recolher: prancha fora de uso</b>}
+        <span class="pj-rev velha">{rotuloDaCopia(c)}</span> → {v ? <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span> : <b>recolher: prancha fora de uso</b>}
         {x.loDepois && <span class="discreto"> a LO saiu depois da entrega</span>}
         <div class="discreto">
           {c.empresa}
@@ -316,7 +318,7 @@ function LinhaConferir({ x, abrir }: { x: CopiaCruzada; abrir: () => void }) {
         </b>{' '}
         <span class="discreto">{c.titulo}</span>
         <br />
-        em campo <span class="pj-rev">{rotuloRev(c.fase, c.revisao)}</span>
+        em campo <span class="pj-rev">{rotuloDaCopia(c)}</span>
         {x.vigente && (
           <>
             {' '}

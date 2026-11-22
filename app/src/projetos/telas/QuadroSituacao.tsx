@@ -3,6 +3,7 @@
 // Sem cartão de número (guia de front end): cada linha é um botão que abre as Entregas já filtradas.
 import { useMemo } from 'preact/hooks'
 import { situacaoPor, type CopiaCruzada, type Situacao } from '../painel'
+import { nomeSemCaixaAlta, nomesDeDisciplina } from '../canteiro'
 import type { Contexto } from './ModuloProjetos'
 import { plural } from './comum'
 
@@ -29,15 +30,17 @@ function Trilho({ s, max }: { s: Situacao; max: number }) {
   )
 }
 
-export function QuadroSituacao({ cruzadas, ir }: { cruzadas: readonly CopiaCruzada[]; ir: Contexto['ir'] }) {
+export function QuadroSituacao({ cruzadas, ir, documentos }: { cruzadas: readonly CopiaCruzada[]; ir: Contexto['ir']; documentos: Contexto['dados']['documentos'] }) {
   // Agrupa pela chave da disciplina (a ficha diz "ESTRUTURAL" e o servidor "Estrutura": é a mesma), com o nome
   // do servidor quando houver; a busca das Entregas acha pela chave.
   const porDisc = useMemo(() => situacaoPor(cruzadas, (x) => x.copia.disciplina), [cruzadas])
   const nomeDisc = useMemo(() => {
     const m = new Map<string, string>()
-    for (const x of cruzadas) if (x.copia.app || !m.has(x.copia.disciplina)) m.set(x.copia.disciplina, x.copia.disciplinaNome || x.copia.disciplina)
+    for (const x of cruzadas) if (x.copia.app || !m.has(x.copia.disciplina)) m.set(x.copia.disciplina, nomeSemCaixaAlta(x.copia.disciplinaNome || x.copia.disciplina))
+    // o nome do servidor vale mais que o da ficha (HIDRO, FUNDAÇÃO...): uma grafia só
+    for (const [k, nome] of nomesDeDisciplina(documentos)) if (m.has(k)) m.set(k, nome)
     return m
-  }, [cruzadas])
+  }, [cruzadas, documentos])
   const porPessoa = useMemo(
     () => situacaoPor(cruzadas, (x) => `${x.copia.empresa}${x.copia.colaborador ? SEP + x.copia.colaborador : ''}`).filter((s) => s.trocar > 0),
     [cruzadas],

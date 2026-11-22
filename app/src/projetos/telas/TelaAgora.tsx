@@ -6,7 +6,7 @@ import { useMemo } from 'preact/hooks'
 import { frasesAgora, oQueFazerAgora, type APlotar } from '../agora'
 import { documentosPorFolha } from '../canteiro'
 import { chaveFolha } from '../edicoes'
-import { normalizar, rotuloRev } from '../painel'
+import { normalizar, rotuloRev, rotuloDaCopia } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { plural } from './comum'
@@ -51,7 +51,7 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
           rotuloRev(p.vigente.fase, p.vigente.revisao),
           p.copias,
           pessoa(p.empresa, p.colaborador),
-          p.devolver.map((x) => rotuloRev(x.copia.fase, x.copia.revisao)).join(', '),
+          p.devolver.map((x) => rotuloDaCopia(x.copia)).join(', '),
         ]),
         vazio: temLista ? 'Nada a plotar.' : 'Sem lista de distribuição.',
       },
@@ -61,7 +61,7 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
         curtas: [1, 2, 4],
         linhas: (agora?.recolher ?? []).map(({ x, vigente }) => [
           vigente ? `${vigente.codigo} ${vigente.titulo}` : `${x.copia.disciplinaNome} ${x.copia.codigo} ${x.copia.titulo}`,
-          rotuloRev(x.copia.fase, x.copia.revisao),
+          rotuloDaCopia(x.copia),
           vigente ? rotuloRev(vigente.fase, vigente.revisao) : 'fora de uso',
           pessoa(x.copia.empresa, x.copia.colaborador),
           ondeDaCopia(x.copia),
@@ -114,7 +114,7 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
                   <span class="pj-rev nova">{rotuloRev(p.vigente.fase, p.vigente.revisao)}</span>
                   <div class="discreto">
                     para <b>{pessoa(p.empresa, p.colaborador)}</b>
-                    {p.devolver.length ? ` · recolher ${p.devolver.map((x) => rotuloRev(x.copia.fase, x.copia.revisao)).join(', ')} na entrega` : ''}
+                    {p.devolver.length ? ` · recolher ${p.devolver.map((x) => rotuloDaCopia(x.copia)).join(', ')} na entrega` : ''}
                   </div>
                 </div>
                 <span class={`pj-selo ${p.motivo === 'trocar' ? 'des' : 'conf'}`}>{p.motivo === 'trocar' ? 'trocar' : 'nova'}</span>
@@ -134,7 +134,7 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
               <li key={x.copia.linha} class="pj-linha-painel pj-tocavel" data-testid="agora-recolher-linha" {...tocavel(() => ir({ nome: 'prancha-base', ...alvoDe(x) }))}>
                 <div>
                   <b>
-                    Recolher {vigente ? vigente.codigo : `${x.copia.disciplinaNome} ${x.copia.codigo}`} <span class="pj-rev velha">{rotuloRev(x.copia.fase, x.copia.revisao)}</span>
+                    Recolher {vigente ? vigente.codigo : `${x.copia.disciplinaNome} ${x.copia.codigo}`} <span class="pj-rev velha">{rotuloDaCopia(x.copia)}</span>
                   </b>
                   <div class="discreto">
                     de <b>{pessoa(x.copia.empresa, x.copia.colaborador)}</b> ·{' '}

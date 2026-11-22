@@ -627,8 +627,8 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     <div class={`cc-mapa-tela${painel ? ' com-painel' : ''}`}>
       <header class="cc-mapa-topo">
         <div class="cc-mapa-linha">
-          <button type="button" class="cc-voltar" onClick={voltar}>
-            ‹ Voltar
+          <button type="button" class="cc-voltar" onClick={voltar} aria-label="Voltar" title="Voltar">
+            <span aria-hidden="true">‹</span>
           </button>
           <div class="cc-titulo">
             <h1>{pav?.nome ?? 'Pavimento'}</h1>

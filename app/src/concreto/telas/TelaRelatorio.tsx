@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import { csvPorCaminhao, percentual, relatorioPorCaminhao, relatorioPorPeca, type PecaRelatorio } from '../relatorio'
 import type { Contexto } from './ModuloConcreto'
+import { caminhoesComLajeDesenhada } from '../dados'
 import { sistemaDaObra } from '../../integracoes/sistema_oficial'
 import { corDoCaminhao, dataBR, numBR, plural, Topo } from './comum'
 import { nomeDaConcretagem } from '../exemplo'
@@ -24,7 +25,7 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
   const pav = dados.pavimentos.find((p) => p.id === c.pavimento_id)
   const cams = dados.caminhoesDe.get(c.raiz) ?? []
   const pecas = new Map<string, PecaRelatorio>([...dados.pecaPorId.values()].map((p) => [p.id, { id: p.id, nome: p.nome, tipo: p.tipo }]))
-  const porCaminhao = relatorioPorCaminhao(cams, dados.pecasDe, pecas, dados.lajesFvsDe)
+  const porCaminhao = relatorioPorCaminhao(cams, dados.pecasDe, pecas, dados.lajesFvsDe, caminhoesComLajeDesenhada(dados))
   const porPeca = relatorioPorPeca(porCaminhao)
   const volume = cams.reduce((s, x) => s + (x.volume_m3 ?? 0), 0)
   const nomeArquivo = `${c.data}_concreto_${(pav?.nome ?? 'pavimento').replace(/[^\p{L}\p{N}]+/gu, '-')}.csv`

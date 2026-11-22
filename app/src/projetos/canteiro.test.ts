@@ -208,6 +208,25 @@ describe('entregas do app no canteiro (21/11)', () => {
   })
 })
 
+describe('várias cópias na mesma entrega (22/11)', () => {
+  const d1 = doc('d1', 'EXE.ES.100.FORPILOTIS')
+  const lo02 = rev('LO', '02', { id: 'lo02', cadastrada_em_autodoc: '2026-11-02T10:00:00Z' })
+  const ev = (id: string, extra: Record<string, unknown>) =>
+    ({ id, tipo: 'entrega', documento_id: 'd1', empresa_id: 'e1', colaborador: 'João', revisao_id: 'lo02', data_evento: '2026-11-10', criado_em_dispositivo: '2026-11-10T10:00:00Z', ...extra }) as unknown as Linha
+  const montar = (eventos: Linha[]) => {
+    const dados = { eventos, documentoPorId: new Map([['d1', d1]]), revisaoPorId: new Map([['lo02', lo02]]), vigentes: new Map([['d1', lo02]]), empresaPorId: new Map([['e1', { id: 'e1', nome: 'Empreiteira Alfa', contato: null, ativa: true }]]) }
+    return cruzar(copiasDoApp(dados), vigentesDoServidor({ documentos: [d1], vigentes: dados.vigentes }), HOJE)
+  }
+  it('3 cópias da mesma revisão, no mesmo dia, para a mesma pessoa: as 3 ficam em campo', () => {
+    const x = montar([ev('a', {}), ev('b', {}), ev('c', {})])
+    expect(x.map((y) => [y.situacao, y.resultado])).toEqual([['em campo', 'em dia'], ['em campo', 'em dia'], ['em campo', 'em dia']])
+  })
+  it('a mesma revisão em outro dia continua "provavelmente recolhida" (só uma vale)', () => {
+    const x = montar([ev('a', {}), ev('b', { data_evento: '2026-11-12' })])
+    expect(x.map((y) => y.situacao).sort()).toEqual(['em campo', 'recolhida'])
+  })
+})
+
 describe('ficha no aparelho + entregas do servidor (22/11)', () => {
   const daFicha = lerDistribuicao(DISTRIBUICAO_EXE)
   const servidor = [{ ...daFicha[0], linha: LINHA_APP, app: { entregaId: 'e1', documentoId: 'd1', assinaturaId: null } }]

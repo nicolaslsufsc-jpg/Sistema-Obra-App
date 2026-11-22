@@ -111,7 +111,8 @@ async function semear() {
   const evento = (campos: Record<string, unknown>) => {
     n++
     const id = uuid('f0000000', n)
-    por('distribuicao_eventos', { id, colaborador: null, entrega_id: null, foto_id: null, observacao: null, ...campos })
+    // ?entregas=nao: servidor sem entregas, para ver o canteiro só com a ficha importada (?base=exe)
+    if (new URLSearchParams(location.search).get('entregas') !== 'nao') por('distribuicao_eventos', { id, colaborador: null, entrega_id: null, foto_id: null, observacao: null, ...campos })
     return id
   }
   evento({ tipo: 'entrega', empresa_id: E.alfa, colaborador: 'João', documento_id: D[0], revisao_id: R['0:EX05'], data_evento: dia(30), criado_em_dispositivo: hora(30) }) // RECOLHER

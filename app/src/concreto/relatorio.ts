@@ -49,7 +49,11 @@ export interface LajeFvsRelatorio {
   parcial: boolean
 }
 
+/** A laje que o caminhão encheu, pela área "vigas e laje" desenhada na planta. */
+export const LAJE_DESENHADA: PecaRelatorio = { id: 'laje-desenhada', nome: 'Laje (área desenhada)', tipo: 'L' }
+
 /**
+ * `lajeDesenhada`: raízes dos caminhões com área de "vigas e laje" desenhada (a laje entra como peça).
  * `lajesFvs`: as áreas de laje desenhadas na FVS que cada caminhão cobriu (por raiz do caminhão).
  * Entram como peça do tipo L, de origem "desenho", junto com as peças do caminhão.
  */
@@ -58,6 +62,7 @@ export function relatorioPorCaminhao(
   estados: ReadonlyMap<string, ReadonlyMap<string, EstadoPeca>>,
   pecas: ReadonlyMap<string, PecaRelatorio>,
   lajesFvs?: ReadonlyMap<string, readonly LajeFvsRelatorio[]>,
+  lajeDesenhada?: ReadonlySet<string>,
 ): LinhaPorCaminhao[] {
   return [...caminhoes]
     .sort((a, b) => a.sequencia - b.sequencia)
@@ -70,6 +75,12 @@ export function relatorioPorCaminhao(
       }
       for (const l of lajesFvs?.get(c.raiz) ?? []) {
         itens.push({ peca: { id: l.area_id, nome: l.nome, tipo: 'L' }, fracao: l.fracao, parcial: l.parcial, origem: 'desenho' })
+      }
+      // laje da área "vigas e laje" desenhada no caminhão (22/11, pedido do Nicolas): a forma não traz o
+      // contorno da laje, então a área desenhada é a laje que o caminhão encheu. Só entra quando o
+      // caminhão ainda não tem laje (do trecho ou da FVS).
+      if (lajeDesenhada?.has(c.raiz) && !itens.some((i) => i.peca.tipo === 'L')) {
+        itens.push({ peca: LAJE_DESENHADA, fracao: null, parcial: false, origem: 'desenho' })
       }
       itens.sort((a, b) => compararPecas(a.peca, b.peca))
       return { caminhao: c, pecas: itens }

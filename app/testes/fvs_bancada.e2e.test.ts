@@ -640,7 +640,9 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await seta.evaluate((e: HTMLElement) => e.getBoundingClientRect().left)).toBeLessThan(40)
       // a situação da peça não corta no fim: quebra linha dentro do botão (22/11, 375 px)
       const situacao = p.getByTestId('fvs-esc-situacao').first()
-      expect(await situacao.innerText()).toMatch(/aguardando \(faltam 3 dias, libera em \d\d\/\d\d\)/)
+      // a linha tem content-visibility: auto: fora da tela o navegador não desenha e o innerText vem vazio (CI de 22/11)
+      await situacao.scrollIntoViewIfNeeded()
+      await expect.poll(() => situacao.innerText(), { timeout: 5000 }).toMatch(/aguardando \(faltam 3 dias, libera em \d\d\/\d\d\)/)
       expect(
         await situacao.evaluate((e: HTMLElement) => {
           const b = e.closest('button')!.getBoundingClientRect()

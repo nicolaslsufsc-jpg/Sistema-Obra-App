@@ -14,6 +14,7 @@
 //  4. Mesma PESSOA (empresa + colaborador) com 2+ cópias da mesma prancha em campo: fica só a mais nova
 //     (maior revisão; no empate, entrega mais recente). As outras são "provavelmente recolhida" e não pesam
 //     no painel. Até 22/11 valia por empresa; o Nicolas mudou: cada pessoa troca a cópia que tem.
+//     Cópias da mesma revisão entregues no mesmo dia à mesma pessoa (N cópias numa entrega) contam todas.
 //  5. Atraso = hoje − data da revisão vigente. Sem prazo fixo.
 //  6. Cópia que já diz LO, mas o Autodoc tem a mesma LO com data bem depois da entrega: conferir.
 //  7. Número com mais de uma folha (privativas x gerais, cortes x fachadas): escolhe pela semelhança do
@@ -334,7 +335,13 @@ export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], h
         (b.copia.entrega ?? '').localeCompare(a.copia.entrega ?? '') ||
         a.copia.linha - b.copia.linha,
     )
-    for (const x of g.slice(1)) x.situacao = 'recolhida'
+    // Várias cópias na MESMA entrega (22/11: "quantas cópias" grava uma entrega por cópia): a mesma revisão,
+    // entregue no mesmo dia à mesma pessoa, são cópias de papel de verdade. Ficam todas em campo.
+    const topo = g[0]
+    for (const x of g.slice(1)) {
+      const mesmaEntrega = !!x.copia.app && !!topo.copia.app && x.copia.revisao === topo.copia.revisao && x.copia.fase === topo.copia.fase && !!x.copia.entrega && x.copia.entrega === topo.copia.entrega
+      if (!mesmaEntrega) x.situacao = 'recolhida'
+    }
   }
   return saida
 }
@@ -424,6 +431,19 @@ export function resumir(cruzadas: readonly CopiaCruzada[]): Resumo {
     porEmpresa: barras(desatualizadas, (x) => x.copia.empresa || '(sem empresa)'),
     porDisciplina: barras(desatualizadas, (x) => x.copia.disciplinaNome || x.copia.disciplina),
   }
+}
+
+/**
+ * Por que a cópia tem que ser trocada, em duas palavras, para cada linha das listas (decisão do Nicolas, 22/11:
+ * "LO é como se fosse uma nova contagem": saiu de R00 para LO R00, troca). Só para cópia em campo desatualizada.
+ * - "saiu a LO": mesmo número, a cópia é EX e a vigente é LO, que saiu depois da entrega;
+ * - "revisão nova": a vigente tem número maior;
+ * - "prancha fora de uso": a folha não tem mais revisão vigente (só recolher).
+ */
+export function motivoDaTroca(x: Pick<CopiaCruzada, 'situacao' | 'resultado' | 'loDepois' | 'foraDeUso'>): 'saiu a LO' | 'revisão nova' | 'prancha fora de uso' | null {
+  if (x.situacao !== 'em campo' || x.resultado !== 'desatualizada') return null
+  if (x.foraDeUso) return 'prancha fora de uso'
+  return x.loDepois ? 'saiu a LO' : 'revisão nova'
 }
 
 /**

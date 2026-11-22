@@ -531,7 +531,8 @@ button.pj-pequeno {
 }
 .pj-rev.nova {
   border-color: var(--ok-borda);
-  color: var(--ok-borda);
+  /* o verde de borda fica no limite de 4,5:1 sobre fundo tingido (linha tocada, CI de 22/11): texto no verde de texto */
+  color: var(--texto-1b5e20);
 }
 .pj-selo {
   display: inline-block;
@@ -1079,4 +1080,32 @@ button.pj-sit-linha:focus-visible {
   display: block;
   height: 100%;
   min-width: 4px;
+}
+
+/* ---------- Entregar cópia (22/11): botão do topo e escolhas em botões ---------- */
+button.pj-entregar-topo {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  margin: 0 0 0.75rem;
+  text-align: left;
+  font-size: 1.05rem;
+}
+button.pj-entregar-topo span {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 400;
+  opacity: 0.9;
+}
+.pj-escolha {
+  margin: 0.25rem 0 0.4rem;
+}
+.pj-escolha button[aria-pressed='true'] {
+  background: var(--primaria);
+  border-color: var(--primaria);
+  color: var(--primaria-texto);
+}
+.pj-escolha button b {
+  font-weight: 400;
+  opacity: 0.75;
 }

@@ -238,6 +238,13 @@ export function piorDoCaminhao(d: DadosConcreto, c: Caminhao, conc: Concretagem,
   return piorSituacao(idadesDoCaminhao(d, c, conc, hoje).map((i) => i.situacao))
 }
 
+/** Caminhões (raiz) com área de "vigas e laje" desenhada: a laje que encheram (relatório e mapa). */
+export function caminhoesComLajeDesenhada(d: Pick<DadosConcreto, 'areasDe'>): Set<string> {
+  const s = new Set<string>()
+  for (const [raiz, areas] of d.areasDe) if (areas.some((a) => a.alvo === 'vigas_laje')) s.add(raiz)
+  return s
+}
+
 export function concretagemDe(d: DadosConcreto, c: Caminhao): Concretagem | undefined {
   return d.concretagens.find((x) => x.raiz === c.concretagem_id)
 }

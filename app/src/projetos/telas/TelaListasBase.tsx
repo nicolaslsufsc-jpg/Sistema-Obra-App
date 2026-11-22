@@ -2,7 +2,7 @@
 // inteiras, com busca e filtros. Tocar numa linha abre a prancha.
 import { useMemo, useState } from 'preact/hooks'
 import { chaveFolha, compararEscritorio, type RegistroEscritorio } from '../edicoes'
-import { melhor, normalizar, rotuloRev, type CopiaCruzada, type Vigente, rotuloDaCopia } from '../painel'
+import { melhor, normalizar, rotuloRev, type CopiaCruzada, type Vigente, rotuloDaCopia, motivoDaTroca } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
@@ -317,7 +317,8 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
                   <div class="discreto">
                     entregue {c.entrega ? dataBR(c.entrega) : `"${c.entregaTexto}"`}
                     {c.app ? ' pelo app' : ''}
-                    {c.devolucao ? ` · devolvida ${dataBR(c.devolucao)}` : ''}{' '}
+                    {c.devolucao ? ` · devolvida ${dataBR(c.devolucao)}` : ''}
+                    {motivoDaTroca(x) && !x.foraDeUso ? ` · ${motivoDaTroca(x)}` : ''}{' '}
                     {c.app?.assinaturaId && (
                       <span class="pj-selo ok" data-testid="entrega-assinada">
                         ✍ assinada

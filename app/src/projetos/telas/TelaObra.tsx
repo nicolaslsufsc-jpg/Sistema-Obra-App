@@ -10,7 +10,7 @@ import { QuadroSituacao } from './QuadroSituacao'
 import { usarAgora } from './TelaAgora'
 import { frasesAgora } from '../agora'
 import { PedidoAutodoc } from './PedidoAutodoc'
-import { escritorioAtualizado, podeGerir } from '../dados'
+import { escritorioAtualizado, podeGerir, podeRegistrar } from '../dados'
 
 const LIMITE_NOVAS = 40
 
@@ -43,6 +43,13 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
   return (
     <main class="tela pj-painel" data-testid="projetos-obra">
       <Topo titulo="Projetos" sub={`${obra.codigo} · painel da obra`} aoVoltar={aoSair} />
+      {/* registrar a entrega de uma cópia física: o caminho curto, logo abaixo do título (Nicolas, 22/11) */}
+      {podeRegistrar(obra.papel) && (
+        <button type="button" class="principal pj-entregar-topo" data-testid="obra-entregar" onClick={() => ir({ nome: 'entregar-copia' })}>
+          Entregar cópia
+          <span>escolher a prancha, para quem, quantas cópias e a assinatura</span>
+        </button>
+      )}
       {/* o quadro vem logo abaixo do título, antes do Autodoc e dos números (testador, 22/11: em 375 px ficava no fim da 1ª tela) */}
       {cruzadas && <QuadroSituacao cruzadas={cruzadas} ir={ir} documentos={dados.documentos} />}
       <FaixaAutodoc obraId={obra.id} estado={estado} />

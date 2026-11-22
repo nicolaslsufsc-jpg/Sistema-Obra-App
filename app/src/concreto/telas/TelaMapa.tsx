@@ -337,27 +337,35 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const camsVisiveis = camSel ? caminhoesConc : concSel ? caminhoesConc : caminhoesPav.map((p) => p.x)
     // mapa das concretagens: a área fica com a cor da concretagem, cheia, como um "carimbo"
     const porConcretagem = !camSel && vista === 'concretagens'
+    const situacaoDoCam = new Map<string, SituacaoCP | null>()
+    for (const { x, c } of caminhoesPav) situacaoDoCam.set(x.raiz, piorDoCaminhao(dados, x, c, hoje))
     for (const c of camsVisiveis) {
       const sel = c.raiz === camSel
-      const cor = porConcretagem ? corDaConcretagem(indiceConc.get(c.concretagem_id) ?? 0) : corDoCaminhao(c.sequencia)
+      const situacao = situacaoDoCam.get(c.raiz)
+      const cor = porConcretagem
+        ? corDaConcretagem(indiceConc.get(c.concretagem_id) ?? 0)
+        : !camSel && situacao
+          ? COR_SITUACAO[grupoDa(situacao)]
+          : corDoCaminhao(c.sequencia)
       // só as áreas desenhadas nesta planta (outro trecho tem outras coordenadas)
       for (const a of areasPorPlanta(c.raiz).get(planta.id) ?? []) {
-        // a área de vigas e laje é tracejada; a dos pilares, contínua
-        const traco = a.alvo === 'vigas_laje' ? '9 5' : undefined
+        // A área de vigas e laje é a laje que o caminhão encheu (a forma não traz o contorno da
+        // laje): fica cheia, como laje concretada (pedido do Nicolas, 22/11). A dos pilares só
+        // contorna os pilares: contínua e quase sem preenchimento.
+        const laje = a.alvo === 'vigas_laje'
+        const outroCam = !!camSel && !sel
         L.polygon(a.contorno.map((p) => ll(p as Ponto)), {
           renderer: desenho.current!,
           interactive: false,
           color: cor,
-          weight: sel || porConcretagem ? 2.5 : 1.5,
-          dashArray: sel || porConcretagem ? traco : '6 4',
-          fillOpacity: sel ? 0.18 : porConcretagem ? 0.2 : 0.06,
+          weight: sel || !camSel ? 2.5 : 1.5,
+          dashArray: outroCam ? '6 4' : undefined,
+          fillOpacity: laje ? (sel ? 0.4 : outroCam ? 0.15 : 0.35) : sel ? 0.18 : outroCam ? 0.06 : 0.2,
         }).addTo(g)
       }
     }
 
     // cor de cada peça
-    const situacaoDoCam = new Map<string, SituacaoCP | null>()
-    for (const { x, c } of caminhoesPav) situacaoDoCam.set(x.raiz, piorDoCaminhao(dados, x, c, hoje))
     for (const [id, ls] of camadasPeca.current) {
       let cor = '#5b6470'
       let fill = 0.06
@@ -620,6 +628,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const pecasDoCam = camAtual
     ? [...(dados.pecasDe.get(camAtual.raiz)?.values() ?? [])].filter((e) => e.incluido)
     : []
+  const lajeDesenhadaNoCam = camAtual && planta ? (areasPorPlanta(camAtual.raiz).get(planta.id) ?? []).filter((a) => a.alvo === 'vigas_laje').length : 0
   const nomeDa = (id: string) => dados.pecaPorId.get(id)?.nome ?? planta?.elementos.find((e) => e.id === id)?.nome ?? '?'
   const ordemTipo = (id: string) => ({ P: 0, V: 1, L: 2 })[dados.pecaPorId.get(id)?.tipo ?? ''] ?? 3
 
@@ -803,6 +812,11 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
               {pode && !lajeAtual && !podeCriar && (
                 <p class="discreto">A laje deste trecho ainda não foi criada. Só gestor ou administrador cria a laje; depois disso ela pode ser marcada aqui.</p>
               )}
+              {lajeDesenhadaNoCam && (
+                <p class="cc-laje-desenhada" data-testid="laje-desenhada">
+                  <i style={{ background: corDoCaminhao(camAtual.sequencia) }} /> Laje concretada: {plural(lajeDesenhadaNoCam, 'área desenhada', 'áreas desenhadas')} nesta planta
+                </p>
+              )}
               <h3>{pecasDoCam.length === 0 ? 'Nenhuma peça ainda' : plural(pecasDoCam.length, 'peça', 'peças')}</h3>
               {pecasDoCam.length === 0 && pode && <p class="discreto">Desenhe com a caneta em volta da área que o caminhão encheu.</p>}
               <ul class="cc-pecas-compacto" data-testid="pecas-caminhao">
@@ -855,6 +869,11 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
                     Laudos (CPs)
                   </button>
                 </div>
+              )}
+              {concs.length > 0 && (
+                <p class="discreto" data-testid="legenda-laje">
+                  Área cheia: laje concretada (desenhada no caminhão). Contorno forte: pilar ou viga.
+                </p>
               )}
               {vista === 'concretagens' && concs.length > 0 ? (
                 <ul class="cc-legenda cc-legenda-conc" data-testid="legenda-concretagens">

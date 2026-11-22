@@ -427,6 +427,19 @@ export function resumir(cruzadas: readonly CopiaCruzada[]): Resumo {
 }
 
 /**
+ * Por que a cópia tem que ser trocada, em duas palavras, para cada linha das listas (decisão do Nicolas, 22/11:
+ * "LO é como se fosse uma nova contagem": saiu de R00 para LO R00, troca). Só para cópia em campo desatualizada.
+ * - "saiu a LO": mesmo número, a cópia é EX e a vigente é LO, que saiu depois da entrega;
+ * - "revisão nova": a vigente tem número maior;
+ * - "prancha fora de uso": a folha não tem mais revisão vigente (só recolher).
+ */
+export function motivoDaTroca(x: Pick<CopiaCruzada, 'situacao' | 'resultado' | 'loDepois' | 'foraDeUso'>): 'saiu a LO' | 'revisão nova' | 'prancha fora de uso' | null {
+  if (x.situacao !== 'em campo' || x.resultado !== 'desatualizada') return null
+  if (x.foraDeUso) return 'prancha fora de uso'
+  return x.loDepois ? 'saiu a LO' : 'revisão nova'
+}
+
+/**
  * A revisão que a cópia tem. Entrega do servidor: sempre com a fase ("EX R02", "LO R00"), para ler ao lado de
  * "vigente LO R00" (achado do testador, 22/11). Cópia da ficha: como a planilha escreve (EX não aparece).
  */

@@ -281,6 +281,7 @@ function LinhaDesatualizada({ x, abrir }: { x: CopiaCruzada; abrir: () => void }
         <br />
         <span class="pj-rev velha">{rotuloDaCopia(c)}</span> → {v ? <span class="pj-rev nova">{rotuloRev(v.fase, v.revisao)}</span> : <b>recolher: prancha fora de uso</b>}
         {x.loDepois && <span class="discreto"> a LO saiu depois da entrega</span>}
+        {v && !x.loDepois && <span class="discreto"> revisão nova</span>}
         <div class="discreto">
           {c.empresa}
           {c.colaborador ? ` · ${c.colaborador}` : ''} · entregue {dataBR(c.entrega)}

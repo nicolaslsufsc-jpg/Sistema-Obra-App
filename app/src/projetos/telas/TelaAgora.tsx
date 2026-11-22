@@ -6,7 +6,7 @@ import { useMemo } from 'preact/hooks'
 import { frasesAgora, oQueFazerAgora, type APlotar } from '../agora'
 import { documentosPorFolha } from '../canteiro'
 import { chaveFolha } from '../edicoes'
-import { normalizar, rotuloRev, rotuloDaCopia } from '../painel'
+import { normalizar, rotuloRev, rotuloDaCopia, motivoDaTroca } from '../painel'
 import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { plural } from './comum'
@@ -62,7 +62,7 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
         linhas: (agora?.recolher ?? []).map(({ x, vigente }) => [
           vigente ? `${vigente.codigo} ${vigente.titulo}` : `${x.copia.disciplinaNome} ${x.copia.codigo} ${x.copia.titulo}`,
           rotuloDaCopia(x.copia),
-          vigente ? rotuloRev(vigente.fase, vigente.revisao) : 'fora de uso',
+          vigente ? `${rotuloRev(vigente.fase, vigente.revisao)} (${motivoDaTroca(x)})` : 'fora de uso',
           pessoa(x.copia.empresa, x.copia.colaborador),
           ondeDaCopia(x.copia),
         ]),
@@ -138,7 +138,14 @@ export function TelaAgora({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }
                   </b>
                   <div class="discreto">
                     de <b>{pessoa(x.copia.empresa, x.copia.colaborador)}</b> ·{' '}
-                    {vigente ? `vigente ${rotuloRev(vigente.fase, vigente.revisao)}` : <b data-testid="agora-fora-de-uso">prancha fora de uso: {x.copia.titulo}</b>} · {ondeDaCopia(x.copia)}
+                    {vigente ? (
+                      <>
+                        vigente {rotuloRev(vigente.fase, vigente.revisao)} · <b data-testid="agora-motivo">{motivoDaTroca(x)}</b>
+                      </>
+                    ) : (
+                      <b data-testid="agora-fora-de-uso">prancha fora de uso: {x.copia.titulo}</b>
+                    )}{' '}
+                    · {ondeDaCopia(x.copia)}
                   </div>
                 </div>
                 {vigente ? <div class={`pj-dias${(x.dias ?? 0) <= 15 ? ' leve' : ''}`}>{x.dias ?? '?'} d</div> : <span class="pj-selo des">fora de uso</span>}

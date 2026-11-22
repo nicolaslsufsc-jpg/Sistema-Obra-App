@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { situacaoPor, chaveNumero, cruzar, lerData, lerDistribuicao, lerRevisao, lerVigentes, resumir, rotuloRev } from './painel'
+import { motivoDaTroca, situacaoPor, chaveNumero, cruzar, lerData, lerDistribuicao, lerRevisao, lerVigentes, resumir, rotuloRev } from './painel'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
 
 
@@ -99,6 +99,18 @@ describe('quadro de situação (topo do painel)', () => {
     expect([soma('total'), soma('emDia'), soma('trocar'), soma('conferir')]).toEqual([r.emCampo, r.emDia, r.desatualizadas.length, r.conferir.length])
     expect(d.every((l) => l.total === l.emDia + l.trocar + l.conferir)).toBe(true)
     expect(d.map((l) => l.trocar)).toEqual([...d.map((l) => l.trocar)].sort((a, b) => b - a))
+  })
+  it('o motivo da troca em cada linha: "saiu a LO" ou "revisão nova" (a LO é uma contagem nova)', () => {
+    const por = (linha: number) => motivoDaTroca(x.find((y) => y.copia.linha === linha)!)
+    expect(por(1)).toBe('revisão nova') // R01 LO, vigente LO R02
+    expect(por(3)).toBe('saiu a LO') // EX R00 entregue antes da LO R00
+    expect(por(2)).toBeNull() // em dia
+    expect(por(7)).toBeNull() // conferir
+    expect(por(12)).toBeNull() // devolvida
+    expect(motivoDaTroca({ situacao: 'em campo', resultado: 'desatualizada', foraDeUso: true })).toBe('prancha fora de uso')
+    // as duas parcelas somam as desatualizadas em campo: a regra 1 continua contando as duas
+    const des = x.filter((y) => y.situacao === 'em campo' && y.resultado === 'desatualizada')
+    expect(des.filter((y) => motivoDaTroca(y) === 'saiu a LO').length + des.filter((y) => motivoDaTroca(y) === 'revisão nova').length).toBe(des.length)
   })
   it('por pessoa: cada pessoa com o que tem a trocar', () => {
     const p = situacaoPor(x, (y) => `${y.copia.empresa} · ${y.copia.colaborador}`)

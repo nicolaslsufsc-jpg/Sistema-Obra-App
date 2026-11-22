@@ -860,3 +860,7 @@ textarea {
   border-radius: var(--raio);
   border: 1px solid var(--borda);
 }
+/* laudos por lote: os caminhões do lote abrem embaixo da linha, um pouco para dentro */
+.cc-alerta-caminhoes {
+  margin: 0.35rem 0 0.6rem 1rem;
+}

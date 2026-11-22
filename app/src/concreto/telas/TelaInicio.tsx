@@ -1,5 +1,6 @@
-import { dataLocal, GRAVIDADE } from '../cps'
-import { concretagemDe, piorDoCaminhao } from '../dados'
+import { useState } from 'preact/hooks'
+import { dataLocal } from '../cps'
+import { lotesComAlerta, resumoDasIdades } from '../laudos_lote'
 import { diasComConcretagem } from '../ficha_concreto'
 import type { Contexto } from './ModuloConcreto'
 import { dataBR, numBR, plural, Selo, Topo } from './comum'
@@ -11,14 +12,17 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
   const { dados, obra, ir } = ctx
   const hoje = dataLocal(new Date())
 
-  // caminhões com laudo atrasado ou abaixo do fck, de todos os pavimentos
-  const alertas = dados.caminhoes
-    .map((c) => {
-      const conc = concretagemDe(dados, c)
-      return conc ? { c, conc, pior: piorDoCaminhao(dados, c, conc, hoje) } : null
+  // laudos atrasados ou abaixo do fck, por lote (a concretagem inteira), de todos os pavimentos
+  const lotes = lotesComAlerta(dados, hoje)
+  const camsComAlerta = lotes.reduce((n, l) => n + l.caminhoes.length, 0)
+  const [abertos, setAbertos] = useState<ReadonlySet<string>>(new Set())
+  const alternar = (raiz: string) =>
+    setAbertos((a) => {
+      const n = new Set(a)
+      if (n.has(raiz)) n.delete(raiz)
+      else n.add(raiz)
+      return n
     })
-    .filter((x): x is NonNullable<typeof x> => !!x && (x.pior === 'atrasado' || x.pior === 'abaixo_fck'))
-    .sort((a, b) => GRAVIDADE[a.pior!] - GRAVIDADE[b.pior!] || a.conc.data.localeCompare(b.conc.data))
   const nomePav = new Map(dados.pavimentos.map((p) => [p.id, p.nome]))
   const dias = diasComConcretagem(dados.concretagens).slice(0, 10)
 
@@ -36,11 +40,7 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
             const concs = dados.concretagens.filter((c) => c.pavimento_id === p.id)
             const cams = concs.flatMap((c) => dados.caminhoesDe.get(c.raiz) ?? [])
             const volume = cams.reduce((s, c) => s + (c.volume_m3 ?? 0), 0)
-            const ruins = cams.filter((c) => {
-              const conc = concs.find((x) => x.raiz === c.concretagem_id)!
-              const pior = piorDoCaminhao(dados, c, conc, hoje)
-              return pior === 'atrasado' || pior === 'abaixo_fck'
-            }).length
+            const ruins = lotes.filter((l) => l.concretagem.pavimento_id === p.id).length
             return (
               <li key={p.id}>
                 <button type="button" class="cc-linha" onClick={() => ir({ nome: 'pavimento', pavimentoId: p.id })}>
@@ -52,7 +52,7 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
                         : `${plural(concs.length, 'concretagem', 'concretagens')} · ${plural(cams.length, 'caminhão', 'caminhões')} · ${numBR(volume)} m³`}
                     </span>
                   </span>
-                  {ruins > 0 && <Selo situacao="atrasado" texto={`${ruins} com problema`} />}
+                  {ruins > 0 && <Selo situacao="atrasado" texto={`${plural(ruins, 'lote', 'lotes')} com problema`} />}
                 </button>
               </li>
             )
@@ -60,26 +60,50 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
         </ul>
       )}
 
-      {alertas.length > 0 && (
+      {lotes.length > 0 && (
         <section class="cartao cc-alertas" data-testid="alertas">
-          <h2>Laudos que pedem atenção ({alertas.length})</h2>
+          <h2>
+            Laudos que pedem atenção: {plural(lotes.length, 'lote', 'lotes')} ({plural(camsComAlerta, 'caminhão', 'caminhões')})
+          </h2>
           <ul class="lista">
-            {alertas.slice(0, 30).map(({ c, conc, pior }) => (
-              <li key={c.raiz}>
-                <button type="button" class="cc-linha" onClick={() => ir({ nome: 'caminhao', raiz: c.raiz })}>
-                  <span>
-                    <strong>
-                      Caminhão {c.sequencia}
-                      {c.nota_fiscal ? ` · NF ${c.nota_fiscal}` : ''}
-                    </strong>
-                    <span class="discreto">
-                      {nomePav.get(conc.pavimento_id)} · {dataBR(conc.data)} · {nomeDaConcretagem(conc)}
+            {lotes.map((l) => {
+              const conc = l.concretagem
+              const aberto = abertos.has(conc.raiz)
+              const total = dados.caminhoesDe.get(conc.raiz)?.length ?? l.caminhoes.length
+              return (
+                <li key={conc.raiz} data-testid="alerta-lote">
+                  <button type="button" class="cc-linha" aria-expanded={aberto} onClick={() => alternar(conc.raiz)}>
+                    <span>
+                      <strong>
+                        {dataBR(conc.data)} · {nomeDaConcretagem(conc)}
+                      </strong>
+                      <span class="discreto">
+                        {nomePav.get(conc.pavimento_id)} · {l.caminhoes.length === total ? plural(total, 'caminhão', 'caminhões') : `${l.caminhoes.length} de ${plural(total, 'caminhão', 'caminhões')}`}
+                      </span>
+                      <span class="discreto">{resumoDasIdades(l)}</span>
                     </span>
-                  </span>
-                  <Selo situacao={pior!} />
-                </button>
-              </li>
-            ))}
+                    <Selo situacao={l.pior} />
+                  </button>
+                  {aberto && (
+                    <ul class="lista cc-alerta-caminhoes" data-testid="alerta-caminhoes">
+                      {l.caminhoes.map(({ caminhao: c, pior }) => (
+                        <li key={c.raiz}>
+                          <button type="button" class="cc-linha" onClick={() => ir({ nome: 'caminhao', raiz: c.raiz })}>
+                            <span>
+                              <strong>
+                                Caminhão {c.sequencia}
+                                {c.nota_fiscal ? ` · NF ${c.nota_fiscal}` : ''}
+                              </strong>
+                            </span>
+                            <Selo situacao={pior} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}

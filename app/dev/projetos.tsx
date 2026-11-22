@@ -161,8 +161,8 @@ async function semearBase() {
   })
 }
 
-// ?pedido=ciclo|parado|erro|preso: servidor falso do botão "Atualizar do Autodoc" (sem servidor na bancada).
-// ciclo: o pedido passa a buscando em 3 s e a pronto em 6 s (uma revisão falhou); parado: pendente há 20 min
+// ?pedido=ciclo|nada|parado|erro|preso: servidor falso do botão "Atualizar do Autodoc" (sem servidor na bancada).
+// ciclo: o pedido passa a buscando em 3 s e a pronto em 6 s (uma revisão falhou); nada: igual, mas sem revisão nova; parado: pendente há 20 min
 // (PC não respondeu); erro: o último pedido deu erro de login; preso: buscando há 40 min (interrompido).
 function servidorFalsoDePedidos() {
   const qual = new URLSearchParams(location.search).get('pedido')
@@ -192,7 +192,7 @@ function servidorFalsoDePedidos() {
             ...atual,
             estado: 'pronto',
             concluido_em: new Date().toISOString(),
-            resumo: { revisoes_novas: 3, baixadas: 2, falharam: [{ codigo: 'TST.ES.EX.130.FOR3PAVTIP-R04', motivo: 'tamanho não confere com o Autodoc' }] },
+            resumo: qual === 'nada' ? { revisoes_novas: 0, baixadas: 0, falharam: [] } : { revisoes_novas: 3, baixadas: 2, falharam: [{ codigo: 'TST.ES.EX.130.FOR3PAVTIP-R04', motivo: 'tamanho não confere com o Autodoc' }] },
           }),
         6000,
       )

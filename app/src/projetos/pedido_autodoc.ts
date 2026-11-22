@@ -83,6 +83,15 @@ const hora = (iso: string | null) => {
   const d = new Date(String(iso ?? ''))
   return Number.isNaN(d.getTime()) ? '' : `${dois(d.getHours())}:${dois(d.getMinutes())}`
 }
+/** "hoje às 06:16", "ontem às 18:02" ou "em 20/11 às 09:40": um pedido antigo não parece o de agora. */
+const quando = (iso: string | null, agora: Date) => {
+  const d = new Date(String(iso ?? ''))
+  if (Number.isNaN(d.getTime())) return ''
+  const dia = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const dias = Math.round((dia(agora) - dia(d)) / 86_400_000)
+  const onde = dias === 0 ? 'hoje' : dias === 1 ? 'ontem' : `em ${dois(d.getDate())}/${dois(d.getMonth() + 1)}`
+  return `${onde} às ${hora(iso)}`
+}
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
 
 export interface TextoPedido {
@@ -113,5 +122,9 @@ export function textoDoPedido(p: PedidoAtualizacao | null, agora = new Date()): 
   const falharam = Array.isArray(r.falharam) ? r.falharam.filter((f) => f && f.codigo) : []
   const partes = [plural(r.revisoes_novas ?? 0, 'revisão nova', 'revisões novas'), plural(r.baixadas ?? 0, 'baixada', 'baixadas')]
   if (falharam.length) partes.push(plural(falharam.length, 'falhou', 'falharam'))
-  return { tipo: 'pronto', texto: `Pronto às ${hora(p.concluido_em)}: ${partes.join(', ')}.`, falharam, podePedir: true }
+  // Sem revisão nova, o "0 revisões novas, 0 baixadas" parecia que nada tinha rodado (Nicolas, 22/11):
+  // a frase diz que o Autodoc foi conferido, quando, e que não há nada a trocar por causa dele.
+  if (!(r.revisoes_novas ?? 0) && !(r.baixadas ?? 0) && !falharam.length)
+    return { tipo: 'pronto', texto: `Conferido ${quando(p.concluido_em, agora)}: o Autodoc não tem revisão nova. A lista do app está igual à do Autodoc.`, falharam, podePedir: true }
+  return { tipo: 'pronto', texto: `Pronto ${quando(p.concluido_em, agora)}: ${partes.join(', ')}.`, falharam, podePedir: true }
 }

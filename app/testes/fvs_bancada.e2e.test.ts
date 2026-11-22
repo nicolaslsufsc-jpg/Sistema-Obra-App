@@ -2370,6 +2370,80 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: "+ Área" na planta de furos: seleciona os furos de uma área e confirma OK em todos, com Desfazer e o filtro`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furos=1&furoslaje=1&furacaototal=1`)
+      await noInicio(p)
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
+      const ultimoR = (nomeDoLocal: string) =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const els = await sincronizador.linhas('elementos', '${OBRA}')
+          const ids = new Set(els.filter((e) => e.nome === '${nomeDoLocal}').map((e) => e.id))
+          const l = (await sincronizador.linhas('fvs_eventos', '${OBRA}')).filter((e) => ids.has(e.elemento_id))
+          l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
+          return l.at(-1)?.resultado ?? null
+        })()`)
+      await naDisciplina(p, 'estrutura')
+      await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Furos$/ }) }).getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      expect(await progresso()).toBe('0/10 OK')
+      // o título do pavimento não corta com reticências (quebra em duas linhas, docs/DESIGN.md)
+      expect(await p.locator('.fv-nomes b').evaluate((b: HTMLElement) => b.scrollWidth <= b.clientWidth + 1 && b.scrollHeight <= b.clientHeight + 3)).toBe(true)
+      // na planta de furos, "+ Área" no lugar do Pincel
+      expect(await p.locator('.fv-topo').getByRole('button', { name: 'Pincel' }).count()).toBe(0)
+      // FL1 já OK antes: a seleção não mexe nele
+      await enquadrar(p, [-520, 520], 2)
+      await tocarNaPlanta(p, 520, 520)
+      await aviso('FL1: OK')
+      // a área em volta do vão: FL1, FL2, FL3 e o FL6 (Geral, não conta); FL4 e FL5 ficam fora
+      const desenhar = async () => {
+        await p.getByTestId('fvs-area-furos').click()
+        await p.getByTestId('fvs-desenho').waitFor()
+        expect(await p.getByTestId('fvs-desenho').innerText()).toContain('Área dos furos')
+        await enquadrar(p, [-600, 600], 0)
+        // a planta continua andando (arrastar com o dedo; dois dedos dão zoom)
+        expect(await p.evaluate(() => (window as any).__fvMapa.dragging.enabled())).toBe(true)
+        for (const [x, y] of [[470, 470], [730, 470], [730, 730], [470, 730]]) await tocarNaPlanta(p, x, y)
+        await p.getByTestId('fvs-concluir-area').click()
+        await p.getByTestId('fvs-selecao-furos').waitFor()
+      }
+      await desenhar()
+      expect((await p.getByTestId('fvs-selecao-furos').innerText()).replace(/\s+/g, ' ')).toContain('2 furos sem conferir nesta área (de 3)')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_area_${nome}_selecao.png` })
+      await p.getByTestId('fvs-selecao-confirmar').click()
+      await aviso('2 furos OK nesta área')
+      await expect.poll(progresso).toBe('3/10 OK')
+      expect([await ultimoR('FL2'), await ultimoR('FL3'), await ultimoR('FL4')]).toEqual(['C', 'C', null])
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_area_${nome}_ok.png` })
+      // um Desfazer volta todos (o FL1, marcado antes, continua)
+      await p.getByTestId('fvs-desfazer').click()
+      await aviso('Desfeito: 2 furos')
+      await expect.poll(progresso).toBe('1/10 OK')
+      expect([await ultimoR('FL1'), await ultimoR('FL2'), await ultimoR('FL3')]).toEqual(['C', null, null])
+      // com o filtro "Água": só o FL2
+      await p.getByTestId('fvs-filtro-furos').selectOption('agua')
+      await desenhar()
+      expect((await p.getByTestId('fvs-selecao-furos').innerText()).replace(/\s+/g, ' ')).toContain('1 furo sem conferir nesta área · Água')
+      await p.getByTestId('fvs-selecao-confirmar').click()
+      await aviso('1 furo OK nesta área')
+      await expect.poll(progresso).toBe('1/1 OK')
+      expect([await ultimoR('FL2'), await ultimoR('FL3')]).toEqual(['C', null])
+      // Cancelar a seleção não grava nada
+      await p.getByTestId('fvs-filtro-furos').selectOption('todos')
+      await desenhar()
+      await p.getByTestId('fvs-selecao-cancelar').click()
+      await p.getByTestId('fvs-selecao-furos').waitFor({ state: 'detached' })
+      expect(await ultimoR('FL3')).toBe(null)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: forma publicada antes da planta "Furação" (sem furos_separados): os furos ficam só na Furação`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()

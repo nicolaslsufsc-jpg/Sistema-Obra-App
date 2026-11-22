@@ -18,9 +18,24 @@
 .cc-titulo p {
   margin: 0;
 }
+/* seta do mapa: igual à do cabeçalho comum (telas/cabecalho.css), sem texto (guia de estilo) */
 .cc-voltar {
   flex: none;
-  padding: 0.5rem 0.75rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cc-voltar span {
+  display: block;
+  margin-top: -3px;
 }
 .cc-sync {
   font-size: 0.9rem;

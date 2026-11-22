@@ -175,7 +175,11 @@ suite('Concreto na bancada (Chrome)', () => {
     // Espera o aviso do laço ("1 peça entrou no caminhão 1."): o aviso anterior ("P3 saiu do
     // caminhão 1.") também contém "caminhão 1" e, sob carga, o relatório era lido antes do P7 entrar.
     await p.getByTestId('toast').filter({ hasText: 'peça entrou no caminhão 1' }).waitFor()
-    await clicar(p, '‹ Voltar')
+    // guia de estilo: no mapa, como no cabeçalho comum, o voltar é só a seta (44 px), sem texto
+    const voltarMapa = p.locator('.cc-mapa-topo').getByRole('button', { name: 'Voltar', exact: true })
+    expect(await voltarMapa.innerText()).toBe('‹')
+    expect((await voltarMapa.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+    await voltarMapa.click()
     await clicar(p, 'Relatório de peças')
     const rel = await p.getByTestId('relatorio-caminhao').innerText()
     expect(rel).toMatch(/1\s+184201\s+8,5\s+P7/)
@@ -555,7 +559,7 @@ suite('Concreto na bancada (Chrome)', () => {
     await capturar(p, 'tablet_prancha_da_fvs')
 
     // o desenho conta as peças do pacote, com o id de "elementos" (P1 em x 150, y 150 na planta de teste)
-    await clicar(p, '‹ Voltar')
+    await clicar(p, 'Voltar')
     await clicar(p, '+ Nova concretagem')
     await p.getByLabel('Local').fill('Trecho 1')
     await p.getByLabel('fck (MPa)').fill('35')

@@ -2225,9 +2225,11 @@
   color: var(--texto-7a4500);
   white-space: normal;
 }
-@media (max-width: 700px) {
-  .fv-escoramento .fv-topo-inicio {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+/* cabeçalho comum dentro da FVS (22/11/2026): sempre numa linha, a seta no canto esquerdo. O topo do
+   Escoramento ficava em coluna abaixo de 700 px e, com o "align-self: center" da seta do cabeçalho comum
+   (telas/cabecalho.css), a seta ia para o meio da tela em 375 px (CI do pacote 8). Esta regra ganha de
+   qualquer topo em coluna da FVS (.fv-topo-nivel, .fv-escoramento .fv-topo-inicio) */
+header.so-cabecalho.fv-topo-inicio {
+  flex-direction: row;
+  align-items: center;
 }

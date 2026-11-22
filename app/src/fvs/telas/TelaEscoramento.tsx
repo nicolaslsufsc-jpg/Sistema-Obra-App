@@ -37,11 +37,12 @@ export function TelaEscoramento({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
 
   return (
     <main class="tela fv-inicio fv-escoramento">
-      <header class="fv-topo-inicio">
-        <button type="button" class="fv-voltar" onClick={voltar} aria-label="Voltar">
-          ‹ Voltar
+      {/* cabeçalho comum (22/11, guia: só a seta, no canto esquerdo, como nos níveis do menu) */}
+      <header class="so-cabecalho fv-topo-inicio fv-topo-nivel">
+        <button type="button" class="fv-voltar so-cab-voltar" onClick={voltar} aria-label="Voltar" title="Voltar">
+          <span aria-hidden="true">‹</span>
         </button>
-        <div>
+        <div class="so-cab-titulo">
           <h1>Escoramento e desforma</h1>
           <p class="discreto" data-testid="fvs-esc-contagem">
             {total.podem} {total.podem === 1 ? 'pode retirar' : 'podem retirar'} · {total.aguardam} {total.aguardam === 1 ? 'aguardando' : 'aguardando'}

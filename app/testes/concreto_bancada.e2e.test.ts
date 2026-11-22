@@ -175,7 +175,11 @@ suite('Concreto na bancada (Chrome)', () => {
     // Espera o aviso do laço ("1 peça entrou no caminhão 1."): o aviso anterior ("P3 saiu do
     // caminhão 1.") também contém "caminhão 1" e, sob carga, o relatório era lido antes do P7 entrar.
     await p.getByTestId('toast').filter({ hasText: 'peça entrou no caminhão 1' }).waitFor()
-    await clicar(p, '‹ Voltar')
+    // guia de estilo: no mapa, como no cabeçalho comum, o voltar é só a seta (44 px), sem texto
+    const voltarMapa = p.locator('.cc-mapa-topo').getByRole('button', { name: 'Voltar', exact: true })
+    expect(await voltarMapa.innerText()).toBe('‹')
+    expect((await voltarMapa.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+    await voltarMapa.click()
     await clicar(p, 'Relatório de peças')
     const rel = await p.getByTestId('relatorio-caminhao').innerText()
     expect(rel).toMatch(/1\s+184201\s+8,5\s+P7/)
@@ -555,7 +559,7 @@ suite('Concreto na bancada (Chrome)', () => {
     await capturar(p, 'tablet_prancha_da_fvs')
 
     // o desenho conta as peças do pacote, com o id de "elementos" (P1 em x 150, y 150 na planta de teste)
-    await clicar(p, '‹ Voltar')
+    await clicar(p, 'Voltar')
     await clicar(p, '+ Nova concretagem')
     await p.getByLabel('Local').fill('Trecho 1')
     await p.getByLabel('fck (MPa)').fill('35')
@@ -1036,6 +1040,65 @@ suite('Concreto na bancada (Chrome)', () => {
       await p.getByTestId('planilha-modelo').setInputFiles({ name: 'errado.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('não sou planilha') })
       await secao.getByRole('button', { name: 'Gerar planilha' }).click()
       expect(await p.getByTestId('planilha-mensagem').innerText()).toContain('não é um .xlsx')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }
+  }, 120_000)
+
+  it('laudos atrasados por lote: uma linha por concretagem, que abre os caminhões dela (celular e tablet)', async () => {
+    for (const largura of [375, 1280]) {
+      const contexto = await navegador.newContext({ viewport: { width: largura, height: 800 }, hasTouch: true })
+      const p = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(url)
+      // concretagem de 40 dias atrás com 2 caminhões e nenhum laudo: 7 e 28 dias atrasados
+      const d = new Date()
+      d.setDate(d.getDate() - 40)
+      const data = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const local = `Lote atrasado ${largura}`
+      await clicar(p, /Pavimento em 2 trechos/)
+      await clicar(p, '+ Nova concretagem')
+      await p.getByLabel('Data', { exact: true }).fill(data)
+      await p.getByLabel('Local').fill(local)
+      await p.getByLabel('fck (MPa)').fill('40')
+      await clicar(p, 'Salvar concretagem')
+      await clicar(p, '+ Caminhão')
+      await p.getByLabel('Nota fiscal').fill(`71${largura}`)
+      await clicar(p, 'Salvar e próximo caminhão')
+      await p.getByText('Caminhão 1 salvo.').waitFor()
+      await p.getByLabel('Nota fiscal').fill(`72${largura}`)
+      await clicar(p, /^Salvar$/)
+      await p.getByText(`72${largura}`).first().waitFor()
+      await p.goto(url)
+
+      const alertas = p.getByTestId('alertas')
+      await alertas.scrollIntoViewIfNeeded()
+      // o título conta lotes, com os caminhões entre parênteses
+      expect(await alertas.locator('h2').innerText()).toMatch(/Laudos que pedem atenção: \d+ lotes? \(\d+ caminh(ão|ões)\)/)
+      const lote = alertas.getByTestId('alerta-lote').filter({ hasText: local })
+      expect(await lote.count()).toBe(1)
+      const texto = await lote.innerText()
+      expect(texto).toContain('2 caminhões')
+      expect(texto).toMatch(/7 dias: atrasado há 33 dias/)
+      expect(texto).toMatch(/28 dias: atrasado há 12 dias/)
+      // os caminhões não aparecem na lista até tocar no lote
+      expect(await alertas.getByText(`NF 71${largura}`).count()).toBe(0)
+      const linha = lote.locator('button[aria-expanded]')
+      expect(await linha.getAttribute('aria-expanded')).toBe('false')
+      await linha.tap()
+      expect(await linha.getAttribute('aria-expanded')).toBe('true')
+      const cams = lote.getByTestId('alerta-caminhoes').locator('li')
+      expect(await cams.count()).toBe(2)
+      expect(await cams.first().innerText()).toContain(`NF 71${largura}`)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await capturar(p, `laudos_por_lote_${largura}`)
+      // tocar no caminhão abre a tela dele
+      await cams.nth(1).locator('button').tap()
+      await p.getByText(`72${largura}`).first().waitFor()
+      // o pavimento conta lotes com problema, não caminhões
+      await p.goto(url)
+      expect(await p.getByRole('button', { name: /Pavimento em 2 trechos/ }).first().innerText()).toMatch(/\d+ lotes? com problema/)
       expect(erros).toEqual([])
       await contexto.close()
     }

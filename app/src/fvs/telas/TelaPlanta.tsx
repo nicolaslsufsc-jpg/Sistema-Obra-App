@@ -117,7 +117,7 @@ import { AvisoHora } from './AvisoHora'
 import { CampoNc } from './CampoNc'
 import { pecasDoMesmoDesenho } from '../mesmo_desenho'
 import { ARRASTE_MINIMO_PX, pecasNoRetangulo, retanguloEntre } from '../selecao'
-import { disciplinaDePontos, fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
+import { disciplinaDePontos, fichaDosPontos, nomeDoFiltroDePontos, nomeDoPonto, opcoesDoFiltroDePontos, pontoTocado, pontosNoFiltro, type FiltroDePontos } from '../pontos'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import './escolha.css'
 import type { ContextoFvs } from './ModuloFvs'
@@ -249,8 +249,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Polígono sendo desenhado: área nova ou contorno novo de uma área (areaId). */
   // selecao: o "+ Área" da planta de furos (22/11): só uma seleção, sem ficha nem registro de área
   const [desenho, setDesenho] = useState<{ pontos: Ponto[]; areaId?: string; selecao?: boolean } | null>(null)
-  /** Furos dentro da área de seleção: os sem conferir (ids) e quantos furos há nela (total). */
-  const [selecaoFuros, setSelecaoFuros] = useState<{ contorno: Ponto[]; ids: string[]; total: number } | null>(null)
+  /** Furos (ou pontos de instalação, pontos: true) dentro da área de seleção: os sem conferir (ids) e quantos há nela (total). */
+  const [selecaoFuros, setSelecaoFuros] = useState<{ contorno: Ponto[]; ids: string[]; total: number; pontos?: boolean } | null>(null)
   /** A caixa que liga o polígono desenhado a uma ficha. */
   const [caixaNova, setCaixaNova] = useState<{ contorno: Ponto[]; nome: string; fichaId: string; codigo: string } | null>(null)
   const [etapa, setEtapa] = useState('')
@@ -380,6 +380,11 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   // só planta de pontos: a de furação também traz "disciplina" no manifest
   const deInstalacoes = !!disciplinaDePontos(manifest?.disciplina)
   const pontos = manifest?.pontos
+  // filtro por tipo de ponto (SPDA igual aos furos, 22/11): esconde os outros, e a contagem e o toque seguem
+  const [filtroPontos, setFiltroPontos] = useState<FiltroDePontos>('todos')
+  const opcoesDosPontos = useMemo(() => (deInstalacoes ? opcoesDoFiltroDePontos(pontos) : []), [pontos, deInstalacoes])
+  const comFiltroDePontos = opcoesDosPontos.length > 2
+  const pontosVisiveis = useMemo(() => (pontos ? pontosNoFiltro(pontos, filtroPontos) : undefined), [pontos, filtroPontos])
   // a modulação (paredes) não tem área de laje
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deFuracao && !deInstalacoes && (pode || areasDaPlanta.length > 0)
   /** Furo de laje de outra planta (forma com os furos de laje separados, ou outra camada): fica escondido aqui. */
@@ -1144,6 +1149,17 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
   }, [tipo, camada, manifest, pacote])
 
+  // filtro por tipo de ponto (SPDA igual aos furos, 22/11/2026): o ponto fora do filtro sai do mapa
+  useEffect(() => {
+    const g = grupoDosPontos.current
+    if (!g) return
+    for (const [id, l] of marcasDePonto.current) {
+      const vis = !pontosVisiveis || id in pontosVisiveis
+      if (vis && !g.hasLayer(l)) l.addTo(g)
+      else if (!vis && g.hasLayer(l)) g.removeLayer(l)
+    }
+  }, [pontosVisiveis, pacote])
+
   // cores (situação da peça na ficha, só a etapa escolhida, se houver)
   useEffect(() => {
     if (!manifest) return
@@ -1327,6 +1343,15 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const concluirDesenho = (pontos: Ponto[]) => {
     const problema = problemaDoContorno(pontos)
     if (problema) return avisar(problema)
+    if (desenho?.selecao && tipo === 'I') {
+      // área de seleção dos pontos (SPDA igual aos furos, 22/11): os do filtro ativo dentro dela
+      setDesenho(null)
+      const naArea = Object.keys(pontosVisiveis ?? {}).filter((id) => dentro(pontosVisiveis![id].ponto, pontos))
+      const ids = naArea.filter((id) => situacaoDaBarra(eventosDe(id)) === 'nada')
+      setSelecaoFuros({ contorno: pontos, ids, total: naArea.length, pontos: true })
+      setMsg(null)
+      return
+    }
     if (desenho?.selecao) {
       // área de seleção dos furos: os que aparecem (filtro "Tipo de furo" ativo) com o centro dentro dela
       setDesenho(null)
@@ -1794,8 +1819,45 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
    * "Confirmar OK em todos" da área de seleção dos furos (pedido do Nicolas, 22/11): C em cada furo ainda sem
    * conferir, um aviso só e um "Desfazer" que volta todos; depois acerta as peças donas (viga, pilar, área).
    */
+  /** O aviso do "Confirmar OK em todos" (furos e pontos): um só, com o "Desfazer" que volta todos. */
+  const avisarSelecao = (gravados: Linha[], um: string, varios: string, depois?: () => void) => {
+    const n = gravados.length
+    if (!n) return avisar(`Nada a marcar: os ${varios} desta área já estavam conferidos.`)
+    avisar(`${n} ${n === 1 ? um : varios} OK nesta área`, () => {
+      setMsg(null)
+      executar(async (evs2) => {
+        const desfeitos = await desfazerLote(c, gravados, evs2)
+        avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? um : varios}` : `Nada a desfazer: os ${varios} já mudaram.`)
+        return desfeitos
+      })
+      depois?.()
+    })
+  }
+
+  /** "Confirmar OK em todos" dos pontos de instalação: C no item dos pontos, em cada um ainda sem conferir. */
+  const confirmarSelecaoPontos = (ids: string[]) => {
+    const fp = fichaDoPonto()
+    if (!fp) return
+    executar(async (evs) => {
+      const gravados: Linha[] = []
+      for (const id of ids) {
+        const eventos = daFichaAberta(evs(id), null)
+        if (situacaoDaBarra(eventos) !== 'nada') continue
+        gravados.push(await marcarPelosFuros(c, id, fp.ficha, fp.item, 'C', null, eventos))
+      }
+      avisarSelecao(gravados, 'ponto', 'pontos')
+      return gravados
+    })
+  }
+
   const confirmarSelecaoFuros = () => {
     if (!selecaoFuros) return
+    if (selecaoFuros.pontos) {
+      const ids = selecaoFuros.ids
+      setSelecaoFuros(null)
+      fecharSobre()
+      return confirmarSelecaoPontos(ids)
+    }
     const alvos = selecaoFuros.ids.flatMap((id) => {
       const f = alvoDoFilho(id)
       return f ? [{ id, f }] : []
@@ -1819,20 +1881,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         if ((atual?.resultado ?? null) !== null) continue
         gravados.push(await tocarItem(c, id, f.ficha, f.item, 'C', eventos))
       }
-      const n = gravados.length
-      if (!n) {
-        avisar('Nada a marcar: os furos desta área já estavam conferidos.')
-        return gravados
-      }
-      avisar(`${n} ${n === 1 ? 'furo OK' : 'furos OK'} nesta área`, () => {
-        setMsg(null)
-        executar(async (evs2) => {
-          const desfeitos = await desfazerLote(c, gravados, evs2)
-          avisar(desfeitos.length ? `Desfeito: ${desfeitos.length} ${desfeitos.length === 1 ? 'furo' : 'furos'}` : 'Nada a desfazer: os furos já mudaram.')
-          return desfeitos
-        })
-        acertarDonos()
-      })
+      avisarSelecao(gravados, 'furo', 'furos', acertarDonos)
       return gravados
     })
     acertarDonos()
@@ -2103,7 +2152,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const tocarPonto = (pos: L.LatLng, m: L.Map) => {
     if (!pontos) return
     const escala = 2 ** m.getZoom()
-    const r = pontoTocado([pos.lng, -pos.lat], pontos, TOQUE_BARRA_PX / escala, FOLGA_BARRA_PX / escala)
+    const r = pontoTocado([pos.lng, -pos.lat], pontosVisiveis ?? pontos, TOQUE_BARRA_PX / escala, FOLGA_BARRA_PX / escala)
     if (!r) return avisar('Nenhum ponto aqui.')
     if ('ambiguo' in r) return avisar('Dois pontos juntos aqui: aproxime a planta e toque de novo.')
     const pt = pontos[r.id]
@@ -2281,8 +2330,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const resumoDaCamada =
     tipo === 'B' && barras && camada
       ? resumoDasBarras(Object.entries(barras).filter(([, b]) => b.camada === camada).map(([id]) => situacaoDaBarra(eventosDe(id))))
-      : tipo === 'I' && pontos
-        ? resumoDasBarras(Object.keys(pontos).map((id) => situacaoDaBarra(eventosDe(id))))
+      : tipo === 'I' && pontosVisiveis
+        ? resumoDasBarras(Object.keys(pontosVisiveis).map((id) => situacaoDaBarra(eventosDe(id))))
         : null
   // aviso da sincronização em poucas palavras, no canto do topo (não cobre planta nem painel)
   const quantos = /^(\d+) registro/.exec(aviso)?.[1]
@@ -2311,11 +2360,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   if (pacote === null) {
     return (
       <main class="tela fv-inicio" data-testid="fvs-fora-do-aparelho">
-        <header class="fv-topo-inicio">
-          <button type="button" class="fv-voltar" onClick={() => sair(voltar)} aria-label="Voltar">
-            ‹ Voltar
+        {/* cabeçalho comum (22/11, guia: só a seta, no canto esquerdo) */}
+        <header class="so-cabecalho fv-topo-inicio fv-topo-nivel">
+          <button type="button" class="fv-voltar so-cab-voltar" onClick={() => sair(voltar)} aria-label="Voltar" title="Voltar">
+            <span aria-hidden="true">‹</span>
           </button>
-          <div>
+          <div class="so-cab-titulo">
             <h1>{pavimento?.nome}</h1>
             <p class="discreto">
               {planta.trecho} · {planta.prancha}
@@ -2379,7 +2429,24 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           .sort(([, a], [, b]) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
           .map(([id, e]) => ({ id, nome: e.nome, comodo: e.comodo, sit: situacao(id, e) }))
       : []
-  const escolha = tipos.length > 1 ? 'tipos' : fichasTipo.length > 1 || comFiltroDeFuros ? 'fichas' : 'nada'
+  /** "+ Área" de seleção (furos e pontos, 22/11): desenha a área; tocado de novo, cancela. */
+  const botaoDaSelecao = (testid: string) => (
+    <button
+      type="button"
+      class={`fv-bpincel${desenho || selecaoFuros ? ' on' : ''}`}
+      data-testid={testid}
+      onClick={() => {
+        if (desenho || selecaoFuros) {
+          setDesenho(null)
+          setSelecaoFuros(null)
+          fecharSobre()
+        } else comecarDesenho(undefined, true)
+      }}
+    >
+      + Área
+    </button>
+  )
+  const escolha = tipos.length > 1 ? 'tipos' : fichasTipo.length > 1 || comFiltroDeFuros || comFiltroDePontos ? 'fichas' : 'nada'
   // planta de ambientes com esquadrias: as abas e, ao lado, o serviço (no celular, o topo ganha uma linha)
   const comServico = escolha === 'tipos' && tipos.includes('A') && fichasPara('A', dados.fichas).length > 1
   // pavimento com mais de um trecho: a caixa de escolha (44 px) deixa o topo mais alto (fvs.css)
@@ -2437,7 +2504,23 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
             ))}
           </select>
         )}
-        {(escolha === 'fichas' || comServico) && !comFiltroDeFuros && (
+        {comFiltroDePontos && (
+          // planta de pontos (SPDA igual aos furos, 22/11): um tipo de ponto de cada vez, com a contagem
+          <select
+            class="fv-servico"
+            aria-label="Tipo de ponto"
+            data-testid="fvs-filtro-pontos"
+            value={filtroPontos}
+            onChange={(ev) => setFiltroPontos((ev.target as HTMLSelectElement).value as FiltroDePontos)}
+          >
+            {opcoesDosPontos.map(({ filtro, n }) => (
+              <option value={filtro} key={filtro}>
+                {nomeDoFiltroDePontos(filtro)} ({n})
+              </option>
+            ))}
+          </select>
+        )}
+        {(escolha === 'fichas' || comServico) && !comFiltroDeFuros && !comFiltroDePontos && (
           // planta de ambientes: a cor de cada ambiente é a situação dele na ficha (serviço) escolhida aqui;
           // com esquadrias, a planta tem abas (Ambientes, Esquadrias) e o serviço continua aqui, nas duas
           <select
@@ -2558,6 +2641,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           )}
         </span>
         )}
+        {pode && tipo === 'I' && !!fichaDoPonto() && botaoDaSelecao('fvs-area-pontos')}
         {pode &&
           tipo !== 'B' &&
           tipo !== 'I' &&
@@ -2573,20 +2657,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           ) : deFuracao ? (
             // planta de furos (22/11): o "+ Área" seleciona os furos de uma área para o OK em todos; o Pincel e o
             // Arrastar não servem aqui (marcam a ficha da peça, e o furo não tem ficha própria)
-            <button
-              type="button"
-              class={`fv-bpincel${desenho || selecaoFuros ? ' on' : ''}`}
-              data-testid="fvs-area-furos"
-              onClick={() => {
-                if (desenho || selecaoFuros) {
-                  setDesenho(null)
-                  setSelecaoFuros(null)
-                  fecharSobre()
-                } else comecarDesenho(undefined, true)
-              }}
-            >
-              + Área
-            </button>
+            botaoDaSelecao('fvs-area-furos')
           ) : (
             <>
               <button
@@ -2802,7 +2873,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       {desenho && (
         <div class="fv-barpincel" data-testid="fvs-desenho">
           <b>
-            {desenho.selecao ? 'Área dos furos' : desenho.areaId ? `Novo contorno de ${dados.areaPorId.get(desenho.areaId)?.nome ?? 'área'}` : 'Nova área de laje'}: toque nos cantos da área ({desenho.pontos.length}{' '}
+            {desenho.selecao ? (tipo === 'I' ? 'Área dos pontos' : 'Área dos furos') : desenho.areaId ? `Novo contorno de ${dados.areaPorId.get(desenho.areaId)?.nome ?? 'área'}` : 'Nova área de laje'}: toque nos cantos da área ({desenho.pontos.length}{' '}
             {desenho.pontos.length === 1 ? 'canto' : 'cantos'}). Arrastar move a planta.
           </b>
           <button type="button" data-testid="fvs-desfazer-ponto" disabled={!desenho.pontos.length} onClick={() => setDesenho({ ...desenho, pontos: desenho.pontos.slice(0, -1) })}>
@@ -2820,9 +2891,16 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       {selecaoFuros && (
         <div class="fv-barpincel" data-testid="fvs-selecao-furos">
           <b>
-            {selecaoFuros.ids.length} {selecaoFuros.ids.length === 1 ? 'furo sem conferir' : 'furos sem conferir'} nesta área
+            {selecaoFuros.ids.length} {selecaoFuros.pontos ? 'ponto' : 'furo'}
+            {selecaoFuros.ids.length === 1 ? '' : 's'} sem conferir nesta área
             {selecaoFuros.total > selecaoFuros.ids.length ? ` (de ${selecaoFuros.total})` : ''}
-            {filtroFuros !== 'todos' ? ` · ${NOME_DO_FILTRO_DE_FUROS[filtroFuros]}` : ''}
+            {selecaoFuros.pontos
+              ? filtroPontos !== 'todos'
+                ? ` · ${nomeDoFiltroDePontos(filtroPontos)}`
+                : ''
+              : filtroFuros !== 'todos'
+                ? ` · ${NOME_DO_FILTRO_DE_FUROS[filtroFuros]}`
+                : ''}
           </b>
           <button type="button" class="on" data-testid="fvs-selecao-confirmar" disabled={!selecaoFuros.ids.length} onClick={confirmarSelecaoFuros}>
             Confirmar OK em todos

@@ -15,9 +15,11 @@ import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
 import { pacotesAManter } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
-import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
+import { camadaDoTrecho, NOME_DA_CAMADA, situacaoDaBarra, type CamadaDeBarras } from '../barras'
+import { disciplinaDePontos, fichaDosPontos, textoDoAvancoDosPontos } from '../pontos'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { avancoDosFuros, ehDeCamadaDeFuros, furoDeOutraPlanta, temFuracaoUnica, textoDoAvancoDosFuros } from '../furos_laje'
+import { IconeDoItem } from './icones'
 import { disciplinasDoPavimento, ehOpcaoDeAcabamentos, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
@@ -229,13 +231,13 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   /** Planta com revisão nova a baixar e a anterior no aparelho: a linha com os dois botões (Abrir R13 e Baixar R14). */
   const temRevisaoParaBaixar = (p: Planta) => !!noAparelho && !noAparelho.get(p.id) && !!dados.anterioresDe.get(p.id)?.some((a) => noAparelho.has(a.id))
   /** Botão da planta ou, com revisão nova a baixar, a linha de antes (com os dois botões). */
-  const plantaNaLista = (p: Planta, titulo: string, sub: string | null) =>
+  const plantaNaLista = (p: Planta, titulo: string, sub: string | null, icone?: string) =>
     temRevisaoParaBaixar(p) ? (
       <ul key={p.id} class="lista fv-trechos">
         {linhaDaPlanta(p)}
       </ul>
     ) : (
-      botaoDaPlanta(p, { titulo, sub })
+      botaoDaPlanta(p, { titulo, sub, icone: icone ? <IconeDoItem qual={icone} /> : undefined })
     )
 
   /** Botão grande de uma direção da armadura de laje (planta própria, 20/11/2026). A direção sai do nome do
@@ -312,6 +314,39 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // de cada planta de furação, lido do pacote no aparelho
   const [avancoDaFuracao, setAvancoDaFuracao] = useState<Map<string, ReturnType<typeof avancoDosFuros>>>(new Map())
   const furacaoAberta = discAberta?.id === 'estrutura' ? discAberta.plantas.filter(ehDeFuracao) : []
+  // pontos de instalação (SPDA igual aos furos, 22/11/2026): "x de y pontos OK" de cada planta de pontos com
+  // ficha (a de consulta, sem item de ficha, fica só com o número de pontos), lido do pacote no aparelho
+  const [avancoDosPontos, setAvancoDosPontos] = useState<Map<string, { ok: number; errados: number; total: number }>>(new Map())
+  const pontosAbertos =
+    discAberta?.id === 'instalacoes'
+      ? discAberta.plantas.filter((p) => {
+          const d = disciplinaDePontos(p.disciplina)
+          return !!d && !!fichaDosPontos(fichasPara('A', dados.fichas), d, fichasPara('L', dados.fichas))
+        })
+      : []
+  useEffect(() => {
+    if (!pontosAbertos.length || !noAparelho) return
+    let vivo = true
+    ;(async () => {
+      const m = new Map<string, { ok: number; errados: number; total: number }>()
+      for (const p of pontosAbertos) {
+        const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
+        if (!pac?.manifest.pontos) continue
+        const a = { ok: 0, errados: 0, total: 0 }
+        for (const id of Object.keys(pac.manifest.pontos)) {
+          a.total++
+          const s = situacaoDaBarra(dados.eventosDe.get(id) ?? [])
+          if (s === 'liberado') a.ok++
+          else if (s === 'reprovado') a.errados++
+        }
+        m.set(p.id, a)
+      }
+      if (vivo) setAvancoDosPontos(m)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [pontosAbertos.map((p) => p.id).join(','), noAparelho, dados])
   useEffect(() => {
     if (!furacaoAberta.length || !noAparelho) return
     let vivo = true
@@ -367,7 +402,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       return (
         <div key={p.id} class="fv-grade-armadura" data-testid="fvs-opcoes-ambientes">
           {ops.map((op) =>
-            botaoDaPlanta(p, { chave: op.id, titulo: op.titulo, sub: ambientes.length > 1 ? p.trecho : null, abrir: { nome: 'planta', plantaId: p.id, servico: op.abre.servico, aba: op.abre.aba }, testid: 'fvs-opcao-ambiente' }),
+            botaoDaPlanta(p, { chave: op.id, titulo: op.titulo, sub: ambientes.length > 1 ? p.trecho : null, icone: <IconeDoItem qual={op.pontos?.length ? 'instalacoes' : ehOpcaoDeAlvenaria(op) ? 'paredes' : 'ambientes'} />, abrir: { nome: 'planta', plantaId: p.id, servico: op.abre.servico, aba: op.abre.aba }, testid: 'fvs-opcao-ambiente' }),
           )}
         </div>
       )
@@ -418,6 +453,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                         chave: `${p.id}:${tipo}`,
                         titulo: OPCOES_DA_FORMA.find((o) => o.tipo === tipo)!.nome,
                         sub: [daForma.length > 1 ? p.trecho : '', tipo === 'L' ? (n ? `${n} ${n === 1 ? 'área desenhada' : 'áreas desenhadas'}` : 'Desenhe a área na planta') : tipo === 'F' ? (furos?.total ? textoDoAvancoDosFuros(furos) : `${n} ${n === 1 ? 'furo' : 'furos'}`) : tipo === 'B' ? `${n} ${n === 1 ? 'barra' : 'barras'}` : `${n} ${n === 1 ? 'peça' : 'peças'}`].filter(Boolean).join(' · '),
+                        icone: <IconeDoItem qual={tipo} />,
                         abrir: { nome: 'planta', plantaId: p.id, tipo },
                         testid: 'fvs-opcao-forma',
                         extra: { 'data-tipo': tipo },
@@ -426,7 +462,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                   </div>
                 ) : (
                   <div key={p.id} class="fv-grade-armadura">
-                    {plantaNaLista(p, daForma.length > 1 ? `Forma · ${p.trecho}` : 'Forma: pilares, vigas e lajes', `${p.elementos} peças · ${p.prancha}`)}
+                    {plantaNaLista(p, daForma.length > 1 ? `Forma · ${p.trecho}` : 'Forma: pilares, vigas e lajes', `${p.elementos} peças · ${p.prancha}`, 'forma')}
                   </div>
                 ),
               )}
@@ -450,7 +486,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             return (
               <div data-testid="fvs-secao-outra">
                 <h3 class="fv-disciplina">Furos</h3>
-                <div class="fv-grade-armadura">{plantaNaLista(abre, 'Furos', `${a?.total ? textoDoAvancoDosFuros(a) : `${n} ${n === 1 ? 'furo' : 'furos'}`} · ${abre.prancha}`)}</div>
+                <div class="fv-grade-armadura">{plantaNaLista(abre, 'Furos', `${a?.total ? textoDoAvancoDosFuros(a) : `${n} ${n === 1 ? 'furo' : 'furos'}`} · ${abre.prancha}`, 'furos')}</div>
               </div>
             )
           })()}
@@ -463,7 +499,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                   {rm.comR > 0 && <span class="fv-txt-r"> · {rm.comR} com NC</span>}
                 </p>
               )}
-              <div class="fv-grade-armadura">{vedacao.map((p) => plantaNaLista(p, vedacao.length > 1 ? p.trecho : 'Paredes do pavimento', `${p.elementos} paredes · ${p.prancha}`))}</div>
+              <div class="fv-grade-armadura">{vedacao.map((p) => plantaNaLista(p, vedacao.length > 1 ? p.trecho : 'Paredes do pavimento', `${p.elementos} paredes · ${p.prancha}`, 'paredes'))}</div>
             </div>
           )}
           {ambientes.length > 0 && discAberta.id === 'alvenaria' && (
@@ -489,16 +525,25 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               )}
               {opcoesDeAmbientes(ambientes, ehOpcaoDeAcabamentos)}
               <p class="fv-subgrupo">Planta com todos os ambientes</p>
-              <div class="fv-grade-armadura">{ambientes.map((p) => plantaNaLista(p, ambientes.length > 1 ? p.trecho : 'Todos os ambientes', p.prancha))}</div>
+              <div class="fv-grade-armadura">{ambientes.map((p) => plantaNaLista(p, ambientes.length > 1 ? p.trecho : 'Todos os ambientes', p.prancha, 'ambientes'))}</div>
             </div>
           )}
           {/* instalações (hidro, sanitário, elétrico, SPDA) e disciplinas que o app não conhece: uma seção cada */}
-          {outras.map(([disc, lista]) => (
-            <div key={disc} data-testid="fvs-secao-outra">
-              {(outras.length > 1 || discAberta.id === 'instalacoes') && <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>}
-              <div class="fv-grade-armadura">{lista.map((p) => plantaNaLista(p, p.trecho, `${p.elementos} ${disc in SECAO_DE_INSTALACOES ? 'pontos' : 'locais'} · ${p.prancha}`))}</div>
-            </div>
-          ))}
+          {outras.map(([disc, lista]) => {
+            // pontos de instalação (SPDA igual aos furos, 22/11/2026): "x de y pontos OK", lido do pacote
+            const sub = (ps: Planta[]) => {
+              const as = ps.map((p) => avancoDosPontos.get(p.id))
+              const a = as.every(Boolean) ? as.reduce<{ ok: number; errados: number; total: number }>((t, x) => ({ ok: t.ok + x!.ok, errados: t.errados + x!.errados, total: t.total + x!.total }), { ok: 0, errados: 0, total: 0 }) : undefined
+              const n = ps.reduce((t, p) => t + p.elementos, 0)
+              return `${a?.total ? textoDoAvancoDosPontos(a) : `${n} ${disc in SECAO_DE_INSTALACOES ? 'pontos' : 'locais'}`} · ${ps[0].prancha}`
+            }
+            return (
+              <div key={disc} data-testid="fvs-secao-outra">
+                {(outras.length > 1 || discAberta.id === 'instalacoes') && <h3 class="fv-disciplina">{nomeDaDisciplina(disc)}</h3>}
+                <div class="fv-grade-armadura">{lista.map((p) => plantaNaLista(p, p.trecho, sub([p]), disc))}</div>
+              </div>
+            )
+          })}
           {/* fichas de ambiente com item de pontos (hidro, esgoto...): por ambiente, na planta de ambientes (21/11/2026) */}
           {ambientes.length > 0 && discAberta.id === 'instalacoes' && (
             <div data-testid="fvs-ambientes-instalacoes">
@@ -559,6 +604,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                 data-disciplina={d.id}
                 onClick={() => ir({ nome: 'disciplina', pavimentoId: pv.id, disciplina: d.id })}
               >
+                <IconeDoItem qual={d.id} />
                 <span class="fv-bt-texto">
                   <b>{d.nome}</b>
                   {tem && <small>{tem}</small>}

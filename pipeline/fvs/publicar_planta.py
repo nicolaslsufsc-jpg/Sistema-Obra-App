@@ -241,6 +241,12 @@ def ler_config(caminho: pathlib.Path) -> dict:
                 raise ErroPublicacao(f"instalacoes: {disc}: modelo não achado ({valor['ifc']})")
             niveis = valor["nivel"] if isinstance(valor["nivel"], list) else [valor["nivel"]]
             inst["disciplinas"][disc] = {"ifc": ifcs, "nivel": niveis}
+            if valor.get("pdf"):  # fundo das pranchas da disciplina, coladas pelos pilares (como a furação)
+                pdfs = arquivos(valor["pdf"])
+                if not pdfs:
+                    raise ErroPublicacao(f"instalacoes: {disc}: nenhuma prancha achada (\"pdf\")")
+                inst["disciplinas"][disc].update({"pdfs": pdfs, "escala": float(valor.get("escala") or 75),
+                                                  "alinhamento": valor.get("alinhamento") or {}})
     barras = None
     if cfg.get("barras_laje"):
         import barras_laje
@@ -580,11 +586,50 @@ def por_instalacoes(cfg: dict, detalhes: dict, formas: list[dict], rel_furos: di
             continue
         pontos, fora = mod_inst.pontos_na_folha((detalhes.get("instalacoes") or {}).get(disc) or [], enc, disc, fm["largura"], fm["altura"],
                                                cfg["obra"], cfg["pavimento"])
-        formas.append(mod_inst.folha_da_disciplina(fm, disc, pontos))
+        folha = mod_inst.folha_da_disciplina(fm, disc, pontos)
         rel[disc] = mod_inst.resumo(pontos, fora)
+        c = cfg["instalacoes"]["disciplinas"][disc]
+        if c.get("pdfs"):
+            rel[disc]["pranchas"] = fundo_das_pranchas(folha, fm, c)
+            rel[disc]["a_conferir"] = mod_inst.a_conferir(pontos, fm["pecas"])
+            if rel[disc]["a_conferir"]["descida_longe_de_pilar"]:
+                print(f"  a conferir: {len(rel[disc]['a_conferir']['descida_longe_de_pilar'])} descidas longe de pilar (lista no relatorio.json)")
+        formas.append(folha)
         print(f"  {mod_inst.DISCIPLINAS[disc]}: {len(pontos)} pontos na folha"
               + (f"; {len(fora)} fora da folha (lista no relatorio.json; encaixe errado ou ponto de outro pavimento)" if fora else ""))
     return rel
+
+
+def fundo_das_pranchas(folha: dict, fm: dict, c: dict) -> list[dict]:
+    """Troca o fundo da planta da disciplina (a forma) pelas pranchas da disciplina, encaixadas pelos pilares como
+    as de furação (furacao_fundo.py). Sem prancha encaixada, o fundo continua o da forma. Devolve o resumo."""
+    import armadura_laje
+    import folha_unica
+    import furacao_fundo
+
+    print(f"  lendo as pranchas da disciplina: {len(c['pdfs'])}")
+    try:
+        lidas = [furacao_fundo.ler_prancha(p, c["escala"]) for p in c["pdfs"]]
+    except furacao_fundo.ErroFuracao as e:
+        raise ErroPublicacao(f"instalacoes: {e}") from e
+    alinhadas, resumo = furacao_fundo.alinhar_pranchas(fm["pecas"], lidas, c.get("alinhamento") or {})
+    for r in resumo:
+        a = r["alinhamento"]
+        print(f"    {r['prancha']}: " + (f"{a['pontos']} de {a['total']} pilares batem (erro até {a['residuo_max_cm']} cm)"
+                                           + (f"; pilar em cinza {a['tom_do_pilar']}" if a.get("tom_do_pilar") is not None else "") if a["ok"]
+                                           else f"NÃO ENCAIXOU ({a['motivo']}); fica fora do fundo"))
+    if not alinhadas:
+        print("    nenhuma prancha encaixou: o fundo fica o da forma")
+        return resumo
+    if len(alinhadas) == 1:
+        nome = alinhadas[0]["nome"]
+        revisao = nome.rsplit("-", 1)[-1] if "-R" in nome else "R00"
+    else:
+        nome, revisao = folha_unica.nome_da_folha([p["nome"] for p in alinhadas])
+    folha.update({"prancha": nome, "revisao": revisao, "tiles": armadura_laje.tiles_da_camada(alinhadas, fm["niveis"]),
+                  "origens": [{"prancha": p["nome"], "transformacao": p["transformacao"]} for p in alinhadas]})
+    print(f"    {len(alinhadas)} pranchas coladas no fundo")
+    return resumo
 
 
 def por_furacao(cfg: dict, formas: list[dict]) -> dict | None:

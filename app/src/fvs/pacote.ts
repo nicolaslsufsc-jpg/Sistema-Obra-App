@@ -3,6 +3,7 @@
 // O banco do núcleo não é usado para isto (são megabytes de imagem, não registros).
 
 import { lembrarComodo } from './comodos'
+import { pecaDosFurosDeLaje } from './furos_laje'
 import Dexie, { type Table } from 'dexie'
 import type { BarraPacote, CamadaDeBarras } from './barras'
 import type { DisciplinaDePontos, PontoPacote } from './pontos'
@@ -74,6 +75,9 @@ export interface ElementoPacote {
   partes?: ParteDoPilar[]
   /** só furo: id (no manifest) da viga em que ele fica */
   viga?: string
+  /** só furo (21/11/2026): id (no manifest) do pilar em que ele (ou a caixinha) fica; marca o item de furos
+   *  (`"furos": true`) da ficha do pilar, como o de viga marca o da viga */
+  pilar?: string
   /** só furo: posição, tamanho e disciplinas do modelo */
   furo?: DadosDoFuro
   /** só ambiente: recortes de outros projetos (paginação de piso, impermeabilização...), chaves em `detalhes`;
@@ -90,7 +94,7 @@ export const TIPOS_FILHOS = ['F', 'E'] as const
 
 /** O local pai de um filho: a viga do furo, o ambiente da esquadria. */
 export function paiDe(e: ElementoPacote | undefined): string | undefined {
-  return e?.tipo === 'F' ? e.viga : e?.tipo === 'E' ? e.ambiente : undefined
+  return e?.tipo === 'F' ? (e.viga ?? e.pilar) : e?.tipo === 'E' ? e.ambiente : undefined
 }
 
 /** Nomes das disciplinas do furo (pipeline/fvs/furos.py, DISCIPLINAS). */
@@ -182,8 +186,11 @@ export interface Manifest {
   furos_laje?: 'esgoto' | 'agua' | 'eletrica'
   /** forma com os furos de laje em plantas próprias: eles ficam no pacote, escondidos */
   furos_laje_separados?: boolean
+  /** forma com TODOS os furos (laje, viga e pilar) na planta de furação própria (21/11/2026, "igual à
+   *  armadura"): eles ficam no pacote, para o item da viga e do pilar contar, mas não aparecem aqui */
+  furos_separados?: boolean
   /** planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela */
-  disciplina?: DisciplinaDePontos
+  disciplina?: DisciplinaDePontos | 'furacao' | 'armadura'
   /** pontos de instalações do modelo, já na folha (aba Pontos); chave = id do ponto (registro em barra_id) */
   pontos?: Record<string, PontoPacote>
   /** nome do pedaço → [início, tamanho] dentro do pacote.bin */
@@ -355,7 +362,8 @@ export async function guardarPacote(manifestBytes: ArrayBuffer | string, bin: Bl
 export async function abrirPacote(plantaId: string): Promise<PacoteAberto | null> {
   const p = await db().pacotes.get(plantaId)
   if (p) lembrarEscala(p.manifest)
-  return p ? new PacoteAberto(p.manifest, p.bin) : null
+  // furo de laje em cima de viga ou pilar vai para a ficha da peça (regra de 21/11/2026, pacote antigo)
+  return p ? new PacoteAberto(pecaDosFurosDeLaje(p.manifest), p.bin) : null
 }
 
 /** Abre o pacote da planta ou, se ele ainda não foi baixado, o da revisão anterior mais nova. */

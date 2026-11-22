@@ -31,7 +31,9 @@ import { casaComodo, textoDoComodo } from '../busca'
 import {
   avisoDoCEletrico,
   ehFuroDeLaje,
+  fichaDoFuroSemArea,
   furoConferivel,
+  situacaoDoFuroPeloUltimo,
   furoDeLajeEscondido,
   furoDeOutraPlanta,
   furosConferiveisPorArea,
@@ -105,7 +107,7 @@ import type { Linha } from '../../nucleo/banco_local'
 import { AvisoHora } from './AvisoHora'
 import { CampoNc } from './CampoNc'
 import { pecasDoMesmoDesenho } from '../mesmo_desenho'
-import { fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
+import { disciplinaDePontos, fichaDosPontos, nomeDoPonto, pontoTocado } from '../pontos'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import './escolha.css'
 import type { ContextoFvs } from './ModuloFvs'
@@ -151,8 +153,8 @@ const COR_BARRA: Record<'nada' | 'liberado' | 'reprovado', string> = { nada: '#1
 /** Margem do toque na barra (px na tela) e a diferença mínima entre as duas mais perto para escolher uma. */
 const TOQUE_BARRA_PX = 40
 const FOLGA_BARRA_PX = 4
-/** Furo na planta: raio da bolinha e do alvo do dedo (44 px de diâmetro), em px de tela. */
-const RAIO_FURO_PX = 7
+/** Furo na planta: raio da bolinha (20 px de diâmetro, 21/11: "aumentar tamanho dos furos") e do alvo do dedo (44 px), em px de tela. */
+const RAIO_FURO_PX = 10
 /** As instalações da laje, na ordem dos itens da ficha (item 4, 19/11). */
 const INSTALACOES: readonly Instalacao[] = ['esgoto', 'agua', 'eletrica']
 const ALVO_FURO_PX = 22
@@ -356,7 +358,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const [zoomDosNumeros, setZoomDosNumeros] = useState(0)
   // tipos de local que esta planta tem (forma: pilares, vigas e as lajes desenhadas; arquitetura: ambientes)
   // planta de instalações (hidro, sanitário; 20/11/2026): só os pontos da disciplina, sem áreas nem peças
-  const deInstalacoes = !!manifest?.disciplina
+  // só planta de pontos: a de furação também traz "disciplina" no manifest
+  const deInstalacoes = !!disciplinaDePontos(manifest?.disciplina)
   const pontos = manifest?.pontos
   // a modulação (paredes) não tem área de laje
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !deArmadura && !deFuracao && !deInstalacoes && (pode || areasDaPlanta.length > 0)
@@ -482,7 +485,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const numerosDasAreas = useMemo(() => {
     const escala = manifest?.escala ?? 50
     // só os furos desta planta (a forma com os de laje separados conta só os de viga; a planta de uma camada, os dela)
-    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados)
+    const daqui = manifest && (manifest.furos_laje || manifest.furos_laje_separados || manifest.furos_separados)
       ? Object.fromEntries(Object.entries(manifest.elementos).filter(([, e]) => !deOutraPlanta(e)))
       : manifest?.elementos
     const grupos = furosConferiveisPorArea(daqui, furosDeLaje, areasDaPlanta, escala, multiploDoQuadrado(zoomDosNumeros, escala))
@@ -523,7 +526,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const e = manifest?.elementos[id]
       if (!e || !instalacoesDoFuro(e).includes(inst)) return []
       const it = itemDoFuroDeLaje(e, ficha)
-      return it ? [{ id, nome: e.nome, sit: situacaoDoFuro(ficha.id, it.item, daFichaAberta(evs(id), null)) }] : []
+      // pelo registro mais novo: o furo marcado antes da área existir (noutra ficha de laje) conta aqui também
+      return it ? [{ id, nome: e.nome, sit: situacaoDoFuroPeloUltimo(daFichaAberta(evs(id), null)) }] : []
     })
   /** As situações dos furos de cada instalação da área (só as que a ficha da área tem item). */
   const instalacoesDaArea = (areaId: string): Partial<Record<Instalacao, Situacao[]>> => {
@@ -538,9 +542,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const furoSemItem = (id: string): string => {
     const e = manifest?.elementos[id]
     if (e?.tipo === 'E') return `${fichaDe('A')?.titulo ?? 'A ficha'} não tem item de esquadria: a esquadria fica só para ver.`
+    if (e?.tipo === 'F' && e.pilar && !e.viga) return 'A ficha do pilar não tem item de furos: o furo fica só para ver.'
     if (!e || !ehFuroDeLaje(e)) return 'A ficha de viga não tem item de furação: o furo fica só para ver.'
-    if (!furosDeLaje.get(id)) return `${e.nome} está fora de área de laje: desenhe a área na aba Lajes para conferir o furo.`
     if (!instalacoesDoFuro(e).length) return `${e.nome} não é de esgoto, água nem elétrica: fica só para ver.`
+    if (!furosDeLaje.get(id)) return 'Nenhuma ficha de laje tem o item desta instalação: o furo fica só para ver.'
     return 'A ficha da área não tem o item desta instalação: o furo fica só para ver.'
   }
   /** Filhos de cada local desta planta: furos da viga, esquadrias do ambiente (id do pai → ids). */
@@ -560,12 +565,18 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (ehFuroDeLaje(el)) {
       // furo de laje: o "dono" é a área em que ele cai; o item é o da instalação dele na ficha da área
       const area = furosDeLaje.get(furoId)
-      const ficha = area ? fichaPorId(area.ficha_id) : undefined
+      if (!area) {
+        // fora de área (21/11): o registro fica no furo, na ficha de laje que tem o item da instalação dele
+        const sem = el ? fichaDoFuroSemArea(el, fichasPara('L', dados.fichas), fichaDe('L')) : undefined
+        return sem ? { vigaId: '', ficha: sem.ficha, item: sem.item, laje: true } : undefined
+      }
+      const ficha = fichaPorId(area.ficha_id)
       const it = el && ficha ? itemDoFuroDeLaje(el, ficha) : undefined
-      return area && ficha && it ? { vigaId: area.id, ficha, item: it.item, laje: true } : undefined
+      return ficha && it ? { vigaId: area.id, ficha, item: it.item, laje: true } : undefined
     }
-    const vigaId = el?.viga
-    const ficha = vigaId ? fichaDoLocal(vigaId, 'V') : undefined
+    // furo de viga: a ficha da viga; furo em pilar (21/11/2026): a ficha do pilar, no item de furos dela
+    const vigaId = el?.viga ?? el?.pilar
+    const ficha = vigaId ? fichaDoLocal(vigaId, el?.viga ? 'V' : 'P') : undefined
     const item = itemDosFuros(ficha)?.n
     return vigaId && ficha && item !== undefined ? { vigaId, ficha, item } : undefined
   }
@@ -587,6 +598,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   const situacao = (id: string, e: ElementoPacote): Situacao => {
     if (!ehFilho(e.tipo)) return situacaoSo(id, e)
     const f = alvoDoFilho(id)
+    if (f && ehFuroDeLaje(e)) return situacaoDoFuroPeloUltimo(eventosDe(id))
     return f ? situacaoDoFuro(f.ficha.id, f.item, eventosDe(id)) : 'nada'
   }
   const situacaoSo = (id: string, e: ElementoPacote): Situacao => {
@@ -1131,8 +1143,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         const escondido =
           sel !== id &&
           (e.tipo === 'F' ? tipo !== 'F' || furoDeLajeEscondido(e) || deOutraPlanta(e) || !furosPerto : e.tipo === 'E' && (tipo !== 'E' || !esquadriasPerto))
-        // furo de laje fora de área de laje: apagado, não marca nada (o toque diz por quê)
-        const vivo = ativo && !(ehFuroDeLaje(e) && !furosDeLaje.get(id))
+        // furo de laje sem ficha que o marque: apagado (o toque diz por quê); fora de área ele marca (21/11)
+        const vivo = ativo && !(ehFuroDeLaje(e) && !furacaoDe(id))
         const fo = escondido ? 0 : vivo ? 0.95 : 0.25
         const op = escondido ? 0 : vivo ? 1 : 0.35
         const w = sel === id ? 4 : 2
@@ -1545,7 +1557,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
 
   /** Depois do toque num furo: leva o resultado ao item da viga ou, no furo de laje, aos itens da área. */
-  const acertarDono = (f: { vigaId: string; item: number; laje?: boolean }) => (f.laje ? acertarArea(f.vigaId) : acertarViga(f.vigaId, f.item))
+  const acertarDono = (f: { vigaId: string; item: number; laje?: boolean }) => (f.laje ? f.vigaId && acertarArea(f.vigaId) : acertarViga(f.vigaId, f.item))
 
   /**
    * Leva os furos de laje aos itens de instalação da área (furos_laje.ts): esgoto e água pelos furos
@@ -1739,7 +1751,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
   // ------------------------------------------------------------------ pontos de instalação
   /** A ficha de ambiente com o item dos pontos desta disciplina (opção B: a ficha fica no ambiente). */
-  const fichaDoPonto = () => (manifest?.disciplina ? fichaDosPontos(fichasPara('A', dados.fichas), manifest.disciplina) : undefined)
+  const fichaDoPonto = () => {
+    const d = disciplinaDePontos(manifest?.disciplina)
+    return d ? fichaDosPontos(fichasPara('A', dados.fichas), d, fichasPara('L', dados.fichas)) : undefined
+  }
 
   /** Grava a situação nova do ponto (C OK, NC errado com observação, null sem conferir), em barra_id. */
   const gravarPonto = (pontoId: string, resultado: 'C' | 'NC' | null, obs: string | null) => {
@@ -1923,7 +1938,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
 
   // ------------------------------------------------------------------ progresso
   // arranque (só detalhe) não tem ficha: não conta no "x/y liberados"; na aba Furos, só os furos
-  // conferíveis (o de laje fora de área ou de Geral, Climatização e Incêndio não marca nada; 20/11)
+  // conferíveis (o de Geral, Climatização e Incêndio não marca nada, 20/11; o de laje fora de área marca, 21/11)
   const doTipo = useMemo(
     () =>
       elementos.filter(
@@ -3217,8 +3232,9 @@ function Painel(p: PropsPainel) {
             </p>
             {!!furo?.disciplinas?.length && <p class="discreto">{furo.disciplinas.map((d) => NOME_DA_DISCIPLINA[d] ?? d).join(', ')}</p>}
             {p.furoDeLaje && !p.furoDeLaje.area && (
-              <p class="aviso" data-testid="fvs-furo-fora-area">
-                Fora de área de laje: o furo não marca nada até a área ser desenhada na aba Lajes.
+              // fora de área (21/11): grava no próprio furo, na ficha de laje que tem o item da instalação
+              <p class={ficha ? 'discreto' : 'aviso'} data-testid="fvs-furo-fora-area">
+                {ficha ? `Fora de área de laje: o registro fica no furo, em ${ficha.titulo}.` : p.furoDeLaje.aviso}
               </p>
             )}
             {!ficha && !(p.furoDeLaje && !p.furoDeLaje.area) && <p class="aviso">{p.furoDeLaje ? p.furoDeLaje.aviso : 'A ficha de viga não tem item de furação: o furo fica só para ver.'}</p>}

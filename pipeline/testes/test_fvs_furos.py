@@ -412,20 +412,40 @@ class TestPlantasDeFurosDeLaje(unittest.TestCase):
         self.assertTrue(fm["furos_laje_separados"])
         self.assertEqual(sum(1 for p in fm["pecas"] if p["tipo"] == "F"), 6)  # a forma continua com todos
 
+    def _furacao(self, fm):
+        """A planta de furação única (furacao_fundo.py), com a prancha de furação fingida: encaixe identidade e o
+        fundo da forma no lugar dos tiles da prancha."""
+        from unittest import mock
+
+        import armadura_laje
+        import furacao_fundo
+
+        prancha = {"nome": "EXE.FR.EX.031.2PVTOXXXXA-R00", "transformacao": {"matriz": [1.5, 0, 0, 1.5], "t": [0, 0]}}
+        with mock.patch.object(armadura_laje, "tiles_da_camada", lambda pranchas, niveis: fm["tiles"]):
+            return furacao_fundo.folha_de_furacao(fm, [prancha], imprimir=lambda *_: None)
+
     def test_pacotes_com_os_mesmos_ids(self):
-        fm, folhas, formas = self._lidas()
+        """Planta de furação única (pedido do Nicolas de 21/11, "aba separada, projeto dos furos completo"): todos
+        os furos da forma, de viga e de laje, com os mesmos ids; a forma marca furos_separados."""
+        fm, _, _ = self._lidas(separados=False)
+        folha = self._furacao(fm)
+        formas = [fm, folha]
         ids = {(p["tipo"], p["nome"]): publicar_planta.id_local("EXE", "2º Pavimento", p["tipo"], p["nome"]) for f in formas for p in f["pecas"]}
         m, _ = pacote.ler(*publicar_planta.montar_trecho(fm, {"P": {}, "V": {}}, ids, {"planta_id": "f", "trecho": fm["trecho"]})[:2])
-        self.assertTrue(m["furos_laje_separados"])
+        self.assertTrue(m["furos_separados"])
         self.assertNotIn("furos_laje", m)
-        man, binario, rel = publicar_planta.montar_trecho(folhas[0], {"P": {}, "V": {}}, ids, {"planta_id": "e", "trecho": folhas[0]["trecho"]})
+        man, binario, rel = publicar_planta.montar_trecho(folha, {"P": {}, "V": {}}, ids, {"planta_id": "u", "trecho": folha["trecho"]})
         e, pedacos = pacote.ler(man, binario)
-        self.assertEqual((e["furos_laje"], e["trecho"]), ("esgoto", "Furos de esgoto"))
-        self.assertNotIn("furos_laje_separados", e)
-        self.assertNotIn("disciplina", e)  # não é planta de pontos de instalações
-        self.assertEqual(set(e["elementos"]) - set(m["elementos"]), set())  # mesmos ids da forma
-        self.assertEqual(len(e["elementos"]), 5)
-        self.assertEqual((rel["elementos"], rel["disciplina"]), (2, "furacao"))
+        self.assertEqual((e["disciplina"], e["trecho"]), ("furacao", "Furação"))
+        self.assertNotIn("furos_laje", e)  # sem filtro de camada: o app mostra todos
+        self.assertNotIn("furos_separados", e)
+        f_forma = {i for i, x in m["elementos"].items() if x["tipo"] == "F"}
+        self.assertEqual(set(e["elementos"]), f_forma)  # os mesmos furos, com os mesmos ids da forma
+        self.assertEqual(len(e["elementos"]), 6)  # 1 de viga e 5 de laje
+        viga_do_furo = [x["viga"] for x in e["elementos"].values() if x.get("viga")]
+        self.assertEqual(len(viga_do_furo), 1)
+        self.assertEqual(m["elementos"][viga_do_furo[0]]["tipo"], "V")  # a viga fica na forma
+        self.assertEqual((rel["elementos"], rel["disciplina"]), (6, "furacao"))
         self.assertTrue(any(k.startswith("t:") for k in pedacos))
         with self.assertRaises(pacote.ErroPacote):
             pacote.montar({**TestPacote.CAB, "furos_laje": "gas"}, {}, {}, {})
@@ -465,15 +485,24 @@ class TestPlantasDeFurosDeLaje(unittest.TestCase):
         self.assertEqual(sorted(e["nome"] for e in srv.tabelas["elementos"]), ["FL1", "FL2", "FL3", "FL4", "FL5"])
 
     def test_so_gerar_grava_as_plantas(self):
+        """--so-gerar com "furacao": a forma e a planta de furação única (as de furos por camada não saem mais)."""
+        from unittest import mock
+
+        import armadura_laje
+        import furacao_fundo
+
         fm = TestPacote().forma()
         laje = lambda i, x, y, d: {**furo(i, x, y, disc=(d,)), "laje": True}
         cfg = {"obra": "EXE", "pavimento": "2º Pavimento", "det_pilares": [], "det_vigas": [], "manter_sem_detalhe": ["P", "V"],
-               "furos": {"ifc": "m.ifc", "nivel": ["X"], "encaixe": IDENT}, "furos_laje_separados": True}
+               "furos": {"ifc": "m.ifc", "nivel": ["X"], "encaixe": IDENT}, "furos_laje_separados": True,
+               "furacao": {"pdfs": ["EXE.FR.EX.031.2PVTOXXXXA-R00.pdf"], "escala": 75, "alinhamento": {}}}
         detalhes = {"P": {}, "V": {}, "furos": [furo("a", 20, 5), laje("s", 100, 300, "p.FURO.SAN"), laje("e", 200, 300, "p.FURO.ELT/TEL")]}
-        with tempfile.TemporaryDirectory() as d:
+        lida = {"nome": "EXE.FR.EX.031.2PVTOXXXXA-R00", "pdf": "x.pdf", "pilares": [], "janela": (0, 0, 1, 1), "escala": 75}
+        alinhada = {**lida, "transformacao": {"matriz": [1.5, 0, 0, 1.5], "t": [0, 0]}}
+        with tempfile.TemporaryDirectory() as d,                 mock.patch.object(furacao_fundo, "ler_prancha", lambda pdf, escala: lida),                 mock.patch.object(furacao_fundo, "alinhar_pranchas", lambda pecas, lidas, manuais: ([alinhada], [{"prancha": lida["nome"], "pilares": 0, "alinhamento": {"ok": True, "pontos": 5, "total": 5, "residuo_max_cm": 0.1}}])),                 mock.patch.object(armadura_laje, "tiles_da_camada", lambda pranchas, niveis: fm["tiles"]):
             rels = publicar_planta.publicar_lidas(cfg, detalhes, [fm], argparse.Namespace(so_gerar=d))
-            self.assertEqual([r["pasta"] for r in rels], ["Planta_inteira", "Furos_de_esgoto", "Furos_de_elétrica"])
-
+            self.assertEqual([r["pasta"] for r in rels], ["Planta_inteira", "Furação"])
+            self.assertEqual(rels[1]["elementos"], 3)
 
 class TestParede(unittest.TestCase):
     """Furo "de viga" cuja peça, no modelo, tem 2 m ou mais de altura: parede ou cortina (Térreo comercial, 20/11)."""

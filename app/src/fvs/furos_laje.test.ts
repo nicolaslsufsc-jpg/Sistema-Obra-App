@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import type { AreaDeLaje, Ponto } from './areas'
 import {
   areaDoFuro,
+  avancoDosFuros,
   avisoDoCEletrico,
   camadaDoFuro,
   ehFuroDeLaje,
+  fichaDoFuroSemArea,
   furoConferivel,
   furoDeLajeEscondido,
   furoDeOutraPlanta,
@@ -20,9 +22,12 @@ import {
   juntarNumerosPerto,
   multiploDoQuadrado,
   observacaoDosFuros,
+  pecaDosFurosDeLaje,
   resultadoDaInstalacao,
   situacaoDoFuroDeLajeNaObra,
+  situacaoDoFuroPeloUltimo,
   situacaoDoNumeroDaArea,
+  textoDoAvancoDosFuros,
   textoDoNumeroDaArea,
 } from './furos_laje'
 import type { ElementoPacote } from './pacote'
@@ -153,6 +158,46 @@ describe('aviso do C à mão na elétrica', () => {
   })
 })
 
+describe('furo de laje fora de área (21/11): grava na ficha de laje e conta depois na área', () => {
+  const TRELICADA: Ficha = { ...LAJE, id: 'f-exe-tre', codigo: 'EXE-TRE', itens: [{ n: 9, etapa: 'INSTALAÇÕES', titulo: 'Esgoto', instalacao: 'esgoto' }] }
+  const SEM: Ficha = { ...LAJE, id: 'f-exe-sem', codigo: 'EXE-SEM', itens: [{ n: 1, etapa: 'FÔRMA', titulo: 'Escoramento' }] }
+  it('a ficha: a preferida se tiver o item; senão a primeira que tem; nenhuma: undefined', () => {
+    const esgoto = furo('FL1', 0, 0, ['Sanitário / drenagem'])
+    const agua = furo('FL2', 0, 0, ['Hidráulica'])
+    expect(fichaDoFuroSemArea(esgoto, [LAJE, TRELICADA], TRELICADA)).toEqual({ ficha: TRELICADA, item: 9 })
+    expect(fichaDoFuroSemArea(esgoto, [SEM, LAJE])).toEqual({ ficha: LAJE, item: 12 })
+    expect(fichaDoFuroSemArea(agua, [TRELICADA], SEM)).toBeUndefined()
+  })
+  it('a situação pelo registro mais novo, em qualquer ficha (marcado sem área e contado na área de outra ficha)', () => {
+    const e = (ficha: string, item: number, r: EventoFvs['resultado'], s: string): EventoFvs => ({ id: s, elemento_id: 'fl1', ficha_id: ficha, item, resultado: r, rodada: 1, observacao: null, lote_id: null, planta_id: null, usuario_id: 'u', criado_em_dispositivo: `2026-11-21T10:00:0${s}.000Z` })
+    expect(situacaoDoFuroPeloUltimo([])).toBe('nada')
+    expect(situacaoDoFuroPeloUltimo([e(LAJE.id, 12, 'C', '1')])).toBe('liberado')
+    expect(situacaoDoFuroPeloUltimo([e(LAJE.id, 12, 'C', '1'), e(TRELICADA.id, 9, 'NC', '2')])).toBe('reprovado')
+    expect(situacaoDoFuroPeloUltimo([e(LAJE.id, 12, 'C', '1'), e(LAJE.id, 12, null, '2')])).toBe('nada')
+  })
+  it('avanço da planta para o menu: OK e errados pelo registro mais novo; fora o Geral, o só detalhe e o de outra planta', () => {
+    const ev = (el: string, r: EventoFvs['resultado'], s: string): EventoFvs => ({ id: el + s, elemento_id: el, ficha_id: LAJE.id, item: 12, resultado: r, rodada: 1, observacao: null, lote_id: null, planta_id: null, usuario_id: 'u', criado_em_dispositivo: `2026-11-21T10:00:0${s}.000Z` })
+    const elementos: Record<string, ElementoPacote> = {
+      a: furo('FL1', 0, 0, ['Sanitário / drenagem']),
+      b: furo('FL2', 0, 0, ['Sanitário / drenagem']),
+      c: furo('FL3', 0, 0, ['Sanitário / drenagem']),
+      g: furo('FL4', 0, 0, ['Geral']),
+      d: { ...furo('FL5', 0, 0, ['Sanitário / drenagem']), so_detalhe: true },
+      h: furo('FL6', 0, 0, ['Hidráulica']),
+      v: { ...furo('V1-F1', 0, 0, ['Hidráulica'], false), viga: 'v1' },
+    }
+    const eventos: Record<string, EventoFvs[]> = { a: [ev('a', 'C', '1')], b: [ev('b', 'C', '1'), ev('b', 'NC', '2')], v: [ev('v', 'C', '1')] }
+    const de = (id: string) => eventos[id] ?? []
+    // a planta de esgoto: só os de esgoto dela (FL6 é de água: outra planta) e o furo de viga
+    const esgoto = avancoDosFuros({ elementos, furos_laje: 'esgoto' }, de)
+    expect(esgoto).toEqual({ ok: 2, errados: 1, total: 4 })
+    expect(textoDoAvancoDosFuros(esgoto)).toBe('2 de 4 furos OK · 1 errado')
+    // a forma com plantas de furação separadas: só o de viga
+    expect(avancoDosFuros({ elementos, furos_laje_separados: true }, de)).toEqual({ ok: 1, errados: 0, total: 1 })
+    expect(textoDoAvancoDosFuros({ ok: 0, errados: 0, total: 1 })).toBe('0 de 1 furo OK')
+  })
+})
+
 describe('furo de laje na busca da obra', () => {
   it('a situação vem do item da instalação, na ficha da área (e não do item de furação da viga)', () => {
     const e = (r: EventoFvs['resultado'], s: string): EventoFvs => ({ id: s, elemento_id: 'fl1', ficha_id: LAJE.id, item: 12, resultado: r, rodada: 1, observacao: null, lote_id: null, planta_id: null, usuario_id: 'u', criado_em_dispositivo: `2026-11-19T10:00:0${s}.000Z` })
@@ -185,11 +230,12 @@ describe('densidade na planta (20/11): escondidos, conferíveis, número por ár
     expect(furoDeLajeEscondido(els.v)).toBe(false)
     expect(furoDeLajeEscondido(undefined)).toBe(false)
   })
-  it('conferível: furo de viga sempre; de laje só dentro de área e de esgoto, água ou elétrica', () => {
+  it('conferível: furo de viga sempre; de laje se for de esgoto, água ou elétrica, dentro ou fora de área (21/11)', () => {
     expect(furoConferivel(els.v, undefined)).toBe(true)
     expect(furoConferivel(els.a, nasAreas.get('a'))).toBe(true)
     expect(furoConferivel(els.c, nasAreas.get('c'))).toBe(false)
-    expect(furoConferivel(els.e, nasAreas.get('e'))).toBe(false)
+    expect(nasAreas.get('e')).toBeUndefined()
+    expect(furoConferivel(els.e, nasAreas.get('e'))).toBe(true)
   })
   it('um grupo por área, só com os conferíveis, com o centro e a caixa deles', () => {
     const grupos = furosConferiveisPorArea(els, nasAreas, [l1, l2])
@@ -197,6 +243,7 @@ describe('densidade na planta (20/11): escondidos, conferíveis, número por ár
       ['L1', ['a', 'b']],
       ['L2', ['d']],
       ['q:0:0', ['v']], // furo de viga fora de área: quadrado de 6 m
+      ['q:1:1', ['e']], // furo de laje fora de área (21/11): também no quadrado
     ])
     expect(grupos[0].centro).toEqual([20, 30])
     expect(grupos[0].caixa).toEqual([10, 10, 30, 50])
@@ -223,7 +270,7 @@ describe('densidade na planta (20/11): escondidos, conferíveis, número por ár
       ['q:1:1', ['v4', 'g']],
     ])
     expect(grupos[1].caixa).toEqual([400, 50, 600, 300])
-    // sem áreas desenhadas: todos os de viga em quadrados, os de laje somem do número (não são conferíveis)
+    // sem áreas desenhadas: todos em quadrados (o de laje, FL1, cai no q:0:0 com o V1-F1; 21/11)
     expect(furosConferiveisPorArea(todos, furosDeLajeNasAreas(todos, []), []).map((g) => g.chave)).toEqual(['q:0:0', 'q:1:0', 'q:1:1'])
   })
   it('longe, o quadrado cresce em dobros de 6 m até dar 200 px na tela; números que se tocam viram um', () => {
@@ -287,5 +334,35 @@ describe('furos de laje em plantas próprias, uma por camada (21/11)', () => {
     expect([san, hid, elt, deViga].map((e) => furoDeOutraPlanta(e, { furos_laje_separados: true }))).toEqual([true, true, true, false])
     expect([san, hid, elt, deViga].map((e) => furoDeOutraPlanta(e, {}))).toEqual([false, false, false, false])
     expect(furoDeOutraPlanta(san, undefined)).toBe(false)
+  })
+})
+
+describe('furação igual à armadura (21/11): a peça do furo e a forma com os furos separados', () => {
+  const peca = (tipo: 'P' | 'V', nome: string, poly: Array<[number, number]>): ElementoPacote => ({ tipo, nome, secao: '', rotulo: [0, 0, 0, 0], polys: [poly] })
+  it('furo de laje com o centro em pilar ou viga passa a ser da peça (o pilar primeiro); o resto fica de laje', () => {
+    const m = {
+      elementos: {
+        p1: peca('P', 'P1', [[0, 0], [20, 0], [20, 20], [0, 20]]),
+        v1: peca('V', 'V1', [[0, 5], [200, 5], [200, 15], [0, 15]]),
+        a: furo('FL1', 10, 10, ['Sanitário / drenagem']), // no pilar (e na viga): pilar
+        b: furo('FL2', 100, 10, ['Hidráulica']), // na viga
+        c: furo('FL3', 100, 100, ['Hidráulica']), // na laje
+      } as Record<string, ElementoPacote>,
+    }
+    const n = pecaDosFurosDeLaje(m)
+    expect(n.elementos.a.pilar).toBe('p1')
+    expect(n.elementos.b.viga).toBe('v1')
+    expect(n.elementos.c.viga ?? n.elementos.c.pilar).toBeUndefined()
+    expect(ehFuroDeLaje(n.elementos.a)).toBe(false)
+    expect(ehFuroDeLaje(n.elementos.c)).toBe(true)
+    expect(m.elementos.a.pilar).toBeUndefined() // não mexe no original
+    const so = { elementos: { c: m.elementos.c } }
+    expect(pecaDosFurosDeLaje(so)).toBe(so) // nada muda: o mesmo manifest
+  })
+  it('forma com furos_separados esconde todos os furos, de viga e pilar também', () => {
+    const v = { ...furo('V1-F1', 0, 0, ['Hidráulica'], false), viga: 'v1' }
+    expect(furoDeOutraPlanta(v, { furos_separados: true })).toBe(true)
+    expect(furoDeOutraPlanta(v, { furos_laje_separados: true })).toBe(false)
+    expect(furoDeOutraPlanta(v, {})).toBe(false)
   })
 })

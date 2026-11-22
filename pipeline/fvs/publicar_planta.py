@@ -4,6 +4,7 @@ Uso (no PC, na raiz do repositório):
     py pipeline/fvs/publicar_planta.py pavimento.json
     py pipeline/fvs/publicar_planta.py pavimento.json --so-gerar "C:\\...\\saida"   (não publica: só grava os pacotes)
     py pipeline/fvs/publicar_planta.py pavimento.json --folha-unica                 (o pavimento inteiro numa planta só, sem trechos)
+    py pipeline/fvs/publicar_planta.py pavimento.json --folha-unica --so-instalacoes   (só as plantas de hidro, sanitário, elétrico e SPDA)
 
 pavimento.json (fica fora do repositório, junto das pranchas):
 {
@@ -218,6 +219,13 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if not (ref / "relatorio.json").is_file():
                 raise ErroPublicacao(f"furos: \"referencia\" tem que ser a pasta gerada de outro pavimento (falta {ref / 'relatorio.json'})")
             fur["referencia"] = str(ref)
+    furacao = None
+    if cfg.get("furacao"):
+        bruto = cfg["furacao"] if isinstance(cfg["furacao"], dict) else {"pdf": cfg["furacao"]}
+        achados = arquivos(bruto.get("pdf"))
+        if not achados:
+            raise ErroPublicacao("furacao: nenhuma prancha de furação achada (\"pdf\")")
+        furacao = {"pdfs": achados, "escala": float(bruto.get("escala") or 75), "alinhamento": bruto.get("alinhamento") or {}}
     inst = None
     if cfg.get("instalacoes"):
         bruto = dict(cfg["instalacoes"])
@@ -268,6 +276,7 @@ def ler_config(caminho: pathlib.Path) -> dict:
         "furos": fur,
         "barras_laje": barras,
         "instalacoes": inst,
+        "furacao": furacao,
         "camadas_separadas": cfg.get("camadas_separadas", True) is not False,
         "furos_laje_separados": cfg.get("furos_laje_separados", True) is not False,
     }
@@ -359,6 +368,8 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         if p["tipo"] == "F":
             if p.get("viga"):
                 reg["viga"] = ids[("V", p["viga"])]
+            if p.get("pilar"):
+                reg["pilar"] = ids[("P", p["pilar"])]
             reg["furo"] = p["furo"]
         if p["tipo"] == "E":
             reg["ambiente"] = ids[("A", p["ambiente"])]
@@ -402,7 +413,9 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
         cab["camadas_separadas"] = True
     if forma.get("camada"):
         cab["camada"] = forma["camada"]
-    if forma.get("disciplina") in mod_inst.DISCIPLINAS:
+    if forma.get("furos_separados"):
+        cab["furos_separados"] = True
+    if forma.get("disciplina") in (*mod_inst.DISCIPLINAS, "furacao"):
         cab["disciplina"] = forma["disciplina"]
     if forma.get("furos_laje"):
         cab["furos_laje"] = forma["furos_laje"]
@@ -570,6 +583,40 @@ def por_instalacoes(cfg: dict, detalhes: dict, formas: list[dict], rel_furos: di
         print(f"  {mod_inst.DISCIPLINAS[disc]}: {len(pontos)} pontos na folha"
               + (f"; {len(fora)} fora da folha (lista no relatorio.json; encaixe errado ou ponto de outro pavimento)" if fora else ""))
     return rel
+
+
+def por_furacao(cfg: dict, formas: list[dict]) -> dict | None:
+    """A planta de furação (furacao_fundo.py), acrescentada a formas: o fundo das pranchas de furação,
+    encaixadas pelos pilares, com os furos da forma. Precisa de "furos" (os furos vêm do modelo)."""
+    if not cfg.get("furacao"):
+        return None
+    import furacao_fundo
+
+    estrutura = [fm for fm in formas if (fm.get("disciplina") or DISCIPLINA) == DISCIPLINA]
+    if len(estrutura) != 1:
+        raise ErroPublicacao("furacao: só com a planta do pavimento numa folha só (\"folha_unica\": true ou \"plotada\")")
+    fm = estrutura[0]
+    print(f"Lendo as pranchas de furação: {len(cfg['furacao']['pdfs'])}")
+    try:
+        lidas = [furacao_fundo.ler_prancha(p, cfg["furacao"]["escala"]) for p in cfg["furacao"]["pdfs"]]
+    except furacao_fundo.ErroFuracao as e:
+        raise ErroPublicacao(f"furacao: {e}") from e
+    alinhadas, resumo = furacao_fundo.alinhar_pranchas(fm["pecas"], lidas, cfg["furacao"]["alinhamento"])
+    for r in resumo:
+        a = r["alinhamento"]
+        print(f"  {r['prancha']}: " + (f"{a['pontos']} de {a['total']} pilares batem (erro até {a['residuo_max_cm']} cm)" if a["ok"]
+                                         else f"NÃO ENCAIXOU ({a['motivo']}); fica fora do fundo"))
+    folha = furacao_fundo.folha_de_furacao(fm, alinhadas)
+    if folha:
+        formas.append(folha)
+    else:
+        print("  sem planta de furação (nenhuma prancha encaixou ou o pavimento não tem furos)")
+    conferir = furacao_fundo.a_conferir(fm["pecas"], 72 / 2.54 / 50)
+    if any(conferir.values()):
+        print(f"  a conferir (ficam na planta; lista no relatorio.json): {len(conferir['fora_do_contorno'])} furos fora do contorno da forma,"
+              f" {len(conferir['mesmo_ponto'])} pontos com furos repetidos ({sum(len(g) for g in conferir['mesmo_ponto'])} furos),"
+              f" {len(conferir['em_fila'])} filas de furos ({sum(len(c['furos']) for c in conferir['em_fila'])} furos)")
+    return {"pranchas": resumo, "furos": len(folha["pecas"]) if folha else 0, "a_conferir": conferir}
 
 
 def por_barras(cfg: dict, detalhes: dict, formas: list[dict]) -> dict | None:
@@ -872,7 +919,9 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
         print(f"  {len(fora)} peças não existem no pavimento e saíram da planta (lista no relatorio.json)")
     rel_furos = por_furos(cfg, detalhes, formas)
     rel_inst = por_instalacoes(cfg, detalhes, formas, rel_furos)
-    por_furos_de_laje(cfg, formas)
+    # a planta de furação única, com as pranchas de furação no fundo (pedido do Nicolas de 21/11: "aba separada,
+    # projeto dos furos completo"), substitui as plantas de furos de laje por camada (por_furos_de_laje)
+    rel_furacao = por_furacao(cfg, formas)
     if args.so_gerar:
         saida = pathlib.Path(args.so_gerar).resolve()
         if dentro_de_repositorio(saida):
@@ -923,6 +972,8 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
             resumo["furos"] = rel_furos
         if rel_inst is not None:
             resumo["instalacoes"] = rel_inst
+        if rel_furacao is not None:
+            resumo["furacao"] = rel_furacao
         if rel_barras is not None:
             from alinhamento import relatorio as rel_alinhamento
 
@@ -941,11 +992,15 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
         if getattr(args, f"so_{disc}", False):
             formas = so_disciplina(formas, disc)
             break
+    if getattr(args, "so_instalacoes", False):
+        formas = [fm for d in mod_inst.DISCIPLINAS if any(f.get("disciplina") == d for f in formas) for fm in so_disciplina(formas, d)]
+        if not formas:
+            raise ErroPublicacao("--so-instalacoes: o pavimento.json não gerou nenhuma planta de instalações (falta \"instalacoes\"?)")
     return publicar_no_servidor(srv, cfg, detalhes, formas, args.aceita_ambientes, getattr(args, "aceita_paredes", False))
 
 
-FALTA_PARA_A_DISCIPLINA = {"armadura": "\"barras_laje\"", "vedacao": "\"vedacao\" em \"ambientes\"",
-                           "furacao": "\"furos\" com furos de laje de esgoto, água ou elétrica",
+FALTA_PARA_A_DISCIPLINA = {"armadura": "\"barras_laje\"", "furacao": "\"furacao\" (as pranchas de furação) e \"furos\"",
+                           "vedacao": "\"vedacao\" em \"ambientes\"",
                            **{d: "\"instalacoes\"" for d in mod_inst.DISCIPLINAS}}
 
 
@@ -1017,15 +1072,17 @@ def main(argv: list[str] | None = None) -> int:
     grupo_so = ap.add_mutually_exclusive_group()
     grupo_so.add_argument("--so-armadura", action="store_true",
                           help="publica só as plantas de armadura de laje; a forma e os ambientes ficam como estão no servidor")
-    grupo_so.add_argument("--so-furacao", action="store_true",
-                          help="publica só as plantas de furos de laje (uma por camada); a forma e o resto do pavimento ficam como estão no servidor")
     grupo_so.add_argument("--so-vedacao", action="store_true",
                           help="publica só a planta de modulação (paredes de alvenaria); a forma e os ambientes ficam como estão no servidor")
+    grupo_so.add_argument("--so-furacao", action="store_true",
+                          help="publica só a planta de furação (fundo das pranchas de furação, com os furos); a forma fica como está no servidor")
     ap.add_argument("--aceita-paredes", action="store_true",
                     help="o servidor já aceita paredes (tipo M) em elementos (migração do núcleo aplicada)")
     for disc, nome in mod_inst.DISCIPLINAS.items():
         grupo_so.add_argument(f"--so-{disc}", action="store_true",
                               help=f"publica só a planta de {nome.lower()}; a forma e o resto do pavimento ficam como estão no servidor")
+    grupo_so.add_argument("--so-instalacoes", action="store_true",
+                          help="publica só as plantas de instalações (todas as disciplinas de \"instalacoes\"), lendo as pranchas uma vez")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--chave", default=CHAVE_PADRAO)

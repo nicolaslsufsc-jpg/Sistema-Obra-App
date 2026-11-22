@@ -1,11 +1,22 @@
 /* Cabeçalho comum (docs/DESIGN.md › Cabeçalho). Cores e tamanhos só pelas variáveis de tema.css. */
-.so-cabecalho {
+/* header.so-cabecalho (mais forte que a classe do módulo): sempre numa linha, a seta no canto esquerdo.
+   Um módulo que punha o topo em coluna (.fv-topo-nivel) somado ao "align-items: center" daqui levava a
+   seta para o meio da tela no celular (22/11/2026). */
+header.so-cabecalho {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0;
   margin-bottom: 0.6rem;
   border-bottom: 1px solid var(--borda);
+}
+header.so-cabecalho > .so-cab-voltar {
+  order: -1;
+  align-self: center;
+  margin: 0;
 }
 .so-cabecalho .so-cab-voltar {
   flex: 0 0 auto;

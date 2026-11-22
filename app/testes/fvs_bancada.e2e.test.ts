@@ -628,6 +628,26 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.locator('.fv-item[data-item="7"]').screenshot({ path: path.join(PRINTS, `fvs_prazo_${largura}.png`) })
 
+      // tela de escoramento (22/11, guia): cabeçalho comum, só a seta à esquerda, sem "Voltar" escrito
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+      await p.getByTestId('fvs-entra-escoramento').click()
+      const seta = p.locator('.fv-escoramento .so-cab-voltar')
+      await seta.waitFor()
+      expect((await seta.innerText()).trim()).toBe('‹')
+      expect(await seta.getAttribute('aria-label')).toBe('Voltar')
+      expect((await seta.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+      expect(await seta.evaluate((e: HTMLElement) => e.getBoundingClientRect().left)).toBeLessThan(40)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(await alvosPequenos(p)).toEqual([])
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_escoramento_${largura}.png`), fullPage: true })
+      await seta.click()
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, 'P6')
+      await nomeNoPainel(p, 'P6')
+
       // C dentro do prazo: cancelar não grava nada
       let pergunta = ''
       p.once('dialog', (d: any) => { pergunta = d.message(); void d.dismiss() })
@@ -3923,6 +3943,10 @@ suite('FVS na bancada (Chrome)', () => {
       const texto = await fora.innerText()
       expect(texto).toContain('Esta planta ainda não está no aparelho')
       expect(texto).toContain('TESTE.ES.LO.001.FOR-R01')
+      // guia (22/11): o voltar é só a seta (44 px), como no cabeçalho comum
+      const seta = fora.getByRole('button', { name: 'Voltar', exact: true })
+      expect((await seta.innerText()).trim()).toBe('‹')
+      expect((await seta.boundingBox())!.width).toBeGreaterThanOrEqual(44)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_fora_${nome}.png`) })
 

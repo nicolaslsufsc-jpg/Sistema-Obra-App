@@ -2360,11 +2360,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   if (pacote === null) {
     return (
       <main class="tela fv-inicio" data-testid="fvs-fora-do-aparelho">
-        <header class="fv-topo-inicio">
-          <button type="button" class="fv-voltar" onClick={() => sair(voltar)} aria-label="Voltar">
-            ‹ Voltar
+        {/* cabeçalho comum (22/11, guia: só a seta, no canto esquerdo) */}
+        <header class="so-cabecalho fv-topo-inicio fv-topo-nivel">
+          <button type="button" class="fv-voltar so-cab-voltar" onClick={() => sair(voltar)} aria-label="Voltar" title="Voltar">
+            <span aria-hidden="true">‹</span>
           </button>
-          <div>
+          <div class="so-cab-titulo">
             <h1>{pavimento?.nome}</h1>
             <p class="discreto">
               {planta.trecho} · {planta.prancha}

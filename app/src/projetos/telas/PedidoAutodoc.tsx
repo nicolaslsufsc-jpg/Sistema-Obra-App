@@ -7,10 +7,13 @@ import { pedirAtualizacao, textoDoPedido, ultimoPedido, type PedidoAtualizacao }
 /** Enquanto o pedido está aberto, a tela pergunta ao servidor a cada tanto. */
 export const CONSULTA_MS = { valor: 20_000 }
 
-export function PedidoAutodoc({ obraId, aoPronto }: { obraId: string; aoPronto: () => void }) {
+/** depois: a frase do "O que fazer agora" (aparece quando o pedido fica pronto) e o que o toque abre. */
+export function PedidoAutodoc({ obraId, aoPronto, depois }: { obraId: string; aoPronto: () => void; depois?: { texto: string; abrir: () => void } }) {
   const [pedido, setPedido] = useState<PedidoAtualizacao | null | undefined>(undefined)
   const [enviando, setEnviando] = useState(false)
   const [problema, setProblema] = useState('')
+  // o servidor disse que esta conta não é gestora desta obra: o botão fica desligado, com o motivo
+  const [semPermissao, setSemPermissao] = useState(false)
   const [agora, setAgora] = useState(() => new Date())
   const estadoAntes = useRef<string | null>(null)
 
@@ -21,7 +24,12 @@ export function PedidoAutodoc({ obraId, aoPronto }: { obraId: string; aoPronto: 
       setPedido(p)
       setAgora(new Date())
     } catch {
-      setProblema('Sem conexão com o servidor: o pedido precisa de internet.')
+      // "sem conexão" só quando o aparelho está mesmo sem internet (achado do testador, 21/11)
+      setProblema(
+        typeof navigator !== 'undefined' && navigator.onLine === false
+          ? 'Sem internet: o pedido ao Autodoc precisa de internet.'
+          : 'Não consegui ver o último pedido no servidor agora. O botão continua valendo.',
+      )
       setPedido((x) => (x === undefined ? null : x))
     }
   }
@@ -47,14 +55,16 @@ export function PedidoAutodoc({ obraId, aoPronto }: { obraId: string; aoPronto: 
       setPedido(await pedirAtualizacao(obraId))
       setAgora(new Date())
     } catch (e) {
-      setProblema(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/Só o gestor/.test(msg)) setSemPermissao(true)
+      setProblema(msg)
     } finally {
       setEnviando(false)
     }
   }
 
   const t = textoDoPedido(pedido ?? null, agora)
-  const pode = !enviando && pedido !== undefined && (!t || t.podePedir)
+  const pode = !enviando && !semPermissao && pedido !== undefined && (!t || t.podePedir)
   return (
     <section class={`pj-pedido ${t?.tipo ?? ''}`} data-testid="pedido-autodoc" aria-live="polite">
       <button type="button" class="principal" onClick={pedir} disabled={!pode} data-testid="pedido-autodoc-botao">
@@ -66,6 +76,11 @@ export function PedidoAutodoc({ obraId, aoPronto }: { obraId: string; aoPronto: 
           {t.tipo === 'aberto' && <span class="pj-girando" aria-hidden="true" />}
           {t.texto}
         </span>
+      )}
+      {t?.tipo === 'pronto' && depois && (
+        <button type="button" class="pj-pequeno" onClick={depois.abrir} data-testid="pedido-autodoc-agora">
+          Agora: {depois.texto} ›
+        </button>
       )}
       {t && t.falharam.length > 0 && (
         <details data-testid="pedido-autodoc-falharam">

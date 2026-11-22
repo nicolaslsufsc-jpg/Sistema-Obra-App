@@ -6,7 +6,7 @@
 
 import type { DadosProjetos } from './dados'
 import { chaveFolha, compararEscritorio, type RegistroEscritorio } from './edicoes'
-import { chaveNumero, lerCsv, melhor, normalizar, type CopiaCruzada, type Fase, type Vigente } from './painel'
+import { chaveNumero, lerCsv, melhor, normalizar, type Copia, type CopiaCruzada, type Fase, type Vigente } from './painel'
 
 /** Nome da disciplina como a ficha de cópias escreve, pela sigla do código. Sigla fora daqui: o nome do Autodoc. */
 export const DISCIPLINAS_FICHA: Record<string, string> = {
@@ -30,6 +30,65 @@ export function pastaCurta(pasta: string | null, fase: Fase): string {
   const i = partes.findIndex((p) => normalizar(p) === 'PROJETOS')
   const resto = (i >= 0 ? partes.slice(i + 2) : partes).filter((p) => !/^(LIBERADO OBRA|PROJETO EXECUTIVO)$/.test(normalizar(p)))
   return [fase, ...resto].join('/')
+}
+
+/** Folha da lista vigente (chaveFolha do código) → id do documento no servidor: liga a base às telas de entrega. */
+export function documentosPorFolha(d: Pick<DadosProjetos, 'documentos' | 'vigentes'>): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const doc of d.documentos) {
+    const r = d.vigentes.get(doc.id)
+    if (!r) continue
+    const fase = String(r.fase ?? 'EX').toUpperCase()
+    m.set(chaveFolha({ codigo: `${doc.codigo.split('.')[0]}.${doc.disciplina_sigla.toUpperCase()}.${fase}.${doc.numero}.${doc.nome_curto}` }), doc.id)
+  }
+  return m
+}
+
+/** Linhas das entregas do app na conta do canteiro: começam aqui (a ficha usa números pequenos). */
+export const LINHA_APP = 900_000
+
+/**
+ * As entregas registradas no app (com ou sem assinatura) como cópias do canteiro (achado do testador, 21/11:
+ * "a entrega assinada tem que entrar no canteiro"). Uma cópia por entrega; devolvida quando há a devolução
+ * dela. Número e disciplina como na lista vigente do servidor, para cruzar com a mesma folha.
+ */
+export function copiasDoApp(d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' | 'revisaoPorId' | 'vigentes' | 'empresaPorId'>): Copia[] {
+  const vivos = d.eventos.filter((e) => !e.apagado)
+  const devolucao = new Map<string, string>()
+  for (const e of vivos) if (e.tipo === 'devolucao' && e.entrega_id) devolucao.set(String(e.entrega_id), String(e.data_evento ?? '').slice(0, 10))
+  const entregas = vivos
+    .filter((e) => e.tipo === 'entrega')
+    .sort((a, b) => String(a.criado_em_dispositivo ?? '').localeCompare(String(b.criado_em_dispositivo ?? '')) || a.id.localeCompare(b.id))
+  const saida: Copia[] = []
+  entregas.forEach((e, i) => {
+    const doc = d.documentoPorId.get(String(e.documento_id))
+    const rev = d.revisaoPorId.get(String(e.revisao_id))
+    if (!doc || !rev) return
+    const vig = d.vigentes.get(doc.id)
+    const faseVig = String(vig?.fase ?? rev.fase ?? 'EX').toUpperCase()
+    const fase = (String(rev.fase ?? 'EX').toUpperCase() === 'LO' ? 'LO' : 'EX') as Fase
+    const sigla = doc.disciplina_sigla.toUpperCase()
+    const numero = Number(rev.numero)
+    const entrega = String(e.data_evento ?? '').slice(0, 10) || null
+    saida.push({
+      linha: LINHA_APP + i,
+      codigo: FASES_DE_OBRA.has(faseVig) ? chaveNumero(doc.numero) : faseVig + doc.numero,
+      revisao: Number.isFinite(numero) ? numero : null,
+      fase,
+      revisaoTexto: `R${String(rev.numero ?? '').padStart(2, '0')}${fase === 'LO' ? ' LO' : ''}`,
+      titulo: doc.titulo,
+      disciplina: normalizar(DISCIPLINAS_FICHA[sigla] ?? doc.disciplina ?? sigla),
+      disciplinaNome: doc.disciplina,
+      copias: 1,
+      entrega,
+      entregaTexto: entrega ?? '',
+      empresa: d.empresaPorId.get(String(e.empresa_id))?.nome ?? 'empresa sem cadastro',
+      colaborador: String(e.colaborador ?? ''),
+      devolucao: devolucao.get(e.id) ?? null,
+      app: { entregaId: e.id, documentoId: doc.id, assinaturaId: (e.assinatura_id as string | null) ?? null },
+    })
+  })
+  return saida
 }
 
 /**

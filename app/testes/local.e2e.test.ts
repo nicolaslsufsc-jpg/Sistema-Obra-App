@@ -887,6 +887,108 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await contexto.close()
     }, 150_000)
 
+    // As 5 listas se cruzam (21/11/2026): sugerir regras pelo que cada um tem, regra por pavimento,
+    // "O que fazer agora" e os números do painel abrindo a lista filtrada, nos dois temas
+    itProjetos(`${nome} ${largura}x${altura}: Projetos sugerir regras, regra por pavimento, O que fazer agora e números do painel`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const print = async (n: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-${n}.png`), fullPage: true })
+      }
+      const estouro = () => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      const contraste = async (onde: string) => {
+        await p.setViewportSize({ width: largura, height: 5000 })
+        expect(await contrasteBaixo(p), onde).toEqual([])
+        await p.setViewportSize({ width: largura, height: altura })
+      }
+      const vig = path.join(SAIDA, 'vigentes_exe_5.csv')
+      const dist = path.join(SAIDA, 'distribuicao_exe_5.csv')
+      writeFileSync(vig, VIGENTES_EXE)
+      writeFileSync(dist, DISTRIBUICAO_EXE)
+      await abrirNaObra(p)
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByTestId('painel-importar').waitFor()
+      await p.setInputFiles('[data-testid=arquivo-vigentes]', vig)
+      await p.setInputFiles('[data-testid=arquivo-distribuicao]', dist)
+      await p.getByRole('button', { name: 'Importar', exact: true }).click()
+      await p.getByTestId('painel-resumo').waitFor()
+      const desatualizadas = await p.getByTestId('painel-desatualizadas').innerText()
+
+      // B: sugestões por pessoa × disciplina × pavimento; nada marcado, nada salvo até confirmar
+      await p.getByRole('button', { name: 'Distribuição', exact: true }).click()
+      await p.getByTestId('sugerir-regras').click()
+      const sugestoes = p.getByTestId('sugestao-regra')
+      await sugestoes.first().waitFor()
+      expect(await sugestoes.count()).toBe(8)
+      expect(await p.getByTestId('salvar-sugestoes').isDisabled()).toBe(true)
+      expect(await p.getByTestId('sugestoes-regras').innerText()).toContain('Formas Delta · Ana')
+      await p.getByRole('button', { name: /^Marcar todas/ }).click()
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('20-sugerir')
+      await contraste('claro, sugestões')
+      await p.getByTestId('salvar-sugestoes').click()
+      await p.getByTestId('regra').first().waitFor()
+      expect(await p.getByTestId('regra').count()).toBe(8)
+      expect(await p.getByTestId('lista-distribuicao').innerText()).toContain('PILOTIS')
+
+      // A: regra de um pavimento pelo formulário (o pavimento sai do título das folhas)
+      await p.getByRole('button', { name: 'Adicionar quem recebe' }).click()
+      await p.getByTestId('form-regra').locator('select').first().selectOption('ESTRUTURAL')
+      expect(await p.getByTestId('regra-pavimento').innerText()).toContain('Subsolo')
+      await p.getByTestId('regra-pavimento').selectOption('Subsolo')
+      await p.getByTestId('form-regra').locator('input').first().fill('Formas Ômega')
+      await p.getByTestId('form-regra').getByRole('button', { name: 'Salvar' }).click()
+      await p.getByText(/Formas Ômega \(qualquer pessoa\) recebe ESTRUTURAL \(Subsolo\)/).waitFor()
+      expect(await p.getByTestId('lista-distribuicao').innerText()).toContain('ESTRUTURAL · DISCIPLINA INTEIRA · SUBSOLO')
+
+      // C: O que fazer agora. Cada desatualizada em campo tem agora regra (das sugestões): plotar a vigente
+      // para o dono e recolher a antiga. A regra nova da Formas Ômega só vale para revisão que sair depois de hoje.
+      await p.getByRole('button', { name: 'Fazer agora', exact: true }).click()
+      await p.getByTestId('agora-resumo').waitFor()
+      const plotar = p.getByTestId('agora-plotar-linha')
+      const n = Number(desatualizadas)
+      expect(await plotar.count()).toBe(n)
+      expect(await p.getByTestId('agora-plotar').innerText()).toContain('EXE.ES.LO.100.FORPILOTIS')
+      expect(await p.getByTestId('agora-plotar').innerText()).not.toContain('Formas Ômega')
+      expect(await p.getByTestId('agora-recolher-linha').count()).toBe(n)
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('21-agora')
+      await contraste('claro, fazer agora')
+      // sem conta não há folha no servidor: a linha abre a prancha da base
+      await plotar.first().click()
+      await p.getByTestId('painel-prancha').waitFor()
+      await p.goBack()
+      await p.getByTestId('agora-resumo').waitFor()
+
+      // C e D: o resumo no topo do painel e os números abrindo a lista filtrada
+      await p.getByRole('button', { name: 'Painel', exact: true }).click()
+      expect(await p.getByTestId('painel-agora').innerText()).toContain(`${n} ${n === 1 ? 'cópia' : 'cópias'} a plotar, ${n} a recolher`)
+      await p.getByTestId('painel-cartao-desatualizadas').click()
+      await p.getByTestId('lista-pranchas').waitFor()
+      expect(await p.locator('.pj-filtros [aria-pressed=true]').innerText()).toContain('Precisa trocar')
+      await p.getByRole('button', { name: 'Painel', exact: true }).click()
+      await p.getByTestId('painel-cartao-em-dia').click()
+      await p.getByTestId('lista-pranchas').waitFor()
+      expect(await p.locator('.pj-filtros [aria-pressed=true]').innerText()).toContain('No canteiro')
+
+      // tema escuro
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click()
+      await p.getByRole('button', { name: 'Voltar', exact: true }).click().catch(() => undefined)
+      await p.getByTestId('botao-tema').click()
+      await p.getByRole('button', { name: /^Projetos/ }).click()
+      await p.getByRole('button', { name: 'Fazer agora', exact: true }).click()
+      await p.getByTestId('agora-resumo').waitFor()
+      await contraste('escuro, fazer agora')
+      await p.getByRole('button', { name: 'Distribuição', exact: true }).click()
+      await p.getByTestId('sugerir-regras').click()
+      await p.getByTestId('sugestoes-regras').waitFor()
+      await contraste('escuro, sugestões')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 150_000)
+
     // Distribuição e "A entregar" (20/11/2026): regra pelo formulário, lista importada, desativar sem apagar
     itProjetos(`${nome} ${largura}x${altura}: Projetos lista de distribuição e a entregar, nos dois temas`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })

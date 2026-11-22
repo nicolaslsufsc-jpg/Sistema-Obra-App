@@ -5,7 +5,7 @@ import { lerBaseOuDoPacote, type BaseProjetos } from '../base'
 import { aEntregar, gravarDestinatarios, lerDestinatarios, regrasAtuais, type DadosDestinatario, type Destinatario } from '../distribuicao'
 import { aplicarEdicoes, gravarEdicao, lerEdicoes, resumirEscritorio, type Edicao, type NovaEdicao } from '../edicoes'
 import { cruzar, resumir, type CopiaCruzada } from '../painel'
-import { mesclarEscritorio, vigentesDoServidor } from '../canteiro'
+import { copiasDoApp, mesclarEscritorio, vigentesDoServidor } from '../canteiro'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
 import { dataBR, horaBR } from './comum'
 import { FaixaAutodoc } from './FaixaAutodoc'
@@ -40,11 +40,15 @@ export function usarBase(ctx: Contexto) {
   // Com conta, a revisão vigente vem do servidor (a lista do Autodoc publicada pelo PC): a lista em CSV não é
   // preciso importar. Sem conta (ou servidor ainda vazio), vale a lista importada.
   const vigServidor = useMemo(() => (!ctx.semConta && dados.vigentes.size ? vigentesDoServidor(dados) : null), [ctx.semConta, dados])
+  // Com conta, as entregas registradas no app (com ou sem assinatura) entram no canteiro junto com a ficha
+  // (achado do testador, 21/11): as 5 listas se cruzam. Sem a ficha importada, valem só elas.
+  const doApp = useMemo(() => (ctx.semConta ? [] : copiasDoApp(dados)), [ctx.semConta, dados])
   const corrigida = useMemo(() => {
-    if (!base) return null
-    const c = aplicarEdicoes(vigServidor ? { ...base, vigentes: vigServidor } : base, edicoes)
-    return { ...c, escritorio: mesclarEscritorio(base.escritorioIndice, c.escritorio) }
-  }, [base, edicoes, vigServidor])
+    const b = base ?? (vigServidor && doApp.length ? { vigentes: [], copias: [] } : null)
+    if (!b) return null
+    const c = aplicarEdicoes(vigServidor ? { ...b, vigentes: vigServidor } : b, edicoes)
+    return { ...c, copias: [...c.copias, ...doApp], escritorio: mesclarEscritorio(b.escritorioIndice, c.escritorio) }
+  }, [base, edicoes, vigServidor, doApp])
   const cruzadas = useMemo<CopiaCruzada[] | null>(
     () => (corrigida && corrigida.vigentes.length && corrigida.copias.length ? cruzar(corrigida.copias, corrigida.vigentes, dados.hoje) : null),
     [corrigida, dados.hoje],
@@ -62,10 +66,11 @@ export function usarBase(ctx: Contexto) {
   return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras, vigServidor, fonteVigente }
 }
 
-export type AbaBase = 'painel' | 'pessoas' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
+export type AbaBase = 'painel' | 'agora' | 'pessoas' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
 
 const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos }[] = [
   { aba: 'painel', rotulo: 'Painel', tela: { nome: 'painel' } },
+  { aba: 'agora', rotulo: 'Fazer agora', tela: { nome: 'agora' } },
   { aba: 'pessoas', rotulo: 'Pessoas', tela: { nome: 'pessoas' } },
   { aba: 'pranchas', rotulo: 'Pranchas', tela: { nome: 'pranchas-base' } },
   { aba: 'entregas', rotulo: 'Entregas', tela: { nome: 'entregas-base' } },

@@ -25,6 +25,8 @@ export function SecaoPlanilha({ ctx }: { ctx: Contexto }) {
   const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
   const [gerando, setGerando] = useState(false)
   const linhas = linhasDaPlanilha(itensDaPlanilha(dados))
+  // a concretagem de exemplo não entra na planilha (é da obra); diz isso, para a conta não parecer errada
+  const doExemplo = dados.concretagens.filter((c) => c.exemplo).reduce((n, c) => n + (dados.caminhoesDe.get(c.raiz)?.length ?? 0), 0)
 
   const gerar = async () => {
     if (!modelo) return
@@ -54,7 +56,8 @@ export function SecaoPlanilha({ ctx }: { ctx: Contexto }) {
       <h2>Planilha de controle</h2>
       <p class="discreto">
         Escolha a planilha de controle de concreto da obra (.xlsx). O app preenche a aba "{LAYOUT_PADRAO.aba}", uma linha por caminhão (
-        {plural(linhas.length, 'caminhão', 'caminhões')} agora), e deixa o resto do arquivo como está. O que o app sabe a mais vai nas colunas depois
+        {plural(linhas.length, 'caminhão', 'caminhões')} da obra agora
+        {doExemplo > 0 && `; ${doExemplo === 1 ? 'o caminhão' : `os ${doExemplo} caminhões`} da concretagem de exemplo não ${doExemplo === 1 ? 'entra' : 'entram'}`}), e deixa o resto do arquivo como está. O que o app sabe a mais vai nas colunas depois
         da tabela.
       </p>
       <label>

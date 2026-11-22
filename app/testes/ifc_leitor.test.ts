@@ -114,4 +114,57 @@ describe('pacote .obra3d', () => {
   it('recusa arquivo que não é pacote', () => {
     expect(() => lerPacote(new ArrayBuffer(32))).toThrow(/não é um modelo/)
   })
+
+  it('muitas propriedades vão em pedaços (modelo grande de hidráulica) e voltam iguais', async () => {
+    const psets = Array.from({ length: 4500 }, (_, i) => ({ nome: `Pset ${i}`, props: [['Comprimento', `${i} mm`]] as [string, string][] }))
+    const grande = { ...modelo, meta: { ...modelo.meta, psets } }
+    const blob = pacoteParaBlob(grande)
+    const lido = lerPacote(await blob.arrayBuffer())
+    expect(lido.meta.psets).toHaveLength(4500)
+    expect(lido.meta.psets[4499]).toEqual(psets[4499])
+    expect(lido.meta).toEqual(grande.meta)
+    expect(Array.from(lido.blocos[0].indices)).toEqual(Array.from(modelo.blocos[0].indices))
+    // a lista do aparelho lê só o cabeçalho: sem as propriedades
+    const meta = await lerMetaDoPacote(blob)
+    expect(meta.nome).toBe('amostra.ifc')
+    expect(meta.psets).toEqual([])
+  })
+
+  it('modelo guardado na versão 1 (propriedades no cabeçalho) continua abrindo', () => {
+    // monta o arquivo como a versão 1 gravava
+    const enc = new TextEncoder()
+    const desc = (v: { length: number; constructor: { name: string } }) => ({ t: ({ Float32Array: 'F32', Int8Array: 'I8', Uint8Array: 'U8', Uint32Array: 'U32', Int32Array: 'I32' } as Record<string, string>)[v.constructor.name], n: v.length })
+    const camposTabela = ['expressIds', 'caixas', 'partesInicio', 'partes', 'classe', 'tipo', 'pavimento', 'camada', 'material', 'psetsInicio', 'psetsLista'] as const
+    const camposBloco = ['posicoes', 'normais', 'cores', 'elementos', 'indices', 'arestas'] as const
+    const cab = {
+      meta: modelo.meta,
+      tabela: Object.fromEntries(camposTabela.map((c) => [c, desc(modelo.tabela[c])])),
+      blocos: modelo.blocos.map((b) => ({ pavimento: b.pavimento, caixa: b.caixa, v: Object.fromEntries(camposBloco.map((c) => [c, desc(b[c])])) })),
+    }
+    const json = enc.encode(JSON.stringify(cab))
+    const vetores = [...camposTabela.map((c) => modelo.tabela[c]), ...modelo.blocos.flatMap((b) => camposBloco.map((c) => b[c]))]
+    let total = 12 + json.length
+    const partes: Uint8Array[] = []
+    for (const v of vetores) {
+      const p = (8 - (total % 8)) % 8
+      partes.push(new Uint8Array(p))
+      total += p
+      partes.push(new Uint8Array(v.buffer, v.byteOffset, v.byteLength))
+      total += v.byteLength
+    }
+    const dados = new Uint8Array(total)
+    const dv = new DataView(dados.buffer)
+    dv.setUint32(0, 0x33_4f_42_4f, true)
+    dv.setUint32(4, 1, true)
+    dv.setUint32(8, json.length, true)
+    dados.set(json, 12)
+    let pos = 12 + json.length
+    for (const p of partes) {
+      dados.set(p, pos)
+      pos += p.length
+    }
+    const lido = lerPacote(dados.buffer)
+    expect(lido.meta).toEqual(modelo.meta)
+    expect(Array.from(lido.blocos[0].posicoes)).toEqual(Array.from(modelo.blocos[0].posicoes))
+  })
 })

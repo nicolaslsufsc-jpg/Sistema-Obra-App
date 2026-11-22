@@ -98,3 +98,52 @@ O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de laj
      - SPDA: PVS 009.2.1 e 009.2.2.
   4. Elétrico no IFC real (piloto do 2º, 21/11): o eletroduto vem como "Conduit with/without Fittings" (IfcFlowSegment, com corpo extrudado; já casa com a regra) e a eletrocalha como "Cable Tray" (fica fora). Caixas na laje: "Tomada de Teto" e "Tomada de Piso" (Conjunto 4x2 e 4x4, IfcBuildingElementProxy), "CAIXA DE PASSAGEM", "Quadro de Distribuição". **Pendente de decisão do Nicolas:** os eletrodutos horizontais do 2º ficam cerca de 36 cm abaixo do piso do 3º (12,60 m; o 3º está em 12,96 m), e a tomada de teto do 2º fica em 12,96 m. Isso é a laje do 3º (embutido) ou o forro do 2º? Conforme a resposta, o elétrico passa a ser escolhido pela altura da laje e não pelo pavimento que contém o objeto. As tomadas e os interruptores de parede vêm uns 15 m acima do andar (erro do IFC) e não entram na laje.
   5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição. **App pronto (21/11):** disciplina `preventivo` (setor "Hidrantes, extintores e sprinklers"), tipos `hidrante`, `extintor`, `sprinkler`, `detector`, `iluminacao_emergencia`, `alarme`, `sinalizacao` e a tubulação como linha (`tubo_incendio`), item da ficha `"pontos": "preventivo"`; tipo desconhecido aparece com o nome do objeto. **Planta de consulta (decisão do Nicolas, 21/11: "se não tiver [ficha] vamos fazer que nem aço, mas não vai para ficha"):** a planta da disciplina que nenhuma ficha marca (PPCI; SPDA enquanto não tiver ficha) aparece no menu para olhar e conferir no local; o topo diz "Só consulta", o toque mostra o nome do ponto e nada grava em `fvs_eventos`. Marcação "visto" fica para depois, com o Nicolas. **Falta no pipeline** (`instalacoes.py` e `publicar_fichas.py`, que têm de ter a mesma lista de disciplinas): ler o IFC do preventivo e aceitar `"pontos": "preventivo"` na ficha.
+
+## Plano do SPDA como aba (22/11/2026, só o plano)
+
+Pedido do Professor: listar o que falta para o SPDA da obra entrar como aba. Nada foi publicado nem rodado contra o servidor.
+
+**O que já existe:** a disciplina `spda` ("Captores e descidas") no pipeline (`--so-spda`) e no app; a aba Pontos; a planta "Só consulta" quando nenhuma ficha marca o SPDA.
+
+**O que a pasta do SPDA da obra traz (33 arquivos, fora do repositório):**
+- um IFC geral;
+- 32 PDFs:
+  - lista mestra e memorial;
+  - 2 isométricos;
+  - plantas por pavimento e setor: subsolo, térreo, mezanino, tipo, 5º, 6º e cobertura, 3 setores cada;
+  - reservatório e topo da cobertura;
+  - 3 cortes, detalhe e norma.
+
+**O IFC real contra a regra de hoje** (`classificar` em `instalacoes.py`, ainda suposição):
+
+| Objeto no IFC (classe, quantidade) | Regra de hoje | O que fazer |
+|---|---|---|
+| "Minicaptor em barra chata de alumínio" (proxy, 116) | captor (casa por CAPTOR) | manter |
+| "Caixa de Barramento Equipotencial - BEP" (proxy, 6) | caixa_inspecao (casa por BEP) | manter; talvez tipo próprio "BEP" |
+| "Conector ATERRINSERT" (conexão, 61) | não entra (ATERR não casa com ATERRAMENTO) | é o ponto de medição/aterramento da descida? conferir no memorial e no detalhe; se for, vira `caixa_inspecao` ou `haste` |
+| "Terminal" (conexão, 69) | não entra | conferir: terminal aéreo do captor ou da descida |
+| barra chata, barra redonda, cabo de cobre nu e curvas (conexão, centenas) | não entra | são a malha da cobertura e as descidas; trecho vertical vira um ponto `descida`, horizontal fica fora ou vira linha |
+| "Conduit without Fittings" (segmento, 1568) | não entra | conferir se algum é a descida embutida no pilar; os demais ficam fora |
+| clips, parafusos, porcas, redutores, adesivo de alerta | não entra | fora (acessório) |
+
+Não há objeto chamado "descida", "caixa de inspeção" nem "haste": a descida tem de sair da geometria (trecho vertical) e a caixa, do conector.
+
+**Passos, em ordem:**
+1. Ler o memorial e o detalhe (PDF, sem servidor) para fixar o que é descida, caixa de inspeção e aterramento neste projeto.
+2. Ajustar a regra do SPDA em `instalacoes.py` com os nomes reais, sem tirar os atuais; teste na EXE com um IFC de mentira nos nomes novos.
+3. Descida pela geometria: trecho de barra, cabo ou conduíte do SPDA quase vertical (mais de 1 m de altura) vira um ponto `descida` no pavimento onde passa; teste na EXE.
+4. Pavimento de cada objeto: o IFC tem os mesmos nomes de pavimento dos outros modelos ("2° PAVIMENTO" etc.); vale o filtro por altura que o elétrico já usa. O subsolo aparece duas vezes no IFC: escolher pelo nome com a altura.
+5. Encaixe IFC → folha: pelos pilares da forma, como nas outras disciplinas; conferir no 2º e em mais um pavimento, olhando a distância das descidas aos pilares.
+6. **Cobertura (decisão do Nicolas):** quase todos os captores e a malha ficam na cobertura, e a cobertura não tem forma. Opções:
+   - a) fundo das plantas de SPDA da cobertura (3 setores), coladas pelos pilares como na furação;
+   - b) esperar a forma da cobertura;
+   - c) deixar a cobertura fora e publicar só as descidas e caixas dos pavimentos.
+
+   Sugestão: a), porque as plantas existem e a colagem já foi feita na furação.
+7. Fundo dos demais pavimentos: a forma serve, e as plantas de SPDA (3 por pavimento) podem entrar como na furação, se o Nicolas preferir ver o desenho do projetista.
+8. Config por pavimento (dado da obra, fora do repositório): `"instalacoes": {"spda": {"ifc": ..., "nivel": [...]}}`, junto dos configs de instalações já existentes.
+9. Gerar sem publicar, um pavimento por vez, e conferir a contagem por tipo contra a lista mestra ou o isométrico.
+10. Fichas PVS 009.2.1 (captores) e 009.2.2 (descidas e caixas) como dado da obra, com o item `"pontos": "spda"`. Enquanto não houver ficha, a aba aparece como "Só consulta".
+11. Publicar, um pavimento por vez, só quando o Professor liberar o login.
+
+**Perguntas para o Nicolas:** a cobertura (passo 6); se a BEP é um tipo próprio ou entra como caixa de inspeção.

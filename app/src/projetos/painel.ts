@@ -13,6 +13,7 @@
 //  3. Data de entrega com erro (ano com 3 dígitos) vai para conferir, sem adivinhar.
 //  4. Mesma empresa com 2+ cópias da mesma prancha em campo: fica só a mais nova (maior revisão; no empate,
 //     entrega mais recente). As outras são "provavelmente recolhida" e não pesam no painel.
+//     Exceção (22/11): cópia da mesma revisão da mais nova, para outra pessoa com nome, fica em campo.
 //  5. Atraso = hoje − data da revisão vigente. Sem prazo fixo.
 //  6. Cópia que já diz LO, mas o Autodoc tem a mesma LO com data bem depois da entrega: conferir.
 //  7. Número com mais de uma folha (privativas x gerais, cortes x fachadas): escolhe pela semelhança do
@@ -325,7 +326,19 @@ export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], h
         (b.copia.entrega ?? '').localeCompare(a.copia.entrega ?? '') ||
         a.copia.linha - b.copia.linha,
     )
-    for (const x of g.slice(1)) x.situacao = 'recolhida'
+    // Refinamento (achado do testador, 22/11): cópia da MESMA revisão da mais nova, para outra pessoa com
+    // nome, é outra cópia de verdade (duas pessoas da empresa com a vigente): fica em campo também.
+    const topo = g[0]
+    const pessoas = new Set([normalizar(topo.copia.colaborador)])
+    for (const x of g.slice(1)) {
+      const mesmaRev = x.copia.revisao === topo.copia.revisao && x.copia.fase === topo.copia.fase
+      const pessoa = normalizar(x.copia.colaborador)
+      if (mesmaRev && pessoa && !pessoas.has(pessoa) && !pessoas.has('')) {
+        pessoas.add(pessoa)
+        continue
+      }
+      x.situacao = 'recolhida'
+    }
   }
   return saida
 }

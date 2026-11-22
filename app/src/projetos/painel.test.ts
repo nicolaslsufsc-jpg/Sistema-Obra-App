@@ -47,22 +47,22 @@ describe('cruzamento (regras de 14/11/2026)', () => {
     expect(por(3)).toMatchObject({ resultado: 'desatualizada', loDepois: true, dias: 13 })
     expect(por(4).resultado).toBe('em dia')
   })
-  it('mesma empresa com 2 cópias em campo: fica a mais nova, a outra é provavelmente recolhida', () => {
+  it('mesma pessoa com 2 cópias em campo: fica a mais nova, a outra é provavelmente recolhida', () => {
     expect(por(5).situacao).toBe('em campo')
     expect(por(6).situacao).toBe('recolhida')
   })
-  it('mesma empresa, mesma revisão vigente, no mesmo dia, para duas pessoas: as duas ficam em campo', () => {
+  it('a regra vale por pessoa: cada pessoa da empresa fica com a cópia dela, nova ou antiga', () => {
     // Formas Delta já tem a 101 LO R02 (linha 2, Ana). Entram mais três da mesma vigente no mesmo dia.
     const extra = [
       '20;101;R02 LO;FORMAS DO PILOTIS;ESTRUTURAL;1;2026-11-14;Formas Delta;Bruno;', // outra pessoa: em campo
       '21;101;R02 LO;FORMAS DO PILOTIS;ESTRUTURAL;1;2026-11-14;Formas Delta;Ana;', // a mesma Ana de novo: só uma fica
-      '22;101;R01 LO;FORMAS DO PILOTIS;ESTRUTURAL;1;2026-11-14;Formas Delta;Caio;', // revisão antiga: recolhida
+      '22;101;R01 LO;FORMAS DO PILOTIS;ESTRUTURAL;1;2026-11-14;Formas Delta;Caio;', // revisão antiga de outra pessoa: em campo, a recolher
     ]
     const y = cruzar(lerDistribuicao([DISTRIBUICAO_EXE, ...extra].join(String.fromCharCode(10))), lerVigentes(VIGENTES_EXE), '2026-11-14')
     const s = (linha: number) => y.find((z) => z.copia.linha === linha)!
     expect(s(20)).toMatchObject({ situacao: 'em campo', resultado: 'em dia' })
     expect([s(2).situacao, s(21).situacao].sort()).toEqual(['em campo', 'recolhida'])
-    expect(s(22).situacao).toBe('recolhida')
+    expect(s(22)).toMatchObject({ situacao: 'em campo', resultado: 'desatualizada' })
   })
   it('conferir: revisão maior, não achada, LO bem posterior, data com erro', () => {
     expect(por(7)).toMatchObject({ resultado: 'conferir', motivo: 'revisão maior' })

@@ -11,9 +11,9 @@
 //     é DESATUALIZADA.
 //  2. Chave da prancha: disciplina + número sem os zeros da frente ("4" = "004").
 //  3. Data de entrega com erro (ano com 3 dígitos) vai para conferir, sem adivinhar.
-//  4. Mesma empresa com 2+ cópias da mesma prancha em campo: fica só a mais nova (maior revisão; no empate,
-//     entrega mais recente). As outras são "provavelmente recolhida" e não pesam no painel.
-//     Exceção (22/11): cópia da mesma revisão da mais nova, para outra pessoa com nome, fica em campo.
+//  4. Mesma PESSOA (empresa + colaborador) com 2+ cópias da mesma prancha em campo: fica só a mais nova
+//     (maior revisão; no empate, entrega mais recente). As outras são "provavelmente recolhida" e não pesam
+//     no painel. Até 22/11 valia por empresa; o Nicolas mudou: cada pessoa troca a cópia que tem.
 //  5. Atraso = hoje − data da revisão vigente. Sem prazo fixo.
 //  6. Cópia que já diz LO, mas o Autodoc tem a mesma LO com data bem depois da entrega: conferir.
 //  7. Número com mais de uma folha (privativas x gerais, cortes x fachadas): escolhe pela semelhança do
@@ -307,13 +307,16 @@ export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], h
     const v = acharVigente(c, vigentes)
     return { copia: c, situacao: c.devolucao ? 'devolvida' : 'em campo', ...compararCopia(c, v, hoje) }
   })
-  // regra 4: mesma empresa + prancha + folha com 2 ou mais em campo → fica só a mais nova.
-  // Grupo: disciplina + número sem zeros + empresa + folha do Autodoc (o código da vigente achada).
+  // regra 4, POR PESSOA (decisão do Nicolas, 22/11: "cada um deles trocar os projetos deles"): a mesma
+  // pessoa com 2 ou mais cópias da mesma prancha e folha em campo → fica só a mais nova dela; as outras são
+  // "provavelmente recolhida". A cópia antiga de OUTRA pessoa da mesma empresa continua em campo (e aparece
+  // em "recolher de X"). Cópia sem colaborador conta como uma pessoa só da empresa.
+  // Grupo: disciplina + número sem zeros + empresa + colaborador + folha do Autodoc (o código da vigente achada).
   // Desempate (igual à conta do Professor, 14/11): maior revisão; no empate, a entrega mais recente.
   const grupos = new Map<string, CopiaCruzada[]>()
   for (const x of saida) {
     if (x.situacao !== 'em campo') continue
-    const k = `${x.copia.disciplina}|${chaveNumero(x.copia.codigo)}|${normalizar(x.copia.empresa)}|${x.vigente?.codigo ?? ''}`
+    const k = `${x.copia.disciplina}|${chaveNumero(x.copia.codigo)}|${normalizar(x.copia.empresa)}|${normalizar(x.copia.colaborador)}|${x.vigente?.codigo ?? ''}`
     const g = grupos.get(k)
     if (g) g.push(x)
     else grupos.set(k, [x])
@@ -326,19 +329,7 @@ export function cruzar(copias: readonly Copia[], vigentes: readonly Vigente[], h
         (b.copia.entrega ?? '').localeCompare(a.copia.entrega ?? '') ||
         a.copia.linha - b.copia.linha,
     )
-    // Refinamento (achado do testador, 22/11): cópia da MESMA revisão da mais nova, para outra pessoa com
-    // nome, é outra cópia de verdade (duas pessoas da empresa com a vigente): fica em campo também.
-    const topo = g[0]
-    const pessoas = new Set([normalizar(topo.copia.colaborador)])
-    for (const x of g.slice(1)) {
-      const mesmaRev = x.copia.revisao === topo.copia.revisao && x.copia.fase === topo.copia.fase
-      const pessoa = normalizar(x.copia.colaborador)
-      if (mesmaRev && pessoa && !pessoas.has(pessoa) && !pessoas.has('')) {
-        pessoas.add(pessoa)
-        continue
-      }
-      x.situacao = 'recolhida'
-    }
+    for (const x of g.slice(1)) x.situacao = 'recolhida'
   }
   return saida
 }

@@ -19,7 +19,7 @@ export const DISTRIBUICAO_EXE = [
   '3;200;R00;PILARES DO SUBSOLO;ESTRUTURAL;1;2026-09-01;Empreiteira Alfa;Pedro;', // EX R00 antes da LO R00 → desatualizada
   '4;200;R00;PILARES DO SUBSOLO;ESTRUTURAL;1;2026-11-03;Formas Delta;Ana;', // entregue depois da LO → em dia
   '5;4;R00;AGUA FRIA;HIDRO;1;2026-07-20;Hidráulica Beta;Maria;', // "4" = "004"; desatualizada (LO depois)
-  '6;004;R00;AGUA FRIA;HIDRO;1;2026-07-10;Hidráulica Beta;Maria;', // mesma empresa e prancha: provavelmente recolhida
+  '6;004;R00;AGUA FRIA;HIDRO;1;2026-07-10;Hidráulica Beta;Maria;', // mesma pessoa e prancha: provavelmente recolhida
   '7;002;R01;AGUA FRIA;HIDRO;1;2026-10-01;Elétrica Gama;Rui;', // revisão maior → conferir
   '8;300;R00;VIGAS;ESTRUTURAL;1;2026-10-01;Formas Delta;Ana;', // não achada → conferir
   '9;1;R00;PLANTA BAIXA SUBSOLO GERAL;ARQUITETÔNICO;1;2026-07-22;Empreiteira Alfa;Paulo;', // 2 folhas; pelo título: geral R03 → desatualizada

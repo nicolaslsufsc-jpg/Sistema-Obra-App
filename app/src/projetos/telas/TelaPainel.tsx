@@ -196,7 +196,7 @@ function Painel({
       </section>
 
       <p class="discreto pj-nota" data-testid="painel-recolhidas">
-        {plural(r.recolhidas, 'cópia ficou', 'cópias ficaram')} fora da conta como <span class="pj-selo rec">provavelmente recolhida</span>: a mesma empresa tem uma cópia mais nova da mesma prancha.
+        {plural(r.recolhidas, 'cópia ficou', 'cópias ficaram')} fora da conta como <span class="pj-selo rec">provavelmente recolhida</span>: a mesma pessoa tem uma cópia mais nova da mesma prancha.
       </p>
     </>
   )

@@ -354,7 +354,8 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
     // ?furoslaje=1&furacao=1: os furos de laje vão para plantas próprias, uma por camada (21/11)
     ...(params.get('furoslaje') && params.get('furacao') ? { furos_laje_separados: true } : {}),
     // ?furacaototal=1: todos os furos (laje, viga e pilar) numa planta de furação só, igual à armadura (21/11)
-    ...(params.get('furacaototal') ? { furos_separados: true } : {}),
+    // ?furacaototal=antiga: a forma publicada antes, sem "furos_separados" (a tela esconde os F pela planta "Furação")
+    ...(params.get('furacaototal') && params.get('furacaototal') !== 'antiga' ? { furos_separados: true } : {}),
   }
   return { manifest, bin: fechar() }
 }
@@ -920,7 +921,7 @@ async function semear() {
   await gravarCadastro(linhas)
   if (manifest.camadas_separadas) await semearArmadura(base, manifest, bin)
   if (manifest.furos_laje_separados) await semearFuracao(base, manifest, bin)
-  if (manifest.furos_separados) await semearFuracaoTotal(base, manifest, bin)
+  if (manifest.furos_separados || params.get('furacaototal') === 'antiga') await semearFuracaoTotal(base, manifest, bin)
   if (params.get('instalacoes')) await semearInstalacoes(base, manifest, bin)
 }
 

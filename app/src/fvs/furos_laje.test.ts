@@ -11,6 +11,10 @@ import {
   furoConferivel,
   furoDeLajeEscondido,
   furoDeOutraPlanta,
+  furoNoFiltro,
+  temFuracaoUnica,
+  opcoesDoFiltroDeFuros,
+  tipoDoFuro,
   furosConferiveisPorArea,
   furosDeLajeNasAreas,
   furosNoToque,
@@ -364,5 +368,41 @@ describe('furação igual à armadura (21/11): a peça do furo e a forma com os 
     expect(furoDeOutraPlanta(v, { furos_separados: true })).toBe(true)
     expect(furoDeOutraPlanta(v, { furos_laje_separados: true })).toBe(false)
     expect(furoDeOutraPlanta(v, {})).toBe(false)
+  })
+})
+
+describe('filtro por tipo na aba Furos (21/11 noite)', () => {
+  const viga: ElementoPacote = { ...furo('V1-F1', 0, 0, [], false), viga: 'v1' }
+  const pilar: ElementoPacote = { ...furo('P1-F1', 0, 0, [], false), pilar: 'p1' }
+  const esgoto = furo('FL1', 0, 0, ['SAN'])
+  const agua = furo('FL2', 0, 0, ['Hidráulica'])
+  const geral = furo('FL6', 0, 0, ['Geral'])
+  it('o tipo vem da peça (viga, pilar) ou da camada do furo de laje', () => {
+    expect([viga, pilar, esgoto, agua, geral].map(tipoDoFuro)).toEqual(['viga', 'pilar', 'esgoto', 'agua', undefined])
+    expect(tipoDoFuro({ ...viga, tipo: 'V' })).toBeUndefined()
+  })
+  it('"todos" mostra tudo; os outros só o tipo deles', () => {
+    expect(furoNoFiltro(geral, 'todos')).toBe(true)
+    expect(furoNoFiltro(esgoto, 'esgoto')).toBe(true)
+    expect(furoNoFiltro(esgoto, 'viga')).toBe(false)
+    expect(furoNoFiltro(pilar, 'pilar')).toBe(true)
+  })
+  it('as opções contam só os furos conferíveis, "todos" primeiro, sem tipo vazio', () => {
+    const els = { a: viga, b: { ...viga, nome: 'V1-F2' }, c: esgoto, d: geral, e: pilar }
+    expect(opcoesDoFiltroDeFuros(els)).toEqual([
+      { filtro: 'todos', n: 4 },
+      { filtro: 'esgoto', n: 1 },
+      { filtro: 'viga', n: 2 },
+      { filtro: 'pilar', n: 1 },
+    ])
+    expect(opcoesDoFiltroDeFuros(undefined)).toEqual([{ filtro: 'todos', n: 0 }])
+  })
+})
+
+describe('forma publicada antes da planta "Furação"', () => {
+  it('esconde os furos da forma só quando há a planta com todos os furos (não as de camada)', () => {
+    expect(temFuracaoUnica([{ trecho: 'Furação' }])).toBe(true)
+    expect(temFuracaoUnica([{ trecho: 'Furos de esgoto' }, { trecho: 'Furos de água' }, { trecho: 'Furos de elétrica' }])).toBe(false)
+    expect(temFuracaoUnica([])).toBe(false)
   })
 })

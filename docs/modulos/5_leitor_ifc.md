@@ -189,3 +189,48 @@ Pedido do Nicolas: "deixa uma opção da pessoa baixar os IFCs dentro do app pra
 
 ## 21/11/2026: no menu, fora do beta (confirmado)
 O Nicolas confirmou no chat do Professor: "O menu, o leitor de FC entra no menu? Sim, entra." A linha do IFC em `app/src/modulos.ts` já estava sem `beta` e sem `foraDoMenu` desde 20/11. Hoje só os textos foram acertados: a bancada (`dev/ifc.html`), o comentário do teste e este arquivo. Conferido de novo em 375 px e no tablet: o menu mostra "IFC" sem selo e o leitor abre a amostra sem internet (`local.e2e`), e a bancada passa nos dois tamanhos (`ifc_bancada.e2e`).
+
+## 21/11/2026: "Baixar modelo da obra" (Google Drive) (branch `ifc/drive`)
+Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baixar". Os IFCs da obra ficam numa pasta do Google Drive da obra e nunca vão para o servidor (de 9 MB a 1,6 GB).
+
+**Como funciona**
+- A lista de modelos é **dado da obra, fora do repositório**: um JSON pequeno (`modelos_drive.json`) com nome, disciplina, tamanho, situação e o id do arquivo no Drive de cada modelo, mais a pasta.
+- **Com conta:** gestor e admin carregam o JSON no leitor ("Carregar a lista de modelos"). Ele vira um arquivo do núcleo (módulo `ifc`) e desce para todos os aparelhos. Sem tabela nova.
+- **Sem conta:** o JSON fica só no aparelho.
+- **Obra EXE:** sem lista, aparece uma de exemplo (`modelos_drive.ts`).
+- Tocar em "Baixar" mostra o tamanho e os avisos. Acima de 20 MB, pede Wi-Fi, ou "Conecte no Wi-Fi" se o navegador disser que está nos dados móveis. Acima de 300 MB, "pode travar no celular e no tablet, prefira o PC ou o IFC por pavimento".
+- "Abrir no Drive para baixar" usa o link de baixar direto do Drive (`drive.google.com/uc?export=download&id=…`, desde 21/11). O link é montado pelo app, só para `drive.google.com`, e nunca copiado do JSON. Arquivo pequeno começa a baixar na hora. Arquivo grande (acima de uns 100 MB) passa antes por uma página do Drive avisando que ele não verificou vírus; a pessoa toca em "Baixar assim mesmo".
+- Depois, "Importar IFC" abre o arquivo baixado. O modelo importado com o mesmo nome aparece como "neste aparelho", com "Abrir".
+- Para baixar, a pessoa precisa ter acesso à pasta do Drive.
+- Formato do JSON e regras: `app/src/ifc/modelos_drive.ts`.
+
+**Arquivos:** `modelos_drive.ts`, `telas/ModelosDaObra.tsx`, `obra_servidor.ts` (`fonteListaDoServidor`), `telas/ComObra.tsx`, `ModuloIfc.tsx`, `ifc.css`. Bancada: `dev/ifc.html?obra=exe`.
+
+**Testes:**
+- `testes/ifc_modelos_drive.test.ts` (novo).
+- Em `ifc_bancada.e2e`, um passo novo em 375 px e tablet: lista de exemplo, avisos de tamanho e Wi-Fi, link do Drive, carregar uma lista, importar e ver "neste aparelho".
+
+**Dado da obra piloto:**
+- A lista dos 7 modelos foi montada fora do repositório, em `modelos_drive.json`, na pasta de projetos da obra no PC do Nicolas.
+- Ela tem o id da pasta e o id de cada arquivo. Os ids reais não entram no código nem nos testes; os testes usam ids fictícios.
+- Falta carregá-la no app pela conta de gestor da obra: Leitor de IFC → Modelos → "Carregar a lista de modelos (.json)". Uma vez só; depois desce para todos os aparelhos.
+- O Nicolas deixou a pasta como "qualquer pessoa com o link: leitor" em 21/11. Assim qualquer aparelho baixa sem entrar na conta Google.
+
+**Por que o app não lista a pasta sozinho, só com o id dela:** listar uma pasta do Drive exige a Drive API, que pede uma chave do Google e a liberação de `https://www.googleapis.com` no app. É a proposta abaixo. Sem isso, a lista vem do JSON.
+
+**Teste real em 21/11** (fora do repositório, script no PC):
+- Bancada `dev/ifc.html?obra=exe` com a lista real da obra piloto.
+- Em tablet (1280×800) e celular (375×812):
+  - listou os 7 modelos, sem rolagem lateral;
+  - "Baixar" na Furação (10 MB) baixou do Drive de verdade em cerca de 2 s;
+  - o arquivo baixado é igual ao da pasta de projetos (mesmo md5);
+  - "Importar IFC" abriu 3.747 elementos;
+  - o item ficou "neste aparelho", com "Abrir";
+  - sem erro na página.
+- O arquivo baixado foi apagado depois. Nada foi para o servidor.
+- Detalhe do Chrome: o download aparece na aba do leitor, e a aba nova do Drive fecha sozinha.
+
+**Proposta, não feita: baixar dentro do app, com barra de progresso, sem abrir o Drive.** Precisa de três coisas:
+1. A pasta compartilhada como "qualquer pessoa com o link" (feito em 21/11).
+2. Uma chave de API do Google (Drive API) restrita ao endereço do site.
+3. Acrescentar `https://www.googleapis.com` na lista de permissões do navegador (`app/vite.config.ts`).

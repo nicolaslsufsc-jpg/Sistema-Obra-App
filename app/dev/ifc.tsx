@@ -1,5 +1,5 @@
 // Bancada do leitor de IFC (ver ifc.html): sem login e sem servidor, os arquivos são escolhidos no aparelho.
-// Com ?obra=exe, mostra também a lista "IFCs da obra" com uma fonte de mentira na memória (obra fictícia
+// Com ?obra=exe, mostra também "Baixar modelo da obra" (lista de exemplo da EXE) e a lista "IFCs da obra" com uma fonte de mentira na memória (obra fictícia
 // EXE, a amostra escrita à mão já "enviada"), para ver baixar, abrir, apagar e enviar sem servidor.
 import { render } from 'preact'
 import '../src/style.css'
@@ -8,6 +8,7 @@ import { nomeDaParte, partirIfc, type FonteIfcs, type LinhaArquivo } from '../sr
 import { sha256Hex } from '../src/fvs/pacote'
 import { amostraIfc } from '../testes/ifc/amostra'
 import type { ContextoObraIfc } from '../src/ifc/telas/ModuloIfc'
+import { fonteLocal } from '../src/ifc/modelos_drive'
 
 const OBRA = '00000000-0000-4000-8000-0000000000e1'
 
@@ -45,7 +46,9 @@ if (params.get('obra') === 'exe') {
   void fonteDeMentira().then((fonte) => {
     ;(window as unknown as { __ifcFonte: typeof fonte }).__ifcFonte = fonte
     const obraIfc: ContextoObraIfc = { obraId: OBRA, fonte, podeEnviar: params.get('papel') !== 'campo', online: true, versao: 0 }
-    render(<IfcSobDemanda obraIfc={obraIfc} />, app)
+    // "Baixar modelo da obra": lista do aparelho, ou a de exemplo da EXE
+    const modelosDrive = { fonte: fonteLocal(OBRA, true), versao: 0 }
+    render(<IfcSobDemanda obraIfc={obraIfc} modelosDrive={modelosDrive} />, app)
   })
 } else {
   render(<IfcSobDemanda />, app)

@@ -17,7 +17,7 @@ import { pacotesAManter } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, type CamadaDeBarras } from '../barras'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
-import { avancoDosFuros, furoDeOutraPlanta, textoDoAvancoDosFuros } from '../furos_laje'
+import { avancoDosFuros, ehDeCamadaDeFuros, furoDeOutraPlanta, temFuracaoUnica, textoDoAvancoDosFuros } from '../furos_laje'
 import { disciplinasDoPavimento, ehOpcaoDeAcabamentos, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
@@ -338,7 +338,9 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
         if (!pac) continue
         const els = Object.values(pac.manifest.elementos)
-        const quantos = (t: string) => els.filter((e) => e.tipo === t && !furoDeOutraPlanta(e, pac.manifest) && !e.so_detalhe).length
+        // com a planta "Furação" no pavimento, os furos da forma ficam só nela (sem "Furos de viga" aqui)
+        const semFuros = temFuracaoUnica(plantasDoPv.filter(ehDeFuracao))
+        const quantos = (t: string) => els.filter((e) => e.tipo === t && !(semFuros && t === 'F') && !furoDeOutraPlanta(e, pac.manifest) && !e.so_detalhe).length
         const nBarras = Object.keys(pac.manifest.barras ?? {}).length
         const abas = OPCOES_DA_FORMA.map(({ tipo }) => ({
           tipo,
@@ -436,15 +438,22 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               <div class="fv-grade-armadura">{armadura.map(botaoDaArmadura)}</div>
             </div>
           )}
-          {furacao.length > 0 && (
-            <div data-testid="fvs-secao-outra">
-              <h3 class="fv-disciplina">Furação</h3>
-              <div class="fv-grade-armadura">{furacao.map((p) => {
-                  const a = avancoDaFuracao.get(p.id)
-                  return plantaNaLista(p, p.trecho, `${a?.total ? textoDoAvancoDosFuros(a) : `${p.elementos} ${p.elementos === 1 ? 'furo' : 'furos'}`} · ${p.prancha}`)
-                })}</div>
-            </div>
-          )}
+          {furacao.length > 0 && (() => {
+            // uma aba só, "Furos" (21/11/2026, "compilar as abas em uma só"): abre a planta de furação com todos
+            // os furos (o filtro por tipo fica dentro dela); sem ela, a primeira por camada (as outras ficam no
+            // seletor do topo da planta) e o avanço soma as camadas
+            const unica = furacao.find((p) => !ehDeCamadaDeFuros(p.trecho))
+            const abre = unica ?? furacao[0]
+            const soma = (unica ? [unica] : furacao).map((p) => avancoDaFuracao.get(p.id))
+            const a = soma.every(Boolean) ? soma.reduce<{ ok: number; errados: number; total: number }>((t, x) => ({ ok: t.ok + x!.ok, errados: t.errados + x!.errados, total: t.total + x!.total }), { ok: 0, errados: 0, total: 0 }) : undefined
+            const n = (unica ? [unica] : furacao).reduce((t, p) => t + p.elementos, 0)
+            return (
+              <div data-testid="fvs-secao-outra">
+                <h3 class="fv-disciplina">Furos</h3>
+                <div class="fv-grade-armadura">{plantaNaLista(abre, 'Furos', `${a?.total ? textoDoAvancoDosFuros(a) : `${n} ${n === 1 ? 'furo' : 'furos'}`} · ${abre.prancha}`)}</div>
+              </div>
+            )
+          })()}
           {vedacao.length > 0 && (
             <div data-testid="fvs-secao-vedacao">
               <h3 class="fv-disciplina">Modulação de paredes</h3>
@@ -517,7 +526,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       const ps = d.plantas
       const ops = (f: (op: OpcaoDosAmbientes) => boolean) => ps.filter(ehDeAmbientes).flatMap((p) => (opcoesAmb.get(p.id) ?? []).filter(f).map((o) => o.titulo))
       if (d.id === 'estrutura') {
-        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furação'].filter(Boolean)
+        const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furos'].filter(Boolean)
         return { tem: partes.join(', '), andamento: r.total > 0 ? `${r.liberadas} de ${r.total} peças liberadas${r.comR > 0 ? ` · ${r.comR} com NC` : ''}` : null }
       }
       if (d.id === 'alvenaria') {
@@ -859,7 +868,7 @@ const SECAO_DE_INSTALACOES: Record<string, string> = { hidro: 'Hidráulica', san
 /** Plantas de furos de laje na ordem da obra: esgoto, água, elétrica (o nome vem do pipeline/fvs/furos.py). */
 const ordemDoFuro = (trecho: string) => { const t = trecho.toLowerCase(); return t.includes('esgoto') ? 0 : t.includes('água') || t.includes('agua') ? 1 : t.includes('elétrica') || t.includes('eletrica') ? 2 : 3 }
 /** Seções depois da estrutura: os furos de laje por camada (21/11/2026), depois as instalações. */
-const SECOES: Record<string, string> = { furacao: 'Furação', ...SECAO_DE_INSTALACOES }
+const SECOES: Record<string, string> = { furacao: 'Furos', ...SECAO_DE_INSTALACOES }
 /** Na ordem do menu (furação, hidro, esgoto, elétrico, preventivo, SPDA); disciplina que o app não conhece vem depois. */
 const ordemDaSecao = (d: string) => { const i = Object.keys(SECOES).indexOf(d); return i < 0 ? 99 : i }
 

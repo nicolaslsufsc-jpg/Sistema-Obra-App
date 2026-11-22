@@ -1,7 +1,7 @@
 // Liga a planilha de controle (planilha_controle.ts) aos dados do Concreto (dados.ts).
 // A concretagem de exemplo da apresentação (exemplo.ts) não entra: a planilha é da obra.
 
-import type { DadosConcreto } from './dados'
+import { caminhoesComLajeDesenhada, type DadosConcreto } from './dados'
 import { relatorioPorCaminhao, type PecaRelatorio } from './relatorio'
 import type { CaminhaoDaPlanilha, ConcretagemDaPlanilha } from './planilha_controle'
 
@@ -12,7 +12,7 @@ export function itensDaPlanilha(dados: DadosConcreto): Array<{ concretagem: Conc
     .filter((c) => !c.exemplo)
     .map((c) => {
       const cams = dados.caminhoesDe.get(c.raiz) ?? []
-      const porCaminhao = new Map(relatorioPorCaminhao(cams, dados.pecasDe, pecas, dados.lajesFvsDe).map((l) => [l.caminhao.raiz, l.pecas]))
+      const porCaminhao = new Map(relatorioPorCaminhao(cams, dados.pecasDe, pecas, dados.lajesFvsDe, caminhoesComLajeDesenhada(dados)).map((l) => [l.caminhao.raiz, l.pecas]))
       return {
         concretagem: {
           raiz: c.raiz,

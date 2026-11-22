@@ -1104,6 +1104,52 @@ suite('Concreto na bancada (Chrome)', () => {
     }
   }, 120_000)
 
+  it('laje desenhada no caminhão: a área de vigas e laje aparece como laje concretada no painel e no relatório (tablet e celular)', async () => {
+    // campo não cria a laje do trecho: a laje que conta é a área desenhada (como na obra, onde a forma não traz a laje)
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    await p.goto(`${url}?papel=campo`)
+    await clicar(p, /Pavimento em 2 trechos/)
+    await clicar(p, '+ Nova concretagem')
+    await p.getByLabel('Local').fill('Trecho 1 · laje desenhada')
+    await p.getByLabel('fck (MPa)').fill('35')
+    await clicar(p, 'Salvar concretagem')
+    await clicar(p, '+ Caminhão')
+    await p.getByLabel('Nota fiscal').fill('730001')
+    await clicar(p, /^Salvar$/)
+    await clicar(p, 'Desenhar onde foi')
+    await p.getByTestId('caneta-vigas_laje').click()
+    const cdp = await contexto.newCDPSession(p)
+    // antes de desenhar: nada de laje
+    expect(await p.getByTestId('laje-desenhada').count()).toBe(0)
+    await tracarComCaneta(p, cdp, [[130, 95], [430, 95], [430, 145], [130, 145], [130, 95]])
+    await p.getByTestId('toast').filter({ hasText: 'peça entrou no caminhão 1' }).waitFor()
+    expect(await p.getByTestId('laje-desenhada').innerText()).toMatch(/Laje concretada: 1 área desenhada nesta planta/)
+    // a legenda do mapa sem caminhão explica a área cheia
+    await capturar(p, 'laje_desenhada_1280')
+    for (const largura of [375, 1280]) {
+      await p.setViewportSize({ width: largura, height: 800 })
+      expect(await p.getByTestId('laje-desenhada').isVisible()).toBe(true)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+    }
+    await capturar(p, 'laje_desenhada_painel_1280')
+    // relatório: a laje entra como peça do caminhão
+    await p.setViewportSize({ width: 375, height: 800 })
+    await p.goto(`${url}?papel=campo`)
+    await clicar(p, /Pavimento em 2 trechos/)
+    await clicar(p, /Trecho 1 · laje desenhada/)
+    await clicar(p, 'Relatório de peças')
+    const rel = await p.getByTestId('relatorio-caminhao').innerText()
+    expect(rel).toContain('Laje (área desenhada)')
+    expect(rel).toContain('V1')
+    expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+    await capturar(p, 'laje_desenhada_relatorio_375')
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 90_000)
+
   it('celular em pé: nenhuma tela rola de lado e os botões têm pelo menos 44 px', async () => {
     const contexto = await navegador.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
     const p = await contexto.newPage()

@@ -879,3 +879,19 @@ textarea {
 .cc-alerta-caminhoes {
   margin: 0.35rem 0 0.6rem 1rem;
 }
+
+/* laje concretada (área de vigas e laje do caminhão) no painel do mapa */
+.cc-laje-desenhada {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+.cc-laje-desenhada i {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 3px;
+  opacity: 0.6;
+}

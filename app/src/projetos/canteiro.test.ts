@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { abrirXlsx, texto } from '../concreto/xlsx'
-import { nomeSemCaixaAlta, nomesDeDisciplina, copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
+import { copiasDoCanteiro, nomeSemCaixaAlta, nomesDeDisciplina, copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
 import type { Linha } from '../nucleo/banco_local'
 import type { Documento } from './dados'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
@@ -205,6 +205,27 @@ describe('entregas do app no canteiro (21/11)', () => {
     const o = oQueFazerAgora([], x)
     expect(o.recolher.map((r) => [r.x.copia.colaborador, r.vigente])).toEqual([['Pedro', null]])
     expect(situacaoFicha(fora)).toBe('RECOLHER')
+  })
+})
+
+describe('ficha no aparelho + entregas do servidor (22/11)', () => {
+  const daFicha = lerDistribuicao(DISTRIBUICAO_EXE)
+  const servidor = [{ ...daFicha[0], linha: LINHA_APP, app: { entregaId: 'e1', documentoId: 'd1', assinaturaId: null } }]
+  it('com entregas no servidor, a ficha importada não soma: nada conta em dobro', () => {
+    const r = copiasDoCanteiro(daFicha, servidor)
+    expect(r.fonte).toBe('servidor')
+    expect(r.copias).toHaveLength(1)
+    expect(r.copias.every((c) => !!c.app)).toBe(true)
+    expect(r.ignoradas).toBe(daFicha.length)
+    // a mesma cópia nas duas fontes aparece uma vez só no cruzamento
+    expect(cruzar(r.copias, lerVigentes(VIGENTES_EXE), HOJE).filter((x) => x.situacao === 'em campo')).toHaveLength(1)
+  })
+  it('sem entregas no servidor, vale a ficha importada no aparelho', () => {
+    const r = copiasDoCanteiro(daFicha, [])
+    expect([r.fonte, r.copias.length, r.ignoradas]).toEqual(['ficha', daFicha.length, 0])
+  })
+  it('só o servidor, sem ficha no aparelho', () => {
+    expect(copiasDoCanteiro([], servidor)).toMatchObject({ fonte: 'servidor', ignoradas: 0 })
   })
 })
 

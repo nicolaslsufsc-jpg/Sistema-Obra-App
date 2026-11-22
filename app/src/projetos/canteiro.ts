@@ -112,6 +112,16 @@ export function copiasDoApp(d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' 
 }
 
 /**
+ * De onde saem as cópias do canteiro (22/11/2026). Quando o servidor já tem entregas da obra, valem SÓ elas:
+ * a ficha importada no aparelho é a mesma informação (a ficha foi gravada no servidor) e somar as duas contava
+ * cada cópia em dobro. Sem entregas no servidor (ou sem conta), vale a ficha importada no aparelho.
+ */
+export function copiasDoCanteiro(daFicha: readonly Copia[], doServidor: readonly Copia[]): { copias: Copia[]; fonte: 'servidor' | 'ficha'; ignoradas: number } {
+  if (doServidor.length) return { copias: [...doServidor], fonte: 'servidor', ignoradas: daFicha.length }
+  return { copias: [...daFicha], fonte: 'ficha', ignoradas: 0 }
+}
+
+/**
  * A lista vigente a partir do servidor (uma linha por documento, a revisão vigente dele).
  * Mesmas chaves da lista em CSV: disciplina pelo nome da ficha, número sem zeros; fase que não é de obra
  * (PL, DE, AP...) entra com a fase na frente do número, para não cruzar com cópia de obra.

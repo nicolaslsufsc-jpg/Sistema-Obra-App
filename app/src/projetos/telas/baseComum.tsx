@@ -5,7 +5,7 @@ import { lerBaseOuDoPacote, type BaseProjetos } from '../base'
 import { aEntregar, gravarDestinatarios, lerDestinatarios, regrasAtuais, type DadosDestinatario, type Destinatario } from '../distribuicao'
 import { aplicarEdicoes, gravarEdicao, lerEdicoes, resumirEscritorio, type Edicao, type NovaEdicao } from '../edicoes'
 import { cruzar, resumir, type CopiaCruzada } from '../painel'
-import { copiasDoApp, mesclarEscritorio, vigentesDoServidor } from '../canteiro'
+import { copiasDoApp, mesclarEscritorio, vigentesDoServidor, copiasDoCanteiro } from '../canteiro'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
 import { dataBR, horaBR } from './comum'
 import { FaixaAutodoc } from './FaixaAutodoc'
@@ -40,14 +40,15 @@ export function usarBase(ctx: Contexto) {
   // Com conta, a revisão vigente vem do servidor (a lista do Autodoc publicada pelo PC): a lista em CSV não é
   // preciso importar. Sem conta (ou servidor ainda vazio), vale a lista importada.
   const vigServidor = useMemo(() => (!ctx.semConta && dados.vigentes.size ? vigentesDoServidor(dados) : null), [ctx.semConta, dados])
-  // Com conta, as entregas registradas no app (com ou sem assinatura) entram no canteiro junto com a ficha
-  // (achado do testador, 21/11): as 5 listas se cruzam. Sem a ficha importada, valem só elas.
+  // Com conta, as entregas do servidor (registradas no app ou vindas da ficha gravada pelo PC) são o canteiro.
+  // Havendo entregas no servidor, a ficha importada no aparelho fica de fora; sem elas, vale a ficha importada.
   const doApp = useMemo(() => (ctx.semConta ? [] : copiasDoApp(dados)), [ctx.semConta, dados])
   const corrigida = useMemo(() => {
     const b = base ?? (vigServidor && doApp.length ? { vigentes: [], copias: [] } : null)
     if (!b) return null
     const c = aplicarEdicoes(vigServidor ? { ...b, vigentes: vigServidor } : b, edicoes)
-    return { ...c, copias: [...c.copias, ...doApp], escritorio: mesclarEscritorio(b.escritorioIndice, c.escritorio) }
+    // com entregas no servidor, a ficha importada no aparelho não soma (contava em dobro): ver copiasDoCanteiro
+    return { ...c, copias: copiasDoCanteiro(c.copias, doApp).copias, escritorio: mesclarEscritorio(b.escritorioIndice, c.escritorio) }
   }, [base, edicoes, vigServidor, doApp])
   const cruzadas = useMemo<CopiaCruzada[] | null>(
     () => (corrigida && corrigida.vigentes.length && corrigida.copias.length ? cruzar(corrigida.copias, corrigida.vigentes, dados.hoje) : null),
@@ -84,7 +85,8 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
   const vigenteDoServidor = !ctx.semConta && ctx.dados.vigentes.size > 0
   // a data vale também para as entregas registradas no app (achado do testador, 22/11)
   const doApp = useMemo(() => (ctx.semConta ? [] : copiasDoApp(ctx.dados)), [ctx.semConta, ctx.dados])
-  const todasCopias = [...(base?.copias ?? []), ...doApp]
+  const fonteCopias = copiasDoCanteiro(base?.copias ?? [], doApp)
+  const todasCopias = fonteCopias.copias
   // no celular as abas não cabem: a ativa rola para dentro da tela
   const abas = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -105,14 +107,20 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
         </div>
       </header>
 
-      {base && (base.vigentesImportadaEm || base.copiasImportadaEm || vigenteDoServidor) && (
+      {(base ? base.vigentesImportadaEm || base.copiasImportadaEm || vigenteDoServidor : fonteCopias.fonte === 'servidor') && (
         <p class="pj-aviso-base" data-testid="painel-datas">
           {vigenteDoServidor
             ? 'Revisão vigente do servidor (lista do Autodoc).'
-            : base.vigentesImportadaEm
+            : base?.vigentesImportadaEm
               ? `Revisão vigente da lista importada em ${horaBR(base.vigentesImportadaEm)} (última atualização manual).`
               : 'Falta a lista vigente.'}{' '}
           {todasCopias.length ? `Distribuição com entregas até ${dataBR(ultimaEntrega(todasCopias))}.` : 'Falta a distribuição.'}
+          {fonteCopias.fonte === 'servidor' && (
+            <span class="discreto" data-testid="copias-do-servidor">
+              {' '}
+              As cópias vêm do servidor{fonteCopias.ignoradas ? '; a ficha importada neste aparelho não entra na conta' : ''}.
+            </span>
+          )}
         </p>
       )}
 

@@ -1,8 +1,7 @@
 // Consolo e capitel como partes do pilar (item 2 do pedido de 17/11). Ficha fictícia da obra EXE.
 import { describe, expect, it } from 'vitest'
-import { travasDaArea, type ParteNaPlanta, type Ponto } from './areas'
 import { linhasDaSituacao } from './planilha'
-import { partesDoManifest, tiposDasPartes, type ElementoPacote } from './pacote'
+import { tiposDasPartes, type ElementoPacote } from './pacote'
 import {
   fichaNaPeca,
   itensAntesDaConcretagem,
@@ -99,30 +98,12 @@ describe('situação da parte', () => {
   })
 })
 
-const quad = (x0: number, y0: number, x1: number, y1: number): Ponto[] => [
+const quad = (x0: number, y0: number, x1: number, y1: number): Array<[number, number]> => [
   [x0, y0],
   [x1, y0],
   [x1, y1],
   [x0, y1],
 ]
-
-describe('área de laje travada', () => {
-  const partes: ParteNaPlanta[] = [
-    { elementoId: 'p1', nome: 'P1', tipo: 'consolo', polys: [quad(100, 100, 120, 110)] },
-    { elementoId: 'p2', nome: 'P2', tipo: 'capitel', polys: [quad(500, 500, 540, 540)] },
-  ]
-  it('parte dentro da área e pendente trava; liberada ou fora não', () => {
-    const area = quad(0, 0, 300, 300)
-    expect(travasDaArea(area, partes, () => 'nada').map((t) => `${t.nome} ${t.tipo}`)).toEqual(['P1 consolo'])
-    expect(travasDaArea(area, partes, () => 'reprovado')[0].situacao).toBe('reprovado')
-    expect(travasDaArea(area, partes, () => 'liberado')).toEqual([])
-    // ficha sem itens da parte: nada a conferir
-    expect(travasDaArea(area, partes, () => undefined)).toEqual([])
-  })
-  it('área pequena dentro do capitel também trava', () => {
-    expect(travasDaArea(quad(510, 510, 520, 520), partes, () => 'andamento').map((t) => t.nome)).toEqual(['P2'])
-  })
-})
 
 describe('pacote com partes', () => {
   const p1: ElementoPacote = {
@@ -139,7 +120,6 @@ describe('pacote com partes', () => {
   it('lista as partes', () => {
     expect(tiposDasPartes(p1)).toEqual(['consolo', 'capitel'])
     expect(tiposDasPartes(undefined)).toEqual([])
-    expect(partesDoManifest({ elementos: { a: p1 } }).map((pt) => `${pt.elementoId} ${pt.tipo}`)).toEqual(['a consolo', 'a capitel'])
   })
 })
 

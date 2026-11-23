@@ -25,7 +25,7 @@ function CampoFoto({ foto, setFoto }: { foto: File | null; setFoto: (f: File | n
 // Entrega
 // ---------------------------------------------------------------------
 
-export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; documentoId: string; empresaId?: string }) {
+export function FormEntrega({ ctx, documentoId, empresaId, outras: outrasIniciais }: { ctx: Contexto; documentoId: string; empresaId?: string; outras?: string[] }) {
   const { dados, obra, usuario, voltar, trocar, recarregar, avisar } = ctx
   const doc = dados.documentoPorId.get(documentoId)
   const vigente = dados.vigentes.get(documentoId)
@@ -43,7 +43,8 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
   const [erros, setErros] = useState<Erros>({})
   const [salvando, setSalvando] = useState(false)
   // mais pranchas na mesma entrega (a pessoa leva várias de uma vez e assina uma vez só)
-  const [outras, setOutras] = useState<string[]>([])
+  // (as marcadas na lista do "Entregar cópia" já chegam aqui, 23/11)
+  const [outras, setOutras] = useState<string[]>(() => (outrasIniciais ?? []).filter((id) => id !== documentoId && dados.vigentes.has(id)))
   const [buscaOutras, setBuscaOutras] = useState('')
   const pegar = useRef<PegarAssinatura | null>(null)
   const [assinado, setAssinado] = useState(false)
@@ -183,7 +184,10 @@ export function FormEntrega({ ctx, documentoId, empresaId }: { ctx: Contexto; do
             <input type="date" value={data} onInput={(e) => setData(e.currentTarget.value)} required />
           </Campo>
           <Campo rotulo="Quantas cópias" erro={erros.copias} dica={outras.length ? 'De cada prancha desta entrega.' : undefined}>
-            <input type="number" inputMode="numeric" min={1} max={COPIAS_MAXIMO} step={1} value={copias} onInput={(e) => setCopias(e.currentTarget.value)} data-testid="entrega-copias" />
+            <input type="number" inputMode="numeric" min={1} max={COPIAS_MAXIMO} step={1} value={copias} onInput={(e) => {
+                setCopias(e.currentTarget.value)
+                if (erros.copias && lerCopias(e.currentTarget.value)) setErros({ ...erros, copias: '' })
+              }} data-testid="entrega-copias" />
           </Campo>
         </div>
         <MaisPranchas ctx={ctx} principal={doc.id} outras={outras} setOutras={setOutras} busca={buscaOutras} setBusca={setBuscaOutras} />

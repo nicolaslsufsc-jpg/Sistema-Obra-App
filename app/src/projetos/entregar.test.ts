@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Linha } from '../nucleo/banco_local'
 import type { Documento } from './dados'
-import { disciplinasParaEntregar, lerCopias, pessoasDaEmpresa, pranchasDaDisciplina } from './entregar'
+import { disciplinasParaEntregar, lerCopias, pavimentosDasPranchas, pessoasDaEmpresa, pranchasDaDisciplina, pranchasParaEntregar, TODAS } from './entregar'
 
 const doc = (id: string, codigo: string, disciplina: string, titulo: string): Documento => {
   const [, sigla, numero, nome] = codigo.split('.')
@@ -46,5 +46,17 @@ describe('entregar cópia: listas', () => {
   it('quantas cópias: inteiro de 1 a 20', () => {
     expect([lerCopias('1'), lerCopias(' 3 '), lerCopias('20')]).toEqual([1, 3, 20])
     expect([lerCopias(''), lerCopias('0'), lerCopias('21'), lerCopias('2,5'), lerCopias('duas')]).toEqual([null, null, null, null, null])
+  })
+  it('várias folhas (23/11): todas as disciplinas, filtro por pavimento e busca juntos', () => {
+    expect(pranchasParaEntregar(d, { disciplina: TODAS }).map((x) => x.id)).toEqual(['d4', 'd2', 'd1'])
+    expect(pranchasParaEntregar(d, { disciplina: 'Estrutura', pavimento: 'Pilotis' }).map((x) => x.id)).toEqual(['d1'])
+    expect(pranchasParaEntregar(d, { disciplina: TODAS, pavimento: 'Subsolo' }).map((x) => x.id)).toEqual(['d2'])
+    expect(pranchasParaEntregar(d, { disciplina: TODAS, busca: 'planta' }).map((x) => x.id)).toEqual(['d4', 'd1'])
+    expect(pranchasParaEntregar(d, { disciplina: TODAS, pavimento: 'Cobertura' })).toEqual([])
+  })
+  it('pavimentos das pranchas: na ordem da obra, com a contagem', () => {
+    const l = pavimentosDasPranchas(pranchasParaEntregar(d, { disciplina: TODAS }))
+    expect(l.map((p) => p.nome)).toEqual(['Subsolo', 'Pilotis', 'Pavimento tipo'])
+    expect(l.every((p) => p.pranchas === 1)).toBe(true)
   })
 })

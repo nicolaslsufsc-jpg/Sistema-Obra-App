@@ -9,7 +9,7 @@ import { contagemDoEscoramento, listaDoEscoramento } from '../escoramento'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ComponentChildren } from 'preact'
 import { resumoDasAreas } from '../areas'
-import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, travasDaAreaNaObra, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type DadosFvs, type Planta } from '../dados'
+import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type DadosFvs, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
@@ -290,7 +290,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             r: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo),
             ra: resumoDosAmbientes(locais, dados.fichas, eventosDe),
             rm: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo, 'M'),
-            lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe, undefined, (a) => travasDaAreaNaObra(dados, a).length > 0),
+            lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe),
           },
         ] as const
       }),

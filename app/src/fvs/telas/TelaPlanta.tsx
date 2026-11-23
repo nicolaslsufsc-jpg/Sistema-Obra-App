@@ -21,9 +21,8 @@ import {
   proximoNomeDeArea,
   type AreaDeLaje,
   type Ponto,
-  type TravaDaArea,
 } from '../areas'
-import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, travasDaAreaNaObra, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
+import { anexarFoto, ligarEntrePecas, localDoRegistro, type PecaParaLigar, avisoHoraNaFrente, baixarPlanta, criarArea, desfazerLote, desmarcarR, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, horaNaFrente, marcarLote, mudarArea, observar, podeRegistrar, quemMarcou, reduzirFoto, textoDoErroDeGravacao, marcarPelosFuros, tocarItem, urlDaFoto, voltarItem, ligarDepoisDe, prazoDoItemNaPeca, prazosDoLote, type Contexto } from '../dados'
 import { observacaoDoPrazo, perguntaDoLote, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import { ehDaLigacao, maisLigados, pecasNasAreas, temLigacaoEntrePecas, textoDasLigacoes } from '../ligacoes'
 import { ehDoConcreto } from '../rastreio'
@@ -57,7 +56,7 @@ import {
   ZOOM_DOS_FUROS_DE_LAJE,
   type Instalacao,
 } from '../furos_laje'
-import { abrirPacoteOuAnterior, dataCurta, filhosDoManifest, NOME_DA_DISCIPLINA, paiDe, rotuloDoFilho, NOME_DA_PARTE, partesDoManifest, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
+import { abrirPacoteOuAnterior, dataCurta, filhosDoManifest, NOME_DA_DISCIPLINA, paiDe, rotuloDoFilho, NOME_DA_PARTE, pecasNoAparelho, textoDoErroDeDownload, tiposDasPartes, type ElementoPacote, type PacoteAberto } from '../pacote'
 import { filtrosDoTrecho } from '../reprovacoes'
 import {
   barraNaArea,
@@ -470,12 +469,6 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
   /** Situação do consolo ou capitel do pilar, só pelos itens da parte (undefined: a ficha não tem). */
   const situacaoDaParte = (id: string, parte: string) => situacaoDaParteNoLocal(fichaDoLocal(id, 'P'), abertasDe(id), fichaPorId, eventosDe(id), parte)
-  const partesDaPlanta = useMemo(() => (manifest ? partesDoManifest(manifest) : []), [manifest])
-  /** Consolo e capitel pendentes dentro da área de laje: ela fica vermelha (decisão do Nicolas, 17/11). */
-  const travasDe = (id: string) => {
-    const area = dados.areaPorId.get(id)
-    return area && partesDaPlanta.length ? travasDaAreaNaObra(dados, area, partesDaPlanta, situacaoDaParte) : []
-  }
   // O toque muda os registros de uma peça só: as outras continuam com a mesma lista e não recalculam.
   const situacaoGuardada = useRef(new Map<string, { eventos: EventoFvs[]; abertas: FichaCampo[]; ficha: Ficha | undefined; etapa: string | undefined; s: Situacao }>())
   /**
@@ -637,8 +630,6 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     return f ? situacaoDoFuro(f.ficha.id, f.item, eventosDe(id)) : 'nada'
   }
   const situacaoSo = (id: string, e: ElementoPacote): Situacao => {
-    // a trava depende dos registros dos pilares, e não só dos da área: fica fora da memória abaixo
-    if (e.tipo === 'L' && travasDe(id).length) return 'reprovado'
     const eventos = eventosDe(id)
     const abertas = abertasDe(id)
     const et = e.tipo === tipo ? etapaAtiva || undefined : undefined
@@ -3217,8 +3208,6 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
           partes={partesDe(sel)}
           parteAberta={parteAberta}
           situacaoDaParte={(parte) => situacaoDaParte(sel, parte)}
-          travas={areaSel ? travasDe(sel) : []}
-          aoIrParte={(id, parte) => tocarParteRef.current(id, parte)}
           peca={pecaSel}
           ctx={ctx}
           c={c}
@@ -3298,9 +3287,6 @@ interface PropsPainel {
   /** tocou no consolo ou no capitel: a seção dele vem aberta */
   parteAberta: string | null
   situacaoDaParte: (parte: string) => Situacao | undefined
-  /** área de laje: consolo e capitel pendentes dentro dela */
-  travas: readonly TravaDaArea[]
-  aoIrParte: (id: string, parte: string) => void
   peca: ElementoPacote
   ctx: ContextoFvs
   c: Contexto
@@ -3410,7 +3396,7 @@ function Painel(p: PropsPainel) {
   const daFicha = ficha ? eventos.filter((e) => e.ficha_id === ficha.id) : []
   const ult = ultimosPorItem(daFicha)
   const pct = ficha ? percentualConforme(ficha, eventos) : null
-  const sit = p.travas.length ? 'reprovado' : ficha ? situacaoDaPeca(ficha, eventos) : 'nada'
+  const sit = ficha ? situacaoDaPeca(ficha, eventos) : 'nada'
   const furo = peca.tipo === 'F' ? peca.furo : undefined
   const esq = peca.tipo === 'E' ? peca.esquadria : undefined
   // item que os filhos marcam: o de furação na viga com furos, os de esquadria no ambiente com esquadrias
@@ -3906,21 +3892,6 @@ function Painel(p: PropsPainel) {
               Criada {quando(p.area.criada_em)}
               {ctx.sistema && (p.area.codigo_ficha ? ` · ficha no ${ctx.sistema.nome}: ${p.area.codigo_ficha}` : ` · sem código da ficha no ${ctx.sistema.nome}`)}
             </p>
-            {p.travas.length > 0 && (
-              <div class="aviso" data-testid="fvs-area-travada">
-                <b>Travada:</b> consolo ou capitel dentro desta área ainda sem liberar. Confira antes de concretar:
-                <ul>
-                  {p.travas.map((t) => (
-                    <li key={`${t.elementoId}|${t.tipo}`}>
-                      <button type="button" class="fv-link" onClick={() => p.aoIrParte(t.elementoId, t.tipo)}>
-                        {NOME_DA_PARTE[t.tipo] ?? t.tipo} do {t.nome}
-                      </button>{' '}
-                      · {ROTULO_SITUACAO[t.situacao]}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {p.barras && (
               <div class="fv-barras-area" data-testid="fvs-barras-da-area">
                 <p>

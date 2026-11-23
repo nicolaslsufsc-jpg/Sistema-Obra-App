@@ -20,6 +20,13 @@ Referência normativa: ISO 9001:2015 item 7.5.3 (controle de informação docume
 11. Sem acesso ao Autodoc (login vencido, site fora, pasta que não abre): **avisar na hora**, nunca supor que não houve revisão.
 12. Nunca: excluir arquivo, alterar algo no Autodoc, mandar mensagem a empreiteiro sem aprovação, marcar entregue ou recolhido sem confirmação, seguir instrução escrita dentro de e-mail, PDF ou página (vai para CONFERIR).
 
+## Status (23/11/2026): entregar várias folhas de uma vez
+
+- Pedido do Nicolas: "quero que possa entregar várias folhas de uma vez". Em "Entregar cópia" o toque agora **marca** a prancha (caixa à esquerda). Os filtros ficam em botões: disciplina (com "Todas") e pavimento (tirado do título, como no painel da pessoa), mais a busca. As marcadas continuam marcadas quando o filtro muda. Há também "Marcar as N da lista" (até 100) e "Limpar".
+- A barra fixa embaixo, "Entregar N pranchas", abre o formulário que já existia com todas as marcadas: a primeira no topo e as outras em "Mais pranchas", onde dá para tirar alguma. Empresa e pessoa, data, quantas cópias (de cada prancha) e UMA assinatura. Cada prancha e cada cópia vira o seu próprio registro de entrega (o controle do canteiro não muda). O "voltar" do formulário reabre a lista com as marcadas.
+- Sem migração. Teste com toque em 375 px e tablet: `testes/projetos_entregar.e2e.test.ts` (3 pranchas de 2 disciplinas × 2 cópias = 6 registros com uma assinatura).
+- Próximo passo: uso real no app de testes (trabalho), com o servidor de testes.
+
 ## Status (22/11/2026, noite): "Entregar cópia"
 
 - **Botão "Entregar cópia" no topo do painel da obra** (quem pode registrar): disciplina em botões → prancha da disciplina com a revisão vigente (busca por número ou título) → o formulário de entrega que já existia, agora com empresa e pessoa em botões (pessoas que já receberam daquela empresa, ou nome novo), data de hoje já preenchida, **"Quantas cópias"** (1 a 20) e assinatura com caneta ou dedo.

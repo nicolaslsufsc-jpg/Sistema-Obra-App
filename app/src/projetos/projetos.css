@@ -1109,3 +1109,53 @@ button.pj-entregar-topo span {
   font-weight: 400;
   opacity: 0.75;
 }
+
+/* ---------- Entregar várias folhas de uma vez (23/11): linha marcável e barra de baixo ---------- */
+/* a caixa de marcar fica à esquerda, fora do fluxo: no celular o código continua com a largura toda */
+button.pj-marcavel {
+  position: relative;
+  padding-left: 2.9rem;
+}
+button.pj-marcavel::before {
+  content: '';
+  position: absolute;
+  left: 0.8rem;
+  top: 0.65rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  box-sizing: border-box;
+  border: 2px solid var(--discreto);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+}
+button.pj-marcavel.marcada {
+  border-color: var(--primaria);
+}
+button.pj-marcavel.marcada::before {
+  content: '✓';
+  background: var(--primaria);
+  border-color: var(--primaria);
+  color: var(--primaria-texto);
+}
+.pj-barra-entregar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin: 0.75rem -1rem 0;
+  padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  background: var(--superficie);
+  border-top: 1px solid var(--borda);
+}
+.pj-barra-entregar .principal {
+  flex: 1;
+  min-height: 48px;
+}
+.pj-barra-entregar .pj-pequeno {
+  min-height: 48px;
+}

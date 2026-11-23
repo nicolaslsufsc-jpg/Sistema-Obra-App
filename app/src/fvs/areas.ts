@@ -9,7 +9,7 @@
 // As marcações apontam para o area_id, então redesenhar o contorno não perde o que foi marcado.
 
 import type { ElementoPacote } from './pacote'
-import { fichasPara, situacaoDaPeca, type EventoFvs, type Ficha, type Situacao } from './situacao'
+import { fichasPara, situacaoDaPeca, type EventoFvs, type Ficha } from './situacao'
 
 export type Ponto = [number, number]
 
@@ -183,40 +183,6 @@ export function dentro(p: readonly [number, number], pts: readonly Ponto[]): boo
   return d
 }
 
-/** Consolo ou capitel de um pilar, com o contorno na planta (pacote.ts, partesDaPlanta). */
-export interface ParteNaPlanta {
-  elementoId: string
-  nome: string
-  tipo: string
-  polys: ReadonlyArray<readonly Ponto[]>
-}
-
-/** O que segura a área de laje: a parte de um pilar dentro dela que ainda não foi liberada. */
-export interface TravaDaArea {
-  elementoId: string
-  nome: string
-  tipo: string
-  situacao: Situacao
-}
-
-/**
- * Consolo e capitel dentro da área (algum canto de um dentro do outro) que ainda não estão liberados
- * (item pendente ou NC) travam a área: ela fica vermelha até a parte ser conferida (decisão do Nicolas,
- * 17/11). `situacaoDe` dá a situação da parte pelos itens dela; undefined = a ficha do pilar não tem
- * item da parte, e aí não há o que travar.
- */
-export function travasDaArea(contorno: readonly Ponto[], partes: readonly ParteNaPlanta[], situacaoDe: (elementoId: string, tipo: string) => Situacao | undefined): TravaDaArea[] {
-  if (contorno.length < 3) return []
-  const saida: TravaDaArea[] = []
-  for (const pt of partes) {
-    const toca = pt.polys.some((poly) => poly.some((v) => dentro(v, contorno)) || (poly.length >= 3 && contorno.some((v) => dentro(v, poly))))
-    if (!toca) continue
-    const s = situacaoDe(pt.elementoId, pt.tipo)
-    if (s && s !== 'liberado') saida.push({ elementoId: pt.elementoId, nome: pt.nome, tipo: pt.tipo, situacao: s })
-  }
-  return saida.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }) || a.tipo.localeCompare(b.tipo))
-}
-
 /** "Laje 3": o próximo número livre do pavimento. */
 export function proximoNomeDeArea(areas: readonly AreaDeLaje[]): string {
   let n = areas.length + 1
@@ -264,15 +230,14 @@ export interface ResumoDasAreas {
 
 /**
  * O quanto da laje está liberado no pavimento. `escalaDe` dá a escala da planta de cada área (o N do
- * manifest); quem não passa conta tudo em 1:50, como antes.
+ * manifest); quem não passa conta tudo em 1:50, como antes. A área vale só pelos itens da ficha dela:
+ * consolo e capitel pendentes dentro dela não a deixam com NC (desde 23/11, pedido do Nicolas).
  */
 export function resumoDasAreas(
   areas: readonly AreaDeLaje[],
   fichaPorId: (id: string) => Ficha | undefined,
   eventosDe: (id: string) => readonly EventoFvs[],
   escalaDe?: (plantaId: string | null) => unknown,
-  /** consolo ou capitel pendente dentro da área (travasDaArea): a área conta como com NC */
-  travada?: (a: AreaDeLaje) => boolean,
 ): ResumoDasAreas {
   const r: ResumoDasAreas = { total: 0, paraConcretar: 0, liberadas: 0, comR: 0, m2Liberados: 0, m2: 0 }
   for (const a of areas) {
@@ -280,7 +245,7 @@ export function resumoDasAreas(
     const m2 = metrosQuadrados(a.contorno, escalaDe?.(a.planta_id))
     r.m2 += m2
     const ficha = fichaPorId(a.ficha_id)
-    const s = travada?.(a) ? 'reprovado' : ficha ? situacaoDaPeca(ficha, eventosDe(a.id)) : 'nada'
+    const s = ficha ? situacaoDaPeca(ficha, eventosDe(a.id)) : 'nada'
     if (s === 'concretagem') r.paraConcretar++
     if (s === 'liberado') r.liberadas++
     if (s === 'reprovado') r.comR++

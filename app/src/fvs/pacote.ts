@@ -284,24 +284,6 @@ const partesPorElemento = new Map<string, TipoDeParte[]>()
 /** Peças que estão na planta só para ver o detalhe (arranque do pilar de cima, `so_detalhe`): sem ficha aqui. */
 const soDetalhe = new Set<string>()
 
-/** Uma parte de pilar com o contorno, para conferir as áreas de laje (areas.ts, travasDaArea). */
-export interface ParteDaPlanta {
-  elementoId: string
-  nome: string
-  tipo: TipoDeParte
-  polys: Array<Array<[number, number]>>
-}
-
-/** Consolo e capitel de cada planta, pelos manifests que já passaram por aqui. */
-const partesPorPlanta = new Map<string, ParteDaPlanta[]>()
-
-/** As partes de pilar desenhadas num pacote (manifest). */
-export function partesDoManifest(m: Pick<Manifest, 'elementos'>): ParteDaPlanta[] {
-  const saida: ParteDaPlanta[] = []
-  for (const [id, e] of Object.entries(m.elementos ?? {})) for (const pt of e.partes ?? []) saida.push({ elementoId: id, nome: e.nome, tipo: pt.tipo, polys: pt.polys })
-  return saida
-}
-
 function lembrarEscala(m: Manifest): void {
   if (typeof m.escala === 'number') escalas.set(m.planta_id, m.escala)
   else escalas.delete(m.planta_id)
@@ -312,15 +294,9 @@ function lembrarEscala(m: Manifest): void {
     if (e.so_detalhe) soDetalhe.add(id)
     else soDetalhe.delete(id)
   }
-  partesPorPlanta.set(m.planta_id, partesDoManifest(m))
   for (const [id, e] of Object.entries(m.elementos ?? {})) if (e.tipo === 'A') lembrarComodo(id, e.comodo)
 }
 
-
-/** Consolo e capitel da planta pelo pacote guardado no aparelho (vazio se o pacote não passou por aqui). */
-export function partesDaPlantaGuardadas(plantaId: string | null | undefined): readonly ParteDaPlanta[] {
-  return (plantaId && partesPorPlanta.get(plantaId)) || []
-}
 
 const SEM_PARTES: readonly TipoDeParte[] = []
 

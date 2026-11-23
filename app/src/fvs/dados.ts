@@ -6,11 +6,11 @@ import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
 import { banco, cliente, sincronizador } from '../nucleo/servicos'
 import { BUCKET_OBRAS } from '../config'
-import { areasVigentes, travasDaArea, type AreaDeLaje, type LinhaDeArea, type Ponto, type TravaDaArea } from './areas'
+import { areasVigentes, type AreaDeLaje, type LinhaDeArea, type Ponto } from './areas'
 import { dataHoraCompleta } from './formato'
 import { paraLocal, type LocalSistema } from './locais'
-import { aoTocar, daFichaAberta, fichaDaPeca, fichaNaPeca, fichasPara, normalizarResultado, situacaoDaParteNoLocal, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo, type ItemFicha, type Resultado } from './situacao'
-import { baixarPacote, comPrazo, escalaGuardada, partesDaPlantaGuardadas, partesGuardadas, soDetalheGuardado, type ParteDaPlanta, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
+import { aoTocar, daFichaAberta, fichaNaPeca, fichasPara, normalizarResultado, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo, type ItemFicha, type Resultado } from './situacao'
+import { baixarPacote, comPrazo, escalaGuardada, partesGuardadas, soDetalheGuardado, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
 import { listarParaLancar, type LinhaDeLancamento } from './lancamento'
 import { linhasDaSituacao, type LinhaDaSituacao } from './planilha'
 import { listarReprovacoes, type Reprovacao } from './reprovacoes'
@@ -208,10 +208,6 @@ export function situacaoDaObra(d: DadosFvs): LinhaDaSituacao[] {
     areaDe: (id) => d.areaPorId?.get(id),
     escalaDe: (plantaId) => escalaDaArea(d, plantaId),
     partesDe: partesDoPilar,
-    travadaDe: (id) => {
-      const a = d.areaPorId?.get(id)
-      return !!a && travasDaAreaNaObra(d, a).length > 0
-    },
   })
 }
 
@@ -221,28 +217,6 @@ export function situacaoDaObra(d: DadosFvs): LinhaDaSituacao[] {
  */
 export function escalaDaArea(d: Pick<DadosFvs, 'vigenteDe'>, plantaId: string | null): number | undefined {
   return escalaGuardada(plantaId) ?? escalaGuardada(plantaId ? d.vigenteDe.get(plantaId) : null)
-}
-
-/** Consolo e capitel do pilar que ainda não estão liberados (pela ficha padrão do pilar e pelas abertas). */
-export function situacaoDaParteNaObra(d: Pick<DadosFvs, 'fichas' | 'fichaPorId' | 'eventosDe' | 'fichasCampoDe'>, elementoId: string, parte: string) {
-  const eventos = d.eventosDe.get(elementoId) ?? []
-  const fichaPorId = (id: string) => d.fichaPorId.get(id)
-  return situacaoDaParteNoLocal(fichaDaPeca(fichasPara('P', d.fichas)[0], eventos, fichaPorId), d.fichasCampoDe.get(elementoId) ?? [], fichaPorId, eventos, parte)
-}
-
-/**
- * O que trava a área de laje: consolo ou capitel dentro dela ainda não liberado. As partes vêm do
- * pacote da planta em que a área foi desenhada (ou da revisão vigente do trecho), guardado no aparelho.
- */
-export function travasDaAreaNaObra(
-  d: Pick<DadosFvs, 'vigenteDe' | 'fichas' | 'fichaPorId' | 'eventosDe' | 'fichasCampoDe'>,
-  a: Pick<AreaDeLaje, 'contorno' | 'planta_id'>,
-  partes?: readonly ParteDaPlanta[],
-  situacaoDe: (elementoId: string, parte: string) => ReturnType<typeof situacaoDaParteNaObra> = (id, parte) => situacaoDaParteNaObra(d, id, parte),
-): TravaDaArea[] {
-  let lista = partes ?? partesDaPlantaGuardadas(a.planta_id)
-  if (!lista.length && !partes && a.planta_id) lista = partesDaPlantaGuardadas(d.vigenteDe.get(a.planta_id))
-  return lista.length ? travasDaArea(a.contorno, lista, situacaoDe) : []
 }
 
 /** Consolo e capitel de um pilar pelo pacote guardado no aparelho (para os resumos fora da planta). */

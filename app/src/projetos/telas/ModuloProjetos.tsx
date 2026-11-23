@@ -36,8 +36,8 @@ export type TelaProjetos =
   | ({ nome: 'prancha-base' } & AlvoPrancha)
   | { nome: 'lista'; ids?: string[]; titulo?: string }
   | { nome: 'prancha'; documentoId: string }
-  | { nome: 'entregar-copia'; disciplina?: string }
-  | { nome: 'entregar'; documentoId: string; empresaId?: string }
+  | { nome: 'entregar-copia'; disciplina?: string; pavimento?: string; marcadas?: string[] }
+  | { nome: 'entregar'; documentoId: string; empresaId?: string; outras?: string[] }
   | { nome: 'comprovante'; assinaturaId: string }
   | { nome: 'recolher'; documentoId: string; entregaId?: string }
   | { nome: 'empresas' }
@@ -163,10 +163,10 @@ export function ModuloProjetos({
       conteudo = <TelaPrancha ctx={ctx} documentoId={tela.documentoId} />
       break
     case 'entregar-copia':
-      conteudo = <TelaEntregarCopia ctx={ctx} disciplina={tela.disciplina} />
+      conteudo = <TelaEntregarCopia ctx={ctx} disciplina={tela.disciplina} pavimento={tela.pavimento} marcadas={tela.marcadas} />
       break
     case 'entregar':
-      conteudo = <FormEntrega ctx={ctx} documentoId={tela.documentoId} empresaId={tela.empresaId} />
+      conteudo = <FormEntrega ctx={ctx} documentoId={tela.documentoId} empresaId={tela.empresaId} outras={tela.outras} />
       break
     case 'comprovante':
       conteudo = <TelaComprovante ctx={ctx} assinaturaId={tela.assinaturaId} />

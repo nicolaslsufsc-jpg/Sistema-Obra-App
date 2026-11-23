@@ -2,6 +2,7 @@
 // física. Disciplina → prancha (com a revisão vigente) → para quem (empresa e pessoa) → quantas cópias →
 // assinatura. Aqui ficam só as listas, puras; as telas estão em telas/TelaEntregarCopia.tsx e Formularios.tsx.
 import type { DadosProjetos, Documento } from './dados'
+import { ordemPavimento, pavimentoDe } from './obra'
 import { normalizar } from './regras'
 
 export interface DisciplinaParaEntregar {
@@ -49,4 +50,33 @@ export const COPIAS_MAXIMO = 20
 export function lerCopias(texto: string): number | null {
   const n = Number(String(texto).trim())
   return Number.isInteger(n) && n >= 1 && n <= COPIAS_MAXIMO ? n : null
+}
+
+/** Valor do filtro de disciplina que mostra todas. */
+export const TODAS = '*'
+
+/**
+ * Pranchas para marcar na entrega de várias folhas (23/11/2026): com revisão vigente, pela disciplina
+ * (ou TODAS), pelo pavimento (do título, como no painel da pessoa; '' = todos) e pela busca.
+ */
+export function pranchasParaEntregar(
+  d: Pick<DadosProjetos, 'documentos' | 'vigentes'>,
+  filtro: { disciplina: string; pavimento?: string; busca?: string },
+): Documento[] {
+  const base = filtro.disciplina === TODAS ? d.documentos.filter((doc) => d.vigentes.has(doc.id)) : pranchasDaDisciplina(d, filtro.disciplina)
+  const q = normalizar(filtro.busca ?? '').trim()
+  return base
+    .filter((doc) => !filtro.pavimento || pavimentoDe(doc) === filtro.pavimento)
+    .filter((doc) => !q || normalizar(doc.busca).includes(q) || normalizar(`${doc.codigo} ${doc.titulo}`).includes(q))
+    .sort((a, b) => a.disciplina.localeCompare(b.disciplina, 'pt-BR') || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }) || a.codigo.localeCompare(b.codigo))
+}
+
+/** Pavimentos das pranchas (para os botões do filtro), na ordem da obra, com quantas pranchas cada um tem. */
+export function pavimentosDasPranchas(docs: readonly Pick<Documento, 'nome_curto' | 'titulo'>[]): { nome: string; pranchas: number }[] {
+  const m = new Map<string, number>()
+  for (const doc of docs) {
+    const p = pavimentoDe(doc)
+    m.set(p, (m.get(p) ?? 0) + 1)
+  }
+  return [...m].map(([nome, pranchas]) => ({ nome, pranchas })).sort((a, b) => ordemPavimento(a.nome) - ordemPavimento(b.nome) || a.nome.localeCompare(b.nome, 'pt-BR'))
 }

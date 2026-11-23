@@ -281,7 +281,8 @@ export function itensAntesDaConcretagem(ficha: Ficha): readonly ItemFicha[] {
   if (ja) return ja
   const marcada = ficha.itens.some((it) => typeof it.concretagem === 'boolean')
   const i = marcada ? ficha.itens.findIndex((it) => it.concretagem === true) : ficha.itens.findIndex((it) => ehEtapaDeConcretar(it.etapa))
-  // item de consolo e capitel não segura o azul do pilar: ele trava a área de laje (areas.ts)
+  // item de consolo e capitel não segura o azul do pilar: a parte tem a cor própria na planta (a área de laje
+  // não olha para ela desde 23/11)
   const lista = i > 0 ? ficha.itens.slice(0, i).filter((it) => !it.parte) : []
   itensAntesGuardados.set(ficha, lista)
   return lista

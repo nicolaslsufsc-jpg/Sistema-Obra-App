@@ -39,8 +39,6 @@ export interface EntradaDaSituacao {
   escalaDe?: (plantaId: string | null) => unknown
   /** consolo e capitel do pilar (pacote no aparelho): os itens deles contam na situação */
   partesDe?: (id: string) => readonly string[]
-  /** área de laje com consolo ou capitel pendente dentro: sai com NC */
-  travadaDe?: (id: string) => boolean
 }
 
 export interface LinhaDaSituacao {
@@ -85,7 +83,6 @@ export function linhasDaSituacao(d: EntradaDaSituacao): LinhaDaSituacao[] {
       duplicada: abertas.length > 1,
     }
     const partes = d.partesDe?.(peca.id)
-    const travada = !!area && !!d.travadaDe?.(peca.id)
     const linha = (fichaModelo: Ficha | undefined, evs: readonly EventoFvs[], aberta?: FichaCampo) => {
       const ficha = fichaNaPeca(fichaModelo, partes)
       const daFicha = ficha ? evs.filter((e) => e.ficha_id === ficha.id) : []
@@ -96,7 +93,7 @@ export function linhasDaSituacao(d: EntradaDaSituacao): LinhaDaSituacao[] {
         ...base,
         ficha: ficha ? ficha.codigo : (aberta?.ficha_codigo ?? ''),
         // ficha modelo que não está no app: vale o status do sistema oficial, na coluna ao lado
-        situacao: travada ? `${ROTULO.reprovado} (consolo/capitel pendente)` : ficha ? ROTULO[situacaoDaPeca(ficha, daFicha)] : aberta ? '' : ROTULO.nada,
+        situacao: ficha ? ROTULO[situacaoDaPeca(ficha, daFicha)] : aberta ? '' : ROTULO.nada,
         a: contar('C'),
         r: contar('NC'),
         na: contar('NA'),

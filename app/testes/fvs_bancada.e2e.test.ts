@@ -1741,6 +1741,23 @@ suite('FVS na bancada (Chrome)', () => {
       await tocarNaPlanta(p, 150, 150)
       await nomeNoPainel(p, 'P1')
       expect(await p.locator('.fv-parte').count()).toBe(0)
+      await fechar()
+
+      // laje por cima do capitel do P9, que segue pendente: a laje vale só pela ficha dela (desde 23/11,
+      // pedido do Nicolas; antes ficava com NC até o capitel ser liberado)
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await enquadrar(p, [-450, 750], 0)
+      await p.getByTestId('fvs-nova-area').click()
+      await p.getByTestId('fvs-desenho').waitFor()
+      for (const [x, y] of [[650, 370], [850, 370], [850, 560], [650, 560]]) await tocarNaPlanta(p, x, y)
+      await p.getByTestId('fvs-concluir-area').click()
+      await p.getByTestId('fvs-caixa-nome').fill('Laje do capitel')
+      await p.getByTestId('fvs-caixa-criar').click()
+      await nomeNoPainel(p, 'Laje do capitel')
+      await p.getByTestId('fvs-area-info').waitFor()
+      expect(await p.locator('.fv-inf .fv-sit').textContent()).toBe('Pendente')
+      expect(await p.getByTestId('fvs-area-travada').count()).toBe(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/partes_${nome}_laje_capitel.png` })
 
       expect(await semRolagemHorizontal(p)).toBe(0)
       expect(erros).toEqual([])

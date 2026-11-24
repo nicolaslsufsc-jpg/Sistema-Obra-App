@@ -10,7 +10,7 @@ import { areasVigentes, type AreaDeLaje, type LinhaDeArea, type Ponto } from './
 import { dataHoraCompleta } from './formato'
 import { paraLocal, type LocalSistema } from './locais'
 import { aoTocar, daFichaAberta, fichaNaPeca, fichasPara, normalizarResultado, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo, type ItemFicha, type Resultado } from './situacao'
-import { baixarPacote, comPrazo, escalaGuardada, partesGuardadas, soDetalheGuardado, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
+import { baixarPacote, pacoteIgualNoAparelho, comPrazo, escalaGuardada, partesGuardadas, soDetalheGuardado, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote, type PacoteGuardado } from './pacote'
 import { listarParaLancar, type LinhaDeLancamento } from './lancamento'
 import { linhasDaSituacao, type LinhaDaSituacao } from './planilha'
 import { listarReprovacoes, type Reprovacao } from './reprovacoes'
@@ -932,10 +932,33 @@ export function usarFonteDeArquivos(fonte: Baixador) {
   baixarArquivo = fonte
 }
 
-/** Baixa o pacote de uma planta (precisa de internet uma vez) e guarda no aparelho. */
-export async function baixarPlanta(p: Planta, dono: DonoDoPacote, aoProgresso?: (fracao: number) => void) {
-  if (!p.manifest || !p.pacote) throw new Error('Os arquivos desta planta ainda não chegaram ao aparelho. Sincronize e tente de novo.')
-  return baixarPacote((caminho, aoBytes) => baixarArquivo(caminho, aoBytes), p.manifest, p.pacote, dono, aoProgresso)
+/** Downloads de planta em andamento nesta página, por planta: quem pedir a mesma espera o mesmo. */
+const baixandoPlanta = new Map<string, Promise<PacoteGuardado>>()
+
+/**
+ * Baixa o pacote de uma planta (precisa de internet uma vez) e guarda no aparelho. Se ele já está no
+ * aparelho, igual ao do servidor, não baixa nada (24/11/2026: a organização passou do limite de dados
+ * do plano grátis). A mesma planta pedida duas vezes ao mesmo tempo (menu e FVS, ou duas abas) baixa
+ * uma vez só: a outra espera e lê do aparelho.
+ */
+export async function baixarPlanta(p: Planta, dono: DonoDoPacote, aoProgresso?: (fracao: number) => void): Promise<PacoteGuardado> {
+  const { manifest, pacote } = p
+  if (!manifest || !pacote) throw new Error('Os arquivos desta planta ainda não chegaram ao aparelho. Sincronize e tente de novo.')
+  const pronto = await pacoteIgualNoAparelho(p.id, pacote, dono)
+  if (pronto) {
+    aoProgresso?.(1)
+    return pronto
+  }
+  const emCurso = baixandoPlanta.get(p.id)
+  if (emCurso) return emCurso
+  const baixar = async () =>
+    (await pacoteIgualNoAparelho(p.id, pacote, dono)) ??
+    (await baixarPacote((caminho, aoBytes) => baixarArquivo(caminho, aoBytes), manifest, pacote, dono, aoProgresso))
+  // outra aba do app baixando a mesma planta: espera a vez e confere de novo antes de baixar
+  const travas = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  const feito = (travas ? travas.request(`sistema-obra-planta-${p.id}`, baixar) : baixar()).finally(() => baixandoPlanta.delete(p.id))
+  baixandoPlanta.set(p.id, feito)
+  return feito
 }
 
 /**

@@ -13,7 +13,7 @@ import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, pa
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
-import { pacotesAManter } from '../revisoes'
+import { manterNaLimpeza } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, situacaoDaBarra, type CamadaDeBarras } from '../barras'
 import { disciplinaDePontos, fichaDosPontos, textoDoAvancoDosPontos } from '../pontos'
@@ -78,7 +78,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // revisão nova já chegou; a anterior fica até lá, para ela não ficar sem planta na obra.
   const atualizar = async () => {
     const agora = await pacotesNoAparelho()
-    const saiu = await limparPacotes(dono, pacotesAManter(dados.plantaPorId.keys(), dados.anterioresDe, agora))
+    const saiu = await limparPacotes(dono, manterNaLimpeza(dados.plantaPorId, dados.anterioresDe, dados.vigenteDe, agora))
     setNoAparelho(saiu ? await pacotesNoAparelho() : agora)
   }
   useEffect(() => {

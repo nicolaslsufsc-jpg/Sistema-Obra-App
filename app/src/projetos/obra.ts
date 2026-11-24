@@ -5,6 +5,8 @@
 import type { Linha } from '../nucleo/banco_local'
 import { escritorioAtualizado, type DadosProjetos, type Documento } from './dados'
 import { normalizar, revisaoNova } from './regras'
+import { chaveFolha } from './edicoes'
+import type { CopiaCruzada } from './painel'
 
 /** Pavimento a partir do nome curto e do título da prancha ("FOR4PAVTIP", "LAJE DO 4º PAVTO TIPO"...). */
 export function pavimentoDe(d: Pick<Documento, 'nome_curto' | 'titulo'>): string {
@@ -46,6 +48,31 @@ export interface Contagem {
   escritorioVencida: number
   /** sem registro da pasta do escritório */
   escritorioSem: number
+  /** cópias em campo com revisão antiga (a mesma regra do quadro "Situação das cópias") */
+  trocar: number
+  /** cópias em campo que o app não decidiu sozinho */
+  conferir: number
+}
+
+/** As cópias em campo de cada prancha, pela mesma regra do quadro (painel.cruzar). */
+export type CampoPorDocumento = Map<string, { trocar: number; conferir: number }>
+
+/**
+ * Liga cada cópia em campo à prancha do servidor (a entrega do app já sabe; a da ficha, pela folha vigente) e
+ * conta a trocar e a conferir. A cópia que não acha prancha fica fora (só aparece no quadro).
+ */
+export function campoPorDocumento(cruzadas: readonly CopiaCruzada[], porFolha: ReadonlyMap<string, string>): CampoPorDocumento {
+  const m: CampoPorDocumento = new Map()
+  for (const x of cruzadas) {
+    if (x.situacao !== 'em campo' || x.resultado === 'em dia') continue
+    const id = x.copia.app?.documentoId ?? (x.vigente ? porFolha.get(chaveFolha(x.vigente)) : undefined)
+    if (!id) continue
+    const c = m.get(id) ?? { trocar: 0, conferir: 0 }
+    if (x.resultado === 'desatualizada') c.trocar++
+    else c.conferir++
+    m.set(id, c)
+  }
+  return m
 }
 
 export interface LinhaPavimento extends Contagem {
@@ -69,8 +96,10 @@ export interface PainelObra {
   novas: Array<{ documento: Documento; vigente: Linha; pavimento: string }>
 }
 
-const zero = (): Contagem => ({ vigentes: 0, novas: 0, escritorioEmDia: 0, escritorioVencida: 0, escritorioSem: 0 })
+const zero = (): Contagem => ({ vigentes: 0, novas: 0, escritorioEmDia: 0, escritorioVencida: 0, escritorioSem: 0, trocar: 0, conferir: 0 })
 function somar(a: Contagem, b: Contagem) {
+  a.trocar += b.trocar
+  a.conferir += b.conferir
   a.vigentes += b.vigentes
   a.novas += b.novas
   a.escritorioEmDia += b.escritorioEmDia
@@ -83,7 +112,7 @@ function somar(a: Contagem, b: Contagem) {
  * Nova = a vigente apareceu pela primeira vez depois da leitura anterior. Só uma leitura: é a primeira, nada
  * conta como novo. Sem saber das leituras (sem internet e sem cópia guardada): últimos 7 dias.
  */
-export function painelObra(dados: DadosProjetos, leituras: { ultima: string | null; anterior: string | null } | null): PainelObra {
+export function painelObra(dados: DadosProjetos, leituras: { ultima: string | null; anterior: string | null } | null, campo?: CampoPorDocumento): PainelObra {
   let criterio: CriterioNovas = '7dias'
   let desde: string | null = null
   if (leituras?.ultima) {
@@ -95,20 +124,27 @@ export function painelObra(dados: DadosProjetos, leituras: { ultima: string | nu
   const ehNova = (v: Linha): boolean => {
     if (criterio === 'primeira') return false
     if (criterio === 'leitura') return !v.obsoleta && !v.apagado && String(v.vista_em) > desde!
-    return revisaoNova(v, dados.hoje)
+    return revisaoNova(v, dados.hoje, 7, dados.carga)
   }
 
   const porDisc = new Map<string, Map<string, LinhaPavimento>>()
   const novas: PainelObra['novas'] = []
   for (const d of dados.documentos) {
     const vigente = dados.vigentes.get(d.id)
-    if (!vigente) continue
+    const cc = campo?.get(d.id)
+    // sem vigente (a folha saiu de uso) só entra se ainda tem cópia em campo: é a troca que o quadro conta
+    if (!vigente && !cc) continue
     const pav = pavimentoDe(d)
     let m = porDisc.get(d.disciplina)
     if (!m) porDisc.set(d.disciplina, (m = new Map()))
     let l = m.get(pav)
     if (!l) m.set(pav, (l = { pavimento: pav, documentos: [], ...zero() }))
     l.documentos.push(d)
+    if (cc) {
+      l.trocar += cc.trocar
+      l.conferir += cc.conferir
+    }
+    if (!vigente) continue
     l.vigentes++
     if (ehNova(vigente)) {
       l.novas++

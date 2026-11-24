@@ -1,7 +1,8 @@
 // Painel da obra (21/11/2026): a primeira tela do Projetos no app com conta. Resumo por disciplina e
 // pavimento, sempre comparado com a última leitura do Autodoc. Só leitura. Ver projetos/obra.ts.
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { painelObra, type Contagem, type PainelObra } from '../obra'
+import { campoPorDocumento, painelObra, type Contagem, type PainelObra } from '../obra'
+import { documentosPorFolha } from '../canteiro'
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, plural, rotuloRevisao, Topo } from './comum'
 import { FaixaAutodoc, usarEstadoAutodoc } from './FaixaAutodoc'
@@ -11,6 +12,9 @@ import { usarAgora } from './TelaAgora'
 import { frasesAgora } from '../agora'
 import { PedidoAutodoc } from './PedidoAutodoc'
 import { escritorioAtualizado, podeGerir, podeRegistrar } from '../dados'
+import { LinhaResumo, Tabela, type Status } from '../../telas/Tabela'
+import { COLUNAS_RESUMO, type LinhaResumoObra } from './comum'
+import { Ajuda } from '../../telas/Ajuda'
 
 const LIMITE_NOVAS = 40
 
@@ -25,7 +29,10 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
     if (semConta) trocar({ nome: 'painel' })
   }, [semConta])
   const leituras = estado?.ultima ? { ultima: estado.ultima.dataLista, anterior: estado.anterior ?? null } : null
-  const p = useMemo(() => painelObra(dados, leituras), [dados, leituras?.ultima, leituras?.anterior])
+  // as cópias em campo entram em cada disciplina e pavimento pela mesma regra do quadro (testador, 23/11: o
+  // bloco dizia "em dia" com 319 a trocar no quadro)
+  const campo = useMemo(() => (cruzadas ? campoPorDocumento(cruzadas, documentosPorFolha(dados)) : undefined), [cruzadas, dados])
+  const p = useMemo(() => painelObra(dados, leituras, campo), [dados, leituras?.ultima, leituras?.anterior, campo])
 
   if (semConta) return <main class="tela">Carregando…</main>
   const t = p.totais
@@ -38,8 +45,32 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
   const abrirParte = (onde: string, ids: string[], qual: Selo) => {
     if (qual === 'vigentes') abrirLista(`${onde} · vigentes`, ids)
     else if (qual === 'novas') abrirLista(`${onde} · com revisão nova`, ids.filter((id) => idsNovas.has(id)))
-    else abrirLista(`${onde} · PC atrás do Autodoc`, ids.filter((id) => escritorioAtualizado(dados, id) === false))
+    else if (qual === 'trocar') abrirLista(`${onde} · cópia a trocar`, ids.filter((id) => (campo?.get(id)?.trocar ?? 0) > 0))
+    else if (qual === 'conferir') abrirLista(`${onde} · cópia a conferir`, ids.filter((id) => (campo?.get(id)?.conferir ?? 0) > 0))
+    else abrirLista(`${onde} · cópia desatualizada no escritório`, ids.filter((id) => escritorioAtualizado(dados, id) === false))
   }
+  const linhasObra: LinhaResumoObra[] = [
+    { id: 'vigentes', rotulo: 'Vigentes', testid: 'obra-vigentes', n: t.vigentes, nota: plural(p.disciplinas.length, 'disciplina', 'disciplinas'), status: 'liberado', abrir: () => abrirLista('vigentes', comVigente.map((d) => d.id)) },
+    { id: 'novas', rotulo: 'Com revisão nova', testid: 'obra-novas', testidRotulo: 'obra-cartao-novas', n: t.novas, nota: textoCriterio(p), status: t.novas ? 'pendente' : 'liberado', abrir: () => abrirLista('com revisão nova', p.novas.map((n) => n.documento.id)) },
+    { id: 'pc', rotulo: 'Cópia desatualizada no escritório', testid: 'obra-pc-vencida', n: t.escritorioVencida, nota: 'pasta do PC com revisão antiga', status: t.escritorioVencida ? 'nc' : 'liberado', abrir: () => abrirLista('cópia desatualizada no escritório', doEscritorio(false)) },
+    { id: 'pc-em-dia', rotulo: 'Escritório em dia', n: t.escritorioEmDia, nota: t.escritorioSem ? `${t.escritorioSem} sem registro do escritório` : 'todas com registro', status: 'liberado', abrir: () => abrirLista('escritório em dia', doEscritorio(true)) },
+  ]
+  const linhasCanteiro: LinhaResumoObra[] = resumo
+    ? [
+        { id: 'em-campo', rotulo: 'Cópias em campo', testid: 'obra-em-campo', n: resumo.emCampo, nota: plural(resumo.emDia, 'em dia', 'em dia'), status: 'liberado', abrir: () => ir({ nome: 'pranchas-base', filtro: 'canteiro' }) },
+        { id: 'trocar', rotulo: 'Precisam trocar', testid: 'obra-trocar', n: resumo.desatualizadas.length, nota: 'cópia em campo com revisão antiga', status: resumo.desatualizadas.length ? 'nc' : 'liberado', abrir: () => ir({ nome: 'pranchas-base', filtro: 'trocar' }) },
+        { id: 'conferir', rotulo: 'Conferir', testidRotulo: 'obra-cartao-conferir', n: resumo.conferir.length, nota: 'o app não decidiu sozinho', status: resumo.conferir.length ? 'pendente' : 'liberado', abrir: () => ir({ nome: 'entregas-base', filtro: 'conferir' }) },
+        ...(agora
+          ? [
+              { id: 'plotar', rotulo: 'A plotar', testid: 'obra-a-plotar', n: agora.copias, nota: agora.copias ? `${agora.folhas} ${agora.folhas === 1 ? 'folha' : 'folhas'} para a lista de distribuição` : 'todos da lista com a vigente', status: (agora.copias ? 'nc' : 'liberado') as Status, abrir: () => ir({ nome: 'agora' }) },
+              { id: 'recolher', rotulo: 'A recolher', testid: 'obra-a-recolher', n: agora.recolher.length, nota: 'cópia antiga em campo', status: (agora.recolher.length ? 'nc' : 'liberado') as Status, abrir: () => ir({ nome: 'agora' }) },
+            ]
+          : []),
+        ...(escritorio
+          ? [{ id: 'escritorio', rotulo: 'Escritório desatualizado', n: escritorio.desatualizados.length, nota: 'pasta do PC sem a vigente', status: (escritorio.desatualizados.length ? 'nc' : 'liberado') as Status, abrir: () => ir({ nome: 'pranchas-base', filtro: 'escritorio' }) }]
+          : []),
+      ]
+    : []
   return (
     <main class="tela pj-painel" data-testid="projetos-obra">
       <Topo titulo="Projetos" sub={`${obra.codigo} · painel da obra`} aoVoltar={aoSair} />
@@ -64,74 +95,34 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
         />
       )}
 
-      <ul class="pj-cartoes" aria-label="Resumo da obra" data-testid="obra-resumo">
-        <li class="neutro pj-tocavel" {...tocavel(() => abrirLista('vigentes', comVigente.map((d) => d.id)))}>
-          <span class="numero" data-testid="obra-vigentes">{t.vigentes}</span>
-          <strong>vigentes</strong>
-          <span class="discreto">{plural(p.disciplinas.length, 'disciplina', 'disciplinas')}</span>
-        </li>
-        <li class={`${t.novas ? 'atencao' : 'bom'} pj-tocavel`} data-testid="obra-cartao-novas" {...tocavel(() => abrirLista('com revisão nova', p.novas.map((n) => n.documento.id)))}>
-          <span class="numero" data-testid="obra-novas">{t.novas}</span>
-          <strong>com revisão nova</strong>
-          <span class="discreto">{textoCriterio(p)}</span>
-        </li>
-        <li class={`${t.escritorioVencida ? 'ruim' : 'bom'} pj-tocavel`} {...tocavel(() => abrirLista('PC atrás do Autodoc', doEscritorio(false)))}>
-          <span class="numero" data-testid="obra-pc-vencida">{t.escritorioVencida}</span>
-          <strong>PC atrás do Autodoc</strong>
-          <span class="discreto">pasta do escritório com revisão antiga</span>
-        </li>
-        <li class="neutro pj-tocavel" {...tocavel(() => abrirLista('PC em dia', doEscritorio(true)))}>
-          <span class="numero">{t.escritorioEmDia}</span>
-          <strong>PC em dia</strong>
-          <span class="discreto">{t.escritorioSem ? `${t.escritorioSem} sem registro do escritório` : 'todas com registro'}</span>
-        </li>
-      </ul>
+      {/* resumo numa linha e tabela (guia de estilo, 23/11/2026): cada linha abre a lista dela (item D) */}
+      <LinhaResumo
+        testid="obra-linha-resumo"
+        partes={[
+          plural(t.vigentes, 'vigente', 'vigentes'),
+          `${t.novas} com revisão nova`,
+          t.escritorioVencida ? plural(t.escritorioVencida, 'cópia desatualizada no escritório', 'cópias desatualizadas no escritório') : null,
+          resumo ? `${resumo.desatualizadas.length} a trocar em campo` : null,
+        ]}
+      />
+      <Tabela
+        rotulo="Resumo da obra"
+        testid="obra-resumo"
+        colunas={COLUNAS_RESUMO}
+        linhas={linhasObra}
+        chave={(l) => l.id}
+        aoTocar={(l) => l.abrir()}
+      />
 
       <section class="pj-bloco" data-testid="obra-canteiro-resumo">
         <h2>No canteiro</h2>
         {!resumo ? (
-          <p class="discreto">
-            Ainda sem a ficha de cópias neste aparelho. Importe em Controle do canteiro → Importar para ver o que está em campo e o que precisa trocar.
+          <p class="discreto so-com-ajuda">
+            Sem ficha de cópias
+            <Ajuda>Importe em Controle do canteiro › Importar para ver o que está em campo e o que precisa trocar.</Ajuda>
           </p>
         ) : (
-          <ul class="pj-cartoes" aria-label="Cópias no canteiro">
-            <li class="neutro pj-tocavel" {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'canteiro' }))}>
-              <span class="numero" data-testid="obra-em-campo">{resumo.emCampo}</span>
-              <strong>cópias em campo</strong>
-              <span class="discreto">{plural(resumo.emDia, 'em dia', 'em dia')}</span>
-            </li>
-            <li class={resumo.desatualizadas.length ? 'ruim pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'trocar' }))}>
-              <span class="numero" data-testid="obra-trocar">{resumo.desatualizadas.length}</span>
-              <strong>precisam trocar</strong>
-              <span class="discreto">cópia em campo com revisão antiga</span>
-            </li>
-            <li class={resumo.conferir.length ? 'atencao pj-tocavel' : 'bom pj-tocavel'} data-testid="obra-cartao-conferir" {...tocavel(() => ir({ nome: 'entregas-base', filtro: 'conferir' }))}>
-              <span class="numero">{resumo.conferir.length}</span>
-              <strong>conferir</strong>
-              <span class="discreto">o app não decidiu sozinho</span>
-            </li>
-            {agora && (
-              <li class={`${agora.copias ? 'ruim' : 'bom'} pj-tocavel`} {...tocavel(() => ir({ nome: 'agora' }))}>
-                <span class="numero" data-testid="obra-a-plotar">{agora.copias}</span>
-                <strong>a plotar</strong>
-                <span class="discreto">{agora.copias ? `${agora.folhas} ${agora.folhas === 1 ? 'folha' : 'folhas'} para a lista de distribuição` : 'todos da lista com a vigente'}</span>
-              </li>
-            )}
-            {agora && (
-              <li class={`${agora.recolher.length ? 'ruim' : 'bom'} pj-tocavel`} {...tocavel(() => ir({ nome: 'agora' }))}>
-                <span class="numero" data-testid="obra-a-recolher">{agora.recolher.length}</span>
-                <strong>a recolher</strong>
-                <span class="discreto">cópia antiga em campo</span>
-              </li>
-            )}
-            {escritorio && (
-              <li class={escritorio.desatualizados.length ? 'ruim pj-tocavel' : 'bom pj-tocavel'} {...tocavel(() => ir({ nome: 'pranchas-base', filtro: 'escritorio' }))}>
-                <span class="numero">{escritorio.desatualizados.length}</span>
-                <strong>escritório desatualizado</strong>
-                <span class="discreto">pasta do PC atrás da vigente</span>
-              </li>
-            )}
-          </ul>
+          <Tabela rotulo="Cópias no canteiro" colunas={COLUNAS_RESUMO} linhas={linhasCanteiro} chave={(l) => l.id} aoTocar={(l) => l.abrir()} />
         )}
       </section>
 
@@ -144,6 +135,10 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
           <strong>Cópias em campo</strong>
           <span class="discreto">recolher, conferir, empresas e entregas</span>
         </button>
+        <button type="button" onClick={() => ir({ nome: 'entregas-lista' })} data-testid="obra-entregas">
+          <strong>Entregas</strong>
+          <span class="discreto">quem levou o quê e quando, com o comprovante assinado</span>
+        </button>
         <button type="button" onClick={() => ir({ nome: 'painel' })} data-testid="obra-canteiro">
           <strong>Controle do canteiro</strong>
           <span class="discreto">a ficha de cópias × a vigente: OK, recolher, conferir; escritório; Excel ficha v2</span>
@@ -153,8 +148,9 @@ export function TelaObra({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void })
       <section class="pj-bloco" data-testid="obra-disciplinas">
         <h2>Por disciplina e pavimento</h2>
         {p.disciplinas.length === 0 && (
-          <p class="discreto" data-testid="obra-vazia">
-            Ainda não há pranchas nesta obra. A lista vem do Autodoc pelo atalho do PC e chega aqui na sincronização.
+          <p class="discreto so-com-ajuda" data-testid="obra-vazia">
+            Sem pranchas
+            <Ajuda>A lista vem do Autodoc pelo atalho do PC e chega aqui na sincronização.</Ajuda>
           </p>
         )}
         {p.disciplinas.map((d) => (
@@ -206,7 +202,7 @@ export function textoCriterio(p: Pick<PainelObra, 'criterio' | 'desde'>): string
   return 'últimos 7 dias'
 }
 
-type Selo = 'vigentes' | 'novas' | 'pc'
+type Selo = 'vigentes' | 'novas' | 'pc' | 'trocar' | 'conferir'
 
 function Numeros({ c, curto, abrir }: { c: Contagem; curto?: boolean; abrir: (qual: Selo) => void }) {
   // botão dentro do resumo (summary) ou da linha tocável: abre a lista sem abrir/fechar a disciplina
@@ -228,9 +224,11 @@ function Numeros({ c, curto, abrir }: { c: Contagem; curto?: boolean; abrir: (qu
   return (
     <span class="pj-contagens">
       {!curto && selo('vigentes', 'rec', plural(c.vigentes, 'vigente', 'vigentes'))}
+      {c.trocar > 0 && selo('trocar', 'des', `${c.trocar} a trocar`)}
+      {c.conferir > 0 && selo('conferir', 'conf', `${c.conferir} conferir`)}
       {c.novas > 0 && selo('novas', 'conf', plural(c.novas, 'nova', 'novas'))}
-      {c.escritorioVencida > 0 && selo('pc', 'des', `${c.escritorioVencida} PC atrás`)}
-      {c.novas === 0 && c.escritorioVencida === 0 && <span class="pj-selo ok">em dia</span>}
+      {c.escritorioVencida > 0 && selo('pc', 'des', `${c.escritorioVencida} desatualizada${c.escritorioVencida > 1 ? 's' : ''} no PC`)}
+      {c.novas === 0 && c.escritorioVencida === 0 && c.trocar === 0 && c.conferir === 0 && <span class="pj-selo ok">em dia</span>}
     </span>
   )
 }

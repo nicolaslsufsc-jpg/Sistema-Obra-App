@@ -46,6 +46,61 @@ export function cadeiaDeRevisoes(linhas: readonly LinhaDePlanta[]): CadeiaDeRevi
   return { anterioresDe, vigenteDe }
 }
 
+/** Os textos da planta que abre num pacote mais velho que o dela. */
+export interface TextosDaRevisao {
+  /** a linha de aviso no menu */
+  aviso: string
+  /** o botão que abre o que está no aparelho */
+  abrir: string
+  /** o botão que baixa a vigente (o tamanho vem depois) */
+  baixar: string
+  /** a faixa dentro da planta */
+  faixa: string
+}
+
+/**
+ * Textos quando o pacote do aparelho é de outra planta do trecho (a vigente tem outro id). Revisão
+ * diferente: "Revisão nova". Mesma revisão (a prancha foi publicada de novo, 24/11/2026): "Planta
+ * atualizada", sem falar em revisão nova.
+ */
+export function textosDaRevisao(vigente: { revisao?: unknown }, noAparelho: RevisaoAnterior): TextosDaRevisao {
+  const nova = String(vigente.revisao ?? '').trim()
+  const velha = noAparelho.revisao.trim()
+  if (nova === velha) {
+    return { aviso: 'Planta atualizada · Baixar de novo', abrir: 'Abrir', baixar: 'Baixar de novo', faixa: 'Planta atualizada no servidor.' }
+  }
+  return {
+    aviso: `Revisão nova: no aparelho ainda está a ${velha}`,
+    abrir: `Abrir ${velha}`,
+    baixar: `Baixar ${nova}`,
+    faixa: `Planta na revisão ${velha}. Já saiu a ${nova}.`,
+  }
+}
+
+/**
+ * O aviso de um grupo de plantas (o pavimento na lista, a disciplina no menu do pavimento), para a pessoa
+ * ver antes de entrar (rodada 9 do testador, 24/11/2026): alguma com revisão nova a baixar dá "Revisão
+ * nova para baixar"; só mesma revisão com id novo dá "Planta atualizada · Baixar de novo". Nada a baixar: null.
+ */
+export function avisoDasPlantas(
+  plantas: readonly { id: string; revisao?: unknown }[],
+  anterioresDe: ReadonlyMap<string, readonly RevisaoAnterior[]>,
+  noAparelho: { has(id: string): boolean },
+): string | null {
+  let novas = 0
+  let atualizadas = 0
+  for (const p of plantas) {
+    if (noAparelho.has(p.id)) continue
+    const antiga = anterioresDe.get(p.id)?.find((a) => noAparelho.has(a.id))
+    if (!antiga) continue
+    if (textosDaRevisao(p, antiga).abrir === 'Abrir') atualizadas++
+    else novas++
+  }
+  if (novas) return novas === 1 ? 'Revisão nova para baixar' : `${novas} revisões novas para baixar`
+  if (atualizadas) return atualizadas === 1 ? 'Planta atualizada · Baixar de novo' : `${atualizadas} plantas atualizadas · Baixar de novo`
+  return null
+}
+
 /** O pacote com que a planta abre: o dela ou, se ainda não baixou, o da revisão anterior mais nova. */
 export function pacoteDaPlanta(plantaId: string, anteriores: readonly RevisaoAnterior[] | undefined, noAparelho: { has(id: string): boolean }): string | undefined {
   if (noAparelho.has(plantaId)) return plantaId

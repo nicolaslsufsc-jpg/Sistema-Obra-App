@@ -1159,3 +1159,114 @@ button.pj-marcavel.marcada::before {
 .pj-barra-entregar .pj-pequeno {
   min-height: 48px;
 }
+
+/* ---------- Entregas (23/11): pessoas da empresa e a aba ---------- */
+.pj-pessoas-empresa {
+  flex-basis: 100%;
+}
+.pj-pessoas-empresa ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.4rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.pj-pessoas-empresa li {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+.pj-entrega > div {
+  min-width: 0;
+}
+
+/* ---------- Pranchas em pastas (23/11) ---------- */
+.pj-trilha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+}
+.pj-trilha button {
+  background: none;
+  border: 0;
+  padding: 0.35rem 0.25rem;
+  min-height: 2.5rem;
+  color: var(--primaria-claro);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.pj-trilha button.ativa {
+  color: var(--texto);
+  text-decoration: none;
+}
+.pj-pastas {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  display: grid;
+  gap: 0.4rem;
+}
+.pj-pasta {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+  border-color: var(--borda);
+  color: var(--texto);
+  font-weight: 400;
+  min-height: 3.25rem;
+}
+.pj-pasta-icone {
+  flex: none;
+  font-size: 1.2rem;
+  color: var(--discreto);
+}
+.pj-pasta-nome {
+  flex: 1 1 8rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+  overflow-wrap: anywhere;
+}
+.pj-pasta .pj-selos {
+  /* os avisos da pasta numa linha embaixo do nome; a seta fica na linha do nome */
+  order: 3;
+  flex-basis: 100%;
+  max-width: none;
+  justify-content: flex-start;
+  padding-left: 1.8rem;
+}
+.pj-pasta .pj-selos:empty {
+  display: none;
+}
+.pj-pasta .pj-seta {
+  margin-left: auto;
+}
+.pj-onde {
+  font-size: 0.8rem;
+}
+
+/* resumo em tabela (guia de estilo, 23/11/2026): rótulo e nota numa célula só */
+.pj-resumo-item {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.3rem 0;
+}
+.pj-resumo-item .discreto {
+  font-size: var(--fs-legenda);
+}
+.pj-painel .so-tabela-caixa {
+  margin-bottom: 0.75rem;
+}
+.pj-avisos-pasta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.6rem;
+  padding: 0.3rem 0;
+}

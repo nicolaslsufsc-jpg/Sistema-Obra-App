@@ -26,8 +26,9 @@ async function capturar(p: Page, nome: string) {
   if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `concreto_${nome}.png`) })
 }
 
+/** Botão ou linha de tabela (pavimentos, concretagens e ficha do dia são tabela desde 23/11/2026). */
 async function clicar(p: Page, texto: string | RegExp) {
-  await p.getByRole('button', { name: texto }).first().click()
+  await p.getByRole('button', { name: texto }).or(p.getByRole('row', { name: texto })).first().click()
 }
 
 /** Ponto da planta (x, y em pixels da planta) → ponto da tela. Usa o mapa exposto na bancada. */
@@ -602,6 +603,7 @@ suite('Concreto na bancada (Chrome)', () => {
     await clicar(p, '+ Caminhão')
     await p.getByLabel('Nota fiscal').fill('560001')
     await clicar(p, /^Salvar$/)
+    await p.getByRole('button', { name: 'Desenhar onde foi' }).waitFor()
     // como a carga das áreas da obra: planta_ref com o id da LINHA de "plantas" (não o do trecho)
     const ref = await p.evaluate(`(async () => {
       const { sincronizador } = await import('/src/nucleo/servicos.ts')
@@ -645,13 +647,73 @@ suite('Concreto na bancada (Chrome)', () => {
     await contexto.close()
   }, 120_000)
 
+  it('fundações: estaca e bloco ligados à mão aparecem no caminhão, no mapa e no relatório, sem desenho (celular e tablet)', async () => {
+    const OBRA_BB = 'b0000000-0000-0000-0000-0000000000bb'
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    // a bancada da FVS semeia a estaca E-P1.A e o bloco BL-P1 (sem geometria) no Pavimento de teste
+    await p.goto(url.replace('dev/concreto.html', 'dev/fvs.html'))
+    await p.getByText('Pavimento de teste').first().waitFor({ timeout: 60_000 })
+    expect(await p.locator('body').innerText()).not.toMatch(/E-P1\.A|BL-P1/)
+    await p.goto(`${url}?obra=${OBRA_BB}`)
+    await clicar(p, /Pavimento de teste/)
+    await clicar(p, '+ Nova concretagem')
+    await p.getByLabel('Local').fill('Fundação bloco 1')
+    await p.getByLabel('fck (MPa)').fill('30')
+    await clicar(p, 'Salvar concretagem')
+    await clicar(p, '+ Caminhão')
+    await p.getByLabel('Nota fiscal').fill('870001')
+    await clicar(p, /^Salvar$/)
+    await p.getByRole('button', { name: 'Desenhar onde foi' }).waitFor()
+    // como a carga das fundações: ligação à mão (origem manual), sem área desenhada
+    await p.evaluate(`(async () => {
+      const { sincronizador } = await import('/src/nucleo/servicos.ts')
+      const k = (await sincronizador.linhas('caminhoes', '${OBRA_BB}')).find((x) => x.nota_fiscal === '870001')
+      for (const el of ['e9000000-0000-0000-0000-000000000001', 'e9000000-0000-0000-0000-000000000002'])
+        await sincronizador.registrar('caminhao_elementos', '${OBRA_BB}', 'a0000000-0000-0000-0000-00000000000a', { caminhao_id: k.id, elemento_id: el, origem: 'manual', fracao: null, incluido: true })
+    })()`)
+    for (const largura of [375, 1280]) {
+      await p.setViewportSize({ width: largura, height: largura === 375 ? 812 : 800 })
+      await p.goto(`${url}?obra=${OBRA_BB}`)
+      await clicar(p, /Pavimento de teste/)
+      await clicar(p, /Fundação bloco 1/)
+      await clicar(p, /NF 870001/)
+      const tela = await p.locator('body').innerText()
+      expect(tela).toContain('Estaca E-P1.A')
+      expect(tela).toContain('Bloco BL-P1')
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await capturar(p, `fundacoes_caminhao_${largura}`)
+      // no mapa: a planta abre normal e as duas peças estão na lista do caminhão, sem área
+      await clicar(p, 'Desenhar onde foi')
+      await p.locator('[data-testid=mapa] canvas.leaflet-zoom-animated').first().waitFor()
+      expect(await p.locator('body').innerText()).not.toContain('ainda não tem planta')
+      const lista = await pecasDoPainel(p)
+      expect(lista.some((t: string) => t.startsWith('Estaca E-P1.A'))).toBe(true)
+      expect(lista.some((t: string) => t.startsWith('Bloco BL-P1'))).toBe(true)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await capturar(p, `fundacoes_mapa_${largura}`)
+    }
+    // relatório de peças do lote
+    await p.goto(`${url}?obra=${OBRA_BB}`)
+    await clicar(p, /Pavimento de teste/)
+    await clicar(p, /Fundação bloco 1/)
+    await clicar(p, 'Relatório de peças')
+    const rel = await p.getByTestId('relatorio-caminhao').innerText()
+    expect(rel).toContain('Estaca E-P1.A')
+    expect(rel).toContain('Bloco BL-P1')
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 150_000)
+
   it('concretagem de exemplo: EXEMPLO na lista, no título, no aviso e na ficha de concreto (celular e tablet)', async () => {
     for (const largura of [375, 1280]) {
       const contexto = await navegador.newContext({ viewport: { width: largura, height: 812 }, hasTouch: true })
       const p = await contexto.newPage()
       await p.goto(`${url}?exemplo=1`)
       await clicar(p, /Pavimento pequeno/)
-      await p.locator('.cc-linha').filter({ hasText: 'EXEMPLO · Trecho 2 · Vigas' }).first().waitFor()
+      await p.getByTestId('tabela-concretagens').locator('tbody tr').filter({ hasText: 'EXEMPLO · Trecho 2 · Vigas' }).first().waitFor()
       await capturar(p, `exemplo_${largura}_pavimento`)
       await clicar(p, /EXEMPLO · Trecho 2 · Vigas/)
       await expect.poll(() => p.locator('.aviso').filter({ hasText: 'Não é concretagem real da obra' }).count()).toBe(1)
@@ -672,9 +734,9 @@ suite('Concreto na bancada (Chrome)', () => {
       const contexto = await navegador.newContext({ viewport: { width: largura, height: 812 }, hasTouch: true })
       const p = await contexto.newPage()
       await p.goto(url)
-      // pavimento sem concretagem diz o próximo passo
+      // pavimento sem concretagem: uma linha curta (guia de estilo, 23/11/2026)
       await clicar(p, /Pavimento grande/)
-      expect(await p.getByTestId('pavimento-vazio').innerText()).toBe('Nenhuma concretagem neste pavimento. Toque em Nova concretagem para começar.')
+      expect(await p.getByTestId('pavimento-vazio').innerText()).toBe('Sem concretagens')
       await p.getByRole('button', { name: /Voltar/ }).first().click()
       await clicar(p, /Pavimento pequeno/)
       await clicar(p, '+ Nova concretagem')
@@ -1100,10 +1162,23 @@ suite('Concreto na bancada (Chrome)', () => {
       await p.getByTestId('planilha-modelo').setInputFiles({ name: 'errado.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('não sou planilha') })
       await secao.getByRole('button', { name: 'Gerar planilha' }).click()
       expect(await p.getByTestId('planilha-mensagem').innerText()).toContain('não é um .xlsx')
+
+      // modelo guardado como arquivo da obra (23/11): depois disso, a planilha sai em um clique
+      await p.getByTestId('planilha-modelo').setInputFiles(await exemplo.path())
+      await secao.getByRole('button', { name: 'Guardar como modelo da obra' }).click()
+      expect(await p.getByTestId('planilha-mensagem').innerText()).toContain('Modelo guardado')
+      await p.goto(url)
+      await p.getByTestId('planilha-modelo-obra').waitFor()
+      expect(await p.getByTestId('planilha-modelo').count()).toBe(0)
+      const [umClique] = await Promise.all([p.waitForEvent('download'), p.getByTestId('planilha-controle').getByRole('button', { name: 'Gerar planilha' }).click()])
+      expect(umClique.suggestedFilename()).toMatch(/^planilha_controle_.*\.xlsx$/)
+      expect(texto(await abrirXlsx(new Uint8Array(readFileSync(await umClique.path()))), 'xl/worksheets/sheet2.xml')).toContain(`80${largura}`)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await capturar(p, `planilha_um_clique_${largura}`)
       expect(erros).toEqual([])
       await contexto.close()
     }
-  }, 120_000)
+  }, 150_000)
 
   it('laudos atrasados por lote: uma linha por concretagem, que abre os caminhões dela (celular e tablet)', async () => {
     for (const largura of [375, 1280]) {
@@ -1158,7 +1233,7 @@ suite('Concreto na bancada (Chrome)', () => {
       await p.getByText(`72${largura}`).first().waitFor()
       // o pavimento conta lotes com problema, não caminhões
       await p.goto(url)
-      expect(await p.getByRole('button', { name: /Pavimento em 2 trechos/ }).first().innerText()).toMatch(/\d+ lotes? com problema/)
+      expect(await p.getByTestId('tabela-pavimentos').getByRole('row', { name: /Pavimento em 2 trechos/ }).innerText()).toMatch(/\d+ lotes? com problema/)
       expect(erros).toEqual([])
       await contexto.close()
     }

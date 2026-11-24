@@ -51,8 +51,8 @@ export interface DadosDaEsquadria {
 }
 
 export interface ElementoPacote {
-  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga), E esquadria do ambiente, M parede de alvenaria (planta de modulação) */
-  tipo: 'P' | 'V' | 'L' | 'A' | 'F' | 'E' | 'M'
+  /** P pilar, V viga, L laje, A ambiente (planta de arquitetura), F furo (de viga, ou de laje sem viga), E esquadria do ambiente, M parede de alvenaria (planta de modulação), K bloco de fundação (planta de locação, 23/11/2026) */
+  tipo: 'P' | 'V' | 'L' | 'A' | 'F' | 'E' | 'M' | 'K' | 'S'
   nome: string
   /** seção da peça ("19x60") ou área do ambiente ("12,1 m²") */
   secao: string
@@ -63,6 +63,9 @@ export interface ElementoPacote {
   /** só ambiente: códigos das fichas que não valem neste cômodo (tabela ficha × tipo de cômodo da obra,
    *  pipeline/fvs/ambientes.py). Sem o campo, todas valem */
   sem_fichas?: string[]
+  /** só ambiente: quadrado da grade de escavação da planta de fundação (item 1.2, 24/11/2026). Vale só a ficha de
+   *  `fichas_da_grade` do pacote e fica fora do andamento dos ambientes */
+  grade?: 'escavacao' | 'baldrame'
   /** [x0, y0, x1, y1], pontos do PDF, y para baixo */
   rotulo: [number, number, number, number]
   polys: Array<Array<[number, number]>>
@@ -73,6 +76,8 @@ export interface ElementoPacote {
   detalhe_corrigido_em?: string
   /** só pilar: consolo e capitel que ele tem nesta planta */
   partes?: ParteDoPilar[]
+  /** contorno redesenhado à mão no app (fvs_redesenhos, 23/11/2026): não é o do pacote */
+  redesenhada?: boolean
   /** só furo: id (no manifest) da viga em que ele fica */
   viga?: string
   /** só furo (21/11/2026): id (no manifest) do pilar em que ele (ou a caixinha) fica; marca o item de furos
@@ -189,6 +194,8 @@ export interface Manifest {
   /** forma com TODOS os furos (laje, viga e pilar) na planta de furação própria (21/11/2026, "igual à
    *  armadura"): eles ficam no pacote, para o item da viga e do pilar contar, mas não aparecem aqui */
   furos_separados?: boolean
+  /** planta de fundação com grade de escavação: códigos das fichas que valem nos quadrados (`grade`) */
+  fichas_da_grade?: string[]
   /** planta de instalações (pipeline/fvs/instalacoes.py): a disciplina dos pontos dela */
   disciplina?: DisciplinaDePontos | 'furacao' | 'armadura'
   /** pontos de instalações do modelo, já na folha (aba Pontos); chave = id do ponto (registro em barra_id) */
@@ -283,16 +290,34 @@ const escalas = new Map<string, number>()
 const partesPorElemento = new Map<string, TipoDeParte[]>()
 /** Peças que estão na planta só para ver o detalhe (arranque do pilar de cima, `so_detalhe`): sem ficha aqui. */
 const soDetalhe = new Set<string>()
+/** Fichas que não valem em cada ambiente (`sem_fichas`, tabela ficha × tipo de cômodo), pelos manifests que já passaram. */
+const semFichas = new Map<string, readonly string[]>()
+/** Quadrados da grade de escavação (`grade`): ambientes que não são cômodo. */
+const daGrade = new Set<string>()
+/** Códigos das fichas da grade de escavação (`fichas_da_grade` de qualquer planta): não valem nos cômodos. */
+const fichasDeGrade = new Set<string>()
+/** Nome de cada ambiente pelo id ("201-03"): o ponto de instalação diz o ambiente pelo id (23/11/2026). */
+const nomesDosAmbientes = new Map<string, string>()
+/** Apartamento de cada ambiente ("Apto 303", "Área comum"): o andamento dos acabamentos por apartamento (24/11/2026). */
+const gruposDosAmbientes = new Map<string, string>()
 
 function lembrarEscala(m: Manifest): void {
   if (typeof m.escala === 'number') escalas.set(m.planta_id, m.escala)
   else escalas.delete(m.planta_id)
+  for (const c of m.fichas_da_grade ?? []) fichasDeGrade.add(c)
   for (const [id, e] of Object.entries(m.elementos ?? {})) {
     const tipos = tiposDasPartes(e)
     if (tipos.length) partesPorElemento.set(id, tipos)
     else partesPorElemento.delete(id)
     if (e.so_detalhe) soDetalhe.add(id)
     else soDetalhe.delete(id)
+    if (e.tipo === 'A' && e.sem_fichas?.length) semFichas.set(id, e.sem_fichas)
+    else semFichas.delete(id)
+    if (e.grade === 'escavacao') daGrade.add(id)
+    else daGrade.delete(id)
+    if (e.tipo === 'A') nomesDosAmbientes.set(id, e.nome)
+    if (e.tipo === 'A' && e.grupo) gruposDosAmbientes.set(id, e.grupo)
+    else gruposDosAmbientes.delete(id)
   }
   for (const [id, e] of Object.entries(m.elementos ?? {})) if (e.tipo === 'A') lembrarComodo(id, e.comodo)
 }
@@ -311,6 +336,34 @@ export function partesGuardadas(elementoId: string): readonly TipoDeParte[] {
  */
 export function soDetalheGuardado(elementoId: string): boolean {
   return soDetalhe.has(elementoId)
+}
+
+/**
+ * Fichas que não valem no ambiente (`sem_fichas` do pacote guardado no aparelho). Vazio se não diz ou o pacote não
+ * passou por aqui: aí a ficha vale, como antes. Serve ao resumo do início (cada ficha conta só onde vale).
+ */
+export function semFichasGuardado(elementoId: string): readonly string[] | undefined {
+  return semFichas.get(elementoId)
+}
+
+/** Quadrado da grade de escavação (pacote guardado no aparelho): não entra no andamento dos ambientes. */
+export function daGradeGuardado(elementoId: string): boolean {
+  return daGrade.has(elementoId)
+}
+
+/** A ficha é da grade de escavação (de alguma planta guardada no aparelho): fora dos cômodos e do resumo deles. */
+export function fichaDeGradeGuardada(codigo: string): boolean {
+  return fichasDeGrade.has(codigo)
+}
+
+/** Apartamento do ambiente ("Apto 303", "Área comum") pelo pacote guardado no aparelho; undefined se não passou por aqui. */
+export function grupoDoAmbienteGuardado(id: string): string | undefined {
+  return gruposDosAmbientes.get(id)
+}
+
+/** Nome do ambiente ("201-03") pelo id, pelo pacote guardado no aparelho; undefined se a planta não passou por aqui. */
+export function nomeDoAmbienteGuardado(id: string | undefined): string | undefined {
+  return id === undefined ? undefined : nomesDosAmbientes.get(id)
 }
 
 /** Escala da planta pelo manifest guardado no aparelho; undefined se o pacote não passou por aqui ou não diz. */
@@ -426,6 +479,20 @@ export async function pecasNoAparelho(): Promise<Map<string, string[]>> {
     }
   })
   return m
+}
+
+/**
+ * As peças de estrutura (pilar, viga, laje) de cada planta do aparelho, com o contorno (lê os manifests, não as
+ * imagens): os avisos de escoramento por residencial acham por elas quem apoia cada viga e laje.
+ */
+export async function estruturaNoAparelho(): Promise<Array<{ planta_id: string; elementos: Record<string, ElementoPacote> }>> {
+  const saida: Array<{ planta_id: string; elementos: Record<string, ElementoPacote> }> = []
+  await db().pacotes.each((p) => {
+    const elementos: Record<string, ElementoPacote> = {}
+    for (const [id, e] of Object.entries(p.manifest.elementos ?? {})) if (e.tipo === 'P' || e.tipo === 'V' || e.tipo === 'L') elementos[id] = e
+    if (Object.keys(elementos).length) saida.push({ planta_id: p.planta_id, elementos })
+  })
+  return saida
 }
 
 /** A pessoa pediu para tirar plantas do aparelho (falta de espaço). As marcações não ficam aqui. */

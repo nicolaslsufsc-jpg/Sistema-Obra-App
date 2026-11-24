@@ -18,6 +18,7 @@ import { cadeiaDeRevisoes, type RevisaoAnterior } from './revisoes'
 import { TABELAS_FVS } from './tabelas'
 import { refazerToques } from './toques'
 import { regrasVigentes, type RegrasFvs } from './regras'
+import { redesenhosVigentes, type LinhaDeRedesenho, type Redesenho } from './redesenhos'
 import { alvosDaLigacao, alvosEntrePecas, observacaoDaLigacao, observacaoEntrePecas, temLigacaoEntrePecas, type PecaDaArea } from './ligacoes'
 import { observacaoDoPrazo, prazoPendente, type PrazoDoItem } from './prazos'
 
@@ -95,6 +96,8 @@ export interface DadosFvs {
   servidorMaisNovo: string | null
   /** regras da obra entre itens das fichas: prazos e ligações (fvs_regras; sem linha, nenhuma) */
   regras: RegrasFvs
+  /** pilares e vigas redesenhados à mão, por peça e trecho (chaveDoRedesenho; fvs_redesenhos, 23/11) */
+  redesenhos: Map<string, Redesenho>
 }
 
 /** Diferença normal entre o relógio do aparelho e o do servidor: abaixo disto, não incomoda ninguém. */
@@ -263,6 +266,10 @@ export const ehDeArmadura = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 
  *  de alvenaria; o fundo é a prancha de 1ª fiada ou a de arquitetura (pipeline/fvs/vedacao.py). */
 export const ehDeVedacao = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'vedacao'
 
+/** Planta de blocos de fundação (23/11/2026): cada bloco da locação é um local "K" ("BL-P65"), conferido pela ficha
+ *  de blocos; o fundo são as pranchas de locação (pipeline/fvs/blocos.py). */
+export const ehDeFundacao = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'fundacao'
+
 /** Planta de furos de laje de uma camada (21/11/2026): esgoto, água ou elétrica, com o fundo da forma e
  *  nas coordenadas dela (pipeline/fvs/furos.py). As áreas de laje da forma valem aqui. */
 export const ehDeFuracao = (p: Pick<Planta, 'disciplina'>) => p.disciplina === 'furacao'
@@ -349,10 +356,13 @@ function paraFichaCampo(l: Linha): FichaCampo {
   }
 }
 
+/** Tipos de elemento que a FVS confere (P pilar, V viga, L laje, A ambiente, F furo, E esquadria, M parede). */
+export const TIPOS_DA_FVS: ReadonlySet<string> = new Set(['P', 'V', 'L', 'A', 'F', 'E', 'M', 'K', 'S'])
+
 /** Lê tudo da FVS da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosFvs> {
   // tudo de uma vez, inclusive os caminhões do Concreto (antes vinham depois, somando o tempo ao abrir)
-  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras, locs, caminhoes] = await Promise.all([
+  const [pav, set, elem, arqs, fic, pla, evs, fot, fcs, ars, nomes, lancados, regras, locs, caminhoes, reds] = await Promise.all([
     sincronizador.linhas('pavimentos', obraId),
     sincronizador.linhas('setores', obraId),
     sincronizador.linhas('elementos', obraId),
@@ -369,6 +379,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     sincronizador.linhas('locais_sistema', obraId),
     // caminhões do Concreto por peça (sem Concreto na obra, nenhum): o item do rastreio fica C, só calculado
     caminhoesDasPecas(obraId).catch(() => new Map<string, CaminhaoDaPeca[]>()),
+    sincronizador.linhas('fvs_redesenhos', obraId),
   ])
   const setor = new Map(set.map((s) => [s.id, { nome: String(s.nome_projeto), disciplina: String(s.disciplina ?? 'estrutura') }]))
   const arquivo = new Map(arqs.map((a) => [a.id, { id: a.id, caminho: String(a.caminho), hash: String(a.hash), tamanho: Number(a.tamanho) }]))
@@ -410,7 +421,14 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
   }))
   // peça de exemplo (a laje que os exemplos do Concreto criam, `exemplo: true`) não é peça da FVS:
   // não conta nos totais nem aparece no mapa (obra de demonstração, 13/11)
-  const pecas: Peca[] = elem.filter((e) => e.exemplo !== true).map((e) => ({
+  // Só os tipos que a FVS confere: estaca (S) do Concreto (fundações, 22/11) e qualquer tipo novo ficam de
+  // fora, sem erro (não contam, não aparecem na navegação, no PDF nem na planilha). O bloco (K) é peça da FVS
+  // desde 23/11 (planta de blocos), mas só no pavimento que tem planta de fundação: o bloco que o Concreto
+  // cadastra sem desenho, num pavimento sem essa planta, continua de fora. A estaca (S) segue a mesma regra
+  // desde 24/11 (planta de estacas: as estacas da locação dentro dos blocos)
+  const comBlocos = new Set(plantas.filter(ehDeFundacao).map((p) => p.pavimento_id))
+  const daFvs = (e: Linha) => TIPOS_DA_FVS.has(String(e.tipo)) && ((e.tipo !== 'K' && e.tipo !== 'S') || comBlocos.has(String(e.pavimento_id)))
+  const pecas: Peca[] = elem.filter((e) => e.exemplo !== true && daFvs(e)).map((e) => ({
     id: e.id,
     pavimento_id: String(e.pavimento_id),
     tipo: String(e.tipo),
@@ -466,6 +484,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     lancados: new Set(lancados ?? []),
     servidorMaisNovo,
     regras: regrasVigentes(regras),
+    redesenhos: redesenhosVigentes(reds as unknown as LinhaDeRedesenho[]),
   }
 }
 
@@ -523,9 +542,14 @@ const doLocal = (c: Contexto, id: string) =>
  * item" já vai com o que está errado (escrito antes de Confirmar).
  */
 export async function tocarItem(c: Contexto, pecaId: string, ficha: Ficha, item: number, resultado: Resultado, eventos: readonly EventoFvs[], id?: string, observacao?: string | null) {
+  return sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, camposDoToque(c, pecaId, ficha, item, resultado, eventos, id, observacao))
+}
+
+/** As colunas do registro de um toque no item (o de `tocarItem`). */
+function camposDoToque(c: Contexto, pecaId: string, ficha: Ficha, item: number, resultado: Resultado, eventos: readonly EventoFvs[], id?: string, observacao?: string | null) {
   const atual = ultimosPorItem(eventos.filter((e) => e.ficha_id === ficha.id)).get(item)
   const novo = aoTocar(atual, resultado)
-  return sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
+  return {
     // o id anotado no diário de toques (toques.ts): refeito depois de recarregar, não duplica
     ...(id ? { id } : {}),
     ...doLocal(c, pecaId),
@@ -538,7 +562,7 @@ export async function tocarItem(c: Contexto, pecaId: string, ficha: Ficha, item:
     observacao: ((novo.resultado === 'NC' || novo.resultado === 'C') && observacao?.trim()) || null,
     planta_id: c.plantaId,
     ...daFichaAbertaDe(c),
-  })
+  }
 }
 
 /** Tira o NC de um item marcado por engano (mesma rodada, sem resultado). */
@@ -582,9 +606,14 @@ export async function voltarItem(c: Contexto, gravado: Linha, anterior: EventoFv
  * qual furo está errado.
  */
 export async function marcarPelosFuros(c: Contexto, vigaId: string, ficha: Ficha, item: number, resultado: Resultado | null, observacao: string | null, eventos: readonly EventoFvs[]) {
+  return sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, camposPelosFuros(c, vigaId, ficha, item, resultado, observacao, eventos))
+}
+
+/** As colunas do registro de `marcarPelosFuros`. */
+function camposPelosFuros(c: Contexto, vigaId: string, ficha: Ficha, item: number, resultado: Resultado | null, observacao: string | null, eventos: readonly EventoFvs[]) {
   const atual = ultimosPorItem(eventos.filter((e) => e.ficha_id === ficha.id)).get(item)
   const rodada = atual?.resultado === 'NC' && resultado && resultado !== 'NC' ? atual.rodada + 1 : (atual?.rodada ?? 1)
-  return sincronizador.registrar('fvs_eventos', c.obraId, c.usuarioId, {
+  return {
     ...doLocal(c, vigaId),
     ficha_id: ficha.id,
     item,
@@ -593,7 +622,20 @@ export async function marcarPelosFuros(c: Contexto, vigaId: string, ficha: Ficha
     observacao,
     planta_id: c.plantaId,
     ...daFichaAbertaDe(c),
-  })
+  }
+}
+
+/**
+ * "Confirmar OK em todos" do "+ Área" (24/11/2026): o C de muitos pontos (como `marcarPelosFuros`) ou furos
+ * (como `tocarItem`) numa transação só no aparelho. Os registros são os mesmos de um por um, na mesma ordem.
+ */
+export function marcarVariosC(
+  c: Contexto,
+  como: 'pontos' | 'furos',
+  lista: readonly { id: string; ficha: Ficha; item: number; eventos: readonly EventoFvs[] }[],
+): Promise<Linha[]> {
+  const campos = lista.map((x) => (como === 'pontos' ? camposPelosFuros(c, x.id, x.ficha, x.item, 'C', null, x.eventos) : camposDoToque(c, x.id, x.ficha, x.item, 'C', x.eventos)))
+  return sincronizador.registrarVarios('fvs_eventos', c.obraId, c.usuarioId, campos)
 }
 
 /**
@@ -857,6 +899,33 @@ export async function mudarArea(c: Contexto, a: AreaDeLaje, mudanca: { contorno?
     codigo_ficha: a.codigo_ficha,
     contorno: mudanca.contorno ?? a.contorno,
     cancelada: mudanca.cancelada ?? false,
+  })
+}
+
+/**
+ * Redesenho de pilar ou viga (23/11): linha nova em fvs_redesenhos. Se a peça já tinha redesenho neste
+ * trecho, a nova aponta para ele (substitui_id); nada se sobrescreve. Funciona sem internet.
+ */
+export async function redesenharPeca(c: Contexto, dados: { elementoId: string; setorId: string; contorno: readonly Ponto[]; atual?: Pick<Redesenho, 'id'> }): Promise<Linha> {
+  return sincronizador.registrar('fvs_redesenhos', c.obraId, c.usuarioId, {
+    elemento_id: dados.elementoId,
+    setor_id: dados.setorId,
+    planta_id: c.plantaId,
+    contorno: dados.contorno,
+    substitui_id: dados.atual?.id ?? null,
+    cancelado: false,
+  })
+}
+
+/** Voltar ao contorno original do projeto: linha nova cancelando o redesenho que valia. */
+export async function voltarAoOriginal(c: Contexto, r: Pick<Redesenho, 'id' | 'elemento_id' | 'setor_id'>): Promise<Linha> {
+  return sincronizador.registrar('fvs_redesenhos', c.obraId, c.usuarioId, {
+    elemento_id: r.elemento_id,
+    setor_id: r.setor_id,
+    planta_id: c.plantaId,
+    contorno: null,
+    substitui_id: r.id,
+    cancelado: true,
   })
 }
 

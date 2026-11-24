@@ -5,7 +5,7 @@ import { lerBaseOuDoPacote, type BaseProjetos } from '../base'
 import { aEntregar, gravarDestinatarios, lerDestinatarios, regrasAtuais, type DadosDestinatario, type Destinatario } from '../distribuicao'
 import { aplicarEdicoes, gravarEdicao, lerEdicoes, resumirEscritorio, type Edicao, type NovaEdicao } from '../edicoes'
 import { cruzar, resumir, type CopiaCruzada } from '../painel'
-import { copiasDoApp, mesclarEscritorio, vigentesDoServidor, copiasDoCanteiro } from '../canteiro'
+import { copiasDoApp, mesclarEscritorio, pastasRetiradas, vigentesDoServidor, copiasDoCanteiro } from '../canteiro'
 import type { Contexto, TelaProjetos } from './ModuloProjetos'
 import { dataBR, horaBR } from './comum'
 import { FaixaAutodoc } from './FaixaAutodoc'
@@ -42,7 +42,10 @@ export function usarBase(ctx: Contexto) {
   const vigServidor = useMemo(() => (!ctx.semConta && dados.vigentes.size ? vigentesDoServidor(dados) : null), [ctx.semConta, dados])
   // Com conta, as entregas do servidor (registradas no app ou vindas da ficha gravada pelo PC) são o canteiro.
   // Havendo entregas no servidor, a ficha importada no aparelho fica de fora; sem elas, vale a ficha importada.
-  const doApp = useMemo(() => (ctx.semConta ? [] : copiasDoApp(dados)), [ctx.semConta, dados])
+  // as cópias de pastas retiradas do Autodoc (todas as pranchas obsoletas) não entram (24/11/2026)
+  const retiradas = useMemo(() => pastasRetiradas(dados), [dados])
+  const doApp = useMemo(() => (ctx.semConta ? [] : copiasDoApp(dados, retiradas)), [ctx.semConta, dados, retiradas])
+  const escondidas = useMemo(() => (ctx.semConta || !retiradas.size ? 0 : copiasDoApp(dados).filter((c) => !c.devolucao).length - doApp.filter((c) => !c.devolucao).length), [ctx.semConta, dados, retiradas, doApp])
   const corrigida = useMemo(() => {
     const b = base ?? (vigServidor && doApp.length ? { vigentes: [], copias: [] } : null)
     if (!b) return null
@@ -64,17 +67,20 @@ export function usarBase(ctx: Contexto) {
   const salvarRegras = async (novas: (DadosDestinatario & { substitui_id?: string | null })[]) => setDestinatarios(await gravarDestinatarios(obra.id, novas, usuario.id, nomeDe))
 
   const fonteVigente = vigServidor ? 'servidor (lista do Autodoc publicada)' : base?.vigentesArquivo ? `lista importada (${base.vigentesArquivo})` : 'lista importada'
-  return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras, vigServidor, fonteVigente }
+  return { base, setBase, edicoes, corrigida, cruzadas, resumo, escritorio, salvar, destinatarios, regras, pendentes, salvarRegras, vigServidor, fonteVigente, escondidas, retiradas }
 }
 
-export type AbaBase = 'painel' | 'agora' | 'pessoas' | 'pranchas' | 'entregas' | 'a-entregar' | 'distribuicao' | 'importar'
+export type AbaBase = 'painel' | 'agora' | 'pessoas' | 'pranchas' | 'entregas' | 'copias' | 'a-entregar' | 'distribuicao' | 'importar'
 
-const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos }[] = [
+// Entregas (23/11): uma linha por entrega (assinatura), não precisa do cruzamento. Cópias: a lista de antes
+// (uma linha por cópia em campo, com os filtros em campo, desatualizada, conferir).
+const ABAS: { aba: AbaBase; rotulo: string; tela: TelaProjetos; semCruzamento?: boolean }[] = [
   { aba: 'painel', rotulo: 'Painel', tela: { nome: 'painel' } },
   { aba: 'agora', rotulo: 'Fazer agora', tela: { nome: 'agora' } },
   { aba: 'pessoas', rotulo: 'Pessoas', tela: { nome: 'pessoas' } },
   { aba: 'pranchas', rotulo: 'Pranchas', tela: { nome: 'pranchas-base' } },
-  { aba: 'entregas', rotulo: 'Entregas', tela: { nome: 'entregas-base' } },
+  { aba: 'entregas', rotulo: 'Entregas', tela: { nome: 'entregas-lista' }, semCruzamento: true },
+  { aba: 'copias', rotulo: 'Cópias', tela: { nome: 'entregas-base' } },
   { aba: 'a-entregar', rotulo: 'A entregar', tela: { nome: 'a-entregar' } },
   { aba: 'distribuicao', rotulo: 'Distribuição', tela: { nome: 'distribuicao' } },
 ]
@@ -129,7 +135,7 @@ export function CabecalhoBase({ ctx, aba, aoSair, base, temCruzamento }: { ctx: 
 
       <nav class="pj-abas" aria-label="Partes do módulo" ref={abas}>
         {ABAS.map((a) => (
-          <button key={a.aba} type="button" class={aba === a.aba ? 'ativa' : ''} aria-current={aba === a.aba ? 'page' : undefined} disabled={!temCruzamento} onClick={() => trocar(a.tela)}>
+          <button key={a.aba} type="button" class={aba === a.aba ? 'ativa' : ''} aria-current={aba === a.aba ? 'page' : undefined} disabled={!temCruzamento && !a.semCruzamento} onClick={() => trocar(a.tela)}>
             {a.rotulo}
           </button>
         ))}

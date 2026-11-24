@@ -8,7 +8,7 @@
 // - Último registro vazio = o R foi desmarcado por engano: não é reprovação.
 
 import { nomeDaPeca } from './comodos'
-import { daFichaAberta, eventosDaFichaAberta, juntarFichasDoModelo, maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
+import { daFichaAberta, eventosDaFichaAberta, juntarFichasDoModelo, juntarMarcadosNoApp, maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
 
 export interface Reinspecao {
   resultado: 'C' | 'NA'
@@ -74,7 +74,8 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
     if (!eventos?.some((e) => e.resultado === 'NC')) continue
     const abertas = d.fichasCampoDe.get(peca.id) ?? []
     // duas fichas do mesmo modelo na viga contam como uma, como o painel mostra (21/11)
-    const daTela = juntarFichasDoModelo(abertas, (id) => d.fichaPorId.get(id), eventos)
+    // e o marcado só no app entra na ficha aberta do mesmo modelo (ficha única, 23/11)
+    const { fichas: daTela, juntou: comApp } = juntarMarcadosNoApp(juntarFichasDoModelo(abertas, (id) => d.fichaPorId.get(id), eventos), eventos)
     const juntou = daTela.some((fc) => fc.juntas)
     const porItem = new Map<string, EventoFvs[]>()
     const juntar = (evs: readonly EventoFvs[], fichaCampoId: string | null) => {
@@ -87,7 +88,7 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
     }
     if (!juntou) for (const e of eventos) juntar([e], e.ficha_campo_id ?? null)
     else {
-      juntar(daFichaAberta(eventos, null), null)
+      if (!comApp) juntar(daFichaAberta(eventos, null), null)
       for (const fc of daTela) juntar(eventosDaFichaAberta(eventos, fc), fc.id)
     }
     for (const [k, lista] of porItem) {
@@ -103,7 +104,9 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
       // o texto pode estar num registro anterior da mesma rodada ("O que fazer?" é um registro novo)
       const comTexto = [...daRodada].reverse().find((e) => e.observacao)
       const item = ficha.itens.find((i) => i.n === ultimo.item)
-      const aberta = abertas.find((a) => a.id === ultimo.ficha_campo_id)
+      // o NC marcado só no app que entrou na ficha aberta abre nela (ficha única, 23/11)
+      const doGrupo = k.split('|')[1] || null
+      const aberta = abertas.find((a) => a.id === (ultimo.ficha_campo_id ?? doGrupo))
       saida.push({
         chave: `${peca.id}|${k}`,
         pecaId: peca.id,
@@ -113,7 +116,7 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
         fichaId: ficha.id,
         fichaCodigo: ficha.codigo,
         fichaTitulo: ficha.titulo,
-        fichaCampoId: ultimo.ficha_campo_id ?? null,
+        fichaCampoId: ultimo.ficha_campo_id ?? doGrupo ?? null,
         fichaCampoCodigo: aberta?.codigo ?? null,
         fichasNaPeca: abertas.length,
         local: aberta?.local ?? null,

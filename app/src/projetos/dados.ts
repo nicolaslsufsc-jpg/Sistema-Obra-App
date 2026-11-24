@@ -3,8 +3,9 @@
 import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
 import { sincronizador } from '../nucleo/servicos'
-import { compararVigencia, dataLocal, escritorioPorDocumento, normalizar, revisaoNova, situacoes, vigentePorDocumento, type Situacao } from './regras'
+import { cargaInicial, compararVigencia, dataLocal, escritorioPorDocumento, normalizar, revisaoNova, situacoes, vigentePorDocumento, type Situacao } from './regras'
 import { TABELAS_PROJETOS } from './tabelas'
+import { nomeSemCaixaAlta } from './canteiro'
 
 export { TABELAS_PROJETOS }
 
@@ -37,8 +38,10 @@ export interface DadosProjetos {
   revisoesDe: Map<string, Linha[]>
   revisaoPorId: Map<string, Linha>
   vigentes: Map<string, Linha>
-  /** revisões vistas nos últimos 7 dias (não obsoletas), mais recentes primeiro */
+  /** revisões vistas nos últimos 7 dias (não obsoletas, fora da carga inicial), mais recentes primeiro */
   novas: Linha[]
+  /** dia da carga inicial da obra: o que veio nela não conta como novo (regras.cargaInicial) */
+  carga?: string | null
   empresas: Empresa[]
   empresaPorId: Map<string, Empresa>
   eventos: Linha[]
@@ -75,7 +78,8 @@ export async function carregar(obraId: string, hoje = dataLocal(new Date())): Pr
       id: d.id,
       codigo: texto(d.codigo),
       disciplina_sigla: texto(d.disciplina_sigla),
-      disciplina: texto(d.disciplina) || texto(d.disciplina_sigla),
+      // o Autodoc escreve algumas em caixa alta ("DOCUMENTOS E APROVAÇÕES"): na tela, como as outras (testador, 23/11)
+      disciplina: nomeSemCaixaAlta(texto(d.disciplina)) || texto(d.disciplina_sigla),
       numero: texto(d.numero),
       nome_curto: texto(d.nome_curto),
       titulo: texto(d.titulo),
@@ -89,7 +93,8 @@ export async function carregar(obraId: string, hoje = dataLocal(new Date())): Pr
     lista.sort((a, b) => Number(!!a.obsoleta) - Number(!!b.obsoleta) || compararVigencia(a, b))
   }
   const vigentes = vigentePorDocumento(revs)
-  const novas = revs.filter((r) => revisaoNova(r, hoje)).sort((a, b) => String(b.vista_em).localeCompare(String(a.vista_em)) || compararVigencia(a, b))
+  const carga = cargaInicial(revs)
+  const novas = revs.filter((r) => revisaoNova(r, hoje, 7, carga)).sort((a, b) => String(b.vista_em).localeCompare(String(a.vista_em)) || compararVigencia(a, b))
   const empresas: Empresa[] = emps
     .map((e) => ({ id: e.id, nome: texto(e.nome), contato: textoOuNulo(e.contato), ativa: e.ativa !== false }))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
@@ -102,6 +107,7 @@ export async function carregar(obraId: string, hoje = dataLocal(new Date())): Pr
     revisaoPorId: new Map(revs.map((r) => [r.id, r])),
     vigentes,
     novas,
+    carga,
     empresas,
     empresaPorId: new Map(empresas.map((e) => [e.id, e])),
     eventos: dist,

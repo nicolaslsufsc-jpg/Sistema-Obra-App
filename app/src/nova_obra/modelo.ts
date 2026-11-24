@@ -35,6 +35,33 @@ export interface FichaRascunho {
   concretagem: EtapaConcretagem
 }
 
+/** Até onde a publicação no servidor foi (publicar.ts), para recomeçar sem repetir. */
+export interface EstadoPublicacao {
+  obraId: string
+  codigo: string
+  /** as linhas já estão na fila do aparelho */
+  naFila: boolean
+  /** a fila esvaziou: tudo no servidor */
+  enviada: boolean
+  /** índices de r.pessoas já convidadas */
+  convidadas: number[]
+  em: string
+}
+
+/** Quem tem acesso à obra no servidor (publicar.ts, função convidar do banco). */
+export interface PessoaRascunho {
+  nome: string
+  /** vazio: o convite fica esperando o e-mail (o administrador põe depois) */
+  email: string
+  papel: 'gestor' | 'campo' | 'leitura'
+}
+
+export const PAPEIS: ReadonlyArray<{ id: PessoaRascunho['papel']; nome: string; ajuda: string }> = [
+  { id: 'gestor', nome: 'Gestor', ajuda: 'cadastro da obra, projetos e documentos; também registra em campo' },
+  { id: 'campo', nome: 'Campo', ajuda: 'registra em campo (FVS, fotos, concreto) e lê o resto' },
+  { id: 'leitura', nome: 'Leitura', ajuda: 'só lê' },
+]
+
 export interface RascunhoObra {
   codigo: string
   nome: string
@@ -44,6 +71,10 @@ export interface RascunhoObra {
   fichas: FichaRascunho[]
   /** plantas (etapa 2); os PDFs e os tiles ficam em guardados.ts */
   plantas: PlantaRascunho[]
+  /** quem tem acesso no servidor (passo Pessoas) */
+  pessoas?: PessoaRascunho[]
+  /** publicação no servidor em andamento ou feita */
+  publicacao?: EstadoPublicacao
 }
 
 export const rascunhoVazio = (): RascunhoObra => ({ codigo: '', nome: '', empresa: '', pavimentos: [], fichas: [], plantas: [] })
@@ -182,6 +213,16 @@ export function problemas(r: RascunhoObra): string[] {
     })
     if (f.concretagem.modo === 'etapa' && !etapasDaFicha(f).includes(f.concretagem.etapa))
       p.push(`Ficha ${nome}: a etapa da concretagem escolhida não existe mais nos itens.`)
+  })
+  const emails = new Set<string>()
+  ;(r.pessoas ?? []).forEach((pe, i) => {
+    const quem = pe.nome.trim() || `pessoa ${i + 1}`
+    if (!pe.nome.trim()) p.push(`Pessoa ${i + 1}: falta o nome.`)
+    const e = pe.email.trim().toLowerCase()
+    if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) p.push(`${quem}: e-mail inválido (${pe.email.trim()}).`)
+    else if (e && emails.has(e)) p.push(`${quem}: e-mail repetido (${e}).`)
+    if (e) emails.add(e)
+    if (!PAPEIS.some((x) => x.id === pe.papel)) p.push(`${quem}: escolha o papel.`)
   })
   const trechos = new Set<string>()
   for (const pl of r.plantas ?? []) {

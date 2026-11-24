@@ -28,7 +28,7 @@ Usuário sem linha em `acessos` (e que não é admin) não vê nada. `perfis.pap
 - `pavimentos` (obra_id, nome, ordem). `ordem` cresce de baixo para cima. Nome único por obra.
 - `setores` (obra_id, pavimento_id opcional, nome_projeto ex. "Trecho 2", nome_construpoint ex. "B/C", disciplina ex. "estrutura").
   - Liga o trecho da prancha ao setor do Construpoint. De-para da obra piloto ainda não definido: `nome_construpoint` fica vazio até lá.
-- `elementos` (obra_id, pavimento_id, tipo P/V/L/A/F/E/M: pilar, viga, laje, ambiente, furo de viga, esquadria, parede de modulação; nome, secao). Único por (pavimento_id, tipo, nome) entre os não apagados.
+- `elementos` (obra_id, pavimento_id, tipo P/V/L/A/F/E/M/S/K: pilar, viga, laje, ambiente, furo de viga, esquadria, parede de modulação, estaca, bloco de fundação; nome, secao). Único por (pavimento_id, tipo, nome) entre os não apagados.
   - Pilar que aparece em dois trechos é um elemento só.
   - `nome` sem espaço: "V46", não "V 46". O leitor de prancha normaliza antes de gravar.
 - `arquivos` (obra_id, caminho, nome_original, hash SHA-256 hex, tamanho em bytes, tipo MIME). Quem criou e quando: `usuario_id` e `criado_em_servidor`.
@@ -106,6 +106,7 @@ const eventos = await sincronizador.linhas('fvs_eventos', obraId)
 - Tabela nova que precisa estar offline: acrescente em `app/src/nucleo/tabelas.ts` (ordem: pais antes dos filhos) e a lista do módulo em `BLOCOS_SINCRONIZADOS` no mesmo arquivo (o núcleo baixa primeiro, os módulos ao mesmo tempo; por isso tabela de módulo só aponta para o núcleo e para o próprio módulo) e chame `nucleo.preparar_tabela()` nela na migração do módulo.
 - `registrar()` preenche sozinho `id` (se não vier), `obra_id`, `usuario_id`, `dispositivo_id`, `criado_em_dispositivo` e `apagado`. Passar qualquer coluna do núcleo dá erro.
 - No aparelho, todas as tabelas ficam numa tabela local genérica (`registros`, chave tabela + id). Módulo novo não mexe no esquema do banco local.
+- `registrarVarios(tabela, obraId, usuarioId, listaDeCampos)` (24/11/2026, aprovado pelo Nicolas): o mesmo que chamar `registrar()` para cada um, na ordem, mas numa transação só no aparelho (entram todos ou nenhum). Registros, fila e sincronização iguais. Para lote grande (o "Confirmar OK em todos" da FVS manda partes de 500).
 - `registrar()` é só para inclusão com id novo. Não use para editar um registro existente: o servidor ignora id repetido.
 - A sincronização roda sozinha enquanto o app está aberto numa obra (`usarSincronizacao`): ao abrir, quando a internet volta, quando o app volta para a frente, a cada 5 min, e a cada 1 min se houver coisa na fila. As telas nunca esperam a rede.
 - Fila: uma por usuário, enviada em ordem. Erro de rede ou login vencido: para e tenta depois. Erro permanente (sem permissão, valor inválido): o item fica marcado com o motivo, a fila segue e a tela mostra a lista. Nada é apagado da fila sem chegar ao servidor.

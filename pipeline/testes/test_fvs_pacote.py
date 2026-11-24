@@ -62,6 +62,24 @@ class TestPacote(unittest.TestCase):
         with self.assertRaises(pacote.ErroPacote):  # lista de códigos
             pacote.montar(CAB, {}, {"a1": {**amb, "sem_fichas": "EXE-024"}}, {})
 
+    def test_quadrado_da_escavacao_e_fichas_da_grade(self):
+        # grade de escavação (blocos.py, 24/11/2026): o quadrado leva "grade" e o pacote "fichas_da_grade"
+        esc = {"tipo": "A", "nome": "ESC-A1", "secao": "30,0 m²", "rotulo": [0, 0, 1, 1], "polys": [], "grade": "escavacao"}
+        man, _ = pacote.montar({**CAB, "fichas_da_grade": ["EXE-PVS-ESC"]}, {}, {"q1": esc}, {})
+        m = json.loads(man)
+        self.assertEqual(m["elementos"]["q1"]["grade"], "escavacao")
+        self.assertEqual(m["fichas_da_grade"], ["EXE-PVS-ESC"])
+        self.assertNotIn("fichas_da_grade", json.loads(pacote.montar(CAB, {}, {}, {})[0]))
+        # viga baldrame: bloco com "grade": "baldrame" (etapa 2, 24/11/2026)
+        vb = {"tipo": "K", "nome": "VB-V1", "secao": "20/92", "rotulo": [0, 0, 1, 1], "polys": [], "grade": "baldrame"}
+        self.assertEqual(json.loads(pacote.montar(CAB, {}, {"vb": vb}, {})[0])["elementos"]["vb"]["grade"], "baldrame")
+        with self.assertRaises(pacote.ErroPacote):
+            pacote.montar(CAB, {}, {"q": {**esc, "grade": "baldrame"}}, {})
+        with self.assertRaises(pacote.ErroPacote):
+            pacote.montar(CAB, {}, {"k": {"tipo": "K", "nome": "BL-P1", "rotulo": [0, 0, 1, 1], "polys": [], "grade": "escavacao"}}, {})
+        with self.assertRaises(pacote.ErroPacote):
+            pacote.montar({**CAB, "fichas_da_grade": "EXE-PVS-ESC"}, {}, {}, {})
+
     def test_recusa_tile_e_tipo_invalidos(self):
         with self.assertRaises(pacote.ErroPacote):
             pacote.montar(CAB, {"../x": b"1"}, {}, {})

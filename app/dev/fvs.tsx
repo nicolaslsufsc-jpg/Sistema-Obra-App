@@ -380,6 +380,8 @@ function barrasDeTeste(): NonNullable<Manifest['barras']> {
     b(3, 'longitudinal_inferior', [[500, 640], [700, 640]], 'N3'),
     b(4, 'longitudinal_inferior', [[600, 700], [1000, 700]], 'N4'),
     b(5, 'transversal_superior', [[600, 490], [600, 710]], 'N5'),
+    // ?juntas=1 (24/11, achado #5 da lista de campo): a N6 corre colada na N1, 2,5 pontos abaixo (4,4 cm em 1:50)
+    ...(params.get('juntas') ? [b(6, 'longitudinal_inferior', [[520, 522.5], [700, 522.5]], 'N6')] : []),
   ])
 }
 
@@ -443,6 +445,10 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
       ...(comodo ? { comodo } : {}),
       // ?comodos=1: tabela ficha × tipo de cômodo (pipeline/fvs/ambientes.py): o reboco de teste não vale nas suítes
       ...(params.get('comodos') && comodo?.startsWith('Suíte') ? { sem_fichas: ['TESTE-PVS-REB'] } : {}),
+      // ?redes=1 (23/11/2026): a elétrica em drywall de teste não vale no 101-02 (a caixa de parede de lá não pergunta)
+      ...(params.get('redes') && nome === '101-02' ? { sem_fichas: ['TESTE-PVS-ELE-DRY'] } : {}),
+      // ?acabamentos=1 (sessão 5, 24/11/2026): o piso de teste não vale no AC-02 (área comum)
+      ...(params.get('acabamentos') && nome === 'AC-02' ? { sem_fichas: ['TESTE-PVS-PISO'] } : {}),
       secao: `${((w * h) / 2500).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m²`,
       rotulo: [cx - 22, cy - 7, cx + 22, cy + 7],
       polys: [[[x, y], [x + w, y], [x + w, y + h], [x, y + h]]],
@@ -702,8 +708,31 @@ async function semearHistoricoDeTeste(base: Record<string, unknown>) {
 }
 
 /**
+ * ?furos=1&furosaberta=1 (achado #6 da lista de campo, 24/11): a V1 tem ficha aberta do sistema oficial na
+ * revisão anterior da ficha de viga (R0; a vigente do app é a R1), com os itens 1 a 4 aceitos e o de furação
+ * vazio. Antes, os furos gravavam o item na R1 "só no app", fora da ficha, e a V1 ficava em andamento.
+ */
+function fichaAbertaDaViga(base: Record<string, unknown>, itensV: ItemFicha[]): LinhaDeCadastro[] {
+  const modelo = uuid('f0000000', 91)
+  const fc = uuid('f8000000', 91)
+  const v1 = uuid('e1000000', 1)
+  return [
+    { tabela: 'fichas_modelo', linha: { ...base, id: modelo, codigo: 'TESTE-PVS-V', titulo: 'Vigas (ficha de teste)', revisao: '0', aplica_a: ['V'], itens: itensV } },
+    {
+      tabela: 'fvs_fichas_campo',
+      linha: { ...base, id: fc, elemento_id: v1, ficha_id: modelo, codigo: 'FVS-TESTE-0091', local_construpoint: 'Pavimento de teste \\ Trecho 1 \\ Vigas \\ V1', ficha_codigo: 'TESTE-PVS-V', ficha_titulo: 'Vigas (ficha de teste)', status: 'Em Andamento', inspetor: 'Pessoa Um', atualizada_em: '2026-09-30T11:15:51.000Z', qtd_a: 4, qtd_r: 0, qtd_na: 0 },
+    },
+    ...[1, 2, 3, 4].map((item) => ({
+      tabela: 'fvs_eventos',
+      linha: { ...base, id: uuid('f9000000', 900 + item), elemento_id: v1, ficha_id: modelo, ficha_campo_id: fc, item, resultado: 'A', rodada: 1, observacao: null, verificado_por: 'Pessoa Um', origem_id: String(900 + item), usuario_id: USUARIO_HISTORICO, criado_em_dispositivo: '2026-09-30T11:10:00.000Z' },
+    })),
+  ]
+}
+
+/**
  * ?esquadrias=1: os itens de vão das fichas de teste passam a ser marcados pelas esquadrias (a alvenaria
- * com dois, como a ficha de verdade: eixos e vãos, vergas e contravergas; o reboco com os requadros).
+ * com dois, como a ficha de verdade: eixos e vãos, vergas e contravergas; o reboco com os requadros; com
+ * ?contramarco=1, o reboco ganha um item só de janela).
  */
 function itensComEsquadrias(codigo: string, itens: ItemFicha[]): ItemFicha[] {
   if (!params.get('esquadrias')) return itens
@@ -712,7 +741,13 @@ function itensComEsquadrias(codigo: string, itens: ItemFicha[]): ItemFicha[] {
       ...itens.map((i) => (i.n === 3 ? { ...i, esquadrias: true } : i)),
       { n: 7, etapa: 'ELEVAÇÃO', titulo: 'Vergas e contravergas', dispositivo: 'Trena', tolerancia: 'Conforme projeto', esquadrias: true },
     ]
-  if (codigo === 'TESTE-PVS-REB') return [...itens, { n: 5, etapa: 'TERMINALIDADE', titulo: 'Requadros dos vãos', dispositivo: 'Esquadro', tolerancia: '3 mm', esquadrias: true }]
+  if (codigo === 'TESTE-PVS-REB')
+    return [
+      ...itens,
+      { n: 5, etapa: 'TERMINALIDADE', titulo: 'Requadros dos vãos', dispositivo: 'Esquadro', tolerancia: '3 mm', esquadrias: true },
+      // ?contramarco=1 (23/11): item que vale só nas janelas (contramarco de janela); as portas ficam só para ver
+      ...(params.get('contramarco') ? [{ n: 6, etapa: 'EXECUÇÃO', titulo: 'Contramarco das janelas', dispositivo: 'Nível', tolerancia: '2 mm', esquadrias: ['janela'] }] : []),
+    ]
   return itens
 }
 
@@ -764,6 +799,17 @@ async function semearAmbientes(base: Record<string, unknown>) {
   FICHAS_AMBIENTE_TESTE.forEach((f, i) => {
     linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 3 + i), codigo: f.codigo, titulo: f.titulo, revisao: '0', aplica_a: params.get('vedacao') && f.codigo === 'TESTE-PVS-ALV' ? ['A', 'M'] : ['A'], itens: itensComEsquadrias(f.codigo, f.itens) } })
   })
+  // ?acabamentos=1 (sessão 5, 24/11/2026): piso e pintura, para o filtro por acabamento do menu do pavimento
+  if (params.get('acabamentos')) {
+    const itens: ItemFicha[] = [
+      { n: 1, etapa: 'CONDIÇÕES DE INÍCIO', titulo: 'Base liberada', dispositivo: 'Visual', tolerancia: 'Ficha aprovada' },
+      { n: 2, etapa: 'TERMINALIDADE', titulo: 'Acabamento conferido', dispositivo: 'Visual', tolerancia: 'Visual' },
+    ]
+    linhas.push(
+      { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 61), codigo: 'TESTE-PVS-PISO', titulo: 'Piso cerâmico (teste)', revisao: '0', aplica_a: ['A'], itens } },
+      { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 62), codigo: 'TESTE-PVS-PINT', titulo: 'Pintura (teste)', revisao: '0', aplica_a: ['A'], itens } },
+    )
+  }
   await gravarCadastro(linhas)
 }
 
@@ -803,6 +849,11 @@ async function semearRegras() {
           ]
         : []),
     ],
+    // escoramento por residencial (3.8, 23/11): metade da planta para cada um (P1 a P3 e P7 a P9 à esquerda)
+    residenciais: [
+      { nome: 'Residencial 1', pilares: ['P1', 'P2', 'P3', 'P7', 'P8', 'P9'] },
+      { nome: 'Residencial 2', pilares: ['P4', 'P5', 'P6', 'P10', 'P11', 'P12'] },
+    ],
   }
   const linha = { id: 'c0000000-0000-0000-0000-0000000000a1', obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: '2026-11-19T00:00:00.000Z', apagado: false, regras }
   await banco.registros.put({ tabela: 'fvs_regras', id: linha.id, obra_id: OBRA, linha: linha as never, pendente: 0 as const })
@@ -810,11 +861,17 @@ async function semearRegras() {
 
 /**
  * ?locais=1: locais do sistema oficial que não são peça da planta (locais_sistema, 21/11/2026), como a leitura
- * do sistema publica: fundação com dois blocos e uma cortina, cada um com a ficha aberta, e um bloco com NC
- * marcado. Nomes inventados (obra EXE).
+ * do sistema publica: fundação com dois blocos, uma cortina e uma parede de concreto aparente, cada um com a
+ * ficha aberta do seu serviço, e um bloco com NC marcado. Nomes inventados (obra EXE).
  */
 async function semearLocais(base: Record<string, unknown>) {
   const ficha = uuid('f0000000', 40)
+  const fichaCortina = uuid('f0000000', 41)
+  const fichaParede = uuid('f0000000', 42)
+  const modelo = (id: string, codigo: string, titulo: string, itens: string[]) => ({
+    tabela: 'fichas_modelo',
+    linha: { ...base, id, codigo, titulo, revisao: '0', aplica_a: [], itens: itens.map((t, i) => ({ n: i + 1, etapa: i ? 'EXECUÇÃO' : 'INÍCIO', titulo: t, dispositivo: 'Visual', tolerancia: 'Conforme projeto' })) },
+  })
   const local = (n: number, pai: number | null, nome: string, completo: string) => ({
     tabela: 'locais_sistema',
     linha: { ...base, id: uuid('fa000000', n), sistema: 'exe', origem_id: String(n), origem_pai_id: pai === null ? null : String(pai), nome, nome_completo: completo, nivel: pai === null ? 0 : 1, apagado_no_sistema: false },
@@ -841,6 +898,8 @@ async function semearLocais(base: Record<string, unknown>) {
     },
   })
   await gravarCadastro([
+    modelo(fichaCortina, 'EXE-PVS-CORTINA', 'Cortina de contenção (ficha de teste)', ['Escavação do trecho', 'Armadura e tirantes', 'Concretagem']),
+    modelo(fichaParede, 'EXE-PVS-PAREDE', 'Supraestrutura - Parede de concreto aparente (ficha de teste)', ['Forma e prumo', 'Armadura e espaçadores', 'Acabamento da face']),
     {
       tabela: 'fichas_modelo',
       linha: {
@@ -862,9 +921,11 @@ async function semearLocais(base: Record<string, unknown>) {
     local(2, 1, 'Bloco B2', 'Obra Exemplo / Fundação / Bloco B2'),
     local(3, 1, 'Bloco B10 (com nome comprido para ver a quebra de linha no celular)', 'Obra Exemplo / Fundação / Bloco B10'),
     local(4, null, 'Cortina trecho 1', 'Obra Exemplo / Cortina trecho 1'),
+    local(5, null, 'Parede 1', 'Obra Exemplo / Reservatório / Parede 1'),
     aberta(1, 2, 'Aceito', { qtd_a: 4 }),
     aberta(2, 3, 'Pendente Reinspeção', { qtd_a: 1, qtd_r: 1 }),
-    aberta(3, 4, 'Agendado'),
+    aberta(3, 4, 'Agendado', { ficha_id: fichaCortina, ficha_codigo: 'EXE-PVS-CORTINA', ficha_titulo: 'Cortina de contenção (ficha de teste)' }),
+    aberta(4, 5, 'Em Andamento', { ficha_id: fichaParede, ficha_codigo: 'EXE-PVS-PAREDE', ficha_titulo: 'Supraestrutura - Parede de concreto aparente (ficha de teste)' }),
     ...[1, 2, 3, 4].map((item) => ({
       tabela: 'fvs_eventos',
       linha: { ...base, id: uuid('fc000000', item), local_id: uuid('fa000000', 2), ficha_id: ficha, ficha_campo_id: uuid('fb000000', 1), item, resultado: 'A', rodada: 1, verificado_por: 'Pessoa Um', usuario_id: USUARIO_HISTORICO, criado_em_dispositivo: '2026-10-01T12:00:00.000Z' },
@@ -913,14 +974,19 @@ async function semear() {
   const linhas: LinhaDeCadastro[] = [
     { tabela: 'pavimentos', linha: { ...base, id: PAV, nome: manifest.pavimento ?? 'Pavimento de teste', ordem: 3 } },
     ...cadastroDaPlanta(base, manifest, bin, SETOR, 'estrutura', 1),
+    // estaca e bloco do Concreto (fundações, 22/11): sem desenho na planta; a FVS ignora sem erro.
+    // Id próprio (e9...): com e5... eles tomavam o lugar de 2 paredes da modulação ("0 de 7" em vez de "0 de 9").
+    { tabela: 'elementos', linha: { ...base, id: uuid('e9000000', 1), pavimento_id: PAV, tipo: 'S', nome: 'E-P1.A', secao: null } },
+    { tabela: 'elementos', linha: { ...base, id: uuid('e9000000', 2), pavimento_id: PAV, tipo: 'K', nome: 'BL-P1', secao: null } },
     {
       tabela: 'fichas_modelo',
       linha: { ...base, id: uuid('f0000000', 1), codigo: 'TESTE-PVS-P', titulo: urlPacote ? 'Supraestrutura - Pilares' : 'Pilares (ficha de teste)', revisao: '0', aplica_a: ['P'], itens: itens.P },
     },
     {
       tabela: 'fichas_modelo',
-      linha: { ...base, id: uuid('f0000000', 2), codigo: 'TESTE-PVS-V', titulo: urlPacote ? 'Supraestrutura - Vigas' : 'Vigas (ficha de teste)', revisao: '0', aplica_a: ['V'], itens: itens.V },
+      linha: { ...base, id: uuid('f0000000', 2), codigo: 'TESTE-PVS-V', titulo: urlPacote ? 'Supraestrutura - Vigas' : 'Vigas (ficha de teste)', revisao: params.get('furosaberta') ? '1' : '0', aplica_a: ['V'], itens: itens.V },
     },
+    ...(params.get('furosaberta') ? fichaAbertaDaViga(base, itens.V) : []),
     {
       tabela: 'fichas_modelo',
       linha: { ...base, id: uuid('f0000000', 9), codigo: 'TESTE-PVS-LAJE', titulo: 'Laje (ficha de teste)', revisao: '0', aplica_a: ['L'], itens: FICHA_LAJE_TESTE },
@@ -931,6 +997,72 @@ async function semear() {
   if (manifest.furos_laje_separados) await semearFuracao(base, manifest, bin)
   if (manifest.furos_separados || params.get('furacaototal') === 'antiga') await semearFuracaoTotal(base, manifest, bin)
   if (params.get('instalacoes')) await semearInstalacoes(base, manifest, bin)
+  if (params.get('blocos')) await semearBlocos(base, manifest, bin)
+}
+
+/** Planta de blocos de teste: id da planta e do setor. */
+const PLANTA_DE_BLOCOS = uuid('a2000000', 0xe0)
+
+/**
+ * ?blocos=1: planta de blocos de fundação (23/11/2026), como o pipeline/fvs/blocos.py publica: setor "Blocos" com
+ * a disciplina "fundacao", peças K com o nome do pilar que carregam e o fundo da forma. Três blocos de 60 x 60,
+ * centrados no P2 (450, 150), no P3 (750, 150) e no P8 (450, 450); a ficha de teste "Blocos" vale para K.
+ */
+async function semearBlocos(base: Record<string, unknown>, forma: Manifest, bin: Blob) {
+  // viga baldrame (etapa 2, 24/11/2026): local "K" com "grade": "baldrame" entre o BL-P2 e o BL-P3, antes dos
+  // blocos (como o blocos.py grava: o bloco fica por cima)
+  const elementos: Manifest['elementos'] = {
+    [uuid('e9000000', 0x40)]: { tipo: 'K', nome: 'VB-V1', secao: '20/92', grade: 'baldrame', rotulo: [560, 128, 640, 140], polys: [[[480, 142], [720, 142], [720, 158], [480, 158]]] },
+  }
+  for (const [i, [nome, x, y]] of ([['BL-P2', 450, 150], ['BL-P3', 750, 150], ['BL-P8', 450, 450]] as const).entries()) {
+    elementos[uuid('e9000000', 0x10 + i)] = {
+      tipo: 'K',
+      nome,
+      secao: 'BL-01',
+      rotulo: [x + 34, y - 30, x + 90, y - 10],
+      polys: [[[x - 30, y - 30], [x + 30, y - 30], [x + 30, y + 30], [x - 30, y + 30]]],
+    }
+  }
+  // estacas (24/11/2026): duas no BL-P2, como o blocos.py lê os círculos de dentro do bloco
+  for (const [i, [nome, x, y]] of ([['E-P2.1', 435, 150], ['E-P2.2', 465, 150]] as const).entries()) {
+    const r = 10
+    elementos[uuid('e9000000', 0x20 + i)] = {
+      tipo: 'S',
+      nome,
+      secao: 'D40',
+      rotulo: [x - r, y - r, x + r, y + r],
+      polys: [Array.from({ length: 16 }, (_, k) => [x + r * Math.cos((k * Math.PI) / 8), y + r * Math.sin((k * Math.PI) / 8)] as [number, number])],
+    }
+  }
+  // grade de escavação (24/11/2026): dois quadrados "A" sobre os blocos; só a ficha de escavação vale neles
+  for (const [i, x0] of [380, 600].entries()) {
+    elementos[uuid('e9000000', 0x30 + i)] = {
+      tipo: 'A',
+      nome: `ESC-A${i + 1}`,
+      secao: '30,0 m²',
+      grade: 'escavacao',
+      rotulo: [x0 + 4, 84, x0 + 44, 98],
+      polys: [[[x0, 80], [x0 + 220, 80], [x0 + 220, 220], [x0, 220]]],
+    }
+  }
+  const manifest: Manifest = { ...forma, planta_id: PLANTA_DE_BLOCOS, fichas_da_grade: ['TESTE-PVS-ESC'], trecho: 'Blocos', elementos, detalhes: {}, barras: undefined, camadas_separadas: undefined, furos_laje_separados: undefined, furos_separados: undefined }
+  await guardarPacote(JSON.stringify(manifest), bin)
+  const itens: ItemFicha[] = [
+    { n: 1, etapa: 'CONDIÇÕES DE INÍCIO', titulo: 'Locação dos eixos', dispositivo: 'Trena', tolerancia: '1 cm' },
+    { n: 2, etapa: 'ANTES DA CONCRETAGEM', titulo: 'Arrasamento das estacas', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+    { n: 3, etapa: 'ANTES DA CONCRETAGEM', titulo: 'Armadura do bloco', dispositivo: 'Visual', tolerancia: 'Conforme projeto' },
+  ]
+  await gravarCadastro([
+    ...cadastroDaPlanta(base, manifest, bin, uuid('a1000000', 0xe0), 'fundacao', 100),
+    { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 30), codigo: 'TESTE-PVS-BLOCO', titulo: 'Blocos de fundação (ficha de teste)', revisao: '0', aplica_a: ['K'], itens } },
+    { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 31), codigo: 'TESTE-PVS-ESTACA', titulo: 'Estaca hélice contínua (ficha de teste)', revisao: '0', aplica_a: ['S'], itens: [
+      { n: 1, etapa: 'CONDIÇÕES DE INÍCIO', titulo: 'Locação da estaca', dispositivo: 'Trena', tolerancia: '5 cm' },
+      { n: 2, etapa: 'EXECUÇÃO', titulo: 'Profundidade e concretagem', dispositivo: 'Relatório da máquina', tolerancia: 'Conforme projeto' },
+    ] } },
+    { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 32), codigo: 'TESTE-PVS-ESC', titulo: 'Escavação (ficha de teste)', revisao: '0', aplica_a: ['A'], itens: [
+      { n: 1, etapa: 'EXECUÇÃO', titulo: 'Cota de fundo da escavação', dispositivo: 'Nível', tolerancia: '5 cm' },
+    ] } },
+  ])
 }
 
 /** Planta de teste de cada disciplina de instalações: id da planta e do setor. */
@@ -953,6 +1085,7 @@ async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest,
     spda: ['captor', 'descida', 'caixa_inspecao', 'haste'],
   }
   const linhas: LinhaDeCadastro[] = []
+  const redes = !!params.get('redes')
   for (const [i, d] of DISCIPLINAS_DE_PONTOS.entries()) {
     const y = 200 + 150 * i
     const pontos: Record<string, PontoPacote> = {}
@@ -963,10 +1096,27 @@ async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest,
       const tipo: TipoDePonto = d === 'eletrico' ? 'eletroduto' : 'tubo_incendio'
       pontos[`pt-${d}-linha`] = { disciplina: d, tipo, ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: d === 'eletrico' ? 'Eletroduto 25 mm' : 'Tubo de incêndio 65 mm' }
     }
+    // ?muitos=1 (23/11/2026, pacotes reais com 900 pontos): mais 100 pontos de luz juntos no elétrico (grade de
+    // 10 x 10, de 15 em 15, a partir de x = 330, y = 600), para o número por quadrado de longe
+    if (d === 'eletrico' && params.get('muitos')) {
+      for (let a = 0; a < 10; a++) for (let b = 0; b < 10; b++) pontos[`pt-eletrico-m${a}${b}`] = { disciplina: d, tipo: 'ponto_luz', ponto: [330 + 15 * a, 600 + 15 * b], nome: `LUZ ${a}${b}` }
+    }
     // SPDA igual aos furos (22/11/2026): mais um captor e um conector, 60 abaixo, para o filtro por tipo e o "+ Área"
     if (d === 'spda') {
       pontos['pt-spda-5'] = { disciplina: d, tipo: 'captor', ponto: [450, y + 60], nome: 'CAPTOR 5', modelo_id: 'spda-5' }
       pontos['pt-spda-6'] = { disciplina: d, tipo: 'conector', ponto: [1050, y + 60], nome: 'CONECTOR 6', modelo_id: 'spda-6' }
+    }
+    // ?redes=1 (5.1 a 5.3, 23/11/2026): no hidro, um tubo suspenso (linha, y + 60, de 450 a 1050) e uma coluna
+    // (1200, y + 60); no elétrico, três caixas de parede (y + 110): x = 450 e 1050 no ambiente 101-01, 750 no 101-02
+    // (o ponto diz o ambiente pelo id da peça A, como o pipeline publica)
+    if (redes && d === 'hidro') {
+      pontos['pt-hidro-tubo'] = { disciplina: d, tipo: 'tubo', ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: 'Tubo 25 mm', ambiente: uuid('e2000000', 1) }
+      pontos['pt-hidro-coluna'] = { disciplina: d, tipo: 'coluna', ponto: [1200, y + 60], nome: 'AF-1' }
+    }
+    if (redes && d === 'eletrico') {
+      pontos['pt-eletrico-cp1'] = { disciplina: d, tipo: 'caixa_parede', ponto: [450, y + 110], nome: 'Caixa 4x2', ambiente: uuid('e2000000', 1) }
+      pontos['pt-eletrico-cp2'] = { disciplina: d, tipo: 'caixa_parede', ponto: [1050, y + 110], nome: 'Caixa 4x2', ambiente: uuid('e2000000', 1) }
+      pontos['pt-eletrico-cp3'] = { disciplina: d, tipo: 'caixa_parede', ponto: [750, y + 110], nome: 'Caixa 4x2', ambiente: uuid('e2000000', 2) }
     }
     const manifest: Manifest = { ...forma, planta_id: PLANTA_DE_INSTALACOES(i), trecho: NOME_DOS_PONTOS[d], elementos: {}, detalhes: {}, barras: undefined, disciplina: d, pontos, camadas_separadas: undefined, furos_laje_separados: undefined }
     await guardarPacote(JSON.stringify(manifest), bin)
@@ -976,6 +1126,18 @@ async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest,
   }
   // o preventivo fica sem item: planta de consulta (decisão do Nicolas, 21/11/2026: "não vai para ficha")
   const itens: ItemFicha[] = DISCIPLINAS_DE_PONTOS.filter((d) => d !== 'preventivo').map((d, k) => ({ n: k + 1, etapa: 'INSTALAÇÕES', titulo: `Pontos: ${NOME_DOS_PONTOS[d].toLowerCase()}`, dispositivo: 'Visual', tolerancia: 'Conforme projeto', pontos: d }))
+  // ?redes=1: o item do hidro e o do elétrico da ficha de teste ficam com os tipos de antes; tubo e coluna vão
+  // para a ficha de redes (item 10) e a caixa de parede, para a de alvenaria (item 4) e a de drywall (item 5)
+  if (redes) {
+    itens[0] = { ...itens[0], pontos_tipos: ['ponto_agua', 'registro', 'hidrometro'] }
+    itens[2] = { ...itens[2], pontos_tipos: ['caixa_passagem', 'ponto_luz', 'quadro', 'eletroduto'] }
+    const item = (n: number, titulo: string, pontos: DisciplinaDePontos, tipos: TipoDePonto[]): ItemFicha => ({ n, etapa: 'EXECUÇÃO', titulo, dispositivo: 'Visual', tolerancia: 'Conforme projeto', pontos, pontos_tipos: tipos })
+    linhas.push(
+      { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 51), codigo: 'TESTE-PVS-REDES', titulo: 'Redes suspensas (teste)', revisao: '0', aplica_a: ['A'], itens: [item(10, 'Trajeto de água', 'hidro', ['tubo', 'coluna'])] } },
+      { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 52), codigo: 'TESTE-PVS-ELE-ALV', titulo: 'Elétrica em alvenaria (teste)', revisao: '0', aplica_a: ['A'], itens: [item(4, 'Altura das caixas', 'eletrico', ['caixa_parede'])] } },
+      { tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 53), codigo: 'TESTE-PVS-ELE-DRY', titulo: 'Elétrica em drywall (teste)', revisao: '0', aplica_a: ['A'], itens: [item(5, 'Altura das caixas', 'eletrico', ['caixa_parede'])] } },
+    )
+  }
   linhas.push({ tabela: 'fichas_modelo', linha: { ...base, id: uuid('f0000000', 20), codigo: 'TESTE-PVS-INST', titulo: 'Instalações (ficha de teste)', revisao: '0', aplica_a: ['A'], itens } })
   await gravarCadastro(linhas)
 }
@@ -1160,7 +1322,11 @@ async function semearHistorico(
  */
 async function semearRevisaoNova() {
   const { manifest, bin } = await pacoteDeTeste()
-  const texto = JSON.stringify({ ...manifest, planta_id: PLANTA_R01, revisao: 'R01', prancha: 'TESTE.ES.LO.001.FOR-R01' })
+  // ?revisao=mesma (24/11/2026): a mesma prancha publicada de novo, com id novo e a mesma revisão
+  const mesma = params.get('revisao') === 'mesma'
+  const revisao = mesma ? String(manifest.revisao) : 'R01'
+  const prancha = mesma ? String(manifest.prancha) : 'TESTE.ES.LO.001.FOR-R01'
+  const texto = JSON.stringify({ ...manifest, planta_id: PLANTA_R01, revisao, prancha })
   const sha256 = async (b: ArrayBuffer) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map((x) => x.toString(16).padStart(2, '0')).join('')
   const bytesManifest = new TextEncoder().encode(texto)
   const base = { obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: new Date().toISOString(), apagado: false }
@@ -1178,8 +1344,8 @@ async function semearRevisaoNova() {
         id: PLANTA_R01,
         pavimento_id: PAV,
         setor_id: SETOR,
-        prancha: 'TESTE.ES.LO.001.FOR-R01',
-        revisao: 'R01',
+        prancha,
+        revisao,
         largura: manifest.largura,
         altura: manifest.altura,
         manifest_id: uuid('f1000000', 7),

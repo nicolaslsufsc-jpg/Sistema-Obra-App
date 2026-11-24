@@ -51,6 +51,96 @@ class TestNomes(unittest.TestCase):
         self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACI�O NO PILAR (P32 - P33 -P34)"), ["P32", "P33", "P34"])
         self.assertEqual(partes.nomes_do_macico("12xMACIÇO (P32)"), [])
         self.assertEqual(partes.nomes_do_macico("LAJE DO 2º PAVTO TIPO - MACIÇOS"), [])
+        # 24/11 (campo, P67 do 3º): dois títulos no mesmo bloco de texto; os dois entram
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P69 - P122) ARMADURA DO MACIÇO NO PILAR (P67 - P123)"),
+                         ["P69", "P122", "P67", "P123"])
+        # o traço que falta entre dois nomes ("P200 P213") não derruba os dois
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P186 - P200 P213 - P252)"), ["P186", "P200", "P213", "P252"])
+        # o bloco da prancha do 3º com dois títulos, um por linha (LISTA DE CAMPO #3: o P85a e o P78aa se perdiam)
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P85a)\nARMADURA DO MACIÇO NO PILAR (P78aa)\n"),
+                         ["P85a", "P78aa"])
+
+
+class TestMacicoNaForma(unittest.TestCase):
+    """Pilar com cubetas longe nos quatro lados = maciço na forma; sem prancha, o relatório avisa."""
+    M = partes.PONTOS_POR_METRO
+
+    def cubetas_em_volta(self, cx, cy, folga_m):
+        m, lado = self.M, 0.65 * self.M
+        f = folga_m * m
+        saida = []
+        for i in range(-2, 3):  # uma fileira de cada lado, centrada no pilar
+            d = i * (lado + 0.1 * m)
+            saida += [(cx - 0.15 * m - f - lado, cy + d - lado / 2, cx - 0.15 * m - f, cy + d + lado / 2),
+                      (cx + 0.15 * m + f, cy + d - lado / 2, cx + 0.15 * m + f + lado, cy + d + lado / 2),
+                      (cx + d - lado / 2, cy - 0.15 * m - f - lado, cx + d + lado / 2, cy - 0.15 * m - f),
+                      (cx + d - lado / 2, cy + 0.15 * m + f, cx + d + lado / 2, cy + 0.15 * m + f + lado)]
+        return saida
+
+    def pilar(self, nome, cx, cy):
+        m = self.M
+        return {"tipo": "P", "nome": nome, "polys": [quad(cx - 0.15 * m, cy - 0.15 * m, cx + 0.15 * m, cy + 0.15 * m)]}
+
+    def test_folga_grande_e_macico_folga_pequena_nao(self):
+        cub = self.cubetas_em_volta(1000, 1000, 1.2) + self.cubetas_em_volta(3000, 1000, 0.1)
+        pecas = [self.pilar("P64b", 1000, 1000), self.pilar("P20", 3000, 1000)]
+        self.assertEqual(partes.marcar_macico_na_forma(pecas, cub), ["P64b"])
+        self.assertTrue(pecas[0].get("macico_na_forma"))
+        self.assertNotIn("macico_na_forma", pecas[1])
+
+    def test_sem_cubeta_de_um_lado_nao_e_macico(self):
+        cub = [c for c in self.cubetas_em_volta(1000, 1000, 1.2) if c[0] < 1000 + 0.15 * self.M]  # tira a direita
+        pecas = [self.pilar("P10", 1000, 1000)]
+        self.assertEqual(partes.marcar_macico_na_forma(pecas, cub), [])
+
+    def test_relatorio_avisa_so_quem_ficou_sem_capitel(self):
+        pecas = [self.pilar("P64b", 1000, 1000), self.pilar("P67a", 3000, 1000), self.pilar("P5", 5000, 1000)]
+        for p in pecas[:2]:
+            p["macico_na_forma"] = True
+        rel = partes.distribuir_partes(pecas, {}, {"P67"})  # a prancha diz "P67": cai no P67a pela base do nome
+        self.assertEqual(rel["capiteis"], ["P67a (P67)"])
+        self.assertEqual(rel["macico_sem_prancha"], ["P64b"])
+
+    def test_cubetas_so_da_camada_da_nervurada(self):
+        class R:
+            def __init__(self, x0, y0, x1, y1):
+                self.x0, self.y0, self.x1, self.y1 = x0, y0, x1, y1
+        m = self.M
+        desenhos = [{"layer": "LJ_NERV_RETI", "items": [("re", R(0, 0, 0.65 * m, 0.65 * m)), ("re", R(0, 0, 5 * m, 5 * m))]},
+                    {"layer": "VIG_FACES", "items": [("re", R(0, 0, 0.65 * m, 0.65 * m))]}]
+        self.assertEqual(len(partes.cubetas_dos_desenhos(desenhos)), 1)
+
+
+class TestTamanhoDoMacico(unittest.TestCase):
+    """Campo #1: o anel do capitel no tamanho real do maciço (P66 do 3º: 2,35 x 3,27 m)."""
+
+    def test_medidas_pelas_cotas_do_desenho(self):
+        palavras = [(True, "235"), (True, "15"), (True, "121"), (False, "327"), (False, "104"),
+                    (True, "C=260"), (True, "109.4"), (False, "c/20"), (True, "N1")]
+        self.assertEqual(partes.medidas_do_macico(palavras), (235, 327))
+        self.assertIsNone(partes.medidas_do_macico([(True, "235"), (True, "15")]))  # falta a cota em pé
+
+    def test_anel_no_tamanho_e_centrado(self):
+        m = partes.PONTOS_POR_METRO
+        pilar = [quad(1000, 1000, 1000 + 0.3 * m, 1000 + 0.7 * m)]
+        anel = partes.anel_pelas_medidas(pilar, (235, 327))
+        xs, ys = [x for x, _ in anel], [y for _, y in anel]
+        self.assertAlmostEqual(max(xs) - min(xs), 2.35 * m, delta=0.05)
+        self.assertAlmostEqual(max(ys) - min(ys), 3.27 * m, delta=0.05)
+        self.assertAlmostEqual((max(xs) + min(xs)) / 2, 1000 + 0.15 * m, delta=0.05)
+        self.assertIsNone(partes.anel_pelas_medidas(pilar, (20, 327)))  # menor que o pilar: leitura errada
+
+    def test_distribuir_usa_a_medida_e_cai_no_meio_metro_sem_ela(self):
+        m = partes.PONTOS_POR_METRO
+        pecas = [{"tipo": "P", "nome": "P66", "polys": [quad(1000, 1000, 1000 + 0.3 * m, 1000 + 0.3 * m)]},
+                 {"tipo": "P", "nome": "P9", "polys": [quad(3000, 1000, 3000 + 0.3 * m, 1000 + 0.3 * m)]}]
+        dets = {"P66": {"chave": "K1", "medidas_cm": (235, 327)}, "P9": {"chave": "K2"}}
+        rel = partes.distribuir_partes(pecas, {}, {"P66", "P9"}, {"capitel": dets})
+        self.assertEqual(rel["capitel_pela_medida"], ["P66"])
+        a66 = pecas[0]["partes"][0]["polys"][0]
+        self.assertAlmostEqual(max(x for x, _ in a66) - min(x for x, _ in a66), 2.35 * m, delta=0.05)
+        a9 = pecas[1]["partes"][0]["polys"][0]
+        self.assertEqual(a9, partes.anel_do_capitel(pecas[1]["polys"]))
 
 
 class TestGeometria(unittest.TestCase):
@@ -165,3 +255,62 @@ class TestFichas(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRecorteDoMacico(unittest.TestCase):
+    """24/11 (campo, P66 do 3º): o maciço tem 2 a 4 desenhos (um por sentido das barras) embaixo e à direita do
+    título; o recorte junta todos, sem pegar os do título vizinho nem o selo. Prancha sintética da obra EXE."""
+
+    def _prancha(self, caminho):
+        import pymupdf
+
+        doc = pymupdf.open()
+        page = doc.new_page(width=1600, height=1000)
+        page.insert_text((50, 60), "ARMADURA DO MACICO NO PILAR (P66)", fontsize=14)
+        for x, y in ((50, 80), (330, 80), (50, 330), (330, 330)):  # 4 desenhos: N1, N2 e as camadas de baixo
+            page.draw_rect(pymupdf.Rect(x, y, x + 250, y + 220))
+        page.insert_text((700, 60), "ARMADURA DO MACICO NO PILAR (P65)", fontsize=14)
+        for x, y in ((700, 80), (980, 80)):
+            page.draw_rect(pymupdf.Rect(x, y, x + 250, y + 220))
+        page.draw_rect(pymupdf.Rect(1300, 700, 1580, 980))  # o selo, embaixo à direita
+        page.insert_text((1310, 720), "REVISOES:", fontsize=10)
+        doc.save(caminho)
+
+    def test_p66_com_os_quatro_desenhos(self):
+        import base64
+        import tempfile
+        from unittest import mock
+
+        import estrutura  # noqa: F401  (põe o gerador legado no caminho)
+        import gerador_fvs
+
+        clips = {}
+
+        def render(page, clip, escala):
+            clips[len(clips)] = clip
+            return base64.b64encode(b"img").decode()
+
+        with tempfile.TemporaryDirectory() as d:
+            caminho = str(pathlib.Path(d) / "EXE.ES.LO.900.LAJ3PAVTIP-R00.pdf")
+            self._prancha(caminho)
+            with mock.patch.object(gerador_fvs, "render", side_effect=render):
+                dets = partes.ler_detalhes_de_partes([caminho], "capitel")
+        self.assertEqual(set(dets), {"P66", "P65"})
+        p66, p65 = clips[0], clips[1]
+        # o P66 vai do título até o 4º desenho (x 580, y 550); o P65 não entra nele, nem o selo no P65
+        self.assertLessEqual(p66.x0, 50)
+        self.assertGreaterEqual(p66.x1, 580)
+        self.assertGreaterEqual(p66.y1, 550)
+        self.assertLess(p66.x1, 700)
+        self.assertGreaterEqual(p65.x1, 1230)
+        self.assertLess(p65.y1, 700)
+
+    def test_titulo_mais_perto_acima_e_a_esquerda(self):
+        import pymupdf
+
+        titulos = [("A", pymupdf.Rect(0, 0, 100, 10), ["P1"]), ("B", pymupdf.Rect(400, 0, 500, 10), ["P2"])]
+        caixas = [pymupdf.Rect(0, 20, 200, 200), pymupdf.Rect(220, 20, 380, 200), pymupdf.Rect(400, 20, 600, 200),
+                  pymupdf.Rect(-200, 20, -100, 200)]  # este fica à esquerda de todo título: de ninguém
+        por = partes._desenhos_por_titulo(caixas, titulos, pymupdf.Matrix(1, 1))
+        self.assertEqual(len(por[0]), 2)
+        self.assertEqual(len(por[1]), 1)

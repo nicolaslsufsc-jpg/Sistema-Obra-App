@@ -53,15 +53,15 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
         colunas: ['Caminhão', 'NF', 'm³', 'Peças'],
         curtas: [0, 1, 2],
         linhas: porCaminhao.map((l) => [l.caminhao.sequencia, l.caminhao.nota_fiscal, numBR(l.caminhao.volume_m3, 2), nomesDasPecas(l)]),
-        vazio: 'Nenhum caminhão nesta concretagem.',
+        vazio: 'Sem caminhões',
       },
       {
         titulo: 'Por peça',
         colunas: ['Peça', 'Caminhões (NF)'],
         curtas: [0],
         linhas: porPeca.map((l) => [l.peca.nome, l.caminhoes.map((x) => `${x.caminhao.sequencia} (NF ${x.caminhao.nota_fiscal || '—'}${x.parcial ? `, ${percentual(x.fracao)}` : ''})`).join(', ')]),
-        vazio: 'Nenhuma peça desenhada nos caminhões.',
-        nota: 'Parcial: a área desenhada cobre menos de 90% da peça. Confira se outro caminhão completou a peça.',
+        vazio: 'Sem peças desenhadas',
+        nota: 'Parcial: menos de 90% da peça desenhada.',
       },
     ],
   })

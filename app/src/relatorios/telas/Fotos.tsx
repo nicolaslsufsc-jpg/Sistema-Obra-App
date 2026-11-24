@@ -34,7 +34,7 @@ export function Fotos({ ctx, data, alvo, pode }: { ctx: Contexto; data: string; 
   const [msg, setMsg] = useState('')
   return (
     <div>
-      {fotos.length === 0 && !pode && <p class="discreto">Nenhuma foto.</p>}
+      {fotos.length === 0 && !pode && <p class="discreto">Sem fotos</p>}
       {fotos.length > 0 && (
         <ul class="rl-fotos" data-testid="fotos">
           {fotos.map((f) => (
@@ -47,7 +47,7 @@ export function Fotos({ ctx, data, alvo, pode }: { ctx: Contexto; data: string; 
                 data-testid="foto-onde"
                 onClick={() => ir({ nome: 'marcar', alvo: { tipo: 'foto', raiz: f.raiz }, titulo: f.legenda || 'Foto' })}
               >
-                {dados.marcas.get(f.raiz)?.length ? `📍 ${textoDoLocal(dados, dados.marcas.get(f.raiz)!)}` : pode ? '📍 Pingar onde foi' : 'Sem lugar marcado'}
+                {dados.marcas.get(f.raiz)?.length ? `${textoDoLocal(dados, dados.marcas.get(f.raiz)!)}` : pode ? 'Pingar onde foi' : 'Sem lugar marcado'}
               </button>
               {pode && (
                 <button

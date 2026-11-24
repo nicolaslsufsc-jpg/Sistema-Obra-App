@@ -96,9 +96,102 @@ export function distanciaABarra(p: Pt, linha: readonly Pt[]): number {
   return melhor
 }
 
+/** Barras juntas (achado #5 da lista de campo, 24/11): até 7 cm uma da outra... */
+export const JUNTAS_CM = 7
+/** ...em pelo menos 60% do comprimento da mais curta. */
+export const JUNTAS_PARTE = 0.6
+
+/** Quantos pontos da folha (1/72 pol.) dão `cm` de obra numa prancha 1:`escala` (sem escala no pacote, 1:50). */
+export function pontosDeCm(cm: number, escala = 50): number {
+  return (cm * 10) / ((25.4 / 72) * escala)
+}
+
+function comprimento(linha: readonly Pt[]): number {
+  let t = 0
+  for (let i = 0; i + 1 < linha.length; i++) t += Math.hypot(linha[i + 1][0] - linha[i][0], linha[i + 1][1] - linha[i][1])
+  return t
+}
+
+/** Pontos ao longo da polilinha, de `passo` em `passo` (as duas pontas entram). */
+function amostras(linha: readonly Pt[], n: number): Pt[] {
+  const total = comprimento(linha)
+  if (total === 0 || linha.length < 2) return linha.slice(0, 1)
+  const out: Pt[] = []
+  for (let k = 0; k < n; k++) {
+    let alvo = (total * k) / (n - 1)
+    for (let i = 0; i + 1 < linha.length; i++) {
+      const seg = Math.hypot(linha[i + 1][0] - linha[i][0], linha[i + 1][1] - linha[i][1])
+      if (alvo <= seg || i + 2 === linha.length) {
+        const t = seg === 0 ? 0 : Math.min(1, alvo / seg)
+        out.push([linha[i][0] + t * (linha[i + 1][0] - linha[i][0]), linha[i][1] + t * (linha[i + 1][1] - linha[i][1])])
+        break
+      }
+      alvo -= seg
+    }
+  }
+  return out
+}
+
+/** As duas barras correm juntas: a mais curta fica a até `tol` da outra em pelo menos `parte` do comprimento. */
+export function corremJuntas(a: readonly Pt[], b: readonly Pt[], tol: number, parte = JUNTAS_PARTE): boolean {
+  const [curta, longa] = comprimento(a) <= comprimento(b) ? [a, b] : [b, a]
+  const pts = amostras(curta, 21)
+  let perto = 0
+  for (const p of pts) if (distanciaABarra(p, longa) <= tol) perto++
+  return perto >= parte * pts.length
+}
+
 /**
- * A barra que o dedo tocou: a mais perto, até `raio` (margem generosa, nas unidades da folha). Se outra
- * barra está quase à mesma distância (menos que `folga`), não escolhe: a planta precisa de mais zoom.
+ * Grupos de barras juntas, por camada (24/11, pedido do Nicolas: "se tem duas barras muito próximas, elas são
+ * juntas. Então a pessoa dá um clique e já confira as duas"). Devolve, para cada barra que tem par, a lista do
+ * grupo dela (ordenada); barra sozinha não entra. O grupo é transitivo (A junto de B e B junto de C: A, B e C).
+ */
+export function gruposDeBarras(barras: Record<string, BarraPacote>, tol: number, parte = JUNTAS_PARTE): Map<string, string[]> {
+  const ids = Object.keys(barras).sort()
+  const pai = new Map(ids.map((id) => [id, id]))
+  const raiz = (id: string): string => {
+    let r = id
+    while (pai.get(r) !== r) r = pai.get(r)!
+    pai.set(id, r)
+    return r
+  }
+  // caixas com a folga, varridas em x: só compara as que se cruzam
+  const caixas = ids.map((id) => {
+    const l = barras[id].linha
+    const xs = l.map((q) => q[0])
+    const ys = l.map((q) => q[1])
+    return { id, x0: Math.min(...xs) - tol, x1: Math.max(...xs) + tol, y0: Math.min(...ys) - tol, y1: Math.max(...ys) + tol }
+  })
+  caixas.sort((p, q) => p.x0 - q.x0)
+  for (let i = 0; i < caixas.length; i++) {
+    const a = caixas[i]
+    for (let j = i + 1; j < caixas.length && caixas[j].x0 <= a.x1; j++) {
+      const b = caixas[j]
+      if (b.y0 > a.y1 || a.y0 > b.y1) continue
+      const ba = barras[a.id]
+      const bb = barras[b.id]
+      if (ba.camada !== bb.camada) continue
+      if (raiz(a.id) === raiz(b.id)) continue
+      if (corremJuntas(ba.linha, bb.linha, tol, parte)) pai.set(raiz(a.id), raiz(b.id))
+    }
+  }
+  const porRaiz = new Map<string, string[]>()
+  for (const id of ids) {
+    const r = raiz(id)
+    const g = porRaiz.get(r)
+    if (g) g.push(id)
+    else porRaiz.set(r, [id])
+  }
+  const out = new Map<string, string[]>()
+  for (const g of porRaiz.values()) if (g.length > 1) for (const id of g) out.set(id, g)
+  return out
+}
+
+/**
+ * A barra que o dedo tocou: a mais perto, até `raio` (margem generosa, nas unidades da folha), com o grupo dela
+ * (as barras juntas, ver `gruposDeBarras`; sozinha, só ela). Se outra barra, de fora do grupo, está quase à mesma
+ * distância (menos que `folga`), não escolhe: a planta precisa de mais zoom. Barra do mesmo grupo não pede zoom:
+ * o toque pega o grupo inteiro.
  */
 export function barraTocada(
   p: Pt,
@@ -106,21 +199,21 @@ export function barraTocada(
   camada: CamadaDeBarras,
   raio: number,
   folga: number,
-): { id: string } | { ambiguo: true } | null {
-  let a: [number, string] | null = null
-  let b: [number, string] | null = null
+  grupos?: ReadonlyMap<string, readonly string[]>,
+): { id: string; grupo: string[] } | { ambiguo: true } | null {
+  const perto: Array<[number, string]> = []
   for (const [id, barra] of Object.entries(barras)) {
     if (barra.camada !== camada) continue
     const d = distanciaABarra(p, barra.linha)
-    if (d > raio) continue
-    if (!a || d < a[0]) {
-      b = a
-      a = [d, id]
-    } else if (!b || d < b[0]) b = [d, id]
+    if (d <= raio) perto.push([d, id])
   }
-  if (!a) return null
-  if (b && b[0] - a[0] < folga) return { ambiguo: true }
-  return { id: a[1] }
+  if (!perto.length) return null
+  perto.sort((x, y) => x[0] - y[0])
+  const [d0, id] = perto[0]
+  const grupo = [...(grupos?.get(id) ?? [id])]
+  const outra = perto.find(([, o]) => !grupo.includes(o))
+  if (outra && outra[0] - d0 < folga) return { ambiguo: true }
+  return { id, grupo }
 }
 
 /** O item de armadura da ficha de laje (marcado com `"barras": true` na ficha), se houver. */

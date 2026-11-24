@@ -140,6 +140,16 @@ class Supabase:
             print(f"Código errado ou vencido. Tente de novo ({restantes} tentativa(s) restante(s)).")
         raise ErroExportacao("Código errado ou vencido.")
 
+    def entrar_com_senha(self, email: str, senha: str) -> dict:
+        """Login por senha (a conta de teste do servidor de TESTES, 24/11/2026). A senha não é guardada nem impressa."""
+        status, bruto = self.pedir("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": senha},
+                                   autenticar=False)
+        if status >= 400:
+            raise ErroExportacao(traduzir_erro_login(status, bruto))
+        sessao = json.loads(bruto)
+        self._guardar_sessao(sessao)
+        return sessao["user"]
+
     # --- pedidos ---------------------------------------------------------------
     def pedir(self, metodo: str, caminho: str, corpo=None, cabecalhos: dict | None = None, autenticar: bool = True):
         """Devolve (status, bytes). Queda de rede: tenta de novo. Login vencido: renova e repete."""

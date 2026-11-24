@@ -178,7 +178,7 @@ export function TelaReprovacoes({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
 
       {visiveis.length === 0 ? (
         <p class="discreto" data-testid="fvs-rep-vazia">
-          {lista.length === 0 ? 'Nenhuma reprovação nesta obra.' : 'Nenhuma reprovação com estes filtros.'}
+          {lista.length === 0 ? 'Sem reprovações' : 'Sem reprovações com estes filtros'}
         </p>
       ) : (
         <ul class="lista fv-rep-lista">

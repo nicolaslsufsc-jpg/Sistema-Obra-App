@@ -5,6 +5,7 @@ import { CATEGORIAS, type Escopo } from '../categorias'
 import { guardarArquivo, podeCadastrar, registrarDocumento } from '../dados'
 import { ACEITAR_NO_SELETOR, camposDoRascunho, conferirRascunho, LIMITE_ARQUIVO, recusaDoArquivo, tamanhoEmTexto, tipoDoArquivo, type Rascunho } from '../regras'
 import type { ContextoDoc } from './ModuloDocumentos'
+import { BotaoArquivo } from '../../telas/BotaoArquivo'
 
 type Props = { ctx: ContextoDoc; escopo: Escopo; chave?: undefined } | { ctx: ContextoDoc; chave: string; escopo?: undefined }
 
@@ -57,13 +58,13 @@ export function TelaFormulario({ ctx, escopo, chave }: Props) {
     setR({ ...r, [campo]: (e.target as HTMLInputElement).value })
     if (erros[campo]) setErros({ ...erros, [campo]: '' })
   }
-  const escolherArquivo = (e: Event) => {
-    const f = (e.target as HTMLInputElement).files?.[0] ?? null
+  const escolherArquivo = (arquivos: File[], campo: HTMLInputElement) => {
+    const f = arquivos[0] ?? null
     // o limite vale para PDF e para foto (a foto é reduzida depois, mas uma enorme nem chega a ser lida)
     const recusa = f ? recusaDoArquivo(f.size, tipoDoArquivo(f)) : null
     setErros({ ...erros, arquivo: recusa ?? '' })
     setArquivo(recusa ? null : f)
-    if (recusa) (e.target as HTMLInputElement).value = ''
+    if (recusa) campo.value = ''
   }
 
   const salvar = async (e: Event) => {
@@ -145,7 +146,7 @@ export function TelaFormulario({ ctx, escopo, chave }: Props) {
           </div>
         </div>
         <Campo nome="arquivo" rotulo={`Arquivo: PDF ou foto, até ${tamanhoEmTexto(LIMITE_ARQUIVO)}`} erro={erros.arquivo}>
-          <input id="doc-arquivo" type="file" accept={ACEITAR_NO_SELETOR} onChange={escolherArquivo} />
+          <BotaoArquivo id="doc-arquivo" rotulo="Importar arquivo (PDF ou foto)" accept={ACEITAR_NO_SELETOR} nome={arquivo?.name ?? null} aoEscolher={escolherArquivo} />
         </Campo>
         <Campo nome="observacao" rotulo="Observação (opcional)">
           <textarea id="doc-observacao" rows={2} maxLength={500} value={r.observacao} onInput={mudar('observacao')} />

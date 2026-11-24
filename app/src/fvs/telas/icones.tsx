@@ -13,6 +13,8 @@ const DESENHOS: Record<string, string> = {
   furo: 'M4 17h40v14H4z M28 24a4 4 0 1 1-8 0a4 4 0 1 1 8 0',
   barra: 'M6 16h36M6 32h36M16 6v36M32 6v36',
   forma: 'M6 12h36M6 36h36M10 8v32M38 8v32 M24 12v24',
+  // bloco de fundação: o bloco com o pilar em cima e duas estacas
+  bloco: 'M8 18h32v12H8z M20 8h8v10h-8z M14 30v12 M34 30v12',
   furos: 'M18 24a4 4 0 1 1-8 0a4 4 0 1 1 8 0 M28 24a4 4 0 1 1-8 0a4 4 0 1 1 8 0 M38 24a4 4 0 1 1-8 0a4 4 0 1 1 8 0',
   // paredes e ambientes
   paredes: 'M6 12h36v24H6z M6 24h36 M18 12v12 M30 12v12 M12 24v12 M24 24v12 M36 24v12',
@@ -36,6 +38,8 @@ const APELIDOS: Record<string, string> = {
   L: 'laje',
   F: 'furo',
   B: 'barra',
+  K: 'bloco',
+  fundacao: 'bloco',
   estrutura: 'forma',
   furacao: 'furos',
   alvenaria: 'paredes',

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Linha } from '../nucleo/banco_local'
 import type { DadosProjetos, Documento } from './dados'
-import { ordemPavimento, painelObra, pavimentoDe } from './obra'
+import { campoPorDocumento, ordemPavimento, painelObra, pavimentoDe } from './obra'
+import type { CopiaCruzada } from './painel'
 import { escritorioPorDocumento, vigentePorDocumento } from './regras'
 
 // obra fictícia EXE
@@ -69,7 +70,7 @@ describe('painelObra', () => {
   it('conta por disciplina e pavimento, com novas desde a leitura anterior', () => {
     const p = painelObra(montar(docs, revs, escr), { ultima: '2026-11-21', anterior: '2026-11-14' })
     expect(p.criterio).toBe('leitura')
-    expect(p.totais).toEqual({ vigentes: 4, novas: 2, escritorioEmDia: 1, escritorioVencida: 1, escritorioSem: 2 })
+    expect(p.totais).toEqual({ vigentes: 4, novas: 2, escritorioEmDia: 1, escritorioVencida: 1, escritorioSem: 2, trocar: 0, conferir: 0 })
     expect(p.disciplinas.map((d) => d.disciplina)).toEqual(['Estrutura', 'Hidrossanitário'])
     expect(p.disciplinas[0].pavimentos.map((x) => [x.pavimento, x.vigentes, x.novas])).toEqual([
       ['Pilotis', 1, 1],
@@ -89,6 +90,43 @@ describe('painelObra', () => {
     const p = painelObra(montar(docs, revs, escr), null)
     expect(p.criterio).toBe('7dias')
     expect(p.totais.novas).toBe(3) // 21/11, 21/11 e 14/11
+  })
+
+  it('as cópias em campo entram na disciplina e no pavimento, como no quadro (testador, 23/11)', () => {
+    const cruzada = (resultado: CopiaCruzada['resultado'], extra: Partial<CopiaCruzada> = {}, documentoId?: string): CopiaCruzada =>
+      ({
+        copia: { disciplina: 'ESTRUTURAL', app: documentoId ? { entregaId: 'x', documentoId, assinaturaId: null } : undefined },
+        situacao: 'em campo',
+        resultado,
+        ...extra,
+      }) as CopiaCruzada
+    const porFolha = new Map([['EXE.ES.003.FORPILOTIS', '3']])
+    const vigente = { codigo: 'EXE.ES.LO.003.FORPILOTIS' } as CopiaCruzada['vigente']
+    const campo = campoPorDocumento(
+      [
+        cruzada('desatualizada', {}, '1'),
+        cruzada('desatualizada', { vigente }),
+        cruzada('conferir', { vigente }),
+        cruzada('em dia', {}, '1'),
+        cruzada('desatualizada', { situacao: 'devolvida' }, '1'),
+        cruzada('conferir'), // não acha a prancha: só no quadro
+        cruzada('desatualizada', {}, '5'), // prancha sem vigente (saiu de uso) com cópia em campo
+      ],
+      porFolha,
+    )
+    expect([...campo]).toEqual([
+      ['1', { trocar: 1, conferir: 0 }],
+      ['3', { trocar: 1, conferir: 1 }],
+      ['5', { trocar: 1, conferir: 0 }],
+    ])
+    const p = painelObra(montar(docs, revs, escr), { ultima: '2026-11-21', anterior: '2026-11-14' }, campo)
+    expect([p.totais.trocar, p.totais.conferir, p.totais.vigentes]).toEqual([3, 1, 4])
+    const es = p.disciplinas.find((d) => d.disciplina === 'Estrutura')!
+    expect(es.pavimentos.map((x) => [x.pavimento, x.trocar, x.conferir])).toEqual([
+      ['Pilotis', 1, 1],
+      ['4º pavimento', 1, 0],
+      ['5º pavimento', 0, 0],
+    ])
   })
 
   it('obra sem pranchas', () => {

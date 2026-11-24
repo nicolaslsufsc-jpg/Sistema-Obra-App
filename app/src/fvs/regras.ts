@@ -32,9 +32,22 @@ export interface Ligacao {
   entre?: 'area'
 }
 
+/**
+ * Um trecho da obra para os avisos de escoramento (23/11/2026, item 3.8): os pilares dele, pelo nome. Viga e
+ * laje entram pelos pilares que as apoiam (escoramento_residencial.ts). Com `pavimento` (o nome dele), a
+ * lista vale só ali e passa na frente da lista sem pavimento.
+ */
+export interface Residencial {
+  nome: string
+  pilares: string[]
+  pavimento?: string
+}
+
 export interface RegrasFvs {
   prazos: Prazo[]
   ligacoes: Ligacao[]
+  /** trechos da obra para o aviso "tal residencial de tal pavimento pode desescorar" (vazio: sem o aviso) */
+  residenciais?: Residencial[]
   /** entradas do arquivo deixadas de fora por formato errado (a tela das regras mostra) */
   fora?: number
 }
@@ -77,9 +90,17 @@ function lerLigacao(v: unknown): Ligacao | null {
   return { id: l.id, de, para, ...(l.entre === 'area' ? { entre: 'area' as const } : {}) }
 }
 
+function lerResidencial(v: unknown): Residencial | null {
+  const r = v as Record<string, unknown> | null
+  if (!r || typeof r !== 'object' || !texto(r.nome) || !Array.isArray(r.pilares) || r.pilares.length > 5000) return null
+  const pilares = [...new Set(r.pilares.filter(texto).map((n) => n.trim()))]
+  if (!pilares.length) return null
+  return { nome: r.nome.trim(), pilares, ...(texto(r.pavimento) ? { pavimento: r.pavimento.trim() } : {}) }
+}
+
 /** As regras de um objeto `regras` (o jsonb da tabela ou o config_fvs.json). Entrada torta fica de fora. */
 export function lerRegras(regras: unknown): RegrasFvs {
-  const r = regras as { prazos?: unknown; ligacoes?: unknown } | null
+  const r = regras as { prazos?: unknown; ligacoes?: unknown; residenciais?: unknown } | null
   if (!r || typeof r !== 'object') return SEM_REGRAS
   const unicos = <T extends { id: string }>(l: T[]) => {
     const vistos = new Set<string>()
@@ -87,10 +108,11 @@ export function lerRegras(regras: unknown): RegrasFvs {
   }
   const prazos = Array.isArray(r.prazos) ? unicos(r.prazos.map(lerPrazo).filter((p): p is Prazo => !!p)) : []
   const ligacoes = Array.isArray(r.ligacoes) ? unicos(r.ligacoes.map(lerLigacao).filter((l): l is Ligacao => !!l)) : []
-  const total = (Array.isArray(r.prazos) ? r.prazos.length : 0) + (Array.isArray(r.ligacoes) ? r.ligacoes.length : 0)
-  const fora = total - prazos.length - ligacoes.length
-  if (!prazos.length && !ligacoes.length && !fora) return SEM_REGRAS
-  return { prazos, ligacoes, ...(fora ? { fora } : {}) }
+  const residenciais = Array.isArray(r.residenciais) ? r.residenciais.map(lerResidencial).filter((x): x is Residencial => !!x) : []
+  const total = (Array.isArray(r.prazos) ? r.prazos.length : 0) + (Array.isArray(r.ligacoes) ? r.ligacoes.length : 0) + (Array.isArray(r.residenciais) ? r.residenciais.length : 0)
+  const fora = total - prazos.length - ligacoes.length - residenciais.length
+  if (!prazos.length && !ligacoes.length && !residenciais.length && !fora) return SEM_REGRAS
+  return { prazos, ligacoes, ...(residenciais.length ? { residenciais } : {}), ...(fora ? { fora } : {}) }
 }
 
 interface LinhaDeRegras {

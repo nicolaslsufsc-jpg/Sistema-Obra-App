@@ -1,7 +1,11 @@
-// Ícones do menu (heurísticas de Nielsen, 20/11/2026: "reconhecer em vez de lembrar").
-// Desenhados aqui, sem biblioteca e sem arquivo de fora: traço de 2 px numa grade de 24, que segue a cor do texto.
-// Sempre com o texto junto (o ícone é aria-hidden; quem lê a tela ouve o nome do módulo).
+// Ícones do app (heurísticas de Nielsen, 20/11/2026: "reconhecer em vez de lembrar"; guia de estilo, 23/11/2026:
+// um conjunto só, traço fino, mesmo tamanho). Desenhados aqui, sem biblioteca e sem arquivo de fora: traço de
+// 1,75 px numa grade de 24, que segue a cor do texto. Os de módulo e de botão saem em 24 px; os de ação, em 20 px.
+// Sempre com o texto junto ou com o nome no botão (o ícone é aria-hidden; quem lê a tela ouve o nome).
 import type { IdModulo } from '../modulos'
+import './icones.css'
+
+export const TRACO_ICONE = 1.75
 
 const TRACOS: Record<IdModulo, string[]> = {
   // prancheta com visto: ficha de verificação
@@ -18,17 +22,32 @@ const TRACOS: Record<IdModulo, string[]> = {
   ifc: ['M12 2.5l8.5 4.75v9.5L12 21.5l-8.5-4.75v-9.5z', 'M3.5 7.25L12 12l8.5-4.75', 'M12 12v9.5'],
 }
 
-function Svg({ tracos, classe }: { tracos: string[]; classe: string }) {
+/** Ícones de ação (no lugar de "‹", "›", "×", "▾", "✓", "↗" escritos como texto). */
+const ACOES = {
+  voltar: ['M15 5l-7 7 7 7'],
+  avancar: ['M9 5l7 7-7 7'],
+  fechar: ['M6 6l12 12', 'M18 6L6 18'],
+  abrir: ['M6 9l6 6 6-6'],
+  recolher: ['M6 15l6-6 6 6'],
+  feito: ['M5 12.5l4.5 4.5L19 7'],
+  fora: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
+  importar: ['M12 15V3', 'M7 8l5-5 5 5', 'M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4'],
+  mais: ['M12 5v14', 'M5 12h14'],
+} as const
+
+export type IdIcone = keyof typeof ACOES
+
+function Svg({ tracos, classe, tamanho = 24 }: { tracos: readonly string[]; classe: string; tamanho?: number }) {
   return (
     <svg
       class={classe}
       viewBox="0 0 24 24"
-      width="24"
-      height="24"
+      width={tamanho}
+      height={tamanho}
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width={TRACO_ICONE}
       stroke-linecap="round"
       stroke-linejoin="round"
     >
@@ -46,4 +65,9 @@ export function IconeModulo({ id }: { id: IdModulo }) {
 /** Seta para baixo numa bandeja: instalar o app. */
 export function IconeInstalar() {
   return <Svg tracos={['M12 3v12', 'M7 10l5 5 5-5', 'M4 20h16']} classe="icone-botao" />
+}
+
+/** Ícone de ação, 20 px: <Icone id="voltar" />. */
+export function Icone({ id }: { id: IdIcone }) {
+  return <Svg tracos={ACOES[id]} classe={`so-icone so-icone-${id}`} tamanho={20} />
 }

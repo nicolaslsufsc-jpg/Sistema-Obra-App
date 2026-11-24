@@ -10,7 +10,7 @@ Histórico e detalhe: docs/historico/nova_obra.md (como era antes, as opções A
 
 ## O que é
 
-Assistente "Nova obra" dentro do próprio app (opção B): página `app/nova_obra.html`, código em `app/src/nova_obra/`. Em 5 passos (Obra, Pavimentos, Plantas, Fichas, Salvar) a pessoa cadastra a obra, sobe os PDFs de forma, o app lê as peças no navegador, a pessoa confere e corrige, e sai um `.zip` no formato de sempre, que abre no app de campo pelo "Abrir pacote da obra (.zip)". Rascunho, PDFs e perfis ficam no aparelho (IndexedDB); nada vai para servidor.
+Assistente "Nova obra" dentro do próprio app (opção B): página `app/nova_obra.html`, código em `app/src/nova_obra/`. Em 6 passos (Obra, Pavimentos, Plantas, Fichas, Pessoas, Salvar) a pessoa cadastra a obra, sobe os PDFs de forma, o app lê as peças no navegador, a pessoa confere e corrige, e no fim a obra é publicada no servidor (administrador, com internet) ou sai um `.zip` no formato de sempre, que abre no app de campo pelo "Abrir pacote da obra (.zip)". Rascunho, PDFs e perfis ficam no aparelho (IndexedDB) até publicar.
 
 ## Status atual
 
@@ -21,12 +21,18 @@ Assistente "Nova obra" dentro do próprio app (opção B): página `app/nova_obr
   - **3:** leitura automática (`desenho.ts`, `leitor.ts`, `perfis.ts`), perfil da projetista ensinado com 2 toques, conferência (sem contorno, repetido, sem seção, não lido).
 - Ajustes do Revisor e do Testador de 09/11: limites do PDF (`limites.ts`), avisos ao salvar, dica de nomes pequenos, alvos de 44 px.
 - Opção B aprovada pelo Professor em 09/11, com o Nicolas fora; falta a confirmação do Nicolas. A página ainda não está no menu: abre por `/nova_obra.html`.
-- Etapas 4 (várias pranchas no pavimento), 5 (detalhes de pilar e viga) e 6 (publicar no servidor) não começaram.
+- **23/11/2026, publicar no servidor e quem tem acesso** (branch `nova-obra/servidor`, saída da `main` f8bb9a8, commit local):
+  - passo 5 **Pessoas**: nome, e-mail (pode ficar vazio) e papel (gestor, campo, leitura); o salvar confere nome, e-mail válido e repetido;
+  - no passo 6, **Publicar no servidor** (`publicar.ts`, `servidor.ts`): confere login e administrador, recusa código que já existe no servidor, cria a linha em `obras`, põe pavimentos, peças, setores, arquivos da planta (manifest e pacote pelo armazenamento), plantas e fichas na fila do núcleo, manda até esvaziar e chama `convidar` para cada pessoa (com conta: acesso na hora; sem conta: quando entrar com aquele e-mail; sem e-mail: convite esperando);
+  - recomeça de onde parou (o rascunho guarda `publicacao`): não cria outra obra nem repete linha nem convite;
+  - sem migração e sem mudar o núcleo: as linhas são as mesmas do `.zip` (`linhasDoCadastro`).
+  - **Não testado ainda contra um servidor de verdade** (só com servidor falso nos testes e a tela sem login): falta conta de teste no servidor de testes (ver pendências).
+- Etapas 4 (várias pranchas no pavimento) e 5 (detalhes de pilar e viga) não começaram.
 
 ## Como testar
 
 - Build e testes do app: `cd app && npm install && npm run build`.
-- Unidade: `src/nova_obra/modelo.test.ts`, `planta.test.ts`, `leitor.test.ts`, `limites.test.ts`, `testes/obra_exemplo2.test.ts`.
+- Unidade: `src/nova_obra/modelo.test.ts`, `publicar.test.ts` (servidor falso: ordem, recomeçar, código repetido, convite recusado), `planta.test.ts`, `leitor.test.ts`, `limites.test.ts`, `testes/obra_exemplo2.test.ts`.
 - Tela (tablet 1280 e celular 375): `testes/nova_obra.e2e.test.ts` (monta a obra, cola ficha, sobe PDF, ensina, lê, salva, abre o `.zip` no app e na FVS).
 - Ver os PDFs da Obra Exemplo 2: `OBRA2_SAIDA=<pasta fora do repo> npx vitest run testes/obra_exemplo2.test.ts`.
 - Medida de tempo e memória: `SO_MEDIR=1 ... npx vitest run testes/nova_obra_medida.e2e.test.ts` (em 09/11: 3,9 a 4,6 s e 180 a 205 MB, PC freado, não tablet).
@@ -60,6 +66,8 @@ Assistente "Nova obra" dentro do próprio app (opção B): página `app/nova_obr
 5. Os perfis ensinados ficam só no aparelho onde foram ensinados (não vão no .zip nem para o servidor).
 6. Regra "viga por vão" no perfil da obra piloto: decisão do Nicolas (ver o achado acima).
 7. Nome de peça partido em dois textos no PDF (ex. "P" e "12" separados) ainda não é juntado pelo leitor; o Python também não junta.
-8. **Exemplos do Relatórios em obra nova** (fora da Nova obra, `app.tsx` e `relatorios/exemplos.ts`): eles entram em toda obra aberta, inclusive numa obra montada pela Nova obra. Decisão do Nicolas: desligar para obra real ou deixar só para a demonstração.
+8. **Ponta a ponta da publicação no servidor de testes (`tbscnqazrveiaoqgpgxs`):** precisa de uma conta de administrador com senha lá (o login por código não chega). Pedido ao Professor em 23/11. Depois: publicar `EXE-NO1`, abrir no app e na FVS, 375 px e tablet.
+9. A obra publicada não volta para o assistente (editar depois é pelo app). Se a publicação cair entre criar a obra e pôr na fila, a obra fica vazia no servidor: o app avisa e pede outro código ou apagar a obra.
+10. **Exemplos do Relatórios em obra nova** (fora da Nova obra, `app.tsx` e `relatorios/exemplos.ts`): eles entram em toda obra aberta, inclusive numa obra montada pela Nova obra. Decisão do Nicolas: desligar para obra real ou deixar só para a demonstração.
 
-**Próximo passo:** o Nicolas confirma a opção B, a mudança "leitura no navegador", os pedidos à FVS e a regra "viga por vão"; depois, a etapa 4 (várias pranchas no pavimento, folha única no navegador), se liberada.
+**Próximo passo:** com a conta de teste liberada, o ponta a ponta no servidor de testes (pendência 8). Antes disso, seguem valendo: o Nicolas confirma a opção B, a mudança "leitura no navegador", os pedidos à FVS e a regra "viga por vão"; depois, a etapa 4 (várias pranchas no pavimento, folha única no navegador), se liberada.

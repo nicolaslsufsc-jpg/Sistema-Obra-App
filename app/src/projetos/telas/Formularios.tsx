@@ -7,6 +7,7 @@ import { normalizar } from '../regras'
 import { QuadroAssinatura, type PegarAssinatura } from './Assinatura'
 import type { Contexto } from './ModuloProjetos'
 import { Campo, dataBR, rotuloRevisao, Topo } from './comum'
+import { BotaoArquivo } from '../../telas/BotaoArquivo'
 
 type Erros = Record<string, string>
 
@@ -15,9 +16,17 @@ const PESSOAS_EM_BOTOES = 12
 
 function CampoFoto({ foto, setFoto }: { foto: File | null; setFoto: (f: File | null) => void }) {
   return (
-    <Campo rotulo="Foto do formulário assinado" dica={foto ? `${foto.name} · ${Math.round(foto.size / 1024)} KB` : 'Opcional. Fica guardada no aparelho e sobe com a internet.'}>
-      <input type="file" accept="image/*" capture="environment" onChange={(e) => setFoto(e.currentTarget.files?.[0] ?? null)} />
-    </Campo>
+    <div class="pj-campo">
+      <span>Foto do formulário assinado (opcional)</span>
+      <BotaoArquivo
+        rotulo="Importar foto"
+        rotuloLeitor="Foto do formulário assinado"
+        accept="image/*"
+        capture="environment"
+        nome={foto ? `${foto.name} · ${Math.round(foto.size / 1024)} KB` : null}
+        aoEscolher={(arquivos) => setFoto(arquivos[0] ?? null)}
+      />
+    </div>
   )
 }
 
@@ -77,7 +86,7 @@ export function FormEntrega({ ctx, documentoId, empresaId, outras: outrasIniciai
       const v = dados.vigentes.get(id)
       return v ? [{ documento_id: id, revisao_id: v.id }] : []
     })
-    const semAssinatura = assinado ? '' : '\n\n⚠ Sem assinatura de quem retira. É opcional, mas sem ela não há comprovante assinado.'
+    const semAssinatura = assinado ? '' : '\n\nSem assinatura de quem retira. É opcional, mas sem ela não há comprovante assinado.'
     const mais = extras.length ? ` e mais ${extras.length} ${extras.length === 1 ? 'prancha' : 'pranchas'}` : ''
     const quantas = n > 1 ? `${n} cópias de ` : ''
     if (!confirm(`Registrar a entrega de ${quantas}${doc.codigo} ${rotuloRevisao(rev)}${mais} para ${nomeEmpresa}${colaborador.trim() ? ` (${colaborador.trim()})` : ''} em ${dataBR(data)}?${alerta}${semAssinatura}`)) return
@@ -111,7 +120,7 @@ export function FormEntrega({ ctx, documentoId, empresaId, outras: outrasIniciai
     <main class="tela">
       <Topo titulo="Entregar cópia" sub={`${doc.codigo} · ${doc.titulo}`} aoVoltar={voltar} />
       {empresas.length === 0 && (
-        <p class="aviso">⚠ Nenhuma empresa cadastrada. Peça ao gestor para cadastrar em "Empresas".</p>
+        <p class="aviso">Sem empresas cadastradas. Peça ao gestor para cadastrar em "Empresas".</p>
       )}
       <form onSubmit={salvar} class="pj-form" noValidate>
         <div class="pj-campos">
@@ -140,7 +149,7 @@ export function FormEntrega({ ctx, documentoId, empresaId, outras: outrasIniciai
           ) : (
             <Campo rotulo="Empresa" erro={erros.empresa}>
               <select value={empresa} onChange={(e) => setEmpresa(e.currentTarget.value)}>
-                <option value="">Escolha…</option>
+                <option value="">Escolher</option>
                 {empresas.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.nome}
@@ -171,7 +180,7 @@ export function FormEntrega({ ctx, documentoId, empresaId, outras: outrasIniciai
           </div>
           <Campo rotulo="Revisão entregue" erro={erros.revisao} dica={vigente ? `Vigente: ${rotuloRevisao(vigente)}` : undefined}>
             <select value={revisao} onChange={(e) => setRevisao(e.currentTarget.value)}>
-              <option value="">Escolha…</option>
+              <option value="">Escolher</option>
               {revisoes.map((r) => (
                 <option key={r.id} value={r.id}>
                   {rotuloRevisao(r)}
@@ -197,7 +206,7 @@ export function FormEntrega({ ctx, documentoId, empresaId, outras: outrasIniciai
           <QuadroAssinatura pegar={pegar} aoMudar={setAssinado} />
           <span class="discreto">Opcional. Uma assinatura vale para todas as pranchas desta entrega; data e hora ficam guardadas.</span>
         </div>
-        {!assinado && <p class="discreto" data-testid="entrega-sem-assinatura">⚠ Sem assinatura: a entrega fica registrada, mas sem comprovante assinado.</p>}
+        {!assinado && <p class="discreto" data-testid="entrega-sem-assinatura">Sem assinatura: a entrega fica registrada, mas sem comprovante assinado.</p>}
         <CampoFoto foto={foto} setFoto={setFoto} />
         <Campo rotulo="Observação">
           <textarea value={obs} onInput={(e) => setObs(e.currentTarget.value)} maxLength={2000} rows={2} />
@@ -310,12 +319,12 @@ export function FormDevolucao({ ctx, documentoId, entregaId }: { ctx: Contexto; 
     <main class="tela">
       <Topo titulo="Recolher cópia" sub={`${doc.codigo} · ${doc.titulo}`} aoVoltar={voltar} />
       {abertas.length === 0 ? (
-        <p class="pj-vazio">Nenhuma cópia desta prancha está em campo.</p>
+        <p class="pj-vazio">Sem cópias desta prancha em campo</p>
       ) : (
         <form onSubmit={salvar} class="pj-form" noValidate>
           <Campo rotulo="Qual cópia foi devolvida" erro={erros.entrega}>
             <select value={entrega} onChange={(e) => setEntrega(e.currentTarget.value)}>
-              <option value="">Escolha…</option>
+              <option value="">Escolher</option>
               {abertas.map((e) => (
                 <option key={e.id} value={e.id}>
                   {descrever(e)}

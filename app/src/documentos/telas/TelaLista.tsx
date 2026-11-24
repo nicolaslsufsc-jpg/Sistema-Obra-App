@@ -69,7 +69,7 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
               NOME_DO_STATUS[statusDaRevisao(d, d.atual)],
             ]
           }),
-          vazio: 'Nenhum documento com estes filtros.',
+          vazio: '–',
           nota: nExemplos > 0 ? 'Documentos marcados EXEMPLO não valem para a auditoria.' : undefined,
         },
       ],
@@ -130,7 +130,7 @@ export function TelaLista({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo })
       <p class="discreto" data-testid="contagem">
         {lista.length === doEscopo.length ? `${doEscopo.length} ${doEscopo.length === 1 ? 'documento' : 'documentos'}.` : `${lista.length} de ${doEscopo.length} documentos.`}
       </p>
-      {lista.length === 0 && <p class="discreto">{doEscopo.length === 0 ? 'Nenhum documento cadastrado aqui ainda.' : 'Nenhum documento com estes filtros.'}</p>}
+      {lista.length === 0 && <p class="discreto">{doEscopo.length === 0 ? 'Sem documentos' : 'Sem documentos com estes filtros'}</p>}
 
       <div data-testid="lista-mestra">
         {[...porCategoria].map(([cat, docs]) => (

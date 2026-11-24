@@ -220,7 +220,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       // Menu sem conta: a obra da pasta, sem login, sem Sair, sem Trocar de obra; FVS, Concreto, Relatórios e Documentos (desde 09/11/2026)
       await p.getByRole('heading', { name: /EXE/ }).waitFor()
       expect(await p.getByText('Obra Exemplo').count()).toBe(1)
-      expect(await p.getByText('Nenhum registro ainda.').count()).toBe(1)
+      expect(await p.getByText('Sem registros neste aparelho.').count()).toBe(1)
       // tela inicial limpa: salvamento e aparelho num bloco fechado, com uma linha calma à vista
       expect(await p.getByTestId('bloco-copia').evaluate((d: HTMLDetailsElement) => d.open)).toBe(false)
       expect(await p.getByRole('button', { name: 'Salvar arquivo' }).isVisible()).toBe(false)
@@ -294,14 +294,14 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.getByTestId('contagem-relatorios').getByText('0 relatórios, 0 em aberto.', { exact: true }).waitFor()
         expect(await p.getByTestId('aviso-exemplos').count()).toBe(0)
         await p.getByTestId('aba-diario').click()
-        await p.getByText('Nenhum dia anterior registrado.').waitFor()
+        await p.getByText('Sem dias anteriores').waitFor()
         await p.getByRole('button', { name: 'Voltar', exact: true }).click()
         await p.getByRole('button', { name: /^Relatórios/ }).waitFor()
 
         // Recarregar cai direto no menu, sem preparar tudo de novo (e os exemplos tirados não voltam)
         await abrirNaObra(p)
         await p.getByRole('button', { name: /^Relatórios/ }).click()
-        await p.getByText('Nenhum dia anterior registrado.').waitFor()
+        await p.getByText('Sem dias anteriores').waitFor()
         expect(await p.getByTestId('aviso-exemplos').count()).toBe(0)
         await p.getByRole('button', { name: 'Voltar', exact: true }).click()
       } else {
@@ -568,7 +568,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       // sem pranchas: diz o que fazer, sem script, sem servidor, sem nome de sistema
       const vazio = p.getByTestId('projetos-vazio')
       await vazio.waitFor()
-      expect(await vazio.innerText()).toContain('Ainda não há pranchas')
+      expect(await vazio.innerText()).toContain('Sem pranchas')
       expect(await p.locator('body').innerText()).not.toMatch(/Autodoc|pipeline|sincroniza/i)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `local-${nome}-projetos-1-inicio.png`), fullPage: true })
 
@@ -709,15 +709,15 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       // aba Pranchas: as 6 folhas da lista, com busca
       await p.getByRole('button', { name: 'Pranchas', exact: true }).click()
       await p.getByTestId('lista-pranchas').waitFor()
-      expect(await p.getByTestId('lista-pranchas').locator('li').count()).toBe(6)
+      expect(await p.getByTestId('lista-pranchas').locator('tbody tr').count()).toBe(6)
       await p.getByPlaceholder('Buscar código, título ou número').fill('pilotis')
-      expect(await p.getByTestId('lista-pranchas').locator('li').count()).toBe(1)
+      expect(await p.getByTestId('lista-pranchas').locator('tbody tr').count()).toBe(1)
       expect(await estouro()).toBeLessThanOrEqual(0)
       await print('6-pranchas')
       await contraste('claro, pranchas')
 
       // aba Entregas: 10 em campo, 1 devolvida; busca por empresa
-      await p.getByRole('button', { name: 'Entregas', exact: true }).click()
+      await p.getByRole('button', { name: 'Cópias', exact: true }).click()
       await p.getByTestId('lista-entregas').waitFor()
       expect(await p.getByTestId('lista-entregas').locator('li').count()).toBe(10)
       await p.getByRole('button', { name: /^Devolvidas/ }).click()
@@ -794,7 +794,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
       await p.getByRole('button', { name: 'Pranchas', exact: true }).click()
       await p.getByTestId('lista-pranchas').waitFor()
       await contraste('escuro, pranchas')
-      await p.getByRole('button', { name: 'Entregas', exact: true }).click()
+      await p.getByRole('button', { name: 'Cópias', exact: true }).click()
       await p.getByTestId('lista-entregas').waitFor()
       await contraste('escuro, entregas')
       await p.getByTestId('lista-entregas').locator('li').first().click()
@@ -1187,7 +1187,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         // Concreto: as concretagens do pavimento
         await abrirNaObra(p)
         await p.getByRole('button', { name: /^Concreto/ }).click()
-        await p.locator('.cc-linha', { hasText: '3º Pavimento' }).first().click()
+        await p.getByTestId('tabela-pavimentos').locator('tbody tr', { hasText: '3º Pavimento' }).first().click()
         t = await exportar('concreto-pdf-pavimento', 'concreto-pavimento')
         expect(t).toContain('Concreto · 3º Pavimento')
         expect(t).toContain('Concretagens')
@@ -1215,7 +1215,7 @@ suite('modo sem conta com a pasta da obra (Chromium)', () => {
         await p.locator('.pj-abas').getByRole('button', { name: 'Pranchas', exact: true }).click()
         t = await exportar('projetos-pdf-pranchas', 'projetos-pranchas')
         expect(t).toContain('Projetos · Pranchas da lista vigente')
-        await p.locator('.pj-abas').getByRole('button', { name: 'Entregas', exact: true }).click()
+        await p.locator('.pj-abas').getByRole('button', { name: 'Cópias', exact: true }).click()
         t = await exportar('projetos-pdf-entregas', 'projetos-entregas')
         expect(t).toContain('Projetos · Entregas de cópias')
         expect(t).toContain('Com filtro em campo')

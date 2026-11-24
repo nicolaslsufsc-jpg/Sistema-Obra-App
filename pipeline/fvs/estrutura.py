@@ -288,6 +288,9 @@ def ler_forma(pdf_forma: str) -> dict:
     page = fitz.open(pdf_forma)[0]
     anns = legado.anotacoes(page)
     pecas = ler_pecas(page, anns)
+    M = page.rotation_matrix  # as peças vêm nas coordenadas da página girada; os desenhos, não
+    cubetas = [(r.x0, r.y0, r.x1, r.y1) for r in (fitz.Rect(c[:2], c[2:]) * M for c in partes.cubetas_dos_desenhos(page.get_drawings()))]
+    partes.marcar_macico_na_forma(pecas, cubetas)
     tiles = {k: base64.b64decode(v) for k, v in legado.tiles_da_forma(page).items()}
     prancha = nome_da_prancha(pdf_forma)
     return {

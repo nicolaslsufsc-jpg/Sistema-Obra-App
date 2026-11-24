@@ -3,6 +3,7 @@
 
 import type { EstadoPeca } from './pecas'
 import { ROTULO_FICHA } from './exemplo'
+import { ORDEM_DO_TIPO, tipoNoCsv } from './tipos_peca'
 
 export interface CaminhaoRelatorio {
   raiz: string
@@ -35,7 +36,7 @@ export interface LinhaPorPeca {
 }
 
 const ordemNatural = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' })
-const ORDEM_TIPO: Record<string, number> = { P: 0, V: 1, L: 2 }
+const ORDEM_TIPO = ORDEM_DO_TIPO
 
 function compararPecas(a: PecaRelatorio, b: PecaRelatorio): number {
   return (ORDEM_TIPO[a.tipo] ?? 9) - (ORDEM_TIPO[b.tipo] ?? 9) || ordemNatural.compare(a.nome, b.nome)
@@ -140,7 +141,7 @@ export function csvPorCaminhao(
     }
     for (const i of l.pecas) {
       saida.push(
-        comFicha([...base, i.peca.nome, i.peca.tipo, percentual(i.fracao), i.parcial ? 'sim' : 'não', i.origem === 'manual' ? 'toque' : 'desenho'])
+        comFicha([...base, i.peca.nome, tipoNoCsv(i.peca.tipo), percentual(i.fracao), i.parcial ? 'sim' : 'não', i.origem === 'manual' ? 'toque' : 'desenho'])
           .map(celula)
           .join(';'),
       )

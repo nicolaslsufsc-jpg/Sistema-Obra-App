@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact'
 import { ROTULO_SITUACAO, type SituacaoCP } from '../cps'
 import { Cabecalho } from '../../telas/Cabecalho'
+import type { Status } from '../../telas/Tabela'
 
 export function dataBR(data: string | null | undefined): string {
   if (!data) return ''
@@ -54,6 +55,14 @@ const CLASSE: Record<SituacaoCP, string> = {
   abaixo_fck: 'ruim',
   conforme: 'bom',
   informado: 'neutro',
+}
+
+/** Situação dos corpos de prova → cor de status do guia (docs/DESIGN.md): NC, pendente, liberado, sem dado. */
+export function statusDaSituacao(s: SituacaoCP | null): Status {
+  if (s === null) return 'sem-dado'
+  if (s === 'atrasado' || s === 'abaixo_fck') return 'nc'
+  if (s === 'conforme') return 'liberado'
+  return 'pendente'
 }
 
 export function Selo({ situacao, texto }: { situacao: SituacaoCP; texto?: string }) {

@@ -30,11 +30,13 @@ import { areaDe, caixaDe, prepararArea, simplificarParaGravar, type Ponto } from
 import { instalarCaneta } from '../caneta'
 import { ehLajeDeTrecho, lajeDoTrecho, nomeDaLaje } from '../lajes'
 import { mudancaDaLajeDoDesenho, mudancasDoDesenhoPorPlanta, pecaNoPonto, prepararPecas } from '../pecas'
+import { ehFundacao, ORDEM_DO_TIPO } from '../tipos_peca'
 import { carregarPlantas, idDaRef, revisaoDaRef, type PlantaPavimento } from '../planta'
 import { comoEntrou } from '../relatorio'
 import type { Contexto } from './ModuloConcreto'
 import { corDoCaminhao, dataBR, numBR, plural, Selo } from './comum'
 import { nomeDaConcretagem } from '../exemplo'
+import { Icone } from '../../telas/icones'
 
 const COR_SITUACAO: Record<'ruim' | 'info' | 'neutro' | 'bom', string> = {
   ruim: '#c62828',
@@ -80,8 +82,8 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const { dados, obra, usuario, ir, trocar, voltar, recarregar } = ctx
   const pav = dados.pavimentos.find((p) => p.id === pavimentoId)
   const pecasCad = dados.pecasDoPavimento.get(pavimentoId) ?? []
-  // a laje de trecho não tem contorno: não entra na planta (de teste) como peça desenhada
-  const pecasDaPlanta = pecasCad.filter((p) => !ehLajeDeTrecho(p))
+  // a laje de trecho, a estaca e o bloco não têm contorno: não entram na planta como peça desenhada
+  const pecasDaPlanta = pecasCad.filter((p) => !ehLajeDeTrecho(p) && !ehFundacao(p.tipo))
   // as plantas só mudam se mudarem as peças do pavimento
   const chavePecas = pecasDaPlanta.map((p) => p.id + p.nome).join()
   const [plantas, setPlantas] = useState<PlantaPavimento[] | null>(null)
@@ -525,7 +527,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
         const e = antes?.get(x.elemento_id)
         return x.incluido && !e?.incluido && e?.origem !== 'manual'
       }).length
-      const texto = entraram > 0 ? `${plural(entraram, 'peça entrou', 'peças entraram')} no caminhão ${cam.sequencia}.` : 'Área salva. Nenhuma peça nova dentro dela.'
+      const texto = entraram > 0 ? `${plural(entraram, 'peça entrou', 'peças entraram')} no caminhão ${cam.sequencia}.` : 'Área salva, sem peça nova dentro.'
       setMsg(lajeEntrou ? `${texto} A ${nomeDaLaje(trecho)} também entrou.` : texto)
     })
   }
@@ -635,7 +637,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     : []
   const lajeDesenhadaNoCam = camAtual && planta ? (areasPorPlanta(camAtual.raiz).get(planta.id) ?? []).filter((a) => a.alvo === 'vigas_laje').length : 0
   const nomeDa = (id: string) => dados.pecaPorId.get(id)?.nome ?? planta?.elementos.find((e) => e.id === id)?.nome ?? '?'
-  const ordemTipo = (id: string) => ({ P: 0, V: 1, L: 2 })[dados.pecaPorId.get(id)?.tipo ?? ''] ?? 3
+  const ordemTipo = (id: string) => ORDEM_DO_TIPO[dados.pecaPorId.get(id)?.tipo ?? ''] ?? 9
 
   return (
     <div class={`cc-mapa-tela${painel ? ' com-painel' : ''}`}>
@@ -772,7 +774,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
       {planta && (
         <aside class={`cc-painel${painel ? ' aberto' : ''}`} data-testid="painel">
           <button type="button" class="cc-alca" onClick={() => setPainel(!painel)} aria-expanded={painel}>
-            {painel ? 'Esconder painel ▾' : 'Mostrar painel ▴'}
+            {painel ? 'Esconder painel' : 'Mostrar painel'} <Icone id={painel ? 'abrir' : 'recolher'} />
           </button>
           {painel && camAtual && concAtual && (
             <div class="cc-painel-corpo">
@@ -788,13 +790,13 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
               </p>
               {areasSemPlanta.length > 0 && (
                 <p class="aviso" data-testid="aviso-sem-planta">
-                  ⚠ {plural(areasSemPlanta.length, 'área está', 'áreas estão')} num trecho que não está neste aparelho. Baixe o trecho na
+                  {plural(areasSemPlanta.length, 'área está', 'áreas estão')} num trecho que não está neste aparelho. Baixe o trecho na
                   tela inicial da FVS para ver no mapa.
                 </p>
               )}
               {areasRevisaoAntiga.length > 0 && (
                 <p class="aviso" data-testid="aviso-revisao">
-                  ⚠ {plural(areasRevisaoAntiga.length, 'área foi desenhada', 'áreas foram desenhadas')} na revisão{' '}
+                  {plural(areasRevisaoAntiga.length, 'área foi desenhada', 'áreas foram desenhadas')} na revisão{' '}
                   {[...new Set(areasRevisaoAntiga.map((a) => revisaoDaRef(a.planta_ref)))].join(', ')} desta planta. A planta
                   agora é a {planta.revisao}: confira se as peças continuam as mesmas.
                 </p>
@@ -822,7 +824,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
                   <i style={{ background: corDoCaminhao(camAtual.sequencia) }} /> Laje concretada: {plural(lajeDesenhadaNoCam, 'área desenhada', 'áreas desenhadas')} nesta planta
                 </p>
               )}
-              <h3>{pecasDoCam.length === 0 ? 'Nenhuma peça ainda' : plural(pecasDoCam.length, 'peça', 'peças')}</h3>
+              <h3>{pecasDoCam.length === 0 ? 'Sem peças' : plural(pecasDoCam.length, 'peça', 'peças')}</h3>
               {pecasDoCam.length === 0 && pode && <p class="discreto">Desenhe com a caneta em volta da área que o caminhão encheu.</p>}
               <ul class="cc-pecas-compacto" data-testid="pecas-caminhao">
                 {pecasDoCam
@@ -860,7 +862,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
               {lajeAtual && <BotaoLaje nome={nomeLaje} ligada={false} aoTocar={tocarLaje} />}
               <p>
                 {concs.length === 0
-                  ? 'Nenhuma concretagem neste pavimento ainda. Volte e crie uma para desenhar.'
+                  ? 'Sem concretagens neste pavimento'
                   : concSel
                     ? 'Escolha um caminhão acima para desenhar onde ele foi, ou toque numa peça para ver os caminhões dela.'
                     : 'Toque numa peça para ver os caminhões dela, ou escolha uma concretagem acima para desenhar.'}
@@ -951,7 +953,7 @@ function BotaoLaje({
     <button type="button" class={`cc-laje${ligada ? ' on' : ''}`} aria-pressed={ligada} disabled={desligado} onClick={aoTocar} data-testid="laje">
       {marca && (
         <span class="cc-laje-marca" aria-hidden="true" style={ligada && cor ? { background: cor, borderColor: cor } : undefined}>
-          {ligada ? '✓' : '+'}
+          <Icone id={ligada ? 'feito' : 'mais'} />
         </span>
       )}
       {nome}
@@ -987,7 +989,7 @@ function PainelPeca({
       {children}
       <h2 class="sem-topo">{nome}</h2>
       {lista.length === 0 ? (
-        <p class="discreto">Nenhum caminhão registrado nesta peça.</p>
+        <p class="discreto">Sem caminhões nesta peça</p>
       ) : (
         <ul class="lista">
           {lista.map(({ x, conc, pior, e }) => (

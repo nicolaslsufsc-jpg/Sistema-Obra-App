@@ -136,7 +136,11 @@ class TestClassificar(unittest.TestCase):
         self.assertIsNone(c("eletrico", "IfcCableCarrierSegment", "Eletrocalha perfurada 100x50"))
         self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "3.a_1 Tomada de Teto 2P+T_Conjunto 4x2"), "caixa_passagem")
         self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "3.c_2 Tomadas de Piso 2P+T_Conjunto 4x4"), "caixa_passagem")
-        self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "1.a_1 Tomada 2P+T_Conjunto 4x2"))
+        # 23/11 (5.3): a tomada de parede é a caixa de parede (alvenaria ou drywall), não da laje
+        self.assertEqual(c("eletrico", "IfcBuildingElementProxy", "1.a_1 Tomada 2P+T_Conjunto 4x2"), "caixa_parede")
+        # 24/11: o módulo "não listável" é parte do conjunto, no mesmo lugar; não vira outro ponto
+        self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "x.Módulo de Tomada não listavel 2"))
+        self.assertIsNone(c("eletrico", "IfcBuildingElementProxy", "x.Módulo de Tecla Interrupor não listavel 2 teclas"))
         self.assertEqual(c("eletrico", "IfcFlowSegment", "Conduit without Fittings"), "eletroduto")
         self.assertIsNone(c("eletrico", "IfcFlowSegment", "Cable Tray with Fittings"))
         self.assertIsNone(c("eletrico", "IfcCableSegment", "Cabo 2,5mm²"))
@@ -167,19 +171,77 @@ class TestClassificar(unittest.TestCase):
         # nas outras disciplinas a conexão continua fora
         self.assertIsNone(c("eletrico", "IfcFlowFitting", "SPDA_Conector ATERRINSERT"))
 
+    def test_preventivo_nomes_do_ifc_real(self):
+        """Nomes do IFC real do preventivo (23/11); o gás do mesmo modelo fica fora."""
+        c = instalacoes.classificar
+        casos = {("IfcFlowTerminal", "PCI_HIDRANTE:HIDRANTE TAMPA VIDRO - 30 m"): "hidrante",
+                 ("IfcBuildingElementProxy", "PCI_VIDRO"): None,
+                 ("IfcBuildingElementProxy", "PCI_EXTINTOR_DE_PAREDE"): "extintor",
+                 ("IfcBuildingElementProxy", "PCI_PLACA_EXTINTOR"): "sinalizacao",
+                 ("IfcBuildingElementProxy", "PCI_PLACA_HIDRANTE"): "sinalizacao",
+                 ("IfcBuildingElementProxy", "PCI_PLACA_FOTOLUMINESCENTE_SAIDA"): "sinalizacao",
+                 ("IfcFlowTerminal", "PCI_ILUMINACAO_DE_EMERGENCIA_EMBUTIDA"): "iluminacao_emergencia",
+                 ("IfcFlowTerminal", "PCI_LUMINARIA_EMERGENCIA"): "iluminacao_emergencia",
+                 ("IfcDistributionControlElement", "PCI_SIRENE_AUDIO_VISUAL"): "alarme",
+                 ("IfcDistributionControlElement", "PCI_ACIONADOR_MANUAL_REARMAVEL"): "alarme",
+                 ("IfcDistributionControlElement", "z_NAO_USAR_PCI_DETECTOR_FUMACA"): "detector",
+                 ("IfcFlowTerminal", "PCI_MEDIDOR_DE_GAS_PRE_EQUIPADO"): None,
+                 ("IfcBuildingElementProxy", "PCI_AQUECEDOR_DE_PASSAGEM"): None,
+                 ("IfcFlowTerminal", "PCI_CILINDRO_DE_GAS"): None,
+                 ("IfcBuildingElementProxy", "PCI_MANGUEIRA_HIDRANTE"): None,
+                 ("IfcFlowSegment", "Pipe Types"): None,
+                 ("IfcFlowFitting", "PCI_NPT_TE"): None}
+        for (classe, nome), tipo in casos.items():
+            self.assertEqual(c("preventivo", classe, nome), tipo, nome)
+
     def test_descida_longe_de_pilar(self):
         pt = instalacoes.PT_POR_CM
         pecas = [{"tipo": "P", "nome": "P1", "polys": [[[0, 0], [20 * pt, 0], [20 * pt, 20 * pt], [0, 20 * pt]]]}]
         pontos = {"a": {"tipo": "descida", "ponto": [10 * pt, 10 * pt], "modelo_id": "1"},
                   "b": {"tipo": "descida", "ponto": [120 * pt, 10 * pt], "modelo_id": "2"},
                   "c": {"tipo": "captor", "ponto": [500 * pt, 10 * pt], "modelo_id": "3"}}
-        longe = instalacoes.a_conferir(pontos, pecas)["descida_longe_de_pilar"]
-        self.assertEqual([(x["id"], x["distancia_cm"]) for x in longe], [("b", 100)])
+        pontos["d"] = {"tipo": "conector", "ponto": [900 * pt, 10 * pt], "modelo_id": "4"}
+        conf = instalacoes.a_conferir(pontos, pecas)
+        self.assertEqual([(x["id"], x["distancia_cm"]) for x in conf["descida_longe_de_pilar"]], [("b", 100)])
+        self.assertEqual([x["id"] for x in conf["fora_da_estrutura"]], ["d"])  # longe de tudo: sai da planta
+        self.assertNotIn("d", pontos)
+        self.assertIn("c", pontos)  # captor não sai (fica na laje, longe de pilar)
 
-    def test_trecho_de_tubo_nao_e_ponto(self):
+    def test_nome_para_a_pessoa(self):
+        n = instalacoes.nome_para_a_pessoa
+        self.assertEqual(n("HID_Valvula Esfera Azul1", "registro"), "Valvula Esfera Azul")
+        self.assertEqual(n("SAN_Ralo Linear 70/90", "ralo"), "Ralo Linear 70/90")
+        self.assertEqual(n("HID_Caixa Sifonada Ø150", "caixa_sifonada"), "Caixa Sifonada Ø150")
+        self.assertEqual(n("Conduit without Fittings", "eletroduto"), "Eletroduto")
+        self.assertEqual(n("z_NAO_USAR_PCI_DETECTOR_FUMACA", "detector"), "DETECTOR FUMACA")
+        self.assertEqual(n("", "ralo"), "Ralo")
+
+    def test_juntar_agua_proxima(self):
+        pt = instalacoes.PT_POR_CM
+        d = {"b": {"tipo": "registro", "ponto": [0, 0], "nome": "Valvula Esfera", "modelo_id": "2"},
+             "a": {"tipo": "ponto_agua", "ponto": [10 * pt, 0], "nome": "Misturador", "modelo_id": "1"},
+             "c": {"tipo": "registro", "ponto": [5 * pt, 5 * pt], "nome": "Valvula Esfera", "modelo_id": "3"},
+             "z": {"tipo": "registro", "ponto": [500 * pt, 0], "nome": "Registro", "modelo_id": "9"}}
+        j = instalacoes.juntar_proximos(d, 20, pt)
+        self.assertEqual(sorted(j), ["a", "z"])
+        self.assertEqual(j["a"]["tipo"], "ponto_agua")
+        self.assertEqual(j["a"]["nome"], "2 Valvula Esfera, Misturador")
+        self.assertEqual(j["a"]["modelo_id"], "1,2,3")
+
+    def test_trecho_de_tubo_e_trecho(self):
         c = instalacoes.classificar
-        self.assertIsNone(c("hidro", "IfcFlowSegment", "Saída tubo"))
-        self.assertIsNone(c("sanitario", "IfcFlowSegment", "Ralo tubo"))
+        # 23/11 (5.1): o tubo de água ou esgoto é trecho (coluna em pé ou linha deitada; ler_ifc decide)
+        self.assertEqual(c("hidro", "IfcFlowSegment", "Saída tubo"), "tubo_segmento")
+        self.assertEqual(c("sanitario", "IfcFlowSegment", "Pipe Types:Tubo Esgoto Serie Normal"), "tubo_segmento")
+        self.assertIsNone(c("sanitario", "IfcFlowSegment", "Duct Types:Retangular"))
+        self.assertIsNone(c("eletrico", "IfcFlowSegment", "Pipe Types:Tubo"))
+
+    def test_coluna_nao_junta_com_registro(self):
+        pt = instalacoes.PT_POR_CM
+        d = {"a": {"tipo": "registro", "ponto": [0, 0], "nome": "Registro", "modelo_id": "1"},
+             "b": {"tipo": "coluna", "ponto": [3 * pt, 0], "nome": "Coluna", "modelo_id": "2"},
+             "c": {"tipo": "tubo", "ponto": [2 * pt, 0], "linha": [[0, 0], [4 * pt, 0]], "nome": "Tubo", "modelo_id": "3"}}
+        self.assertEqual(sorted(instalacoes.juntar_proximos(d, 20, pt)), ["a", "b", "c"])
 
     def test_disciplina_desconhecida(self):
         with self.assertRaises(instalacoes.ErroInstalacoes):
@@ -428,6 +490,136 @@ class TestFichaComPontos(unittest.TestCase):
     def test_eletrico_e_spda(self):
         for disc in ("eletrico", "spda"):
             self.assertEqual(publicar_fichas.normalizar(self.ficha(pontos=disc))[0]["itens"][0]["pontos"], disc)
+
+
+class TestSessaoPorServidor(unittest.TestCase):
+    def test_servidor_de_testes_tem_arquivo_proprio(self):
+        padrao = pathlib.Path("C:/x/SistemaObra/sessao_supabase.json")
+        self.assertEqual(publicar_planta.arquivo_de_sessao(publicar_planta.URL_PADRAO, padrao), padrao)
+        outro = publicar_planta.arquivo_de_sessao("https://abcdefgh.supabase.co", padrao)
+        self.assertEqual(outro.name, "sessao_supabase_abcdefgh.json")
+        self.assertEqual(outro.parent, padrao.parent)
+
+
+class TestFichaComTiposDePonto(unittest.TestCase):
+    """5.1 a 5.3 (23/11): o item pode valer para duas disciplinas e só para alguns tipos de ponto."""
+
+    ficha = TestFichaComPontos.ficha
+
+    def test_lista_e_tipos(self):
+        f = publicar_fichas.normalizar(self.ficha(pontos=["hidro", "sanitario"], pontos_tipos=["ponto_agua", "registro", "ponto_esgoto"]))
+        self.assertEqual(f[0]["itens"][0]["pontos_tipos"], ["ponto_agua", "registro", "ponto_esgoto"])
+
+    def test_mesmo_tipo_em_dois_itens(self):
+        def ficha(*itens):
+            return [{"codigo": "EXE-1", "titulo": "T", "aplica_a": ["A"],
+                     "itens": [{"n": n + 1, "titulo": f"I{n}", **it} for n, it in enumerate(itens)]}]
+        publicar_fichas.normalizar(ficha({"pontos": "hidro", "pontos_tipos": ["tubo"]}, {"pontos": "sanitario", "pontos_tipos": ["tubo"]},
+                                         {"pontos": "sanitario", "pontos_tipos": ["ralo"]}))
+        for itens in (({"pontos": "hidro", "pontos_tipos": ["tubo"]}, {"pontos": ["hidro", "sanitario"], "pontos_tipos": ["tubo"]}),
+                      ({"pontos": "hidro"}, {"pontos": "hidro", "pontos_tipos": ["registro"]}),
+                      ({"pontos": "hidro", "pontos_tipos": ["registro"]}, {"pontos": "hidro"})):
+            with self.assertRaises(publicar_fichas.ErroFichas, msg=itens):
+                publicar_fichas.normalizar(ficha(*itens))
+
+    def test_ambiente_vira_id(self):
+        pts = {"p1": {"tipo": "ralo", "ambiente": "201-03"}, "p2": {"tipo": "ralo", "ambiente": "AC-09"}, "p3": {"tipo": "ralo"}}
+        out = publicar_planta.ambiente_pelo_id(pts, {("A", "201-03"): "id-amb"})
+        self.assertEqual([out[k].get("ambiente") for k in ("p1", "p2", "p3")], ["id-amb", None, None])
+        self.assertNotIn("ambiente", out["p2"])
+        self.assertEqual(pts["p1"]["ambiente"], "201-03")  # não mexe no original
+
+    def test_recusa(self):
+        for item in ({"pontos": []}, {"pontos": ["hidro", "gas"]}, {"pontos": "hidro", "pontos_tipos": ["torneira"]},
+                     {"pontos": "hidro", "pontos_tipos": []}, {"pontos_tipos": ["tubo"]}):
+            with self.assertRaises(publicar_fichas.ErroFichas, msg=item):
+                publicar_fichas.normalizar(self.ficha(**item))
+
+
+class _SrvFalso:
+    def __init__(self, existentes):
+        self.existentes = existentes
+        self.patches = []
+        srv = self
+
+        class _Sb:
+            def json(self, metodo, caminho, corpo, cab=None):
+                srv.patches.append((metodo, caminho, corpo))
+
+        self.sb = _Sb()
+
+    def obter(self, tabela, filtros):
+        return self.existentes
+
+
+class TestTrocarItens(unittest.TestCase):
+    def test_troca_so_o_que_mudou(self):
+        velho = [{"n": 1, "titulo": "Altura dos pontos"}]
+        novo = [{"n": 1, "titulo": "Altura dos pontos", "pontos": "hidro"}]
+        srv = _SrvFalso([{"id": "f1", "codigo": "EXE-1", "revisao": "0", "itens": velho},
+                         {"id": "f2", "codigo": "EXE-2", "revisao": "0", "itens": novo}])
+        n = publicar_fichas.trocar_itens(srv, {"id": "o"}, [{"codigo": "EXE-1", "revisao": "0", "itens": novo},
+                                                           {"codigo": "EXE-2", "revisao": "0", "itens": novo},
+                                                           {"codigo": "EXE-3", "revisao": "0", "itens": novo}])
+        self.assertEqual(n, 1)
+        self.assertEqual(srv.patches, [("PATCH", "/rest/v1/fichas_modelo?id=eq.f1", {"itens": novo})])
+
+    def test_numeros_diferentes_nao_troca(self):
+        srv = _SrvFalso([{"id": "f1", "codigo": "EXE-1", "revisao": "0", "itens": [{"n": 1, "titulo": "A"}]}])
+        with self.assertRaises(publicar_fichas.ErroFichas):
+            publicar_fichas.trocar_itens(srv, {"id": "o"}, [{"codigo": "EXE-1", "revisao": "0", "itens": [{"n": 2, "titulo": "A"}]}])
+
+    def test_nao_vale_no_servidor_da_obra(self):
+        import contextlib
+        import io
+
+        with tempfile.TemporaryDirectory() as d:
+            arq = pathlib.Path(d) / "f.json"
+            arq.write_text(json.dumps(TestFichaComPontos().ficha(pontos="hidro")), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()) as saida:
+                r = publicar_fichas.main(["EXE", str(arq), "--trocar-itens"])
+        self.assertEqual(r, 1)
+        self.assertIn("servidor da obra", saida.getvalue())
+
+
+class TestContaDeTeste(unittest.TestCase):
+    def env(self, d, linhas):
+        e = pathlib.Path(d) / ".env"
+        e.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+        return e
+
+    def test_so_no_servidor_de_testes(self):
+        with tempfile.TemporaryDirectory() as d:
+            e = self.env(d, ["SUPABASE_TESTES_URL=https://testeexe.supabase.co", "SUPABASE_TESTES_USUARIO=teste@exemplo.com",
+                             "SUPABASE_TESTES_SENHA='abc'"])
+            self.assertEqual(publicar_planta.conta_de_teste("https://testeexe.supabase.co/", e), ("teste@exemplo.com", "abc"))
+            self.assertIsNone(publicar_planta.conta_de_teste(publicar_planta.URL_PADRAO, e))
+            self.assertIsNone(publicar_planta.conta_de_teste("https://outro.supabase.co", e))
+
+    def test_nunca_no_da_obra_nem_sem_senha(self):
+        with tempfile.TemporaryDirectory() as d:
+            e = self.env(d, [f"SUPABASE_TESTES_URL={publicar_planta.URL_PADRAO}", "SUPABASE_TESTES_USUARIO=a", "SUPABASE_TESTES_SENHA=b"])
+            self.assertIsNone(publicar_planta.conta_de_teste(publicar_planta.URL_PADRAO, e))
+            e = self.env(d, ["SUPABASE_TESTES_URL=https://testeexe.supabase.co", "SUPABASE_TESTES_USUARIO=a"])
+            self.assertIsNone(publicar_planta.conta_de_teste("https://testeexe.supabase.co", e))
+            self.assertIsNone(publicar_planta.conta_de_teste("https://testeexe.supabase.co", pathlib.Path(d) / "nao_existe"))
+
+
+class TestAmbienteDosPontos(unittest.TestCase):
+    def test_dentro_na_parede_e_longe(self):
+        from shapely.geometry import box
+
+        geo = {"201-01": box(0, 0, 3, 3), "201-02": box(3.2, 0, 6, 3)}  # metros
+        pts = [{"x": 150, "y": 150}, {"x": 310, "y": 150}, {"x": 320.5, "y": 100}, {"x": 1000, "y": 1000}]  # cm
+        r = instalacoes.ambiente_dos_pontos(pts, geo)
+        self.assertEqual([p.get("ambiente") for p in pts], ["201-01", "201-01", "201-02", None])
+        self.assertEqual(r, {"com_ambiente": 3, "sem_ambiente": 1})
+
+    def test_vai_para_o_pacote(self):
+        pts = [{"modelo_id": "1", "tipo": "ralo", "nome": "Ralo", "x": 10, "y": 10, "ambiente": "201-03"}]
+        enc = {"rotacao": [[1, 0], [0, 1]], "fator": 1.0, "t": [0.0, 0.0]}
+        dentro, _ = instalacoes.pontos_na_folha(pts, enc, "sanitario", 1000, 1000, "EXE", "2º Pavimento")
+        self.assertEqual(next(iter(dentro.values()))["ambiente"], "201-03")
 
 
 class TestListasIguais(unittest.TestCase):

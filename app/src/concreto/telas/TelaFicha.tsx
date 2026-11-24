@@ -4,6 +4,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { COLUNAS_FICHA, csvDoDia, fichaDoDia, linhasParaExcel } from '../ficha_concreto'
 import type { Contexto } from './ModuloConcreto'
 import { Topo, numBR } from './comum'
+import { Ajuda } from '../../telas/Ajuda'
 
 export function TelaFicha({ ctx, data }: { ctx: Contexto; data: string }) {
   const { dados, obra, voltar, ir } = ctx
@@ -71,7 +72,7 @@ export function TelaFicha({ ctx, data }: { ctx: Contexto; data: string }) {
 
       {ficha.avisos.map((a) => (
         <p key={a} class="aviso nao-imprimir">
-          ⚠ {a}
+          {a}
         </p>
       ))}
 
@@ -93,7 +94,7 @@ export function TelaFicha({ ctx, data }: { ctx: Contexto; data: string }) {
       )}
 
       {ficha.linhas.length === 0 ? (
-        <p class="discreto">Nenhum caminhão registrado neste dia.</p>
+        <p class="discreto">Sem caminhões neste dia</p>
       ) : (
         <div class="cc-rolagem">
           <p class="discreto cc-dica-rolagem nao-imprimir">Arraste a tabela para o lado para ver todas as colunas.</p>
@@ -133,9 +134,12 @@ export function TelaFicha({ ctx, data }: { ctx: Contexto; data: string }) {
           </table>
         </div>
       )}
-      <p class="discreto nao-imprimir">
-        Lacre e A/C não são registrados no app: ficam em branco, como no lançamento à mão. Água adicionada e o local de cada concretagem vão na
-        observação. Em "Copiar", as linhas vão na ordem das colunas da ficha: cole na primeira célula da tabela.
+      <p class="discreto nao-imprimir so-com-ajuda">
+        Lacre e A/C: em branco.
+        <Ajuda>
+          Lacre e A/C não são registrados no app: ficam em branco, como no lançamento à mão. Água adicionada e o local de cada concretagem vão na
+          observação. Em "Copiar", as linhas vão na ordem das colunas da ficha: cole na primeira célula da tabela.
+        </Ajuda>
       </p>
     </main>
   )

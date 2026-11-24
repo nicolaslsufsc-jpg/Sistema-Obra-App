@@ -9,3 +9,10 @@ export const TABELAS_PROJETOS = ['empresas', 'documentos', 'revisoes', 'escritor
  */
 export const TABELA_DESTINATARIOS = 'distribuicao_destinatarios'
 export const TABELAS_PROJETOS_DISTRIBUICAO = [TABELA_DESTINATARIOS] as const
+
+/**
+ * Formulário próprio da obra para a entrega (modelo da ficha, 23/11/2026): migração
+ * 20261123120000_projetos_formularios.sql. Bloco à parte, no fim: servidor sem a migração só para esta
+ * tabela. Gestor inclui; os outros só leem. Ver projetos/ficha_entrega.ts.
+ */
+export const TABELAS_PROJETOS_FORMULARIOS = ['projetos_formularios'] as const

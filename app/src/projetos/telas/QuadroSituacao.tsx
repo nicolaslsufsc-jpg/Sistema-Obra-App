@@ -37,7 +37,7 @@ export function QuadroSituacao({ cruzadas, ir, documentos }: { cruzadas: readonl
   const nomeDisc = useMemo(() => {
     const m = new Map<string, string>()
     for (const x of cruzadas) if (x.copia.app || !m.has(x.copia.disciplina)) m.set(x.copia.disciplina, nomeSemCaixaAlta(x.copia.disciplinaNome || x.copia.disciplina))
-    // o nome do servidor vale mais que o da ficha (HIDRO, FUNDAÇÃO...): uma grafia só
+    // o nome do servidor vale mais que o da ficha (HIDRO, FUNDAÇÃO...): uma grafia só, sem dois iguais
     for (const [k, nome] of nomesDeDisciplina(documentos)) if (m.has(k)) m.set(k, nome)
     return m
   }, [cruzadas, documentos])

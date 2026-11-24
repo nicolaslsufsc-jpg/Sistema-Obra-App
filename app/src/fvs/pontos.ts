@@ -7,7 +7,8 @@
 // observação e Confirmar). O registro vai em fvs_eventos.barra_id (local de sobreposição: barra ou ponto),
 // com planta_id, no item da ficha de ambiente marcado com `"pontos": "<disciplina>"`.
 
-import type { Ficha, ItemFicha } from './situacao'
+import { ladoDoQuadradoEmPontos, ZOOM_DOS_FUROS_DE_LAJE, type FurosDaArea } from './furos_laje'
+import { disciplinasDoItem, type Ficha, type ItemFicha } from './situacao'
 
 export type DisciplinaDePontos = 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
 /** Na ordem do menu (pedido do Nicolas, 21/11/2026: hidráulico, esgoto, elétrico, preventivo, SPDA). */
@@ -47,6 +48,10 @@ export type TipoDePonto =
   | 'alarme'
   | 'sinalizacao'
   | 'tubo_incendio'
+  // 5.1 a 5.3 (redes suspensas, colunas e pontos na parede, 23/11/2026): o tubo é linha, como o eletroduto
+  | 'tubo'
+  | 'coluna'
+  | 'caixa_parede'
 
 export interface PontoPacote {
   disciplina: DisciplinaDePontos
@@ -58,6 +63,8 @@ export interface PontoPacote {
   nome: string
   /** id do objeto no modelo IFC */
   modelo_id?: string
+  /** o ambiente onde o ponto cai: o id da peça A na planta de ambientes (o nome vem dela); fora de ambiente, sem */
+  ambiente?: string
 }
 
 export const NOME_DA_DISCIPLINA: Record<DisciplinaDePontos, string> = {
@@ -93,6 +100,9 @@ export const NOME_DO_TIPO: Record<TipoDePonto, string> = {
   alarme: 'Alarme',
   sinalizacao: 'Sinalização',
   tubo_incendio: 'Tubulação de incêndio',
+  tubo: 'Tubo',
+  coluna: 'Coluna (prumada)',
+  caixa_parede: 'Caixa de parede',
 }
 
 /** Filtro por tipo de ponto (SPDA igual aos furos, pedido do Nicolas de 22/11/2026). */
@@ -122,6 +132,77 @@ export function pontosNoFiltro(pontos: Readonly<Record<string, PontoPacote>>, f:
 export function textoDoAvancoDosPontos(a: { ok: number; errados: number; total: number }): string {
   const base = `${a.ok} de ${a.total} ${a.total === 1 ? 'ponto' : 'pontos'} OK`
   return a.errados ? `${base} · ${a.errados} ${a.errados === 1 ? 'errado' : 'errados'}` : base
+}
+
+/**
+ * Planta com muitos pontos (23/11/2026, pacotes reais: 908 pontos elétricos no mezanino, 546 de água no 2º):
+ * de longe as bolinhas viram manchas e o toque pega o ponto errado. Acima deste número de pontos (os do
+ * filtro), longe aparece um número por quadrado, como nos furos (furos_laje.ts), e os pontos só de perto.
+ */
+export const PONTOS_PARA_JUNTAR = 60
+
+/** Distância de tela (px) entre dois pontos vizinhos para cada um ter o próprio toque. */
+const PX_ENTRE_PONTOS = 24
+
+/**
+ * Zoom a partir do qual os pontos aparecem: o que põe 24 px entre um ponto e o vizinho mais perto, na
+ * mediana das distâncias (nos pacotes reais de 23/11, de 10 a 30 pt da folha; os que ficam ainda mais
+ * juntos se resolvem pelo "aproxime e toque de novo"). Em meios zooms, entre -2 e o zoom dos furos de laje.
+ */
+export function zoomDosPontos(pontos: Readonly<Record<string, PontoPacote>> | undefined): number {
+  const pts = Object.values(pontos ?? {}).map((p) => p.ponto)
+  if (pts.length < 2) return -2
+  // vizinho mais próximo pela varredura em x (23/11: o elétrico do andar-tipo tem ~5.900 pontos, e comparar
+  // todos com todos travava a tela por quase 1 s no PC)
+  const xs = [...pts].sort((a, b) => a[0] - b[0])
+  const ds: number[] = []
+  for (let i = 0; i < xs.length; i++) {
+    const [ax, ay] = xs[i]
+    let m = Infinity
+    for (let j = i + 1; j < xs.length && xs[j][0] - ax < m; j++) {
+      const d = Math.hypot(xs[j][0] - ax, xs[j][1] - ay)
+      if (d > 0 && d < m) m = d
+    }
+    for (let j = i - 1; j >= 0 && ax - xs[j][0] < m; j--) {
+      const d = Math.hypot(xs[j][0] - ax, xs[j][1] - ay)
+      if (d > 0 && d < m) m = d
+    }
+    if (m < Infinity) ds.push(m)
+  }
+  if (!ds.length) return ZOOM_DOS_FUROS_DE_LAJE
+  ds.sort((x, y) => x - y)
+  const d = ds[Math.floor(ds.length / 2)]
+  const z = Math.ceil(Math.log2(PX_ENTRE_PONTOS / d) * 2) / 2
+  return Math.min(Math.max(z, -2), ZOOM_DOS_FUROS_DE_LAJE)
+}
+
+/**
+ * Os pontos agrupados por quadrado de 6 m vezes `multiplo` (o mesmo quadrado dos furos), para o número de
+ * longe. Ordem: de cima para baixo, da esquerda para a direita.
+ */
+export function pontosPorQuadrado(pontos: Readonly<Record<string, PontoPacote>> | undefined, escala = 50, multiplo = 1): FurosDaArea[] {
+  const lado = ladoDoQuadradoEmPontos(escala) * multiplo
+  const grupos = new Map<string, { ordem: string; ids: string[]; pts: Array<[number, number]> }>()
+  for (const [id, p] of Object.entries(pontos ?? {})) {
+    const pt: [number, number] = [p.ponto[0], p.ponto[1]]
+    const i = Math.floor(pt[0] / lado)
+    const j = Math.floor(pt[1] / lado)
+    const chave = `q:${i}:${j}`
+    const g = grupos.get(chave) ?? { ordem: `${String(j).padStart(6, '0')} ${String(i).padStart(6, '0')}`, ids: [], pts: [] }
+    g.ids.push(id)
+    g.pts.push(pt)
+    grupos.set(chave, g)
+  }
+  return [...grupos.entries()]
+    .sort(([, a], [, b]) => a.ordem.localeCompare(b.ordem))
+    .map(([chave, g]) => {
+      const xs = g.pts.map((p) => p[0])
+      const ys = g.pts.map((p) => p[1])
+      const centro: [number, number] = [xs.reduce((s, v) => s + v, 0) / xs.length, ys.reduce((s, v) => s + v, 0) / ys.length]
+      let perto = g.pts[0]
+      for (const p of g.pts) if (Math.hypot(p[0] - centro[0], p[1] - centro[1]) < Math.hypot(perto[0] - centro[0], perto[1] - centro[1])) perto = p
+      return { chave, ids: g.ids, centro, caixa: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as [number, number, number, number], perto }
+    })
 }
 
 type Pt = readonly [number, number]
@@ -174,7 +255,38 @@ function maisPerto(p: Pt, pontos: ReadonlyArray<[string, PontoPacote]>, raio: nu
 
 /** O item da ficha que os pontos da disciplina marcam (`"pontos": "<disciplina>"` no item), se houver. */
 export function itemDosPontos(ficha: Ficha | undefined, disciplina: DisciplinaDePontos): ItemFicha | undefined {
-  return ficha?.itens.find((i) => i.pontos === disciplina)
+  return ficha?.itens.find((i) => disciplinasDoItem(i).includes(disciplina))
+}
+
+/** O item marca este ponto: a disciplina está em "pontos" e o tipo em "pontos_tipos" (sem a lista, qualquer tipo). */
+export function itemMarcaOPonto(i: ItemFicha, p: Pick<PontoPacote, 'disciplina' | 'tipo'>): boolean {
+  return disciplinasDoItem(i).includes(p.disciplina) && (!i.pontos_tipos || i.pontos_tipos.includes(p.tipo))
+}
+
+/**
+ * As fichas que podem gravar este ponto (5.1 a 5.3, 23/11/2026), uma entrada por ficha: em cada ficha de ambiente,
+ * o primeiro item que marca o ponto (disciplina e tipo), menos as fichas que não valem no ambiente do ponto
+ * (`semFichas`, a tabela ficha × cômodo). Nenhuma ficha de ambiente com item da disciplina: o item da instalação
+ * na ficha de laje, como antes (21/11). Duas ou mais: a pessoa escolhe (alvenaria ou drywall).
+ */
+export function fichasDoPonto(
+  fichas: readonly Ficha[],
+  p: Pick<PontoPacote, 'disciplina' | 'tipo'>,
+  fichasDeLaje: readonly Ficha[] = [],
+  semFichas: readonly string[] = [],
+): Array<{ ficha: Ficha; item: number }> {
+  const daDisciplina = fichas.filter((f) => itemDosPontos(f, p.disciplina))
+  if (!daDisciplina.length) {
+    const fl = fichaDosPontos([], p.disciplina, fichasDeLaje)
+    return fl ? [fl] : []
+  }
+  const r: Array<{ ficha: Ficha; item: number }> = []
+  for (const f of daDisciplina) {
+    if (semFichas.includes(f.codigo)) continue
+    const it = f.itens.find((i) => itemMarcaOPonto(i, p))
+    if (it) r.push({ ficha: f, item: it.n })
+  }
+  return r
 }
 
 /** O item da ficha de laje que é da instalação da disciplina (`"instalacao"` no item; o SPDA não tem). */
@@ -205,6 +317,21 @@ export function fichaDosPontos(
     if (it) return { ficha: f, item: it.n }
   }
   return undefined
+}
+
+/**
+ * A escolha entre duas fichas (alvenaria ou drywall) vale para o ambiente do ponto e para aquele par de fichas:
+ * no mesmo ambiente o toque seguinte não pergunta de novo. Fica na memória enquanto o app está aberto.
+ */
+export function chaveDaEscolhaDoPonto(p: Pick<PontoPacote, 'ambiente'>, fichas: ReadonlyArray<{ ficha: Pick<Ficha, 'codigo'> }>): string {
+  return `${p.ambiente ?? ''}|${fichas.map((f) => f.ficha.codigo).sort().join(',')}`
+}
+const escolhasDosPontos = new Map<string, string>()
+export function lembrarEscolhaDoPonto(chave: string, codigo: string): void {
+  escolhasDosPontos.set(chave, codigo)
+}
+export function escolhaLembradaDoPonto(chave: string): string | undefined {
+  return escolhasDosPontos.get(chave)
 }
 
 /** Nome do ponto para a pessoa: "Ralo seco 100x100 (ralo)", ou só o tipo. */

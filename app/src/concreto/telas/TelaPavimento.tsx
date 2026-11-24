@@ -1,7 +1,8 @@
 import { dataLocal, piorSituacao, ROTULO_SITUACAO } from '../cps'
 import { piorDoCaminhao, podeRegistrar } from '../dados'
 import type { Contexto } from './ModuloConcreto'
-import { dataBR, numBR, plural, Selo, Topo } from './comum'
+import { dataBR, numBR, plural, statusDaSituacao, Topo } from './comum'
+import { EtiquetaStatus, Tabela } from '../../telas/Tabela'
 import { nomeDaConcretagem } from '../exemplo'
 import { sistemaDaObra } from '../../integracoes/sistema_oficial'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
@@ -38,7 +39,7 @@ export function TelaPavimento({ ctx, pavimentoId }: { ctx: Contexto; pavimentoId
           colunas: ['Data', 'Local', 'fck (MPa)', 'Caminhões', 'm³', ...(sistema ? [`Ficha no ${sistema}`] : []), 'Corpos de prova'],
           curtas: [0, 2, 3, 4],
           linhas,
-          vazio: 'Nenhuma concretagem neste pavimento.',
+          vazio: '–',
         },
       ],
     }
@@ -59,35 +60,37 @@ export function TelaPavimento({ ctx, pavimentoId }: { ctx: Contexto; pavimentoId
         </button>
         <BotaoExportarPdf obra={obra} usuario={usuario} montar={folha} testid="concreto-pdf-pavimento" />
       </div>
-      <p class="discreto">{pecas.length > 0 ? `${plural(pecas.length, 'peça cadastrada', 'peças cadastradas')} neste pavimento.` : 'Nenhuma peça cadastrada neste pavimento (a FVS cadastra as peças ao publicar a planta).'}</p>
+      <p class="discreto">{pecas.length > 0 ? `${plural(pecas.length, 'peça cadastrada', 'peças cadastradas')} neste pavimento.` : 'Peças cadastradas: –'}</p>
 
       <h2>Concretagens</h2>
       {concs.length === 0 ? (
         <p class="discreto" data-testid="pavimento-vazio">
-          {podeRegistrar(obra.papel) ? 'Nenhuma concretagem neste pavimento. Toque em Nova concretagem para começar.' : 'Nenhuma concretagem neste pavimento.'}
+          Sem concretagens
         </p>
       ) : (
-        <ul class="lista">
-          {concs.map((c) => {
-            const { cams, volume, pior } = resumoDe(c)
-            return (
-              <li key={c.raiz}>
-                <button type="button" class="cc-linha" onClick={() => ir({ nome: 'concretagem', raiz: c.raiz })}>
-                  <span>
-                    <strong>
-                      {dataBR(c.data)} · {nomeDaConcretagem(c)}
-                    </strong>
-                    <span class="discreto">
-                      fck {numBR(c.fck_mpa)} MPa · {plural(cams.length, 'caminhão', 'caminhões')} · {numBR(volume)} m³
-                      {c.codigo_construpoint ? ` · ${c.codigo_construpoint}` : ''}
-                    </span>
-                  </span>
-                  {pior && <Selo situacao={pior} />}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        <Tabela
+          rotulo="Concretagens"
+          testid="tabela-concretagens"
+          colunas={[
+            { titulo: 'Data', valor: (c) => dataBR(c.data), numero: true },
+            { titulo: 'Local', valor: (c) => nomeDaConcretagem(c) },
+            { titulo: 'fck (MPa)', tituloCurto: 'fck', valor: (c) => c.fck_mpa, numero: true },
+            { titulo: 'Caminhões', tituloCurto: 'Cam.', valor: (c) => resumoDe(c).cams.length || null, numero: true },
+            { titulo: 'Volume (m³)', tituloCurto: 'm³', valor: (c) => (resumoDe(c).cams.length ? resumoDe(c).volume : null), numero: true, casas: 1 },
+            ...(concs.some((c) => c.codigo_construpoint) ? [{ titulo: 'Ficha', valor: (c: (typeof concs)[number]) => c.codigo_construpoint }] : []),
+            {
+              titulo: 'Corpos de prova',
+              tituloCurto: 'CPs',
+              valor: (c) => {
+                const { pior } = resumoDe(c)
+                return <EtiquetaStatus status={statusDaSituacao(pior)}>{pior ? ROTULO_SITUACAO[pior] : 'Sem dado'}</EtiquetaStatus>
+              },
+            },
+          ]}
+          linhas={concs}
+          chave={(c) => c.raiz}
+          aoTocar={(c) => ir({ nome: 'concretagem', raiz: c.raiz })}
+        />
       )}
     </main>
   )

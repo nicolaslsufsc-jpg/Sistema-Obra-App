@@ -28,6 +28,7 @@ import {
   type PlantaRascunho,
   type TipoPeca,
 } from './planta'
+import { Ajuda } from '../telas/Ajuda'
 
 const ESCALAS = [20, 25, 50, 75, 100, 125, 200]
 const NOME_TIPO: Record<TipoPeca, string> = { P: 'Pilar', V: 'Viga', L: 'Laje' }
@@ -111,7 +112,10 @@ export function PassoPlantas({ r, mudar, seguir }: Props) {
   return (
     <section class="cartao" aria-labelledby="t-plantas">
       <h2 id="t-plantas">Plantas</h2>
-      <p class="discreto">Para cada pavimento, o PDF da planta de forma. Dá para pular e voltar depois: a obra também sai sem planta.</p>
+      <p class="discreto so-com-ajuda">
+        PDF da planta de forma de cada pavimento.
+        <Ajuda>Dá para pular e voltar depois: a obra também sai sem planta.</Ajuda>
+      </p>
       {!r.pavimentos.length && <p class="aviso">Cadastre os pavimentos antes.</p>}
       {erro && (
         <p class="erro" role="alert">
@@ -269,7 +273,10 @@ function EditorPlanta({ planta: p, mudar, fechar, apagar }: { planta: PlantaRasc
       {p.semTexto && <p class="aviso">Este PDF não tem texto (parece escaneado). As peças vão ser marcadas desenhando.</p>}
 
       <h3>Janela</h3>
-      <p class="discreto">Arraste sobre a folha para marcar só o desenho, sem carimbo e notas. Toque fora para ver a folha inteira de novo.</p>
+      <p class="discreto so-com-ajuda">
+        Arraste para marcar só o desenho.
+        <Ajuda>Marque só o desenho, sem carimbo e notas. Toque fora para ver a folha inteira de novo.</Ajuda>
+      </p>
       {pagina ? <EscolherJanela pagina={pagina} planta={p} aoMudar={(j) => mudar(moverJanela(p, j))} /> : <p>Abrindo o PDF…</p>}
       <div class="acoes">
         <button type="button" onClick={() => mudar(moverJanela(p, [0, 0, p.pagina.largura, p.pagina.altura]))}>
@@ -674,7 +681,7 @@ function MarcarPecas({
     if (!t) {
       const perto = tocada(folga)
       if (perto >= 0) return setEscolhida(perto)
-      return setAviso('Nenhum nome aqui. Toque em cima do nome da peça, ou use "Desenhar".')
+      return setAviso('Sem nome aqui. Toque no nome da peça ou use "Desenhar".')
     }
     const nova = pecaDoTexto(t, p.janela, tipo)
     const repetida = p.pecas.findIndex((pc) => pc.tipo === nova.tipo && pc.nome.toUpperCase() === nova.nome.toUpperCase())

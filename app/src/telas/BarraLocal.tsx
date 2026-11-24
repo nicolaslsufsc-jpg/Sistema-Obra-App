@@ -77,7 +77,7 @@ export function BarraLocal({
     }
   }
 
-  const guardados = daObra > 0 ? `${daObra} ${daObra === 1 ? 'registro guardado' : 'registros guardados'} neste aparelho.` : 'Nenhum registro ainda.'
+  const guardados = daObra > 0 ? `${daObra} ${daObra === 1 ? 'registro guardado' : 'registros guardados'} neste aparelho.` : 'Sem registros neste aparelho.'
 
   // Na tela inicial, tudo isto fica num bloco recolhido (demonstração, 14/11/2026): à vista só uma linha
   // calma, e o aviso de cópia quando há registro que nunca foi salvo. Abre sozinho quando pede atenção.
@@ -129,7 +129,7 @@ export function BarraLocal({
         <div class="acoes-linha" data-testid="pasta-automatica">
           {pasta.estado === 'nenhuma' && (
             <>
-              <span>Salvamento automático: nenhuma pasta.</span>
+              <span>Salvamento automático: –</span>
               <button type="button" onClick={async () => setPasta(await escolherPasta(banco))}>
                 Escolher pasta
               </button>

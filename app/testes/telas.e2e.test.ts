@@ -142,6 +142,8 @@ suite('telas no navegador', () => {
     await pagina.getByRole('button', { name: /OBRA1/ }).waitFor()
     await capturar('2-obras')
     expect(await pagina.getByRole('button', { name: /OBRA2/ }).count()).toBe(0)
+    // "Nova obra" é só do administrador
+    expect(await pagina.getByRole('button', { name: 'Nova obra' }).count()).toBe(0)
     await pagina.getByRole('button', { name: /OBRA1/ }).click()
 
     await pagina.getByText(/Sincronizado hoje/).waitFor({ timeout: 20_000 })
@@ -219,6 +221,8 @@ suite('telas no navegador', () => {
   it('admin dá, muda e tira acesso pela tela Pessoas da obra', async () => {
     await pagina.getByRole('button', { name: 'Trocar e-mail' }).click()
     await entrar(USUARIOS.admin.email)
+    // o administrador vê o botão do assistente Nova obra (nova_obra.html)
+    await pagina.getByRole('button', { name: 'Nova obra' }).waitFor()
     await pagina.getByRole('button', { name: /OBRA1/ }).click()
     // O menu é longo: rola até o fim antes de abrir, para conferir que a tela nova começa no alto.
     await pagina.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
@@ -345,7 +349,7 @@ suite('telas no navegador', () => {
     await pagina.getByRole('heading', { name: 'FVS', exact: true }).waitFor()
     expect(await pagina.evaluate(() => history.state?.tela)).toBe('fvs')
     // obra de teste sem planta publicada: a tela explica como publicar
-    await pagina.getByText('Nenhuma planta publicada nesta obra ainda', { exact: false }).waitFor()
+    await pagina.getByText('Sem plantas publicadas', { exact: false }).waitFor()
     expect(await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).innerText()).toBe('‹')
     await pagina.getByRole('button', { name: 'Voltar ao menu', exact: true }).click()
     await pagina.getByTestId('menu-obra').waitFor()

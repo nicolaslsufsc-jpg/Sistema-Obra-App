@@ -13,6 +13,7 @@ import { TelaAcoes } from './TelaAcoes'
 import { TelaPainel } from './TelaPainel'
 import { TelaObra } from './TelaObra'
 import { TelaComprovante } from './TelaComprovante'
+import { TelaEntregas } from './TelaEntregas'
 import { TelaEntregasBase, TelaPranchasBase, type FiltroEntrega, type FiltroPrancha } from './TelaListasBase'
 import { TelaAEntregar, TelaDistribuicao } from './TelaDistribuicao'
 import { TelaAgora } from './TelaAgora'
@@ -34,11 +35,12 @@ export type TelaProjetos =
   | { nome: 'distribuicao' }
   | { nome: 'inicio' }
   | ({ nome: 'prancha-base' } & AlvoPrancha)
-  | { nome: 'lista'; ids?: string[]; titulo?: string }
+  | { nome: 'lista'; ids?: string[]; titulo?: string; pasta?: string[] }
   | { nome: 'prancha'; documentoId: string }
   | { nome: 'entregar-copia'; disciplina?: string; pavimento?: string; marcadas?: string[] }
   | { nome: 'entregar'; documentoId: string; empresaId?: string; outras?: string[] }
-  | { nome: 'comprovante'; assinaturaId: string }
+  | { nome: 'comprovante'; assinaturaId?: string; chave?: string }
+  | { nome: 'entregas-lista'; busca?: string }
   | { nome: 'recolher'; documentoId: string; entregaId?: string }
   | { nome: 'empresas' }
   | { nome: 'acoes' }
@@ -132,6 +134,9 @@ export function ModuloProjetos({
     case 'pranchas-base':
       conteudo = <TelaPranchasBase ctx={ctx} aoSair={aoSair} filtroInicial={tela.filtro} />
       break
+    case 'entregas-lista':
+      conteudo = <TelaEntregas ctx={ctx} aoSair={aoSair} buscaInicial={tela.busca} />
+      break
     case 'entregas-base':
       conteudo = <TelaEntregasBase ctx={ctx} aoSair={aoSair} filtroInicial={tela.filtro} buscaInicial={tela.busca} />
       break
@@ -157,7 +162,7 @@ export function ModuloProjetos({
       conteudo = <TelaInicio ctx={ctx} aoSair={voltar} />
       break
     case 'lista':
-      conteudo = <TelaLista ctx={ctx} ids={tela.ids} titulo={tela.titulo} />
+      conteudo = <TelaLista ctx={ctx} ids={tela.ids} titulo={tela.titulo} pasta={tela.pasta} />
       break
     case 'prancha':
       conteudo = <TelaPrancha ctx={ctx} documentoId={tela.documentoId} />
@@ -169,7 +174,7 @@ export function ModuloProjetos({
       conteudo = <FormEntrega ctx={ctx} documentoId={tela.documentoId} empresaId={tela.empresaId} outras={tela.outras} />
       break
     case 'comprovante':
-      conteudo = <TelaComprovante ctx={ctx} assinaturaId={tela.assinaturaId} />
+      conteudo = <TelaComprovante ctx={ctx} assinaturaId={tela.assinaturaId} chave={tela.chave} />
       break
     case 'recolher':
       conteudo = <FormDevolucao ctx={ctx} documentoId={tela.documentoId} entregaId={tela.entregaId} />

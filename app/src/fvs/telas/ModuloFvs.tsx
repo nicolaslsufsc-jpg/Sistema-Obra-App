@@ -4,7 +4,7 @@ import type { Linha } from '../../nucleo/banco_local'
 import type { PropsModulo } from '../../modulos'
 import { usarSincronizacao } from '../../nucleo/usarSincronizacao'
 import { atualizarNomes, avisoDaSincronizacao, carregar, refazerToquesDaObra, type DadosFvs } from '../dados'
-import { DadosDaTela, dadosGuardados, preLeituraEmCurso } from '../leitura'
+import { aoMudarOAparelho, DadosDaTela, dadosGuardados, obraVazia, preLeituraEmCurso } from '../leitura'
 import { pacotesNoAparelho } from '../pacote'
 import { sistemaDaObra, type SistemaOficial } from '../../integracoes/sistema_oficial'
 import { lembrarTela, telaGuardada } from '../onde_estava'
@@ -29,8 +29,9 @@ export type TelaFvs =
   | { nome: 'duplicadas' }
   | { nome: 'regras' }
   /** locais do sistema oficial que não são peça da planta (21/11/2026): a lista e um local */
-  | { nome: 'locais' }
-  | { nome: 'local'; localId: string }
+  | { nome: 'locais'; servico?: string }
+  /** servico (código da ficha, 23/11/2026): o local abre nessa ficha quando ele tem mais de uma */
+  | { nome: 'local'; localId: string; servico?: string }
   | { nome: 'escoramento' }
   /** pecaId, fichaCampoId e item: abre centrada na peça, com o painel nessa ficha e nesse item;
    *  servico e aba: planta de ambientes aberta pelo menu do pavimento (opcoes_ambientes.ts, campo `abre`);
@@ -119,6 +120,15 @@ export function ModuloFvs(props: PropsModulo) {
     })
   }, [recarregar, estado.versaoDados])
 
+  // Obra vazia (sem fichas e sem plantas): os dados podem estar chegando agora, pela baixa que o menu começou ao
+  // trocar de obra (testador, 23/11: obra piloto → EXE mostrava "ainda não tem fichas" até recarregar a página). Enquanto
+  // estiver vazia, relê a cada gravação no aparelho; com dados, volta ao normal (o toque não relê).
+  const vazia = !!dados && obraVazia(dados)
+  useEffect(() => {
+    if (!vazia) return
+    return aoMudarOAparelho(() => void recarregar())
+  }, [vazia, recarregar])
+
   // Planta aberta com conta: busca o que outro aparelho marcou a cada minuto, e não só a cada 5 min (o
   // ritmo do núcleo sem nada esperando envio). Teste com cabo (20/11): com o painel do P1 aberto no
   // celular, o C marcado no tablet não apareceu em 2 min. Quando chega registro novo, o núcleo muda
@@ -198,8 +208,8 @@ export function ModuloFvs(props: PropsModulo) {
   if (tela.nome === 'reprovacoes') return <TelaReprovacoes ctx={ctx} aviso={aviso} />
   if (tela.nome === 'lancamento' && ctx.sistema) return <TelaLancamento ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   if (tela.nome === 'regras') return <TelaRegras ctx={ctx} />
-  if (tela.nome === 'locais') return <TelaLocais ctx={ctx} aviso={aviso} />
-  if (tela.nome === 'local') return <TelaLocal key={tela.localId} ctx={ctx} localId={tela.localId} aviso={aviso} />
+  if (tela.nome === 'locais') return <TelaLocais ctx={ctx} aviso={aviso} servicoInicial={tela.servico} />
+  if (tela.nome === 'local') return <TelaLocal key={tela.localId} ctx={ctx} localId={tela.localId} servico={tela.servico} aviso={aviso} />
   if (tela.nome === 'escoramento') return <TelaEscoramento ctx={ctx} aviso={aviso} />
   if (tela.nome === 'duplicadas' && ctx.sistema) return <TelaDuplicadas ctx={ctx} sistema={ctx.sistema} aviso={aviso} />
   // os três níveis do início são a mesma tela (o download em andamento continua ao trocar de nível)

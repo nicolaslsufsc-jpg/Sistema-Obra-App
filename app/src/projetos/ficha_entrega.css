@@ -1,0 +1,171 @@
+/* Ficha de entrega no formato do formulário da obra (23/11/2026): A4 deitado, linhas finas, Arial.
+   Só aparece na impressão (dentro da folha do Exportar PDF). Cores só pelas variáveis de papel do tema. */
+.fe-ficha {
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--papel-texto);
+  font-size: 8.5pt;
+}
+.fe-pagina {
+  break-after: page;
+  break-inside: avoid;
+  /* a moldura vai até o pé da folha, como no formulário impresso (A4 deitado menos as margens) */
+  min-height: 186mm;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  padding: 0 0 3mm;
+}
+.fe-pagina:last-child {
+  break-after: auto;
+}
+.fe-cab,
+.fe-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.fe-cab td {
+  border: 1px solid currentColor;
+  padding: 0.6mm 1.2mm;
+  vertical-align: top;
+}
+.fe-cab tr > td:first-child,
+.fe-cab tr:not(:first-child) > td:first-child {
+  border-left: 0;
+}
+.fe-cab tr:first-child td {
+  border-top: 0;
+}
+.fe-cab tr > td:last-child {
+  border-right: 0;
+}
+.fe-c-logo {
+  width: 30mm;
+}
+.fe-c-ref1 {
+  width: 18mm;
+}
+.fe-c-ref2 {
+  width: 17mm;
+}
+.fe-logo {
+  text-align: center;
+  vertical-align: middle !important;
+}
+.fe-logo img {
+  max-width: 26mm;
+  max-height: 9mm;
+  object-fit: contain;
+}
+.fe-rot {
+  display: block;
+  font-size: 6.5pt;
+}
+.fe-val {
+  display: block;
+  text-align: center;
+  font-size: 8.5pt;
+}
+.fe-val.fe-esq {
+  text-align: left;
+  padding-left: 12mm;
+}
+.fe-sep {
+  border-top: 1px solid currentColor;
+  margin: 0.4mm -1.2mm 0;
+  padding: 0.2mm 1.2mm 0;
+}
+.fe-titulo {
+  text-align: center;
+  font-weight: 700;
+  font-size: 9pt;
+  margin-top: 1mm;
+}
+.fe-corpo {
+  padding: 3mm 8mm 0;
+}
+.fe-obra,
+.fe-disc {
+  margin: 0 0 2mm 6mm;
+  font-size: 9pt;
+}
+.fe-preenche {
+  display: inline-block;
+  min-width: 90mm;
+  border-bottom: 1px solid currentColor;
+  padding: 0 1mm;
+}
+.fe-outros {
+  min-width: 50mm;
+}
+.fe-disc-rot {
+  margin-right: 1mm;
+}
+.fe-disc-2 {
+  margin-left: 25mm;
+}
+.fe-caixa {
+  margin-right: 3.5mm;
+  white-space: nowrap;
+}
+.fe-caixa.marcada {
+  font-weight: 700;
+}
+.fe-tabela {
+  margin-top: 3mm;
+}
+.fe-tabela th,
+.fe-tabela td {
+  border: 1px solid var(--papel-borda);
+  padding: 0.5mm 1mm;
+  height: 6.2mm;
+  overflow: hidden;
+  vertical-align: middle;
+  word-break: break-word;
+}
+.fe-tabela th {
+  font-size: 7.5pt;
+  font-weight: 700;
+  text-align: center;
+  height: auto;
+  padding: 1mm 0.5mm;
+}
+.fe-c-codigo {
+  width: 34mm;
+}
+.fe-c-versao {
+  width: 15mm;
+}
+.fe-c-copias {
+  width: 14mm;
+}
+.fe-c-data {
+  width: 20mm;
+}
+.fe-c-emp {
+  width: 27mm;
+}
+.fe-c-nome {
+  width: 25mm;
+}
+.fe-c-assinatura {
+  width: 38mm;
+}
+.fe-cod {
+  font-size: 7.5pt;
+}
+.fe-centro {
+  text-align: center;
+}
+.fe-ass {
+  padding: 0 !important;
+  text-align: center;
+}
+.fe-ass img {
+  max-height: 5.6mm;
+  max-width: 40mm;
+  object-fit: contain;
+  vertical-align: middle;
+}
+.fe-centro {
+  white-space: nowrap;
+}

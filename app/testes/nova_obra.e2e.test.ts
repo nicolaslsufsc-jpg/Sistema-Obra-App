@@ -110,12 +110,32 @@ suite('Nova obra (telas)', () => {
       await print(p, `${nome}_3_ficha`)
       await p.getByRole('button', { name: 'Pronto' }).click()
       await p.getByRole('button', { name: /EX2-PVS-01 Execução de pilares/ }).waitFor()
+      await p.getByRole('button', { name: 'Seguir para as pessoas' }).click()
+
+      // pessoas: quem terá acesso quando publicar no servidor (e-mail inválido segura o salvar)
+      await p.getByRole('heading', { name: 'Quem tem acesso' }).waitFor()
+      await p.getByRole('button', { name: 'Pôr pessoa' }).click()
+      await p.getByLabel('Nome').fill('Maria Exemplo')
+      await p.getByLabel('E-mail (pode ficar vazio)').fill('maria@')
+      await p.getByLabel('Papel').selectOption('gestor')
+      await conferirTela(p)
+      await print(p, `${nome}_4_pessoas`)
+      await p.getByRole('button', { name: 'Seguir para salvar' }).click()
+      await p.getByText('Maria Exemplo: e-mail inválido (maria@).').waitFor()
+      expect(await p.getByRole('button', { name: 'Publicar no servidor' }).isDisabled()).toBe(true)
+      await p.getByRole('alert').getByRole('button', { name: 'Pessoas' }).click()
+      await p.getByLabel('E-mail (pode ficar vazio)').fill('maria@exemplo.com')
       await p.getByRole('button', { name: 'Seguir para salvar' }).click()
 
-      // 4. salvar
+      // salvar e publicar
       await p.getByText('Tudo certo para salvar.').waitFor()
+      await p.getByText('1 pessoa com acesso').waitFor()
       await conferirTela(p)
-      await print(p, `${nome}_4_salvar`)
+      await print(p, `${nome}_5_salvar`)
+      // sem ter entrado no app com a conta de administrador, a publicação nem começa
+      await p.getByRole('button', { name: 'Publicar no servidor' }).click()
+      await p.getByText(/Entre no app com a conta de administrador/).waitFor()
+      await conferirTela(p)
       const [download] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'Salvar pacote da obra (.zip)' }).click()])
       expect(download.suggestedFilename()).toMatch(/^obra_EX2_\d{4}-\d{2}-\d{2}\.zip$/)
       const arquivo = await download.path()
@@ -253,7 +273,7 @@ suite('Nova obra (telas)', () => {
       await p.getByText('2 pilares, 1 vigas, 0 lajes.', { exact: false }).waitFor()
       // tocar longe de qualquer nome avisa e não cria peça
       await tocar(peca('P-01')[0] + 90, centroY(peca('P-01')) + 120)
-      await p.getByText(/Nenhum nome aqui/).waitFor()
+      await p.getByText(/Sem nome aqui/).waitFor()
       // conferência: as 3 marcadas pelo nome ainda não têm contorno; tocar na lista abre a peça
       await p.getByText('Sem contorno (3)').waitFor()
       await p.getByRole('group', { name: 'Sem contorno' }).getByRole('button', { name: 'P-02' }).click()
@@ -289,7 +309,7 @@ suite('Nova obra (telas)', () => {
       await p.getByRole('button', { name: 'Pronto' }).click()
 
       // salvar e conferir o .zip
-      await p.getByRole('button', { name: '5. Salvar' }).click()
+      await p.getByRole('button', { name: '6. Salvar' }).click()
       // dá para salvar, mas avisa das 3 marcadas pelo nome sem contorno (achado do Testador)
       await p.getByText('Dá para salvar, mas confira:').waitFor()
       await p.getByText(/^3 peças sem contorno: na FVS aparecem só como o retângulo do nome/).waitFor()
@@ -409,7 +429,7 @@ suite('Nova obra (telas)', () => {
       await conferirTela(p)
       await p.getByRole('button', { name: 'Pronto' }).click()
 
-      await p.getByRole('button', { name: '5. Salvar' }).click()
+      await p.getByRole('button', { name: '6. Salvar' }).click()
       await p.getByText('Tudo certo para salvar.').waitFor()
       const [download] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'Salvar pacote da obra (.zip)' }).click()])
       const zip = await abrirZip(new Blob([readFileSync(await download.path())]))

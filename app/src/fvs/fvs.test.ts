@@ -41,12 +41,13 @@ import {
   pecasNoAparelho,
   textoDoErroDeDownload,
 } from './pacote'
-import { cadeiaDeRevisoes, pacoteDaPlanta, pacotesAManter } from './revisoes'
+import { cadeiaDeRevisoes, manterNaLimpeza, pacoteDaPlanta, pacotesAManter } from './revisoes'
 import { ehPlantaDeEstrutura, plantaDeDesenho, plantasVigentes } from './plantas'
 import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { buscarPecas } from './busca'
+import { baixarPlanta, usarFonteDeArquivos, type Planta } from './dados'
 import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, localDoRegistro, marcarPelosFuros, voltarItem, horaNaFrente, horaNormal, ligarDepoisDe, ligarEntrePecas, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
 import { sincronizador } from '../nucleo/servicos'
 import { hojeNoAparelho } from './formato'
@@ -1005,6 +1006,45 @@ describe('pacote de planta no aparelho', () => {
     await limparPacotes(eu, new Set())
   })
 
+  it('planta já no aparelho não baixa de novo: abrir duas vezes = um download (limite de dados, 24/11)', async () => {
+    const hash = async (b: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b as BufferSource))].map((x) => x.toString(16).padStart(2, '0')).join('')
+    const texto = new TextEncoder().encode(JSON.stringify({ ...manifest, planta_id: 'uma-vez' }))
+    const bin = new Uint8Array([1, 2, 3, 4, 5])
+    const pedidos: string[] = []
+    usarFonteDeArquivos(async (caminho) => {
+      pedidos.push(caminho)
+      return new Blob([caminho.endsWith('.bin') ? bin : texto])
+    })
+    const planta = {
+      id: 'uma-vez',
+      manifest: { id: 'm', caminho: 'o/fvs/plantas/uma-vez/manifest.json', hash: await hash(texto), tamanho: texto.length },
+      pacote: { id: 'p', caminho: 'o/fvs/plantas/uma-vez/pacote.bin', hash: await hash(bin), tamanho: bin.length },
+    } as unknown as Planta
+    // duas telas pedindo ao mesmo tempo (menu e FVS): um download só
+    await Promise.all([baixarPlanta(planta, eu), baixarPlanta(planta, eu)])
+    expect(pedidos).toHaveLength(2)
+    // abrir de novo, recarregar, trocar de pavimento e voltar: zero bytes do servidor
+    const fracoes: number[] = []
+    expect((await baixarPlanta(planta, eu, (f) => fracoes.push(f))).planta_id).toBe('uma-vez')
+    await baixarPlanta(planta, eu)
+    expect(pedidos).toHaveLength(2)
+    expect(fracoes).toEqual([1])
+    // outra pessoa no mesmo aparelho: o pacote passa a ser dela, sem baixar (a limpeza não tira)
+    const outra = { obraId: 'obra-1', usuarioId: 'u2' }
+    await baixarPlanta(planta, outra)
+    expect(pedidos).toHaveLength(2)
+    expect(await limparPacotes(outra, new Set(['uma-vez']))).toBe(0)
+    // arquivo diferente no servidor com o mesmo id (não acontece: a revisão nova tem id novo): baixa
+    const bin2 = new Uint8Array([9, 9, 9, 9, 9])
+    usarFonteDeArquivos(async (caminho) => {
+      pedidos.push(caminho)
+      return new Blob([caminho.endsWith('.bin') ? bin2 : texto])
+    })
+    await baixarPlanta({ ...planta, pacote: { ...planta.pacote!, hash: await hash(bin2) } } as Planta, outra)
+    expect(pedidos).toHaveLength(4)
+    await limparPacotes(outra, new Set())
+  })
+
   it('sem como contar, lê de uma vez; aparelho cheio tem aviso próprio', async () => {
     expect(await (await lerComProgresso(new Response('abc'))).text()).toBe('abc')
     expect(textoDoErroDeDownload({ name: 'QuotaExceededError' })).toMatch(/sem espaço/)
@@ -1091,6 +1131,19 @@ describe('pacote de planta no aparelho', () => {
     // a nova chegou: nenhuma anterior fica
     expect(pacoteDaPlanta('nova', anterioresDe.get('nova'), new Set(['nova', 'r1']))).toBe('nova')
     expect([...pacotesAManter(['nova'], anterioresDe, new Set(['nova', 'r1']))]).toEqual(['nova'])
+  })
+
+  it('limpeza com dados lidos antes da sincronização não apaga a planta que acabou de baixar (24/11)', async () => {
+    const bin = () => new Blob([new Uint8Array([1, 2, 3, 4, 5])])
+    for (const id of ['baixada-agora', 'nova', 'r1']) await guardarPacote(JSON.stringify({ ...manifest, planta_id: id }), bin(), eu)
+    const noAparelho = await pacotesNoAparelho()
+    // dados de antes do cadastro chegar: não conhecem planta nenhuma, então nada sai
+    expect(await limparPacotes(eu, manterNaLimpeza(new Map(), new Map(), new Map(), noAparelho))).toBe(0)
+    // dados novos: a revisão anterior (r1) sai porque a nova chegou; a desconhecida continua
+    const anterioresDe = new Map([['nova', [{ id: 'r1', revisao: 'R01' }]]])
+    expect(await limparPacotes(eu, manterNaLimpeza(new Map([['nova', 1]]), anterioresDe, new Map([['r1', 'nova']]), await pacotesNoAparelho()))).toBe(1)
+    expect([...(await pacotesNoAparelho()).keys()].sort()).toEqual(['baixada-agora', 'nova'])
+    await limparPacotes(eu, new Set())
   })
 
   it('revisão nova: abre o pacote que está no aparelho, o da vigente primeiro', async () => {

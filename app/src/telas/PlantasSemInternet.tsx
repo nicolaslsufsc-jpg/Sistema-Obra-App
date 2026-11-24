@@ -38,15 +38,18 @@ export function PlantasSemInternet({
     return s
   }
 
-  const baixar = async () => {
-    if (rodando.current) return
+  /** Baixa as que faltam. false = deu erro (o texto fica na tela). */
+  const baixar = async (): Promise<boolean> => {
+    if (rodando.current) return true
     rodando.current = true
     setErro('')
     try {
       await baixarQueFaltam(obraId, { obraId, usuarioId }, (feitas, total) => ativo.current && setBaixando({ feitas, total }), () => !ativo.current)
+      return true
     } catch (e) {
       const texto = await textoDoErro(e)
       if (ativo.current) setErro(texto)
+      return false
     } finally {
       rodando.current = false
       // relê antes de tirar o "baixando": senão pisca a contagem de antes da baixa ("0 de 9")
@@ -67,8 +70,9 @@ export function PlantasSemInternet({
         return
       }
       tentouAuto.current = true
-      await baixar()
-      tentouAuto.current = false
+      // deu erro: não tenta de novo sozinho a cada sincronização, porque cada tentativa baixa outra vez a
+      // planta que falhou (5 a 24 MB; limite de dados do servidor, 24/11/2026). Volta pelo botão ou ao abrir o menu.
+      if (await baixar()) tentouAuto.current = false
     })()
     return () => {
       cancelado = true
@@ -92,7 +96,7 @@ export function PlantasSemInternet({
       {semEspaco && !baixando && <p>O aparelho está sem espaço para as plantas que faltam. Libere espaço e toque em "Baixar plantas".</p>}
       {erro && <p>{erro}</p>}
       {!tudo && !baixando && (
-        <button type="button" onClick={baixar} disabled={!online}>
+        <button type="button" onClick={() => void baixar()} disabled={!online}>
           Baixar plantas
         </button>
       )}

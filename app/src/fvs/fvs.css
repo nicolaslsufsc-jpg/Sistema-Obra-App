@@ -635,6 +635,16 @@
   color: var(--texto-1565c0);
   font-weight: 600;
 }
+/* quadrado azul do contador (a cor da peça liberada para concretar na planta): só aparece no aperto,
+   quando "p/ concretar" e "com NC" dividem a 2ª linha (.com-dois, até 900 px) */
+.fv-q-azul {
+  display: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 3px;
+  border-radius: 2px;
+  background: #1565c0;
+}
 .fv-corpo {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1285,6 +1295,16 @@
 .fv-so-app {
   font-style: italic;
 }
+/* item só do app (consolo, capitel, 24/11): não existe no sistema oficial; a equipe não deve procurá-lo lá */
+.fv-so-do-app {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border: 1px dashed var(--texto-5b5d61);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--texto-5b5d61);
+}
 
 /* item que a lista de reprovações mandou olhar */
 .fv-item.destaque {
@@ -1603,6 +1623,14 @@
     right: 0;
   }
 }
+/* tablet deitado (1024 px): com "p/ concretar" e "com NC" juntos (24/11), o contador numa linha só espremia
+   a etapa ("Etapas" cortado com a fonte larga); quem cede é o contador, que quebra em duas linhas */
+@media (min-width: 901px) and (max-width: 1199px) {
+  .fv-prog {
+    white-space: normal;
+    min-width: 0;
+  }
+}
 @media (max-width: 900px) {
   /* tablet em pé: o título não pode ser espremido até sumir ("Planta inteira" saía uma letra por
      linha, 14/11); quem cede é o contador, que quebra em duas linhas */
@@ -1614,6 +1642,38 @@
   .fv-prog {
     white-space: normal;
     min-width: 0;
+  }
+  /* contador em 2 linhas no máximo (24/11): "0/24 liberados" na 1ª; na 2ª, "1 p/ concretar" ou "1 com NC".
+     Com os dois juntos não cabe por extenso (85 px no celular): a 2ª vira "■ 1 · 1 NC", o quadrado azul
+     da peça na planta; as palavras ficam fora da vista, mas no texto (leitor de tela) */
+  .fv-prog .fv-prog-lib {
+    display: block;
+  }
+  .fv-prog .fv-txt-concretar,
+  .fv-prog .fv-link-r {
+    white-space: nowrap;
+  }
+  .fv-prog .fv-sep {
+    display: none;
+  }
+  .fv-prog.com-dois .fv-sep-nc {
+    display: inline;
+  }
+  .fv-prog.com-dois .fv-q-azul {
+    display: inline-block;
+  }
+  .fv-prog.com-dois .fv-longo {
+    font-size: 0;
+  }
+  /* tablet em pé (a linha do topo é flex): o contador não encolhe abaixo das duas linhas dele; sem isto
+     ele ficava com 50 px e ia a 5 linhas. Quem cede são a etapa e as abas */
+  @media (min-width: 701px) {
+    .fv-prog {
+      flex-shrink: 0;
+    }
+    .fv-prog .fv-prog-lib {
+      white-space: nowrap;
+    }
   }
   .fv-etapa {
     max-width: 120px;
@@ -1774,12 +1834,6 @@
     font-size: 11px;
     margin: 0;
     white-space: normal;
-  }
-  .fv-prog .fv-txt-concretar {
-    display: block;
-  }
-  .fv-prog .fv-txt-concretar .fv-sep {
-    display: none;
   }
   .fv-bpincel {
     grid-column: 10 / 13;

@@ -3,13 +3,16 @@
 import type { ObraLocal, UsuarioLocal } from '../nucleo/conta'
 import type { DestinoPc } from './CascaPc'
 import { usarDadosPc } from './dados_pc'
-import { PaginaPainel } from './PaginaPainel'
+import { usarSincronizacao } from '../nucleo/usarSincronizacao'
+import { PaginaAvanco } from './PaginaAvanco'
 import { PaginaRelatorios } from './PaginaRelatorios'
 import { PaginaPranchas } from './PaginaPranchas'
 import type { PaginaPc } from './versao_pc'
 
-export function PaginasPc({ pagina, obra, usuario, aoIr }: { pagina: PaginaPc; obra: ObraLocal; usuario: UsuarioLocal; aoIr: (d: DestinoPc) => void }) {
-  const dados = usarDadosPc(obra, usuario)
+export function PaginasPc({ pagina, obra, usuario, aoIr, aoPerderObra }: { pagina: PaginaPc; obra: ObraLocal; usuario: UsuarioLocal; aoIr: (d: DestinoPc) => void; aoPerderObra: () => void }) {
+  // a sincronização de sempre do núcleo: busca no servidor o que a equipe registrou e avisa quando chega dado novo
+  const { estado, sincronizarAgora } = usarSincronizacao(usuario.id, obra.id, aoPerderObra)
+  const dados = usarDadosPc(obra, usuario, estado.versaoDados)
   if (!dados) {
     return (
       <main class="tela pc-pagina" data-testid={`pc-pagina-${pagina}`} aria-busy="true">
@@ -17,7 +20,7 @@ export function PaginasPc({ pagina, obra, usuario, aoIr }: { pagina: PaginaPc; o
       </main>
     )
   }
-  if (pagina === 'painel') return <PaginaPainel dados={dados} aoIr={aoIr} />
+  if (pagina === 'painel') return <PaginaAvanco dados={dados} obra={obra} usuario={usuario} sincronizacao={estado} aoSincronizar={sincronizarAgora} aoIr={aoIr} />
   if (pagina === 'relatorios') return <PaginaRelatorios dados={dados} obra={obra} usuario={usuario} />
   return <PaginaPranchas dados={dados} obra={obra} aoIr={aoIr} />
 }

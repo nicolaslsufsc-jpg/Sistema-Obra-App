@@ -117,3 +117,22 @@ export function pacotesAManter(vigentes: Iterable<string>, anterioresDe: Readonl
   }
   return manter
 }
+
+/**
+ * O que fica no aparelho na limpeza ao abrir a FVS: o de pacotesAManter e também o pacote de planta que
+ * estes dados ainda não conhecem. Os dados podem ter sido lidos antes de a sincronização trazer o cadastro
+ * das plantas (a FVS abre com a leitura feita no menu, logo depois do login): sem isto, a limpeza
+ * apagava as plantas que o menu tinha acabado de baixar, e a pessoa baixava a obra inteira de novo
+ * (servidor, 24/11/2026: 71 plantas baixadas às 12h36 e baixadas de novo uma a uma a partir das 12h40).
+ * Da obra, só sai a revisão anterior (planta que os dados conhecem como substituída), depois que a nova chegou.
+ */
+export function manterNaLimpeza(
+  vigentes: { has(id: string): boolean; keys(): Iterable<string> },
+  anterioresDe: ReadonlyMap<string, readonly RevisaoAnterior[]>,
+  vigenteDe: { has(id: string): boolean },
+  noAparelho: { has(id: string): boolean; keys(): Iterable<string> },
+): Set<string> {
+  const manter = pacotesAManter(vigentes.keys(), anterioresDe, noAparelho)
+  for (const id of noAparelho.keys()) if (!vigentes.has(id) && !vigenteDe.has(id)) manter.add(id)
+  return manter
+}

@@ -13,7 +13,7 @@ import './pc.css'
 export type DestinoPc = { tipo: 'inicio' } | { tipo: 'modulo'; id: IdModulo } | { tipo: 'pagina'; pagina: PaginaPc }
 
 const PAGINAS: ReadonlyArray<{ pagina: PaginaPc; nome: string; dica: string; tracos: string[] }> = [
-  { pagina: 'painel', nome: 'Painel da obra', dica: 'Números de todos os módulos', tracos: ['M4 20V10', 'M10 20V4', 'M16 20v-7', 'M22 20H2'] },
+  { pagina: 'painel', nome: 'Avanço da obra', dica: 'Pilares, vigas, lajes, armação e concreto, por residencial', tracos: ['M4 20V10', 'M10 20V4', 'M16 20v-7', 'M22 20H2'] },
   { pagina: 'relatorios', nome: 'Relatórios', dica: 'PDF e planilha por módulo, pavimento e período', tracos: ['M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z', 'M14 2v5h5', 'M8 13h8', 'M8 17h5'] },
   { pagina: 'pranchas', nome: 'Pranchas e PDFs', dica: 'Busca única em pranchas, documentos e plantas', tracos: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M21 21l-5-5'] },
 ]
@@ -87,17 +87,6 @@ export function CascaPc({
             </span>
           </small>
         </div>
-        <ul class="pc-lista">
-          {item(
-            { tipo: 'inicio' },
-            'pc-ir-inicio',
-            <>
-              <Icone tracos={['M3 11l9-8 9 8', 'M5 10v10h14V10']} />
-              <span>Início</span>
-            </>,
-            'Menu da obra, cópia de segurança e avisos',
-          )}
-        </ul>
         <p class="pc-grupo">Escritório</p>
         <ul class="pc-lista">
           {PAGINAS.map((p) =>
@@ -110,6 +99,18 @@ export function CascaPc({
               </>,
               p.dica,
             ),
+          )}
+        </ul>
+        <p class="pc-grupo">Obra</p>
+        <ul class="pc-lista">
+          {item(
+            { tipo: 'inicio' },
+            'pc-ir-inicio',
+            <>
+              <Icone tracos={['M3 11l9-8 9 8', 'M5 10v10h14V10']} />
+              <span>Menu da obra</span>
+            </>,
+            'Módulos, sincronização, cópia de segurança e avisos',
           )}
         </ul>
         <p class="pc-grupo">Módulos</p>
@@ -145,7 +146,7 @@ export function CascaPc({
   )
 }
 
-type PropsPaginas = { pagina: PaginaPc; obra: ObraLocal; usuario: UsuarioLocal; aoIr: (d: DestinoPc) => void }
+type PropsPaginas = { pagina: PaginaPc; obra: ObraLocal; usuario: UsuarioLocal; aoIr: (d: DestinoPc) => void; aoPerderObra: () => void }
 
 /** As páginas do PC, carregadas só quando abertas (como os módulos, sobDemanda). */
 export function PaginaPcSobDemanda(props: PropsPaginas) {

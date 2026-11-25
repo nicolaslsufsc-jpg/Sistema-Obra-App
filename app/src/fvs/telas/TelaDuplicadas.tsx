@@ -1,5 +1,6 @@
 // Peças com mais de uma ficha no sistema oficial, com a situação de cada uma. Serve para saber o que
 // corrigir lá: o app guarda as duas e não escolhe por ninguém. Tocar na linha abre a peça na planta.
+import { concretadaDe } from '../concretada'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { codigoParaLer, quando } from '../formato'
 import { listarDuplicadas, ROTULO_SITUACAO as ROTULO, situacaoDaFichaAberta } from '../situacao'
@@ -89,7 +90,7 @@ export function TelaDuplicadas({ ctx, sistema, aviso }: { ctx: ContextoFvs; sist
                   </span>
                 </span>
                 {l.fichas.map((f) => {
-                  const s = situacaoDaFichaAberta(f, fichaPorId, eventos)
+                  const s = situacaoDaFichaAberta(f, fichaPorId, eventos, undefined, undefined, concretadaDe(dados.concretadas, l.pecaId, l.tipo))
                   return (
                     <span class="fv-dup-ficha" key={f.id}>
                       <b title={f.codigo}>{codigoParaLer(f.codigo)}</b>

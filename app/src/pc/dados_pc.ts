@@ -35,17 +35,22 @@ export async function lerTudo(obra: ObraLocal, usuario: UsuarioLocal): Promise<D
   return { fvs: fvs ?? undefined, concreto: concreto ?? undefined, projetos: projetos ?? undefined, base, documentos: documentos ?? undefined, erros }
 }
 
-/** Os dados da obra para a página (null enquanto lê). */
-export function usarDadosPc(obra: ObraLocal, usuario: UsuarioLocal): DadosPc | null {
+/**
+ * Os dados da obra para a página (null enquanto lê pela primeira vez). `versao` muda quando a sincronização
+ * traz dado novo do servidor: a página relê sem piscar (fica com o que tinha até o novo chegar).
+ */
+export function usarDadosPc(obra: ObraLocal, usuario: UsuarioLocal, versao = 0): DadosPc | null {
   const [dados, setDados] = useState<DadosPc | null>(null)
   useEffect(() => {
-    let vivo = true
     setDados(null)
+  }, [obra.id, usuario.id])
+  useEffect(() => {
+    let vivo = true
     lerTudo(obra, usuario).then((d) => vivo && setDados(d))
     return () => {
       vivo = false
     }
-  }, [obra.id, usuario.id])
+  }, [obra.id, usuario.id, versao])
   return dados
 }
 

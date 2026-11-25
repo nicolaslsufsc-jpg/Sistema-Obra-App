@@ -166,7 +166,10 @@ def consolo_do_pilar(quads: list[list[list[float]]], pilar_polys, tamanho_max: f
 
 PONTOS_POR_METRO = 1 / (0.0254 / 72 * 50)  # planta 1:50
 RE_CAMADA_CUBETA = re.compile(r"^LJ_NERV", re.I)
-FOLGA_MACICO = 0.55   # m. 0,55 e não 0,6: o P64b do 3º tem 0,57 num lado (o desenho arredonda)
+# FOLGA_MACICO: 0,55 e não 0,6 porque há maciço de verdade com folga menor que 0,6 num lado (no 3º
+# da obra piloto: P128a 0,56, P80a e P99a 0,58; o desenho arredonda). Falso aviso conhecido: a
+# moldura de uma abertura na laje também é lisa (o P64b e o P237 do 3º, 0,57 e 0,76 m), e não é maciço.
+FOLGA_MACICO = 0.55   # m
 ALCANCE_MACICO = 3.0  # m: cubeta mais longe que isso não conta (borda da laje, vão, poço)
 FAIXA_MACICO = 0.5    # m: a cubeta de um lado pode passar até meio metro do canto do pilar
 CUBETA_MIN, CUBETA_MAX = 0.18, 1.25  # m: lado da cubeta (inteira ou meia)

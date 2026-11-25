@@ -1,7 +1,7 @@
 // Casca do app. Com a pasta da obra ao lado (dados_obra/): abre direto na obra, sem login, no modo
 // sem conta. Sem ela: entrar (e-mail e código) -> escolher obra -> menu de módulos.
 // Abre direto do banco do aparelho, sem esperar a internet.
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { conta, sincronizador } from './nucleo/servicos'
 import { pedirArmazenamentoPersistente } from './nucleo/aparelho'
 import type { ObraLocal, UsuarioLocal } from './nucleo/conta'
@@ -291,6 +291,19 @@ export function App() {
     }
   }
 
+  // A versão PC abre no Avanço da obra (a tela do escritório): ao ligar e a cada vez que o app abre nela.
+  // Só uma vez por abertura, para o "Menu da obra" da barra continuar levando ao menu.
+  const abriuNoAvanco = useRef(false)
+  useEffect(() => {
+    if (!pc.ativa) {
+      abriuNoAvanco.current = false
+      return
+    }
+    if (abriuNoAvanco.current || (tela.nome !== 'menu' && tela.nome !== 'modulo' && tela.nome !== 'pc')) return
+    abriuNoAvanco.current = true
+    if (tela.nome === 'menu') irNoPc({ tipo: 'pagina', pagina: 'painel' })
+  }, [pc.ativa, tela.nome])
+
   // Pacote (.zip) escolhido no aparelho: troca de obra ou pacote mais antigo pedem confirmação antes.
   const escolherPacote = async (pacote: PacoteLocalizado, voltar: Tela) => {
     esquecerModulo()
@@ -433,7 +446,7 @@ export function App() {
         />
       )
     case 'pc':
-      return <PaginaPcSobDemanda key={`${tela.pagina}:${tela.obra.id}`} pagina={tela.pagina} obra={tela.obra} usuario={tela.usuario} aoIr={irNoPc} />
+      return <PaginaPcSobDemanda key={`${tela.pagina}:${tela.obra.id}`} pagina={tela.pagina} obra={tela.obra} usuario={tela.usuario} aoIr={irNoPc} aoPerderObra={aoPerderObra} />
   }
   })()
 

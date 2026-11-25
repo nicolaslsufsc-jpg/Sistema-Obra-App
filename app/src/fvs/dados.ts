@@ -1,6 +1,9 @@
 // Leitura e registro dos dados da FVS no aparelho (pelo núcleo: funciona sem internet).
 
-import { caminhoesDasPecas, type CaminhaoDaPeca } from '../concreto/rastreio'
+import { caminhoesDasPecas, montarRastreioDasLajes, type AreaDeLajeFvs, type CaminhaoDaPeca, type RastreioDaLaje } from '../concreto/rastreio'
+import { idsDasConcretagensDeExemplo } from '../concreto/exemplo'
+import { chavesDasPlantas } from '../concreto/plantas_equivalentes'
+import { pecasConcretadas } from './concretada'
 import { datasDoConcreto, ehDoConcreto, registroDoRastreio } from './rastreio'
 import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
@@ -10,7 +13,7 @@ import { areasVigentes, type AreaDeLaje, type LinhaDeArea, type Ponto } from './
 import { dataHoraCompleta } from './formato'
 import { paraLocal, type LocalSistema } from './locais'
 import { aoTocar, daFichaAberta, fichaNaPeca, fichasPara, normalizarResultado, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo, type ItemFicha, type Resultado } from './situacao'
-import { baixarPacote, comPrazo, escalaGuardada, partesGuardadas, soDetalheGuardado, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote } from './pacote'
+import { baixarPacote, pacoteIgualNoAparelho, comPrazo, escalaGuardada, partesGuardadas, soDetalheGuardado, DownloadParado, lerComProgresso, LIMITE_SEM_DADOS_MS, type ArquivoServidor, type Baixador, type DonoDoPacote, type PacoteGuardado } from './pacote'
 import { listarParaLancar, type LinhaDeLancamento } from './lancamento'
 import { linhasDaSituacao, type LinhaDaSituacao } from './planilha'
 import { listarReprovacoes, type Reprovacao } from './reprovacoes'
@@ -98,6 +101,11 @@ export interface DadosFvs {
   regras: RegrasFvs
   /** pilares e vigas redesenhados à mão, por peça e trecho (chaveDoRedesenho; fvs_redesenhos, 23/11) */
   redesenhos: Map<string, Redesenho>
+  /**
+   * pilares, vigas e áreas de laje numa concretagem cadastrada no Concreto (concretada.ts, achado #2, 24/11):
+   * verde só com ela. Só leitura do Concreto; sem Concreto na obra, vazio.
+   */
+  concretadas: ReadonlySet<string>
 }
 
 /** Diferença normal entre o relógio do aparelho e o do servidor: abaixo disto, não incomoda ninguém. */
@@ -200,6 +208,7 @@ export function paraLancarDaObra(d: DadosFvs, lancados?: ReadonlySet<string> | n
 /** Situação de todas as peças da obra, uma linha por peça e ficha, para a planilha do escritório. */
 export function situacaoDaObra(d: DadosFvs): LinhaDaSituacao[] {
   return linhasDaSituacao({
+    concretadas: d.concretadas,
     // arranque do pilar de cima (só detalhe) fica de fora, como na aba Pilares e no início
     pecas: [...d.pecaPorId.values()].filter((p) => !soDetalheGuardado(p.id)),
     pavimentos: d.pavimentos,
@@ -359,6 +368,23 @@ function paraFichaCampo(l: Linha): FichaCampo {
 /** Tipos de elemento que a FVS confere (P pilar, V viga, L laje, A ambiente, F furo, E esquadria, M parede). */
 export const TIPOS_DA_FVS: ReadonlySet<string> = new Set(['P', 'V', 'L', 'A', 'F', 'E', 'M', 'K', 'S'])
 
+/**
+ * Caminhões de cada área de laje da FVS (verde só concretada, achado #2, 24/11). Como o Concreto faz
+ * (concreto/dados.ts): a área do caminhão guarda a planta em que foi desenhada, e a da FVS o trecho; as duas
+ * casam pelo trecho e pelas revisões da mesma prancha (chavesDasPlantas). Só leitura.
+ */
+async function rastreioDasLajes(obraId: string, areas: readonly AreaDeLajeFvs[], plantas: readonly Linha[]): Promise<Map<string, RastreioDaLaje>> {
+  if (!areas.length) return new Map()
+  const [concretagens, caminhoes, caminhao_areas, exemplos] = await Promise.all([
+    sincronizador.linhas('concretagens', obraId),
+    sincronizador.linhas('caminhoes', obraId),
+    sincronizador.linhas('caminhao_areas', obraId),
+    idsDasConcretagensDeExemplo(obraId),
+  ])
+  if (!caminhao_areas.length) return new Map()
+  return montarRastreioDasLajes({ concretagens, caminhoes, caminhao_areas, exemplos, chavePlanta: chavesDasPlantas(plantas) }, areas)
+}
+
 /** Lê tudo da FVS da obra (o que já foi baixado + o que foi registrado aqui). */
 export async function carregar(obraId: string): Promise<DadosFvs> {
   // tudo de uma vez, inclusive os caminhões do Concreto (antes vinham depois, somando o tempo ao abrir)
@@ -436,6 +462,8 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     secao: (e.secao as string | null) ?? null,
   }))
   const areas = areasVigentes(ars as unknown as LinhaDeArea[])
+  // laje: quanto da área da FVS as áreas dos caminhões cobrem (sem Concreto na obra, nada)
+  const lajes = await rastreioDasLajes(obraId, areas, pla).catch(() => new Map<string, RastreioDaLaje>())
   for (const a of areas) pecas.push({ id: a.id, pavimento_id: a.pavimento_id, tipo: 'L', nome: a.nome, secao: null })
   const fichasCampo = fcs.map(paraFichaCampo)
   const localPorId = new Map(locs.map((l) => [l.id, paraLocal(l)]))
@@ -475,6 +503,7 @@ export async function carregar(obraId: string): Promise<DadosFvs> {
     localPorId,
     fichasCampoDoLocal: agrupar(fichasCampo.filter(localDaFicha), (f) => localDaFicha(f)!),
     pecaPorId: new Map(pecas.map((p) => [p.id, p])),
+    concretadas: pecasConcretadas(caminhoes, lajes),
     areasDe: agrupar(areas, (a) => a.pavimento_id),
     areaPorId,
     eventosDe,
@@ -1001,10 +1030,33 @@ export function usarFonteDeArquivos(fonte: Baixador) {
   baixarArquivo = fonte
 }
 
-/** Baixa o pacote de uma planta (precisa de internet uma vez) e guarda no aparelho. */
-export async function baixarPlanta(p: Planta, dono: DonoDoPacote, aoProgresso?: (fracao: number) => void) {
-  if (!p.manifest || !p.pacote) throw new Error('Os arquivos desta planta ainda não chegaram ao aparelho. Sincronize e tente de novo.')
-  return baixarPacote((caminho, aoBytes) => baixarArquivo(caminho, aoBytes), p.manifest, p.pacote, dono, aoProgresso)
+/** Downloads de planta em andamento nesta página, por planta: quem pedir a mesma espera o mesmo. */
+const baixandoPlanta = new Map<string, Promise<PacoteGuardado>>()
+
+/**
+ * Baixa o pacote de uma planta (precisa de internet uma vez) e guarda no aparelho. Se ele já está no
+ * aparelho, igual ao do servidor, não baixa nada (24/11/2026: a organização passou do limite de dados
+ * do plano grátis). A mesma planta pedida duas vezes ao mesmo tempo (menu e FVS, ou duas abas) baixa
+ * uma vez só: a outra espera e lê do aparelho.
+ */
+export async function baixarPlanta(p: Planta, dono: DonoDoPacote, aoProgresso?: (fracao: number) => void): Promise<PacoteGuardado> {
+  const { manifest, pacote } = p
+  if (!manifest || !pacote) throw new Error('Os arquivos desta planta ainda não chegaram ao aparelho. Sincronize e tente de novo.')
+  const pronto = await pacoteIgualNoAparelho(p.id, pacote, dono)
+  if (pronto) {
+    aoProgresso?.(1)
+    return pronto
+  }
+  const emCurso = baixandoPlanta.get(p.id)
+  if (emCurso) return emCurso
+  const baixar = async () =>
+    (await pacoteIgualNoAparelho(p.id, pacote, dono)) ??
+    (await baixarPacote((caminho, aoBytes) => baixarArquivo(caminho, aoBytes), manifest, pacote, dono, aoProgresso))
+  // outra aba do app baixando a mesma planta: espera a vez e confere de novo antes de baixar
+  const travas = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  const feito = (travas ? travas.request(`sistema-obra-planta-${p.id}`, baixar) : baixar()).finally(() => baixandoPlanta.delete(p.id))
+  baixandoPlanta.set(p.id, feito)
+  return feito
 }
 
 /**

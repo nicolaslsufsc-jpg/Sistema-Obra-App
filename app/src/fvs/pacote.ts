@@ -218,6 +218,8 @@ export interface PacoteGuardado {
   baixado_em: string
   obra_id?: string
   usuario_id?: string
+  /** SHA-256 do pacote.bin como o servidor registrou (pacotes baixados desde 24/11; os do .zip não têm) */
+  pacote_hash?: string
 }
 
 class BancoPacotes extends Dexie {
@@ -371,7 +373,7 @@ export function escalaGuardada(plantaId: string | null | undefined): number | un
   return plantaId ? escalas.get(plantaId) : undefined
 }
 
-export async function guardarPacote(manifestBytes: ArrayBuffer | string, bin: Blob, dono?: DonoDoPacote): Promise<PacoteGuardado> {
+export async function guardarPacote(manifestBytes: ArrayBuffer | string, bin: Blob, dono?: DonoDoPacote, pacoteHash?: string): Promise<PacoteGuardado> {
   const texto = typeof manifestBytes === 'string' ? manifestBytes : new TextDecoder().decode(manifestBytes)
   const manifest = conferirManifest(JSON.parse(texto), bin.size)
   const reg: PacoteGuardado = {
@@ -382,12 +384,33 @@ export async function guardarPacote(manifestBytes: ArrayBuffer | string, bin: Bl
     baixado_em: new Date().toISOString(),
     obra_id: dono?.obraId,
     usuario_id: dono?.usuarioId,
+    ...(pacoteHash ? { pacote_hash: pacoteHash } : {}),
   }
   await db().pacotes.put(reg)
   lembrarEscala(manifest)
   mudouNoAparelho()
   lidos?.set(reg.planta_id, metaDe(reg))
   return reg
+}
+
+/**
+ * O pacote desta planta já está no aparelho, igual ao do servidor? Então não se baixa de novo (custo de
+ * internet do servidor, 24/11/2026: cada pacote tem de 5 a 24 MB). O caminho no servidor muda a cada
+ * revisão (pasta com o id da planta), então o mesmo id com o mesmo hash, ou o mesmo tamanho nos pacotes
+ * guardados antes de o hash ser anotado, é o mesmo arquivo. Se foi outra pessoa que baixou neste aparelho,
+ * o pacote passa a ser desta (a limpeza tiraria o de outra pessoa).
+ */
+export async function pacoteIgualNoAparelho(plantaId: string, pacote: Pick<ArquivoServidor, 'hash' | 'tamanho'>, dono?: DonoDoPacote): Promise<PacoteGuardado | null> {
+  const g = await db().pacotes.get(plantaId)
+  if (!g) return null
+  const igual = g.pacote_hash ? g.pacote_hash === pacote.hash : g.bin.size === pacote.tamanho
+  if (!igual) return null
+  if (dono && (g.usuario_id !== dono.usuarioId || g.obra_id !== dono.obraId)) {
+    await db().pacotes.update(plantaId, { usuario_id: dono.usuarioId, obra_id: dono.obraId })
+    lidos?.set(plantaId, { ...metaDe(g), usuario_id: dono.usuarioId, obra_id: dono.obraId })
+    return { ...g, usuario_id: dono.usuarioId, obra_id: dono.obraId }
+  }
+  return g
 }
 
 export async function abrirPacote(plantaId: string): Promise<PacoteAberto | null> {
@@ -615,5 +638,5 @@ export async function baixarPacote(
   for (const [bytes, arq, nome] of [[mb, manifest, 'manifest'], [pb, pacote, 'pacote']] as const) {
     if ((await sha256Hex(bytes)) !== arq.hash) throw new Error(`O ${nome} da planta chegou diferente do registrado. Tente de novo.`)
   }
-  return guardarPacote(mb, new Blob([pb]), dono)
+  return guardarPacote(mb, new Blob([pb]), dono, pacote.hash)
 }

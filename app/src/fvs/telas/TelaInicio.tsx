@@ -4,6 +4,7 @@
 //   3. ao tocar na disciplina, as opções (Pilares, Vigas, Lajes, armadura de laje, furos...), cada uma abrindo a
 //      planta que já existe. Cada planta mostra se já está no aparelho (abre sem internet) ou o Baixar.
 // Os três níveis são esta mesma tela (o download continua ao trocar de nível); o voltar sobe um nível.
+import { concretadaDe } from '../concretada'
 import { resumoDasRegras } from '../regras_tela'
 import { contagemDoEscoramento, listaDoEscoramento } from '../escoramento'
 import { useEffect, useMemo, useState } from 'preact/hooks'
@@ -13,7 +14,7 @@ import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, pa
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
 import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, grupoDoAmbienteGuardado, semFichasGuardado, soDetalheGuardado, daGradeGuardado, fichaDeGradeGuardada, textoDoErroDeDownload } from '../pacote'
-import { avisoDasPlantas, pacotesAManter, textosDaRevisao } from '../revisoes'
+import { avisoDasPlantas, manterNaLimpeza, textosDaRevisao } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, situacaoDaBarra, type CamadaDeBarras } from '../barras'
 import { disciplinaDePontos, fichaDosPontos, fichasDoPonto, textoDoAvancoDosPontos } from '../pontos'
@@ -84,7 +85,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   // revisão nova já chegou; a anterior fica até lá, para ela não ficar sem planta na obra.
   const atualizar = async () => {
     const agora = await pacotesNoAparelho()
-    const saiu = await limparPacotes(dono, pacotesAManter(dados.plantaPorId.keys(), dados.anterioresDe, agora))
+    const saiu = await limparPacotes(dono, manterNaLimpeza(dados.plantaPorId, dados.anterioresDe, dados.vigenteDe, agora))
     setNoAparelho(saiu ? await pacotesNoAparelho() : agora)
   }
   useEffect(() => {
@@ -278,7 +279,13 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   const chaveDosResumos = noAparelho ? 'resumos|' + [...noAparelho.keys()].sort().join(',') : 'resumos'
   const resumos = useMemo(() => conta(dados, chaveDosResumos, () => {
     const eventosDe = (id: string) => dados.eventosDe.get(id) ?? []
-    const campo = { fichasDe: (id: string) => dados.fichasCampoDe.get(id) ?? [], ficha: (id: string) => dados.fichaPorId.get(id), partesDe: partesDoPilar }
+    const campo = {
+      fichasDe: (id: string) => dados.fichasCampoDe.get(id) ?? [],
+      ficha: (id: string) => dados.fichaPorId.get(id),
+      partesDe: partesDoPilar,
+      // pilar, viga e laje: verde só numa concretagem cadastrada (achado #2, 24/11)
+      concretada: (id: string, tipo: string) => concretadaDe(dados.concretadas, id, tipo),
+    }
     const locaisDe = new Map<string, Array<{ id: string; tipo: string }>>()
     for (const p of dados.pecaPorId.values()) {
       // área de laje tem resumo próprio: não é peça da forma
@@ -301,7 +308,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             ra: resumoDosAmbientes(locais.filter((l) => !daGradeGuardado(l.id)), dados.fichas.filter((f) => !fichaDeGradeGuardada(f.codigo)), eventosDe, (id, codigo) => !semFichasGuardado(id)?.includes(codigo)),
             rm: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo, 'M'),
             rk: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo, 'K'),
-            lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe),
+            lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe, undefined, (id) => campo.concretada(id, 'L')),
           },
         ] as const
       }),

@@ -64,6 +64,11 @@ export interface ItemFicha {
    */
   parte?: string
   /**
+   * Item que só existe no app, não na ficha do sistema oficial (não vai para lá). Sem o campo: os itens de
+   * consolo e capitel (com parte), que o app criou em 17/11 (itemSoDoApp). Vem da ficha, como dado.
+   */
+  so_app?: boolean
+  /**
    * Item de furação da ficha de viga ("passagens em vigas"): quem marca são os furos da viga na planta
    * (aba Furos). Todos OK: C; algum errado: NC; algum sem conferir: pendente. Vem da ficha, como dado.
    */
@@ -96,6 +101,15 @@ export interface ItemFicha {
    * código ("PCF", "PV"): contramarco de janela só nas janelas, porta corta-fogo só nas PCF. `true`: em todas.
    */
   esquadrias?: boolean | readonly string[]
+}
+
+/**
+ * Item só do app (24/11, pedido do Professor): não existe na ficha do sistema oficial e não vai para lá. Os
+ * itens de consolo e capitel (parte) foram criados no app em 17/11; na obra piloto são os itens 25 a 34 da
+ * ficha de pilar, que lá tem 24. A ficha pode dizer o contrário com so_app.
+ */
+export function itemSoDoApp(it: Pick<ItemFicha, 'parte' | 'so_app'> | undefined): boolean {
+  return it ? (it.so_app ?? !!it.parte) : false
 }
 
 /** Disciplina de pontos de instalação que um item da ficha pode marcar (o mesmo de pontos.ts). */
@@ -310,7 +324,17 @@ export function itensDaConcretagem(ficha: Pick<Ficha, 'itens'>): ItemFicha[] {
 }
 
 /** Situação da peça na ficha (só nos itens da etapa, se escolhida). */
-export function situacaoDaPeca(ficha: Ficha, eventos: readonly EventoFvs[], etapa?: string): Situacao {
+export function situacaoDaPeca(
+  ficha: Ficha,
+  eventos: readonly EventoFvs[],
+  etapa?: string,
+  /**
+   * Pilar, viga e laje (concretada.ts, achado #2, 24/11): se a peça está numa concretagem cadastrada no Concreto.
+   * Com ele, verde = azul (tudo antes da concretagem marcado, sem NC) + concretada; a ficha toda marcada sem
+   * concretagem fica azul. undefined: a regra de antes (ficha completa = verde), para os outros tipos.
+   */
+  concretada?: boolean,
+): Situacao {
   const itens = ficha.itens.filter((i) => !etapa || i.etapa === etapa)
   const ult = ultimosPorItem(eventos.filter((e) => e.ficha_id === ficha.id))
   let marcados = 0
@@ -322,6 +346,13 @@ export function situacaoDaPeca(ficha: Ficha, eventos: readonly EventoFvs[], etap
     if (itemConta(ficha, it, !!r)) contam++
   }
   if (marcados === 0) return 'nada'
+  if (!etapa && concretada !== undefined) {
+    const antes = itensAntesDaConcretagem(ficha)
+    if (antes.length) {
+      if (!antes.every((it) => ult.get(it.n)?.resultado)) return 'andamento'
+      return concretada ? 'liberado' : 'concretagem'
+    }
+  }
   if (marcados >= contam) return 'liberado'
   // olhando uma etapa só, a pergunta é outra: se aquela etapa terminou
   if (!etapa) {
@@ -571,9 +602,17 @@ export function resumoDosFuros(furos: readonly Situacao[]): { total: number; ok:
 }
 
 /** Situação de uma ficha aberta, com os registros dela. Ficha modelo não cadastrada = sem marcação. */
-export function situacaoDaFichaAberta(fc: FichaCampo, fichaPorId: (id: string) => Ficha | undefined, eventos: readonly EventoFvs[], etapa?: string, partes?: readonly string[]): Situacao {
+export function situacaoDaFichaAberta(
+  fc: FichaCampo,
+  fichaPorId: (id: string) => Ficha | undefined,
+  eventos: readonly EventoFvs[],
+  etapa?: string,
+  partes?: readonly string[],
+  /** pilar, viga e laje: numa concretagem cadastrada (situacaoDaPeca) */
+  concretada?: boolean,
+): Situacao {
   const ficha = fichaNaPeca(fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined, partes)
-  return ficha ? situacaoDaPeca(ficha, eventosDaFichaAberta(eventos, fc), etapa) : 'nada'
+  return ficha ? situacaoDaPeca(ficha, eventosDaFichaAberta(eventos, fc), etapa, concretada) : 'nada'
 }
 
 /**
@@ -589,16 +628,18 @@ export function situacaoDoLocal(
   etapa?: string,
   /** partes do pilar na planta (consolo, capitel): os itens delas passam a contar */
   partes?: readonly string[],
+  /** pilar, viga e laje: numa concretagem cadastrada no Concreto (concretada.ts); verde só com ela */
+  concretada?: boolean,
 ): Situacao {
   // furos e barras gravados só no app contam dentro da ficha aberta da peça (achado #6, 24/11)
   if (fichasAbertas.length) eventos = automaticosNaFichaAberta(eventos, fichasAbertas, fichaPorId)
   const doApp = daFichaAberta(eventos, null)
   const padrao = fichaNaPeca(fichaPadrao, partes)
-  const situacaoDoApp = padrao ? situacaoDaPeca(padrao, doApp, etapa) : 'nada'
+  const situacaoDoApp = padrao ? situacaoDaPeca(padrao, doApp, etapa, concretada) : 'nada'
   if (!fichasAbertas.length) return situacaoDoApp
   // o marcado só no app entra na ficha aberta do mesmo modelo (ficha única, 23/11), como o painel mostra
   const { fichas, juntou } = juntarMarcadosNoApp(juntarFichasDoModelo(fichasAbertas, fichaPorId, eventos), eventos)
-  const delas = fichas.map((fc) => situacaoDaFichaAberta(fc, fichaPorId, eventos, etapa, partes))
+  const delas = fichas.map((fc) => situacaoDaFichaAberta(fc, fichaPorId, eventos, etapa, partes, concretada))
   return combinarSituacoes(doApp.length && !juntou ? [...delas, situacaoDoApp] : delas)
 }
 
@@ -803,6 +844,8 @@ export type ContextoCampo = {
   ficha: (id: string) => Ficha | undefined
   /** partes do pilar (consolo, capitel) pelo pacote guardado no aparelho */
   partesDe?: (id: string) => readonly string[]
+  /** pilar, viga e laje numa concretagem cadastrada (concretadaDe): verde só com ela (achado #2, 24/11) */
+  concretada?: (id: string, tipo: string) => boolean | undefined
 }
 
 /**
@@ -828,7 +871,7 @@ export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readon
     if (abertas.length > 1) duplicadas++
     const eventos = eventosDe(l.id)
     const fichaPorId = campo?.ficha ?? porId
-    const s = situacaoDoLocal(fichaDaPeca(fichaDoTipo.get(l.tipo), eventos, fichaPorId), abertas, fichaPorId, eventos, undefined, campo?.partesDe?.(l.id))
+    const s = situacaoDoLocal(fichaDaPeca(fichaDoTipo.get(l.tipo), eventos, fichaPorId), abertas, fichaPorId, eventos, undefined, campo?.partesDe?.(l.id), campo?.concretada?.(l.id, l.tipo))
     if (s === 'liberado') liberadas++
     if (s === 'concretagem') paraConcretar++
     if (s === 'reprovado') comR++

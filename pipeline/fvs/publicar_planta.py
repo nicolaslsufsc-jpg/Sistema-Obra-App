@@ -807,6 +807,13 @@ def usuario_do_token(token: str) -> str:
 # Servidor
 # ---------------------------------------------------------------------------
 
+# O arquivo de uma planta nunca muda: cada publicação vai para uma pasta nova ({obra}/fvs/plantas/{planta_id}/,
+# id novo a cada revisão) e o envio recusa sobrescrever (x-upsert false). Então pode ficar guardado por um
+# ano no navegador e no CDN. Sem este cabeçalho o armazenamento gravava "no-cache" (24/11/2026: a organização
+# passou do limite de dados do plano grátis do Supabase).
+CACHE_DA_PLANTA = "public, max-age=31536000, immutable"
+
+
 class Servidor:
     def __init__(self, sb: Supabase, dispositivo: str):
         self.sb = sb
@@ -855,7 +862,8 @@ class Servidor:
         url = f"{self.sb.url}/storage/v1/object/{BUCKET}/{urllib.parse.quote(caminho)}"
         self.sb._renovar_se_preciso()
         req = urllib.request.Request(url, data=dados, method="POST",
-                                     headers=self.sb._cabecalhos({"Content-Type": tipo, "x-upsert": "false"}))
+                                     headers=self.sb._cabecalhos({"Content-Type": tipo, "x-upsert": "false",
+                                                                    "cache-control": CACHE_DA_PLANTA}))
         try:
             with urllib.request.urlopen(req, timeout=300) as r:
                 r.read()

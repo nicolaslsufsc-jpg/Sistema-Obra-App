@@ -833,6 +833,16 @@ async function semearRastreio() {
     { tabela: 'concretagens', linha: { ...base, id: 'c1000000-0000-0000-0000-0000000000c1', data, substitui_id: null, cancelado: false } },
     { tabela: 'caminhoes', linha: { ...base, id: 'c2000000-0000-0000-0000-0000000000c1', concretagem_id: 'c1000000-0000-0000-0000-0000000000c1', sequencia: 2, nota_fiscal: '4321', substitui_id: null, cancelado: false } },
     { tabela: 'caminhao_elementos', linha: { ...base, id: 'c3000000-0000-0000-0000-0000000000c1', caminhao_id: 'c2000000-0000-0000-0000-0000000000c1', elemento_id: p6.id, origem: 'desenho', fracao: 1, incluido: true } },
+    // ?lajeconcretada=1 (achado #2, 24/11): o caminhão também cobre a laje de x 600 a 900 e y 330 a 600, desenhada no
+    // Concreto na planta da forma (planta_ref = planta@revisão, como o Concreto grava)
+    ...(params.get('lajeconcretada')
+      ? [
+          {
+            tabela: 'caminhao_areas',
+            linha: { ...base, id: 'c4000000-0000-0000-0000-0000000000c1', caminhao_id: 'c2000000-0000-0000-0000-0000000000c1', planta_ref: `${PLANTA}@R01`, contorno: [[600, 330], [900, 330], [900, 600], [600, 600]], alvo: 'vigas_laje', substitui_id: null, cancelado: false },
+          },
+        ]
+      : []),
   ]
   await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.linha.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
 }

@@ -31,6 +31,8 @@ Vigas baldrames (etapa 2, 24/11/2026), opcional: com "baldrames": true, as vigas
 nome "VB-" + o da viga ("VB-V27"). Ficam no mesmo tipo dos blocos de propósito: a ficha de blocos de fundação já
 vale para blocos e vigas baldrames, e uma ficha de fundação com tipo "V" apareceria em todas as vigas do prédio.
 As coordenadas são as da primeira referência, as mesmas em que os blocos foram encaixados.
+Com uma lista, "baldrames": ["V10", "V11", ...] (25/11/2026), só essas vigas viram VB (o resto da forma, como
+poço de elevador ou cortina, fica fora); nome que não existe na forma é erro, para não sumir viga sem aviso.
 
 No pavimento.json (um pavimento só para a fundação, cadastrado na obra):
   "fundacao": {"locacao": "../Fundacao/*.FU.LO.*.pdf",
@@ -240,6 +242,20 @@ def baldrames_da_referencia(pasta: str | pathlib.Path) -> list[dict]:
     return sorted(saida.values(), key=lambda v: _chave_natural(v["nome"]))
 
 
+def escolher_baldrames(vigas: list[dict], escolha) -> list[dict]:
+    """As vigas baldrames pelo "baldrames" do fundacao.json: true = todas; lista = só essas (pelo nome da forma)."""
+    if escolha is True:
+        return vigas
+    if not isinstance(escolha, list) or not all(isinstance(n, str) and n.strip() for n in escolha):
+        raise ErroBlocos("\"baldrames\": use true (todas as vigas da forma) ou a lista dos nomes (\"V10\", \"V11\"...)")
+    pedidas = {n.strip().removeprefix("VB-") for n in escolha}
+    nomes = {v["nome"].removeprefix("VB-") for v in vigas}
+    faltam = sorted(pedidas - nomes, key=_chave_natural)
+    if faltam:
+        raise ErroBlocos(f"\"baldrames\": {', '.join(faltam)} não estão na forma da primeira referência")
+    return [v for v in vigas if v["nome"].removeprefix("VB-") in pedidas]
+
+
 # ---------------------------------------------------------------------------
 # Leitura dos PDFs
 # ---------------------------------------------------------------------------
@@ -394,7 +410,8 @@ def ler_planta(cfg: dict, imprimir=print) -> dict:
         "polys": [[mover(x, y) for x, y in e["poly"]]],
     } for e in estacas]
     n_blocos = len(blocos)
-    baldrames = baldrames_da_referencia(cfg["referencias"][0]) if cfg.get("baldrames") else []
+    escolha = cfg.get("baldrames")
+    baldrames = escolher_baldrames(baldrames_da_referencia(cfg["referencias"][0]), escolha) if escolha not in (None, False) else []
     # antes dos blocos: no desenho os blocos ficam por cima (toque na ponta da viga abre o bloco)
     pecas[:0] = [{
         "tipo": "K",

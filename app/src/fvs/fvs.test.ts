@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto'
+import { COBERTURA_CONCRETADA, concretadaDe, pecasConcretadas } from './concretada'
 import { describe, expect, it } from 'vitest'
 import {
   aoTocar,
@@ -42,12 +43,13 @@ import {
   pecasNoAparelho,
   textoDoErroDeDownload,
 } from './pacote'
-import { avisoDasPlantas, cadeiaDeRevisoes, pacoteDaPlanta, pacotesAManter, textosDaRevisao } from './revisoes'
+import { avisoDasPlantas, cadeiaDeRevisoes, manterNaLimpeza, pacoteDaPlanta, pacotesAManter, textosDaRevisao } from './revisoes'
 import { ehPlantaDeEstrutura, plantaDeDesenho, plantasVigentes } from './plantas'
 import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
 import { TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { buscarPecas } from './busca'
+import { baixarPlanta, usarFonteDeArquivos, type Planta } from './dados'
 import { avisoDaSincronizacao, avisoHoraNaFrente, comRegistros, paraLancarDaObra, desfazerLote, localDoRegistro, marcarPelosFuros, voltarItem, horaNaFrente, horaNormal, ligarDepoisDe, ligarEntrePecas, marcarLote, tocarItem, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, textoDoErroDeGravacao, type DadosFvs } from './dados'
 import { sincronizador } from '../nucleo/servicos'
 import { hojeNoAparelho } from './formato'
@@ -198,6 +200,34 @@ describe('liberado para concretar (azul)', () => {
   it('continua azul durante a concretagem e fica verde só com a ficha inteira', () => {
     expect(situacaoDaPeca(pilar, [...antes(), ev(3, 'C')])).toBe('concretagem')
     expect(situacaoDaPeca(pilar, [...antes(), ev(3, 'C'), ev(4, 'C')])).toBe('liberado')
+  })
+
+  // Achado #2 da lista de campo (24/11), o Nicolas: "a peça fica verde quando estiver numa concretagem cadastrada
+  // ... Vamos botar um coeficiente aí de 90%". Pilar, viga e laje: verde = azul + concretagem cadastrada no Concreto.
+  it('com o Concreto: a ficha inteira sem concretagem fica azul; azul e concretada fica verde', () => {
+    const tudo = [...antes(), ev(3, 'C'), ev(4, 'C')]
+    expect(situacaoDaPeca(pilar, tudo, undefined, false)).toBe('concretagem')
+    expect(situacaoDaPeca(pilar, tudo, undefined, true)).toBe('liberado')
+    // verde não espera os itens da concretagem para frente (cura, desforma): basta o azul e a concretagem
+    expect(situacaoDaPeca(pilar, antes(), undefined, true)).toBe('liberado')
+    // concretada mas sem o azul: em andamento; com NC: NC; nada marcado: pendente
+    expect(situacaoDaPeca(pilar, [ev(1, 'C')], undefined, true)).toBe('andamento')
+    expect(situacaoDaPeca(pilar, [...antes(), ev(3, 'NC')], undefined, true)).toBe('reprovado')
+    expect(situacaoDaPeca(pilar, [], undefined, true)).toBe('nada')
+    // olhando uma etapa só, a concretagem não muda nada
+    expect(situacaoDaPeca(pilar, antes(), 'MONTAGEM - FORMA E ARMADURA', false)).toBe('liberado')
+  })
+
+  it('com o Concreto: ficha sem etapa de concretagem segue a regra de antes', () => {
+    expect(situacaoDaPeca(ficha, [ev(1, 'C'), ev(2, 'C')], undefined, false)).toBe(situacaoDaPeca(ficha, [ev(1, 'C'), ev(2, 'C')]))
+  })
+
+  it('com o Concreto: o local e as fichas abertas também (azul sem concretagem, verde com)', () => {
+    const tudo = [...antes(), ev(3, 'C'), ev(4, 'C')]
+    const porId = (id: string) => (id === pilar.id ? pilar : undefined)
+    expect(situacaoDoLocal(pilar, [], porId, tudo, undefined, undefined, false)).toBe('concretagem')
+    expect(situacaoDoLocal(pilar, [], porId, tudo, undefined, undefined, true)).toBe('liberado')
+    expect(situacaoDoLocal(pilar, [], porId, tudo)).toBe('liberado')
   })
 
   it('olhando uma etapa só, a pergunta é se ela terminou: não fica azul', () => {
@@ -637,6 +667,7 @@ describe('registros novos nos dados da tela', () => {
     servidorMaisNovo: null,
     regras: SEM_REGRAS,
     redesenhos: new Map(),
+    concretadas: new Set(),
   } as DadosFvs
   const paraEventoDeTeste = (id: string, elemento: string) =>
     ({ id, elemento_id: elemento, ficha_id: 'f1', item: 1, resultado: 'C', rodada: 1, observacao: null, lote_id: null, planta_id: null, usuario_id: '', criado_em_dispositivo: '2026-11-05T03:00:00.000Z' }) as const
@@ -1022,6 +1053,45 @@ describe('pacote de planta no aparelho', () => {
     await limparPacotes(eu, new Set())
   })
 
+  it('planta já no aparelho não baixa de novo: abrir duas vezes = um download (limite de dados, 24/11)', async () => {
+    const hash = async (b: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b as BufferSource))].map((x) => x.toString(16).padStart(2, '0')).join('')
+    const texto = new TextEncoder().encode(JSON.stringify({ ...manifest, planta_id: 'uma-vez' }))
+    const bin = new Uint8Array([1, 2, 3, 4, 5])
+    const pedidos: string[] = []
+    usarFonteDeArquivos(async (caminho) => {
+      pedidos.push(caminho)
+      return new Blob([caminho.endsWith('.bin') ? bin : texto])
+    })
+    const planta = {
+      id: 'uma-vez',
+      manifest: { id: 'm', caminho: 'o/fvs/plantas/uma-vez/manifest.json', hash: await hash(texto), tamanho: texto.length },
+      pacote: { id: 'p', caminho: 'o/fvs/plantas/uma-vez/pacote.bin', hash: await hash(bin), tamanho: bin.length },
+    } as unknown as Planta
+    // duas telas pedindo ao mesmo tempo (menu e FVS): um download só
+    await Promise.all([baixarPlanta(planta, eu), baixarPlanta(planta, eu)])
+    expect(pedidos).toHaveLength(2)
+    // abrir de novo, recarregar, trocar de pavimento e voltar: zero bytes do servidor
+    const fracoes: number[] = []
+    expect((await baixarPlanta(planta, eu, (f) => fracoes.push(f))).planta_id).toBe('uma-vez')
+    await baixarPlanta(planta, eu)
+    expect(pedidos).toHaveLength(2)
+    expect(fracoes).toEqual([1])
+    // outra pessoa no mesmo aparelho: o pacote passa a ser dela, sem baixar (a limpeza não tira)
+    const outra = { obraId: 'obra-1', usuarioId: 'u2' }
+    await baixarPlanta(planta, outra)
+    expect(pedidos).toHaveLength(2)
+    expect(await limparPacotes(outra, new Set(['uma-vez']))).toBe(0)
+    // arquivo diferente no servidor com o mesmo id (não acontece: a revisão nova tem id novo): baixa
+    const bin2 = new Uint8Array([9, 9, 9, 9, 9])
+    usarFonteDeArquivos(async (caminho) => {
+      pedidos.push(caminho)
+      return new Blob([caminho.endsWith('.bin') ? bin2 : texto])
+    })
+    await baixarPlanta({ ...planta, pacote: { ...planta.pacote!, hash: await hash(bin2) } } as Planta, outra)
+    expect(pedidos).toHaveLength(4)
+    await limparPacotes(outra, new Set())
+  })
+
   it('sem como contar, lê de uma vez; aparelho cheio tem aviso próprio', async () => {
     expect(await (await lerComProgresso(new Response('abc'))).text()).toBe('abc')
     expect(textoDoErroDeDownload({ name: 'QuotaExceededError' })).toMatch(/sem espaço/)
@@ -1145,6 +1215,19 @@ describe('pacote de planta no aparelho', () => {
     expect(avisoDasPlantas([a2, c2], anterioresDe, new Set(['a1', 'c1']))).toBe('Revisão nova para baixar')
   })
 
+  it('limpeza com dados lidos antes da sincronização não apaga a planta que acabou de baixar (24/11)', async () => {
+    const bin = () => new Blob([new Uint8Array([1, 2, 3, 4, 5])])
+    for (const id of ['baixada-agora', 'nova', 'r1']) await guardarPacote(JSON.stringify({ ...manifest, planta_id: id }), bin(), eu)
+    const noAparelho = await pacotesNoAparelho()
+    // dados de antes do cadastro chegar: não conhecem planta nenhuma, então nada sai
+    expect(await limparPacotes(eu, manterNaLimpeza(new Map(), new Map(), new Map(), noAparelho))).toBe(0)
+    // dados novos: a revisão anterior (r1) sai porque a nova chegou; a desconhecida continua
+    const anterioresDe = new Map([['nova', [{ id: 'r1', revisao: 'R01' }]]])
+    expect(await limparPacotes(eu, manterNaLimpeza(new Map([['nova', 1]]), anterioresDe, new Map([['r1', 'nova']]), await pacotesNoAparelho()))).toBe(1)
+    expect([...(await pacotesNoAparelho()).keys()].sort()).toEqual(['baixada-agora', 'nova'])
+    await limparPacotes(eu, new Set())
+  })
+
   it('revisão nova: abre o pacote que está no aparelho, o da vigente primeiro', async () => {
     const m = (id: string, revisao: string) => JSON.stringify({ ...manifest, planta_id: id, revisao })
     const bin = () => new Blob([new Uint8Array([1, 2, 3, 4, 5])])
@@ -1185,5 +1268,41 @@ describe('item de esquadria por classe ou código (23/11)', () => {
   })
   it('esquadria sem dado: vale (como antes)', () => {
     expect(esquadriaValeNoItem({ esquadrias: ['janela'] }, undefined)).toBe(true)
+  })
+})
+
+describe('peça concretada pelo Concreto (achado #2, 24/11)', () => {
+  const cam = (fracao: number | null) => ({ caminhao_raiz: 'c', concretagem_raiz: 'k', sequencia: 1, nota_fiscal: null, data: '2026-11-20', fracao, parcial: false })
+
+  it('o coeficiente é um só, com nome: 90%', () => {
+    expect(COBERTURA_CONCRETADA).toBe(0.9)
+  })
+
+  it('pilar e viga: a soma das frações dos caminhões chega a 90% (incluída à mão conta inteira)', () => {
+    const c = pecasConcretadas(
+      new Map([
+        ['inteira', [cam(1)]],
+        ['duas_metades', [cam(0.5), cam(0.45)]],
+        ['parte', [cam(0.6)]],
+        ['a_mao', [cam(null)]],
+      ]),
+      new Map(),
+    )
+    expect([...c].sort()).toEqual(['a_mao', 'duas_metades', 'inteira'])
+  })
+
+  it('laje: a área da FVS coberta em pelo menos 90% pelas áreas dos caminhões', () => {
+    const c = pecasConcretadas(new Map(), new Map([['l90', { cobertura: 0.9 }], ['l89', { cobertura: 0.89 }], ['l100', { cobertura: 1 }]]))
+    expect([...c].sort()).toEqual(['l100', 'l90'])
+  })
+
+  it('só pilar, viga e laje pedem a concretagem; os outros tipos seguem como antes', () => {
+    const c = new Set(['p1'])
+    expect(concretadaDe(c, 'p1', 'P')).toBe(true)
+    expect(concretadaDe(c, 'v1', 'V')).toBe(false)
+    expect(concretadaDe(c, 'l1', 'L')).toBe(false)
+    expect(concretadaDe(c, 'a1', 'A')).toBe(undefined)
+    expect(concretadaDe(c, 'k1', 'K')).toBe(undefined)
+    expect(concretadaDe(undefined, 'p1', 'P')).toBe(undefined)
   })
 })

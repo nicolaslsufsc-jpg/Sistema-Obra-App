@@ -1,5 +1,6 @@
 // Busca de peça na obra inteira: digita "P124", escolhe o pavimento, cai na peça. Funciona sem
 // internet; se a planta da peça não estiver no aparelho, oferece baixar ali mesmo.
+import { concretadaDe } from '../concretada'
 import { nomeDaPeca } from '../comodos'
 import { useMemo, useState } from 'preact/hooks'
 import { buscarPecas } from '../busca'
@@ -59,7 +60,15 @@ function Resultados({ texto, ctx }: { texto: string; ctx: ContextoFvs }) {
     }
     // esquadria: o registro dela é nos itens de esquadria das fichas de ambiente (qualquer serviço)
     if (p.tipo === 'E') return situacaoDaEsquadriaNaObra(fichasPara('A', dados.fichas), eventos)
-    return situacaoDoLocal(fichaDaPeca(fichaDoLocalNaObra(dados, p), eventos, fichaPorId), dados.fichasCampoDe.get(p.id) ?? [], fichaPorId, eventos, undefined, partesDoPilar(p.id))
+    return situacaoDoLocal(
+      fichaDaPeca(fichaDoLocalNaObra(dados, p), eventos, fichaPorId),
+      dados.fichasCampoDe.get(p.id) ?? [],
+      fichaPorId,
+      eventos,
+      undefined,
+      partesDoPilar(p.id),
+      concretadaDe(dados.concretadas, p.id, p.tipo),
+    )
   }
 
   return (

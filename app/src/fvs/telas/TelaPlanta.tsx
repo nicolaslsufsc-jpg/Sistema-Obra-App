@@ -4,6 +4,7 @@
 // Celular em pé: painel embaixo. Tablet deitado: painel ao lado. Tudo funciona sem internet
 // (planta no aparelho, marcações na fila do núcleo).
 
+import { concretadaDe } from '../concretada'
 import { textosDaRevisao } from '../revisoes'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { lembrarPainel } from '../onde_estava'
@@ -119,8 +120,7 @@ import {
   type Ficha,
   type FichaCampo,
   type Situacao,
-  type Resultado,
-} from '../situacao'
+  type Resultado, itemSoDoApp } from '../situacao'
 import { guardarItem, itemGuardado, itemNaPeca, itensParaEscolher, nomeDoItem, proximoDoToque, registroDoItem, resultadoDoItem, resumoDoItem, textoDoResultado, type ItemEscolhido, type ModoDoToque } from '../porItem'
 import type { Linha } from '../../nucleo/banco_local'
 import { AvisoHora } from './AvisoHora'
@@ -528,7 +528,9 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   /** Situação do consolo ou capitel do pilar, só pelos itens da parte (undefined: a ficha não tem). */
   const situacaoDaParte = (id: string, parte: string) => situacaoDaParteNoLocal(fichaDoLocal(id, 'P'), abertasDe(id), fichaPorId, eventosDe(id), parte)
   // O toque muda os registros de uma peça só: as outras continuam com a mesma lista e não recalculam.
-  const situacaoGuardada = useRef(new Map<string, { eventos: EventoFvs[]; abertas: FichaCampo[]; ficha: Ficha | undefined; etapa: string | undefined; s: Situacao }>())
+  const situacaoGuardada = useRef(
+    new Map<string, { eventos: EventoFvs[]; abertas: FichaCampo[]; ficha: Ficha | undefined; etapa: string | undefined; concretada: boolean | undefined; s: Situacao }>(),
+  )
   /**
    * Furos de laje desta planta, cada um com a área de laje em que cai (item 4, decisão do Nicolas de
    * 19/11): a área é desenhada no app, então a ligação é calculada aqui e refeita quando uma área muda.
@@ -705,10 +707,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     const abertas = abertasDe(id)
     const et = e.tipo === tipo ? etapaAtiva || undefined : undefined
     const ficha = fichaDoLocal(id, e.tipo)
+    // pilar, viga e laje: verde só numa concretagem cadastrada no Concreto (achado #2, 24/11)
+    const concretada = concretadaDe(dados.concretadas, id, e.tipo)
     const g = situacaoGuardada.current.get(id)
-    if (g && g.eventos === eventos && g.abertas === abertas && g.ficha === ficha && g.etapa === et) return g.s
-    const s = situacaoDoLocal(ficha, abertas, fichaPorId, eventos, et, partesDe(id))
-    situacaoGuardada.current.set(id, { eventos, abertas, ficha, etapa: et, s })
+    if (g && g.eventos === eventos && g.abertas === abertas && g.ficha === ficha && g.etapa === et && g.concretada === concretada) return g.s
+    const s = situacaoDoLocal(ficha, abertas, fichaPorId, eventos, et, partesDe(id), concretada)
+    situacaoGuardada.current.set(id, { eventos, abertas, ficha, etapa: et, concretada, s })
     return s
   }
 
@@ -2892,18 +2896,28 @@ O redesenho fica guardado no histórico.`)) return
           </span>
         ) : tipo === 'E' && !itemEsq ? null : (
         // aba Esquadrias sem item de esquadria na ficha: sem conta (não há o que marcar; o topo já diz)
-        <span class="fv-prog" data-testid="fvs-progresso" title={`${liberadas} de ${doTipo.length} ${(PLURAL_TIPO[tipo] ?? 'peças').toLowerCase()} ${palavraDoProgresso}`}>
+        // "p/ concretar" e "com NC" juntos (24/11): até 900 px o contador fica em 2 linhas, e a 2ª vira
+        // "■ 1 · 1 NC" (fvs.css, .com-dois); as palavras continuam no texto, para o leitor de tela
+        <span
+          class={`fv-prog${paraConcretar > 0 && comR > 0 ? ' com-dois' : ''}`}
+          data-testid="fvs-progresso"
+          title={`${liberadas} de ${doTipo.length} ${(PLURAL_TIPO[tipo] ?? 'peças').toLowerCase()} ${palavraDoProgresso}`}
+        >
           {/* "1/24 pilares" era lido como "pilar 1 de 24" (demonstração, 09/11): o tipo já está na aba */}
-          {liberadas}/{doTipo.length} {palavraDoProgresso}
+          <span class="fv-prog-lib">
+            {liberadas}/{doTipo.length} {palavraDoProgresso}
+          </span>
           {paraConcretar > 0 && (
-            <span class="fv-txt-concretar" data-testid="fvs-para-concretar">
+            <span class="fv-txt-concretar" data-testid="fvs-para-concretar" title={`${paraConcretar} p/ concretar`}>
               <span class="fv-sep">{' · '}</span>
-              {paraConcretar} p/ concretar
+              <i class="fv-q-azul" aria-hidden="true" />
+              {paraConcretar}
+              <span class="fv-longo"> p/ concretar</span>
             </span>
           )}
           {comR > 0 && (
             <>
-              {' · '}
+              <span class="fv-sep fv-sep-nc">{' · '}</span>
               <button
                 type="button"
                 class="fv-link-r"
@@ -2915,7 +2929,11 @@ O redesenho fica guardado no histórico.`)) return
                   ir({ nome: 'reprovacoes' })
                 }}
               >
-                {comR} com NC
+                {/* um span só: o botão é inline-flex, e cada pedaço solto viraria um item */}
+                <span>
+                  {comR}
+                  <span class="fv-longo"> com</span> NC
+                </span>
               </button>
             </>
           )}
@@ -3764,7 +3782,9 @@ function Painel(p: PropsPainel) {
   const nomeDoSistema = ctx.sistema?.nome ?? 'sistema oficial'
   const aindaNoApp = (v: EventoFvs | undefined) => comFichaDoSistema && !!v?.resultado && !ehDoConcreto(v) && soNoAppAinda(v, ctx.dados.lancados)
   const pct = ficha ? percentualConforme(ficha, eventos) : null
-  const sit = ficha ? situacaoDaPeca(ficha, eventos) : 'nada'
+  // pilar, viga e laje: verde só numa concretagem cadastrada (achado #2, 24/11)
+  const concretada = concretadaDe(ctx.dados.concretadas, p.id, p.area ? 'L' : peca.tipo)
+  const sit = ficha ? situacaoDaPeca(ficha, eventos, undefined, concretada) : 'nada'
   const furo = peca.tipo === 'F' ? peca.furo : undefined
   const esq = peca.tipo === 'E' ? peca.esquadria : undefined
   // item que os filhos marcam: o de furação na viga com furos, os de esquadria no ambiente com esquadrias
@@ -3870,15 +3890,23 @@ function Painel(p: PropsPainel) {
       const automatico = pelosFuros || pelasBarras || pelosFurosDaLaje
       // prazo das regras da obra (escoramento, reescoramento): só aparece enquanto o item não está C
       const prazo = v?.resultado === 'C' ? null : prazoDoItemNaPeca(ctx.dados, ficha, eventos, it.n)
+      // item só do app (consolo, capitel): não vai para o sistema oficial, então não fica "ainda não está lá"
+      const soDoApp = itemSoDoApp(it)
+      const naoLancado = aindaNoApp(v) && !soDoApp
       linhas.push(
         <div
-          class={`fv-item${p.etapa && p.etapa !== it.etapa ? ' apagada' : ''}${p.itemInicial === it.n ? ' destaque' : ''}${aindaNoApp(v) ? ' so-app' : ''}`}
+          class={`fv-item${p.etapa && p.etapa !== it.etapa ? ' apagada' : ''}${p.itemInicial === it.n ? ' destaque' : ''}${naoLancado ? ' so-app' : ''}${soDoApp ? ' so-do-app' : ''}`}
           key={it.n}
           data-item={it.n}
         >
           <div class="fv-num">{it.n}</div>
           <div class="fv-tx">
             <div class="fv-tt">{it.titulo}</div>
+            {soDoApp && (
+              <div class="fv-so-do-app" data-testid="fvs-item-so-do-app">
+                Só do app (não vai para o {nomeDoSistema})
+              </div>
+            )}
             {prazo && (
               <div class="fv-prazo" data-testid="fvs-prazo">
                 Aguardando · {seloDoPrazo(prazo)}
@@ -3904,7 +3932,7 @@ function Painel(p: PropsPainel) {
                     {v.resultado} {quando(v.criado_em_dispositivo)} · {rotuloRodada(v.rodada)} · {nomeDe(v)}
                     {/* C com observação: veio da ligação (diz de onde) ou foi marcado antes do prazo */}
                     {v.resultado === 'C' && v.observacao ? <span data-testid="fvs-obs-c"> · {v.observacao}</span> : v.lote_id && ' · em lote'}
-                    {aindaNoApp(v) && (
+                    {naoLancado && (
                       <span class="fv-so-app" data-testid="fvs-so-no-app">
                         {' '}
                         · ainda não está no {nomeDoSistema}
@@ -4193,7 +4221,7 @@ function Painel(p: PropsPainel) {
               </h3>
             )}
             {abertas.map((a) => {
-              const sa = situacaoDaFichaAberta(a, fichaPorId, evsDoPainel)
+              const sa = situacaoDaFichaAberta(a, fichaPorId, evsDoPainel, undefined, undefined, concretada)
               const conteudo = (
                 <>
                   <b>{a.codigo}</b>

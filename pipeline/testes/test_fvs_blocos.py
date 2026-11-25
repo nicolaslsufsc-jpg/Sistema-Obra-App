@@ -120,6 +120,17 @@ class TestReferencia(unittest.TestCase):
             self.assertEqual(vs[1]["rotulo"], (1, 2, 3, 4))
             self.assertEqual(vs[0]["polys"], [[(0, 50), (10, 50), (10, 150), (0, 150)]])
 
+    def test_lista_de_baldrames_escolhe_as_vigas(self):
+        # 25/11/2026: "baldrames": true continua todas; com a lista, só essas (com ou sem o "VB-")
+        vigas = [{"nome": f"VB-V{n}"} for n in (1, 2, 10)]
+        self.assertEqual(blocos.escolher_baldrames(vigas, True), vigas)
+        self.assertEqual([v["nome"] for v in blocos.escolher_baldrames(vigas, ["V10", "VB-V1"])], ["VB-V1", "VB-V10"])
+        self.assertEqual(blocos.escolher_baldrames(vigas, []), [])
+        with self.assertRaises(blocos.ErroBlocos):
+            blocos.escolher_baldrames(vigas, ["V10", "V99"])  # viga que não está na forma
+        with self.assertRaises(blocos.ErroBlocos):
+            blocos.escolher_baldrames(vigas, "V10")
+
 
 if __name__ == "__main__":
     unittest.main()

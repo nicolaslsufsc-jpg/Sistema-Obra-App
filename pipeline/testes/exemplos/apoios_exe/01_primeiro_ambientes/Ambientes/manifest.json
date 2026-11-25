@@ -1,0 +1,50 @@
+{
+ "formato": 1,
+ "planta_id": "a2000000-0000-4000-8000-000000000003",
+ "obra": "EXE",
+ "pavimento": "1º Pavimento",
+ "trecho": "Ambientes",
+ "prancha": "EXE.ES.LO.100",
+ "revisao": "R00",
+ "largura": 1100,
+ "altura": 600,
+ "tile": 512,
+ "niveis": [
+  0
+ ],
+ "elementos": {
+  "e0000000-0000-4000-8000-000000000301": {
+   "tipo": "A",
+   "nome": "101",
+   "secao": "12,1 m2",
+   "rotulo": [
+    10,
+    10,
+    40,
+    30
+   ],
+   "polys": [
+    [
+     [
+      0,
+      0
+     ],
+     [
+      90,
+      0
+     ],
+     [
+      90,
+      90
+     ],
+     [
+      0,
+      90
+     ]
+    ]
+   ]
+  }
+ },
+ "detalhes": {},
+ "pedacos": {}
+}

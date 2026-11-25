@@ -164,7 +164,7 @@ export function ModelosDaObra({ fonte, versao, sessao, aoImportar }: PropsModelo
           </ul>
         </>
       ) : (
-        <p class="ifc-discreto">Nenhuma lista de modelos carregada para esta obra.</p>
+        <p class="ifc-discreto">Sem lista de modelos</p>
       )}
       {carregada && (
         <p class="ifc-discreto" role="status">

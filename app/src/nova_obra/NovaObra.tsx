@@ -1,5 +1,6 @@
-// Nova obra (etapa 1): cadastrar a obra, os pavimentos e as fichas pela tela e salvar o pacote (.zip),
-// sem planta ainda. O rascunho fica neste navegador enquanto a pessoa monta (pode fechar e voltar).
+// Nova obra: cadastrar a obra, os pavimentos, as plantas, as fichas e quem tem acesso pela tela; no fim,
+// publicar no servidor (publicar.ts) ou salvar o pacote (.zip). O rascunho fica neste navegador enquanto
+// a pessoa monta (pode fechar e voltar).
 import { useEffect, useState } from 'preact/hooks'
 import {
   etapasDaFicha,
@@ -11,23 +12,33 @@ import {
   problemas,
   avisos,
   rascunhoVazio,
+  PAPEIS,
   TIPOS_DE_PECA,
+  UNIDADES,
+  comUnidade,
+  unidadeDaFicha,
   zipDoRascunho,
+  type Unidade,
+  type EstadoPublicacao,
+  type PessoaRascunho,
   type FichaRascunho,
   type ItemRascunho,
   type RascunhoObra,
 } from './modelo'
 import { PassoPlantas } from './TelaPlantas'
 import { apagarTudo, lerTiles } from './guardados'
+import type { Progresso } from './publicar'
+import { Ajuda } from '../telas/Ajuda'
 
 const CHAVE = 'nova_obra:rascunho'
-type Passo = 'obra' | 'pavimentos' | 'plantas' | 'fichas' | 'salvar'
+type Passo = 'obra' | 'pavimentos' | 'plantas' | 'fichas' | 'pessoas' | 'salvar'
 const PASSOS: Array<[Passo, string]> = [
   ['obra', '1. Obra'],
   ['pavimentos', '2. Pavimentos'],
   ['plantas', '3. Plantas'],
   ['fichas', '4. Fichas'],
-  ['salvar', '5. Salvar'],
+  ['pessoas', '5. Pessoas'],
+  ['salvar', '6. Salvar'],
 ]
 
 function lerRascunho(): RascunhoObra {
@@ -62,7 +73,12 @@ export function NovaObra() {
   return (
     <main class="tela no-tela">
       <h1>Nova obra</h1>
-      <p class="discreto">Monte a obra aqui e salve o pacote (.zip). Depois abra o .zip no tablet pelo botão "Trocar de obra / abrir pacote (.zip)". Nada sai deste aparelho.</p>
+      <p class="discreto so-com-ajuda">
+        Nada sai deste aparelho até publicar ou salvar o pacote.
+        <Ajuda>
+          No fim, publique no servidor (precisa de internet e da conta de administrador) ou salve o pacote (.zip) para abrir no tablet sem conta.
+        </Ajuda>
+      </p>
       <nav class="no-passos" aria-label="Passos">
         {PASSOS.map(([id, nome]) => (
           <button type="button" key={id} class={passo === id ? 'principal' : undefined} aria-current={passo === id ? 'step' : undefined} onClick={() => setPasso(id)}>
@@ -73,10 +89,12 @@ export function NovaObra() {
       {passo === 'obra' && <PassoObra r={r} mudar={mudar} seguir={() => setPasso('pavimentos')} />}
       {passo === 'pavimentos' && <PassoPavimentos r={r} mudar={mudar} seguir={() => setPasso('plantas')} />}
       {passo === 'plantas' && <PassoPlantas r={r} mudar={mudar} seguir={() => setPasso('fichas')} />}
-      {passo === 'fichas' && <PassoFichas r={r} mudar={mudar} seguir={() => setPasso('salvar')} />}
+      {passo === 'fichas' && <PassoFichas r={r} mudar={mudar} seguir={() => setPasso('pessoas')} />}
+      {passo === 'pessoas' && <PassoPessoas r={r} mudar={mudar} seguir={() => setPasso('salvar')} />}
       {passo === 'salvar' && (
         <PassoSalvar
           r={r}
+          mudar={mudar}
           irPara={setPasso}
           recomecar={() => {
             apagarTudo().catch(() => undefined)
@@ -199,14 +217,15 @@ function PassoFichas({ r, mudar, seguir }: PropsPasso) {
   return (
     <section class="cartao" aria-labelledby="t-fichas">
       <h2 id="t-fichas">Fichas de verificação</h2>
-      {!r.fichas.length && <p class="discreto">Nenhuma ficha ainda. Cada ficha tem os itens que a equipe confere em cada peça.</p>}
+      {!r.fichas.length && <p class="discreto">Sem fichas</p>}
       <ul class="no-lista">
         {r.fichas.map((f, i) => (
           <li key={i}>
             <button type="button" class="no-ficha" onClick={() => setEditando(i)}>
               <strong>{f.codigo || 'Sem código'}</strong> {f.titulo || 'Sem título'}
               <span class="discreto">
-                {f.itens.length} {f.itens.length === 1 ? 'item' : 'itens'} · {f.aplica_a.map((a) => TIPOS_DE_PECA.find((t) => t.id === a)?.nome).join(', ') || 'não diz a que se aplica'}
+                {f.itens.length} {f.itens.length === 1 ? 'item' : 'itens'} · {f.aplica_a.map((a) => TIPOS_DE_PECA.find((t) => t.id === a)?.nome).join(', ') || 'não diz a que se aplica'} ·{' '}
+                {UNIDADES.find((u) => u.id === unidadeDaFicha(f))?.nome.toLowerCase()}
               </span>
             </button>
           </li>
@@ -223,7 +242,7 @@ function PassoFichas({ r, mudar, seguir }: PropsPasso) {
           + Nova ficha
         </button>
         <button type="button" class="principal" onClick={seguir}>
-          Seguir para salvar
+          Seguir para as pessoas
         </button>
       </div>
     </section>
@@ -265,6 +284,19 @@ function EditorFicha({ ficha: f, mudar, fechar, tirar }: { ficha: FichaRascunho;
         Título
         <input value={f.titulo} placeholder="ex.: Execução de pilares" onInput={(e) => mudar({ ...f, titulo: valor(e) })} />
       </label>
+      <label>
+        Como conferir
+        <select value={unidadeDaFicha(f)} onChange={(e) => mudar(comUnidade(f, (e.target as HTMLSelectElement).value as Unidade))}>
+          {UNIDADES.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p class="discreto">
+        {UNIDADES.find((u) => u.id === unidadeDaFicha(f))?.ajuda}. Dá para trocar depois, no meio da obra: o que já foi conferido continua guardado em cada local.
+      </p>
       <fieldset class="no-aplica">
         <legend>Vale para</legend>
         {TIPOS_DE_PECA.map((t) => (
@@ -285,7 +317,10 @@ function EditorFicha({ ficha: f, mudar, fechar, tirar }: { ficha: FichaRascunho;
       <h3>Itens ({f.itens.length})</h3>
       <details class="no-colar" open={!f.itens.length}>
         <summary>Colar do Excel</summary>
-        <p class="discreto">Na planilha, selecione as colunas (Etapa, Título, Descrição, Dispositivo, Tolerância), copie e cole aqui. Com a linha de títulos, as colunas podem vir em qualquer ordem.</p>
+        <p class="discreto so-com-ajuda">
+          Colunas: Etapa, Título, Descrição, Dispositivo, Tolerância.
+          <Ajuda>Na planilha, selecione as colunas, copie e cole aqui. Com a linha de títulos, as colunas podem vir em qualquer ordem.</Ajuda>
+        </p>
         <textarea aria-label="Itens colados do Excel" rows={5} value={colado} onInput={(e) => setColado((e.target as HTMLTextAreaElement).value)} />
         <button type="button" onClick={acrescentar} disabled={!colado.trim()}>
           Acrescentar os itens colados
@@ -361,7 +396,173 @@ function EditorFicha({ ficha: f, mudar, fechar, tirar }: { ficha: FichaRascunho;
   )
 }
 
-function PassoSalvar({ r, irPara, recomecar }: { r: RascunhoObra; irPara: (p: Passo) => void; recomecar: () => void }) {
+function PassoPessoas({ r, mudar, seguir }: PropsPasso) {
+  const lista = r.pessoas ?? []
+  const publicada = r.publicacao?.codigo === r.codigo ? r.publicacao : undefined
+  const mudarPessoa = (i: number, parcial: Partial<PessoaRascunho>) =>
+    mudar({
+      pessoas: lista.map((p, k) => (k === i ? { ...p, ...parcial } : p)),
+    })
+  function tirar(i: number) {
+    const pessoas = lista.filter((_, k) => k !== i)
+    // a publicação guarda as pessoas já convidadas pela posição na lista: acompanha a troca
+    if (!r.publicacao) return mudar({ pessoas })
+    const convidadas = r.publicacao.convidadas.filter((k) => k !== i).map((k) => (k > i ? k - 1 : k))
+    mudar({ pessoas, publicacao: { ...r.publicacao, convidadas } })
+  }
+  return (
+    <section class="cartao" aria-labelledby="t-pessoas">
+      <h2 id="t-pessoas">Quem tem acesso</h2>
+      <p class="discreto">
+        Só vale ao publicar no servidor (o .zip não tem conta). Com e-mail: quem já tem conta ganha o acesso na hora; quem não tem ganha quando entrar no app a primeira vez com
+        esse e-mail. Sem e-mail: fica um convite esperando, e o e-mail entra depois na tela Pessoas do app. O administrador já vê todas as obras e não precisa estar aqui.
+      </p>
+      {lista.length === 0 && <p class="discreto">Ninguém ainda. Dá para publicar assim e dar acesso depois pela tela Pessoas do app.</p>}
+      <ul class="no-lista">
+        {lista.map((p, i) => {
+          const feito = !!publicada?.convidadas.includes(i)
+          const quem = p.nome.trim() || `pessoa ${i + 1}`
+          return (
+            <li key={i} class="no-peca">
+              <div class="no-linha">
+                <label>
+                  Nome
+                  <input value={p.nome} disabled={feito} placeholder="ex.: Maria Exemplo" onInput={(e) => mudarPessoa(i, { nome: valor(e) })} />
+                </label>
+                <label>
+                  E-mail (pode ficar vazio)
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    value={p.email}
+                    disabled={feito}
+                    placeholder="ex.: maria@exemplo.com"
+                    onInput={(e) => mudarPessoa(i, { email: valor(e).trim() })}
+                  />
+                </label>
+                <label class="no-curto">
+                  Papel
+                  <select
+                    value={p.papel}
+                    disabled={feito}
+                    onChange={(e) =>
+                      mudarPessoa(i, {
+                        papel: (e.target as HTMLSelectElement).value as PessoaRascunho['papel'],
+                      })
+                    }
+                  >
+                    {PAPEIS.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p class="discreto">{PAPEIS.find((x) => x.id === p.papel)?.ajuda}</p>
+              {feito ? (
+                <p class="no-ok">Já tem acesso (ou convite) no servidor. Para mudar, use a tela Pessoas do app.</p>
+              ) : (
+                <button type="button" onClick={() => tirar(i)}>
+                  Tirar {quem}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <div class="acoes">
+        <button
+          type="button"
+          onClick={() =>
+            mudar({
+              pessoas: [...lista, { nome: '', email: '', papel: 'campo' }],
+            })
+          }
+        >
+          Pôr pessoa
+        </button>
+        <button type="button" class="principal" onClick={seguir}>
+          Seguir para salvar
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** Publicar no servidor. O servidor do app (servidor.ts) só carrega ao tocar, para o .zip seguir sem conta. */
+function Publicar({ r, mudar, bloqueado }: { r: RascunhoObra; mudar: (p: Partial<RascunhoObra>) => void; bloqueado: boolean }) {
+  const [andando, setAndando] = useState<Progresso | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [avisosFim, setAvisosFim] = useState<string[] | null>(null)
+  const publicada = r.publicacao?.codigo === r.codigo ? r.publicacao : undefined
+  const pessoas = r.pessoas ?? []
+  const faltam = publicada ? pessoas.filter((_, i) => !publicada.convidadas.includes(i)).length : pessoas.length
+  const tudoFeito = !!publicada?.enviada && faltam === 0
+  async function publicar() {
+    setErro(null)
+    setAvisosFim(null)
+    setAndando({ etapa: 'conferir', texto: 'Abrindo a conexão…' })
+    try {
+      const [{ publicarObra }, { servidorDoApp }] = await Promise.all([import('./publicar'), import('./servidor')])
+      const guardar = (e: EstadoPublicacao) => mudar({ publicacao: e })
+      const res = await publicarObra(r, servidorDoApp, lerTiles, guardar, setAndando)
+      if (res.ok) setAvisosFim(res.avisos)
+      else setErro(res.erro)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAndando(null)
+    }
+  }
+  return (
+    <section class="cartao" aria-labelledby="t-publicar">
+      <h2 id="t-publicar">Publicar no servidor</h2>
+      <p class="discreto">
+        A obra vai para o servidor com pavimentos, plantas, peças e fichas, e as pessoas do passo 5 ganham acesso. Precisa de internet e de ter entrado no app, neste navegador, com
+        a conta de administrador. Nada que já está no servidor é apagado ou trocado.
+      </p>
+      {publicada && !avisosFim && (
+        <p class={publicada.enviada ? 'no-ok' : 'discreto'} role="status">
+          {publicada.enviada
+            ? `A obra ${publicada.codigo} está no servidor${faltam ? `; falta dar acesso a ${faltam} ${faltam === 1 ? 'pessoa' : 'pessoas'}` : ''}.`
+            : `A publicação de ${publicada.codigo} começou e não terminou. Toque em "Continuar a publicação".`}
+        </p>
+      )}
+      <div class="acoes">
+        <button type="button" class="principal" disabled={bloqueado || !!andando || tudoFeito} onClick={publicar}>
+          {andando ? andando.texto : tudoFeito ? 'Publicada' : publicada ? 'Continuar a publicação' : 'Publicar no servidor'}
+        </button>
+        <a class="botao" href="./" target="_blank" rel="noopener">
+          Abrir o app
+        </a>
+      </div>
+      {erro && (
+        <p class="erro" role="alert">
+          {erro}
+        </p>
+      )}
+      {avisosFim && (
+        <div role="status">
+          <p class="no-ok">Obra {r.codigo} publicada. No app, escolha a obra na lista para conferir.</p>
+          {avisosFim.length > 0 && (
+            <div class="barra atencao">
+              <p>Ficaram sem acesso (corrija no passo 5 e toque em "Continuar a publicação", ou dê pela tela Pessoas do app):</p>
+              <ul>
+                {avisosFim.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PassoSalvar({ r, mudar, irPara, recomecar }: { r: RascunhoObra; mudar: (p: Partial<RascunhoObra>) => void; irPara: (p: Passo) => void; recomecar: () => void }) {
   const lista = problemas(r)
   const atencao = avisos(r)
   const [salvo, setSalvo] = useState<string | null>(null)
@@ -393,8 +594,9 @@ function PassoSalvar({ r, irPara, recomecar }: { r: RascunhoObra; irPara: (p: Pa
   }
   const plantas = r.plantas ?? []
   return (
-    <section class="cartao" aria-labelledby="t-salvar">
-      <h2 id="t-salvar">Conferir e salvar</h2>
+    <>
+      <section class="cartao" aria-labelledby="t-salvar">
+      <h2 id="t-salvar">Conferir e salvar o pacote (.zip)</h2>
       <ul class="no-resumo">
         <li>
           Obra: <strong>{r.codigo || '—'}</strong> {r.nome}
@@ -407,6 +609,9 @@ function PassoSalvar({ r, irPara, recomecar }: { r: RascunhoObra; irPara: (p: Pa
         </li>
         <li>
           {plantas.length} {plantas.length === 1 ? 'planta' : 'plantas'}, {plantas.reduce((s, p) => s + p.pecas.length, 0)} peças marcadas
+        </li>
+        <li>
+          {(r.pessoas ?? []).length} {(r.pessoas ?? []).length === 1 ? 'pessoa' : 'pessoas'} com acesso
         </li>
       </ul>
       {lista.length > 0 ? (
@@ -429,6 +634,9 @@ function PassoSalvar({ r, irPara, recomecar }: { r: RascunhoObra; irPara: (p: Pa
             </button>
             <button type="button" onClick={() => irPara('fichas')}>
               Fichas
+            </button>
+            <button type="button" onClick={() => irPara('pessoas')}>
+              Pessoas
             </button>
           </div>
         </div>
@@ -475,6 +683,8 @@ function PassoSalvar({ r, irPara, recomecar }: { r: RascunhoObra; irPara: (p: Pa
           Salvo: {salvo}. Leve este arquivo ao tablet e abra pelo botão "Trocar de obra / abrir pacote (.zip)".
         </p>
       )}
-    </section>
+      </section>
+      <Publicar r={r} mudar={mudar} bloqueado={lista.length > 0} />
+    </>
   )
 }

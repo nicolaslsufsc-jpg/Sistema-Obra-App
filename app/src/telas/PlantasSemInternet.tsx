@@ -93,7 +93,7 @@ export function PlantasSemInternet({
   return (
     <section class={`barra ${tudo && !erro ? 'ok' : 'atencao'}`} aria-live="polite" data-testid="plantas-sem-internet">
       <p>{texto}</p>
-      {semEspaco && !baixando && <p>O aparelho está sem espaço para as plantas que faltam. Libere espaço e toque em "Baixar plantas".</p>}
+      {semEspaco && !baixando && <p>Aparelho sem espaço. Libere espaço e toque em "Baixar plantas".</p>}
       {erro && <p>{erro}</p>}
       {!tudo && !baixando && (
         <button type="button" onClick={() => void baixar()} disabled={!online}>

@@ -59,7 +59,7 @@ function AbrirArquivo({ arquivo, rotulo, miniatura = false }: { arquivo: Arquivo
       </div>
     )
   }
-  if (falta && naoConfere) return <p class="aviso" data-testid="arquivo-nao-confere">O arquivo que veio do servidor não é o que foi registrado. Não abri. Avise o gestor da obra.</p>
+  if (falta && naoConfere) return <p class="aviso" data-testid="arquivo-nao-confere">Arquivo diferente do registrado: não foi aberto. Avise o gestor da obra.</p>
   if (falta) return <p class="aviso">{doServidor ? 'Não consegui baixar o arquivo. Confira a internet e abra o documento de novo.' : 'O arquivo não está neste aparelho.'}</p>
   if (!aberto) return <p class="discreto">Abrindo o arquivo…</p>
   const { url, foto } = aberto
@@ -180,7 +180,7 @@ export function TelaDocumento({ ctx, chave }: { ctx: ContextoDoc; chave: string 
 
       <h2>Revisões anteriores</h2>
       {doc.anteriores.length === 0 ? (
-        <p class="discreto">Nenhuma: esta é a primeira revisão cadastrada.</p>
+        <p class="discreto">–</p>
       ) : (
         <ul class="doc-revisoes" data-testid="revisoes-anteriores">
           {doc.anteriores.map(linhaRevisao)}

@@ -36,6 +36,8 @@ interface Registro {
   planta: string | null
   /** barra de laje: o registro vai em barra_id (desde 20/11), e "el" mostra a barra como local */
   barra: string | null
+  /** ficha aberta do registro (null: só no app) */
+  fc: string | null
 }
 
 /** Registros marcados no app, do mais antigo para o mais novo (lidos pelo núcleo, na página). */
@@ -47,7 +49,7 @@ function registros(p: Page): Promise<Registro[]> {
     return l
       .filter((e) => !e.origem_id) // só o que foi marcado no app, não o histórico importado
       .sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : a.criado_em_dispositivo > b.criado_em_dispositivo ? 1 : a.id < b.id ? -1 : 1))
-      .map((e) => ({ el: e.elemento_id ?? e.barra_id, ficha: e.ficha_id, item: e.item, r: e.resultado, rod: e.rodada, obs: e.observacao, lote: e.lote_id, planta: e.planta_id, barra: e.barra_id ?? null }))
+      .map((e) => ({ el: e.elemento_id ?? e.barra_id, ficha: e.ficha_id, item: e.item, r: e.resultado, rod: e.rodada, obs: e.observacao, lote: e.lote_id, planta: e.planta_id, barra: e.barra_id ?? null, fc: e.ficha_campo_id ?? null }))
   })()`)
 }
 
@@ -306,9 +308,8 @@ suite('FVS na bancada (Chrome)', () => {
         else document.querySelector('.fv-nomes span')!.textContent = 'Planta inteira'
         // o contador vem em vários pedaços de texto ("1", "/", "24", " liberados"): troca todos os
         // que vêm antes do "· com NC" por um só, como numa obra grande
-        const prog = document.querySelector('.fv-prog')!
-        while (prog.firstChild && prog.firstChild.nodeType === Node.TEXT_NODE) prog.firstChild.remove()
-        prog.prepend('1.234/4.348 liberados')
+        // (desde 24/11 o "x/y liberados" fica num span próprio, .fv-prog-lib)
+        document.querySelector('.fv-prog .fv-prog-lib')!.textContent = '1.234/4.348 liberados'
       })
       const medida = await p.evaluate(() => {
         const linha = (e: Element | null) => {
@@ -351,9 +352,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes', 'Furos'])
       // contador de obra grande, como o Pilotis
       await p.evaluate(() => {
-        const prog = document.querySelector('.fv-prog')!
-        while (prog.firstChild && prog.firstChild.nodeType === Node.TEXT_NODE) prog.firstChild.remove()
-        prog.prepend('0/385 liberados')
+        document.querySelector('.fv-prog .fv-prog-lib')!.textContent = '0/385 liberados'
       })
       const m = await p.evaluate(() => {
         const seg = document.querySelector('.fv-seg') as HTMLElement
@@ -393,7 +392,13 @@ suite('FVS na bancada (Chrome)', () => {
       expect(m.abasRolam, 'as 4 abas cabem sem rolar').toBe(false)
       expect(m.abasFora).toEqual([])
       expect(m.etapaTem, '"Etapas" inteiro').toBeGreaterThanOrEqual(m.etapaPrecisa)
+      // verde só com concretagem (24/11): o P1, com a ficha toda aceita e sem caminhão, fica azul, e o topo tem
+      // "p/ concretar" e "com NC" juntos. Mesmo assim, 2 linhas: no aperto a 2ª vira "■ 1 · 1 NC"
+      expect(await p.getByTestId('fvs-para-concretar').count()).toBe(1)
+      expect(await p.getByTestId('fvs-ver-reprovacoes').count()).toBe(1)
       expect(m.linhasDoContador, 'contador em até 2 linhas').toBeLessThanOrEqual(2)
+      // as palavras continuam no texto (leitor de tela e quem procura "p/ concretar")
+      expect(await p.getByTestId('fvs-progresso').textContent()).toContain('1 p/ concretar')
       expect(m.trechoTem, '"Trecho 1" inteiro').toBeGreaterThanOrEqual(m.trechoPrecisa)
       expect(m.buscaTem, '"Buscar" inteiro').toBeGreaterThanOrEqual(m.buscaPrecisa)
       expect(await topoCabe(p)).toBe(true)
@@ -462,21 +467,62 @@ suite('FVS na bancada (Chrome)', () => {
       p.on('pageerror', (e: Error) => erros.push(e.message))
       await p.goto(`${url}?abrir=0&locais=1`)
       await noInicio(p)
-      expect(await p.getByTestId('fvs-entra-locais').innerText()).toContain('3 locais fora da planta')
+      expect(await p.getByTestId('fvs-entra-locais').innerText()).toContain('4 locais fora da planta')
       await p.getByTestId('fvs-entra-locais').click()
       await p.getByRole('heading', { name: 'Locais fora da planta' }).waitFor()
+      const nomes = async () => (await p.getByTestId('fvs-local').allInnerTexts()).map((l: string) => l.split('\n')[0])
       const lista = await p.getByTestId('fvs-local').allInnerTexts()
-      expect(lista.map((l: string) => l.split('\n')[0])).toEqual(['Cortina trecho 1', 'Bloco B2', 'Bloco B10 (com nome comprido para ver a quebra de linha no celular)'])
-      expect(lista[2]).toContain('Com NC')
+      expect(await nomes()).toEqual(['Cortina trecho 1', 'Parede 1', 'Bloco B2', 'Bloco B10 (com nome comprido para ver a quebra de linha no celular)'])
+      expect(lista[3]).toContain('Com NC')
+      // cada linha diz o serviço; o serviço filtra a lista (23/11: cortina, parede aparente, blocos)
+      expect(lista[1]).toContain('Parede de concreto aparente')
+      const servicos = p.getByTestId('fvs-locais-servicos').getByRole('button')
+      expect((await servicos.allInnerTexts()).map((t: string) => t.replace(/\s+/g, ' ').trim())).toEqual([
+        'Todos 4',
+        'Blocos de fundação e baldrames (ficha de teste) 2',
+        'Cortina de contenção (ficha de teste) 1',
+        'Parede de concreto aparente (ficha de teste) 1',
+      ])
       expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await servicos.filter({ hasText: 'Parede de concreto' }).click()
+      expect(await nomes()).toEqual(['Parede 1'])
+      await p.getByTestId('fvs-local').click()
+      await p.getByTestId('fvs-tela-local').waitFor()
+      expect(await p.getByTestId('fvs-local-itens').locator('h2').innerText()).toContain('EXE-PVS-PAREDE')
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="1"] [data-testid="fvs-local-resultado"]').waitFor()
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      // voltar cai de novo na parede; Todos mostra a lista inteira
+      await p.goBack()
+      await p.getByRole('heading', { name: 'Locais fora da planta' }).waitFor()
+      expect(await nomes()).toEqual(['Parede 1'])
+      await servicos.filter({ hasText: 'Todos' }).click()
+      expect(await p.getByTestId('fvs-local').count()).toBe(4)
 
       await p.getByTestId('fvs-local').filter({ hasText: 'Bloco B10' }).click()
       await p.getByTestId('fvs-tela-local').waitFor()
       expect(await p.getByTestId('fvs-local-fichas').innerText()).toContain('Pendente Reinspeção')
       expect(await p.getByTestId('fvs-local-resultado').innerText()).toContain('NC em 02/10')
       expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      // tratativa do NC também no local do sistema (25/11): a causa grava na hora
+      const tratLocal = p.locator('.fv-item[data-item="3"] [data-testid=fvs-trat]')
+      await tratLocal.locator('summary').click()
+      await tratLocal.getByTestId('fvs-trat-causa-projeto').click()
+      await p.waitForFunction(async () => {
+        const req = indexedDB.open('sistema-obra')
+        const todas = await new Promise<any[]>((ok) => {
+          req.onsuccess = () => {
+            const t = req.result.transaction('registros').objectStore('registros').getAll()
+            t.onsuccess = () => ok(t.result)
+          }
+        })
+        return todas.some((x) => x.tabela === 'fvs_tratativas' && x.linha.causa === 'projeto')
+      })
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await p.locator('.fv-item[data-item="3"] button[data-r="C"]').click()
       await p.locator('.fv-item[data-item="3"] .fv-hr', { hasText: 'V02' }).waitFor()
+      // reinspecionado: a tratativa continua à vista, com a pergunta da eficácia
+      await p.locator('.fv-item[data-item="3"] .fv-nc-fechada [data-testid=fvs-trat-eficacia-eficaz]').waitFor()
       await p.getByTestId('fvs-hist').waitFor()
       const gravados = await p.evaluate(async () => {
         const req = indexedDB.open('sistema-obra')
@@ -487,10 +533,162 @@ suite('FVS na bancada (Chrome)', () => {
           }
         })
       })
-      expect(gravados).toEqual([[3, 'C', 2, true, null, null]])
+      // o C da parede (item 1) e a reinspeção do bloco (item 3), os dois em local_id, sem planta
+      expect((gravados as Array<[number]>).sort((a, b) => a[0] - b[0])).toEqual([
+        [1, 'C', 1, true, null, null],
+        [3, 'C', 2, true, null, null],
+      ])
       await p.goBack()
       await p.getByRole('heading', { name: 'Locais fora da planta' }).waitFor()
-      expect((await p.getByTestId('fvs-local').allInnerTexts())[2]).toContain('Em andamento')
+      expect((await p.getByTestId('fvs-local').allInnerTexts())[3]).toContain('Em andamento')
+      expect(erros).toEqual([])
+      await contexto.close()
+    })
+  }
+
+  // Planta de blocos de fundação (23/11, lista grande 2.2): o bloco é peça K da planta "Blocos" (disciplina
+  // fundacao). Fundação → Blocos → toque no BL-P2 → ficha de blocos (aplica_a K) → C gravado no bloco.
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+  ] as const) {
+    it(`${largura}x${altura}: planta de blocos: tocar no bloco abre a ficha de blocos e marca`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&blocos=1`)
+      await noInicio(p)
+      await p.getByTestId('fvs-pavimento').first().click()
+      const fundacao = p.locator('[data-testid=fvs-disciplina][data-disciplina=fundacao]')
+      expect(await fundacao.innerText()).toContain('Blocos de fundação')
+      // a Fundação vem antes da Estrutura (ordem da obra)
+      expect(await p.getByTestId('fvs-disciplina').first().getAttribute('data-disciplina')).toBe('fundacao')
+      await fundacao.click()
+      await p.getByTestId('fvs-nivel-disciplina').waitFor()
+      expect(await p.getByTestId('fvs-nivel-disciplina').innerText()).toContain('8 locais') // 3 blocos, 2 estacas no BL-P2, 2 quadrados da escavação e 1 viga baldrame (24/11)
+      await p.getByTestId('fvs-nivel-disciplina').locator('[data-testid=fvs-planta], .fv-trechos .fv-abrir').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      // só blocos: sem aba Lajes (a planta de blocos não tem laje)
+      expect(await p.locator('.fv-topo').innerText()).not.toContain('Lajes')
+      await enquadrar(p, [-150, 450], 0)
+      await tocarNaPlanta(p, 450, 150)
+      await p.getByTestId('fvs-painel').waitFor()
+      await nomeNoPainel(p, 'BL-P2')
+      const painel = await p.getByTestId('fvs-painel').innerText()
+      expect(painel).toContain('TESTE-PVS-BLOCO')
+      expect(painel).not.toContain('detalhe desta peça')
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"].on').waitFor()
+      await expect
+        .poll(() => registros(p).then((rs) => rs.map((r) => [r.el, r.ficha, r.item, r.r])))
+        .toEqual([['e9000000-0000-0000-0000-000000000016', 'f0000000-0000-0000-0000-000000000030', 1, 'C']])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_blocos_${largura}.png`) })
+      expect(erros).toEqual([])
+      await contexto.close()
+    })
+
+    // rodada 9b do testador (24/11/2026): depois de abrir a planta de fundação, os quadrados da escavação viravam
+    // "Apto ESC" e a ficha de escavação, o acabamento "Outros" em todos os apartamentos
+    it(`${largura}x${altura}: grade de escavação fora dos acabamentos por cômodo`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&blocos=1&acabamentos=1`)
+      await noInicio(p)
+      await p.getByTestId('fvs-pavimento').first().click()
+      await p.locator('[data-testid=fvs-disciplina][data-disciplina=fundacao]').click()
+      await p.getByTestId('fvs-nivel-disciplina').waitFor()
+      await p.getByTestId('fvs-nivel-disciplina').locator('[data-testid=fvs-planta], .fv-trechos .fv-abrir').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.getByRole('button', { name: /^Voltar/ }).click()
+      await p.getByTestId('fvs-nivel-disciplina').waitFor()
+      await p.getByRole('button', { name: /^Voltar para/ }).click()
+      await p.locator('[data-testid=fvs-disciplina][data-disciplina=acabamentos]').waitFor()
+      const acab = p.locator('[data-testid=fvs-disciplina][data-disciplina=acabamentos]')
+      await expect.poll(() => acab.innerText()).toContain('Reboco, Piso e revestimento, Pintura')
+      expect(await acab.innerText()).not.toContain('Outros')
+      await acab.click()
+      const filtro = p.getByTestId('fvs-filtro-acabamento')
+      await expect.poll(() => filtro.locator('button').allInnerTexts()).toEqual(['Reboco', 'Piso e revestimento', 'Pintura', 'Todos'])
+      const aptos = () => p.getByTestId('fvs-apartamento').allInnerTexts()
+      await expect.poll(aptos).toHaveLength(7)
+      expect((await aptos()).join(' | ')).not.toMatch(/ESC|Escavação/)
+      await filtro.getByRole('button', { name: 'Todos' }).click()
+      expect((await p.getByTestId('fvs-ambientes').getByTestId('fvs-opcao-ambiente').allInnerTexts()).join(' | ')).not.toContain('Escavação')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    // vigas baldrames (etapa 2, 24/11/2026): locais "K" com "grade": "baldrame", na aba dos blocos, com a ficha dos blocos
+    it(`${largura}x${altura}: viga baldrame: abre com a ficha dos blocos e diz "Viga baldrame"`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&blocos=1`)
+      await noInicio(p)
+      await p.getByTestId('fvs-pavimento').first().click()
+      await p.locator('[data-testid=fvs-disciplina][data-disciplina=fundacao]').click()
+      await p.getByTestId('fvs-nivel-disciplina').waitFor()
+      await p.getByTestId('fvs-nivel-disciplina').locator('[data-testid=fvs-planta], .fv-trechos .fv-abrir').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.locator('.fv-seg button', { hasText: 'Blocos e baldrames' }).click()
+      await enquadrar(p, [-150, 450], 0)
+      await tocarNaPlanta(p, 600, 150)
+      await p.getByTestId('fvs-painel').waitFor()
+      await nomeNoPainel(p, 'VB-V1')
+      expect(await p.getByTestId('fvs-painel').locator('.fv-inf').first().innerText()).toContain('Viga baldrame')
+      expect(await p.getByTestId('fvs-painel').innerText()).toContain('TESTE-PVS-BLOCO')
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"].on').waitFor()
+      await expect
+        .poll(() => registros(p).then((rs) => rs.map((r) => [r.el, r.ficha, r.item, r.r])))
+        .toEqual([['e9000000-0000-0000-0000-000000000064', 'f0000000-0000-0000-0000-000000000030', 1, 'C']])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_baldrame_${largura}.png`) })
+      expect(erros).toEqual([])
+      await contexto.close()
+    })
+
+    // grade de escavação (item 1.2, 24/11/2026): quadrados "A" na planta de fundação com só a ficha da grade;
+    // a ficha de escavação não aparece nos cômodos (planta de ambientes)
+    it(`${largura}x${altura}: grade de escavação: só a ficha da grade no quadrado, e nenhuma nos cômodos`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&blocos=1`)
+      await noInicio(p)
+      await p.getByTestId('fvs-pavimento').first().click()
+      await p.locator('[data-testid=fvs-disciplina][data-disciplina=fundacao]').click()
+      await p.getByTestId('fvs-nivel-disciplina').waitFor()
+      await p.getByTestId('fvs-nivel-disciplina').locator('[data-testid=fvs-planta], .fv-trechos .fv-abrir').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.locator('.fv-seg button', { hasText: 'Escavação' }).click()
+      const servicos = await p.locator('select').evaluateAll((ss: Element[]) => ss.map((s) => [...(s as HTMLSelectElement).options].map((o) => o.text)))
+      expect(servicos).toContainEqual(['Escavação (ficha de teste)'])
+      await enquadrar(p, [-150, 450], 0)
+      await tocarNaPlanta(p, 395, 210)
+      await p.getByTestId('fvs-painel').waitFor()
+      await nomeNoPainel(p, 'ESC-A1')
+      const painel = await p.getByTestId('fvs-painel').innerText()
+      expect(painel).toContain('TESTE-PVS-ESC')
+      expect(painel).not.toContain('Reboco')
+      // o painel diz "Escavação", não "Ambiente" (pedido do Professor, 24/11)
+      expect(await p.getByTestId('fvs-painel').locator('.fv-inf').first().innerText()).toContain('Escavação')
+      expect(painel).not.toContain('Ambiente')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // nos cômodos (planta de ambientes) a ficha de escavação não entra
+      await p.locator('select[aria-label=Trecho]').selectOption({ label: 'Ambientes' })
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const nosComodos = await p.locator('select').evaluateAll((ss: Element[]) => ss.flatMap((s) => [...(s as HTMLSelectElement).options].map((o) => o.text)))
+      expect(nosComodos).not.toContain('Escavação (ficha de teste)')
+      expect(nosComodos).toContain('Reboco (ficha de teste)')
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_escavacao_${largura}.png`) })
       expect(erros).toEqual([])
       await contexto.close()
     })
@@ -597,6 +795,12 @@ suite('FVS na bancada (Chrome)', () => {
       expect(lig).toContain('Armadura e espaçadores')
       expect(lig).toContain('Prumo da fôrma')
       expect(await p.getByTestId('fvs-regras-fora').count()).toBe(0)
+      // residenciais do escoramento (3.8, 23/11): o nome e os pilares
+      expect(await p.getByTestId('fvs-regra-residencial').allTextContents()).toEqual([
+        expect.stringContaining('Residencial 1'),
+        expect.stringContaining('Residencial 2'),
+      ])
+      expect(await p.getByTestId('fvs-regra-residencial').nth(1).textContent()).toContain('6 pilares: P4, P5, P6')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       expect(await contrasteNosDoisTemas(p), 'contraste da tela das regras').toEqual([])
       // nada abaixo de 14 px na tela das regras (leitura no sol)
@@ -650,6 +854,12 @@ suite('FVS na bancada (Chrome)', () => {
           return e.scrollWidth <= e.clientWidth + 1 && r.right <= b.right + 1
         }),
       ).toBe(true)
+      // por residencial (3.8, 23/11): o P6 concretado abre o aviso do Residencial 2, que mostra o que falta
+      const avisoR2 = p.getByTestId('fvs-esc-aviso').filter({ hasText: 'Residencial 2' }).filter({ hasText: 'Desforma dos pilares' })
+      await expect.poll(() => avisoR2.innerText(), { timeout: 5000 }).toMatch(/P6 \(libera \d\d\/\d\d\)/)
+      expect(await avisoR2.innerText()).toContain('esperando concretagem')
+      expect(await avisoR2.innerText()).toContain('falta concretar P4, P5')
+      expect(await p.getByTestId('fvs-esc-residenciais').locator('h2').innerText()).toBe('Por residencial')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       expect(await alvosPequenos(p)).toEqual([])
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_escoramento_${largura}.png`), fullPage: true })
@@ -732,6 +942,131 @@ suite('FVS na bancada (Chrome)', () => {
       await buscar(p, 'P7')
       await nomeNoPainel(p, 'P7')
       expect(await p.locator('.fv-item[data-item="6"] button.on').count()).toBe(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
+  // Contador do topo com "p/ concretar" e "com NC" juntos (24/11, pedido do Professor): ia a 3 linhas no celular
+  // e a 5 no tablet em pé com três abas (o contador encolhia até 50 px). Agora 2 linhas no máximo; no aperto a
+  // 2ª vira "■ 1 · 1 NC" (o quadrado azul da peça na planta)
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    for (const larga of [false, true]) {
+      it(`${largura}x${altura}${larga ? ' (fonte larga)' : ''}: contador com "p/ concretar" e "com NC" em até 2 linhas, legível`, async () => {
+        const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+        const p: Page = await contexto.newPage()
+        const erros: string[] = []
+        p.on('pageerror', (e: Error) => erros.push(e.message))
+        await p.goto(url)
+        await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+        if (larga) await p.addStyleTag({ content: 'body, button, input, select { font-family: Verdana, sans-serif !important; }' })
+        await p.waitForTimeout(300)
+        expect(await p.getByTestId('fvs-para-concretar').count()).toBe(1)
+        expect(await p.getByTestId('fvs-ver-reprovacoes').count()).toBe(1)
+        const m = await p.evaluate(() => {
+          const prog = document.querySelector('.fv-prog') as HTMLElement
+          const r = document.createRange()
+          r.selectNodeContents(prog)
+          const topos = [...r.getClientRects()].filter((x) => x.width > 0).map((x) => x.top).sort((a, b) => a - b)
+          // o que aparece na tela: os pedaços com tamanho de letra (as palavras escondidas têm 0 px)
+          const visivel = [...prog.querySelectorAll('*')]
+            .filter((e) => parseFloat(getComputedStyle(e).fontSize) > 0 && getComputedStyle(e).display !== 'none')
+            .map((e) => parseFloat(getComputedStyle(e).fontSize))
+          const azul = prog.querySelector('.fv-q-azul') as HTMLElement
+          return {
+            linhas: topos.filter((t, i) => i === 0 || t - topos[i - 1] > 6).length,
+            menorLetra: Math.min(parseFloat(getComputedStyle(prog).fontSize), ...visivel),
+            quadrado: getComputedStyle(azul).display !== 'none',
+            larguraDoContador: prog.getBoundingClientRect().width,
+          }
+        })
+        expect(m.linhas, 'contador em até 2 linhas').toBeLessThanOrEqual(2)
+        expect(m.menorLetra, 'letra de pelo menos 11 px').toBeGreaterThanOrEqual(11)
+        expect(m.larguraDoContador).toBeGreaterThanOrEqual(80)
+        // no aperto (até 900 px), o quadrado azul no lugar das palavras; na tela larga, por extenso
+        expect(m.quadrado).toBe(largura <= 900)
+        // o que se vê: no aperto as palavras ("p/ concretar", "com") têm letra de 0 px (fv-longo)
+        const longo = await p.locator('.fv-prog .fv-longo').evaluateAll((l: Element[]) => l.map((e) => parseFloat(getComputedStyle(e).fontSize)))
+        expect(longo.length).toBe(2)
+        for (const t of longo) expect(t === 0).toBe(largura <= 900)
+        // as palavras continuam no texto (leitor de tela); o "1 NC" continua levando à lista
+        expect(await p.getByTestId('fvs-progresso').textContent()).toContain('1 p/ concretar')
+        expect(await p.getByTestId('fvs-ver-reprovacoes').textContent()).toContain('1 com NC')
+        expect(await topoCabe(p)).toBe(true)
+        expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+        expect(await alvosPequenos(p)).toEqual([])
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `contador_dois_${largura}${larga ? '_larga' : ''}.png`), clip: { x: 0, y: 0, width: largura, height: 200 } })
+        expect(erros).toEqual([])
+        await contexto.close()
+      }, 60_000)
+    }
+  }
+
+  // Achado #2 da lista de campo (24/11), decisão do Nicolas: "a peça fica verde quando estiver numa concretagem
+  // cadastrada ... Vamos botar um coeficiente aí de 90%". Ficha toda marcada sem concretagem fica azul.
+  for (const [largura, altura] of [
+    [375, 812],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: verde só com concretagem cadastrada no Concreto (pilar pelo caminhão, laje por 90% da área)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&rastreio=1&lajeconcretada=1`)
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const sit = () => p.locator('.fv-inf .fv-sit').textContent()
+      const marcarTudo = async (ns: readonly number[]) => {
+        for (const n of ns) await item(p, n, 'C').click()
+        await p.waitForFunction((k: number) => document.querySelectorAll('.fv-item button[data-r="C"].on').length >= k, ns.length)
+      }
+      // P6 tem caminhão (o item 6 já vem C pelo Concreto): com o resto C, verde
+      await buscar(p, 'P6')
+      await nomeNoPainel(p, 'P6')
+      await marcarTudo([1, 2, 3, 4, 5, 7])
+      await p.waitForFunction(() => document.querySelector('.fv-inf .fv-sit')?.textContent === 'Liberado')
+      // P7 sem caminhão: a ficha inteira C fica azul (liberado para concretar), não verde
+      await buscar(p, 'P7')
+      await nomeNoPainel(p, 'P7')
+      await marcarTudo([1, 2, 3, 4, 5, 6, 7])
+      await p.waitForFunction(() => document.querySelector('.fv-inf .fv-sit')?.textContent === 'Liberado p/ concretar')
+      expect(await sit()).toBe('Liberado p/ concretar')
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `verde_concretagem_pilar_${largura}.png`) })
+      await p.locator('.fv-cab button').click()
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+
+      // laje: a área dentro da área do caminhão fica verde; a de fora, azul
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      const novaArea = async (nome: string, pontos: ReadonlyArray<readonly [number, number]>) => {
+        const cx = pontos.reduce((t, q) => t + q[0], 0) / pontos.length
+        const cy = pontos.reduce((t, q) => t + q[1], 0) / pontos.length
+        await enquadrar(p, [-cy, cx], 0)
+        await p.getByTestId('fvs-nova-area').click()
+        await p.getByTestId('fvs-desenho').waitFor()
+        for (const [x, y] of pontos) await tocarNaPlanta(p, x, y)
+        await p.getByTestId('fvs-concluir-area').click()
+        await p.getByTestId('fvs-caixa-nome').fill(nome)
+        await p.getByTestId('fvs-caixa-criar').click()
+        await nomeNoPainel(p, nome)
+        await p.getByTestId('fvs-area-info').waitFor()
+      }
+      await novaArea('Laje concretada', [[650, 370], [850, 370], [850, 560], [650, 560]])
+      await marcarTudo([1, 2, 3, 4, 5])
+      await p.waitForFunction(() => document.querySelector('.fv-inf .fv-sit')?.textContent === 'Liberado')
+      await p.locator('.fv-cab button').click()
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+      // só a ponta dentro da área do caminhão (x de 600 a 640 de 400 a 640): menos de 90%, azul
+      await novaArea('Laje meio fora', [[400, 400], [640, 400], [640, 500], [400, 500]])
+      await marcarTudo([1, 2, 3, 4, 5])
+      await p.waitForFunction(() => document.querySelector('.fv-inf .fv-sit')?.textContent === 'Liberado p/ concretar')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `verde_concretagem_laje_${largura}.png`) })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -855,24 +1190,174 @@ suite('FVS na bancada (Chrome)', () => {
       const p: Page = await contexto.newPage()
       const erros: string[] = []
       p.on('pageerror', (e: Error) => erros.push(e.message))
-      // ?comodos=1: o reboco de teste não vale nas 4 suítes com nome (aptos 103 e 104)
+      // ?comodos=1: o reboco de teste não vale nas 4 suítes com nome (aptos 103 e 104), e o 104-03 ficou sem nome
+      // num apartamento com nomes (sem tipo: nenhuma ficha vale nele)
       await p.goto(`${url}?abrir=ambientes&comodos=1&servico=TESTE-PVS-REB&aba=ambientes`)
       await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
-      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/16 liberados')
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/15 liberados')
+      await buscar(p, '104-03')
+      await nomeNoPainel(p, '104-03')
+      expect(await p.getByTestId('fvs-fora-da-ficha').innerText()).toContain('ficou sem nome na planta')
+      expect(await p.getByTestId('fvs-sit-fora-da-ficha').innerText()).toBe('Sem tipo de cômodo')
+      expect(await p.locator('.fv-item').count()).toBe(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_sem_tipo_${largura}.png`) })
       await buscar(p, 'suite 01 103')
       await nomeNoPainel(p, 'Suíte 01')
       const aviso = p.getByTestId('fvs-fora-da-ficha')
       await aviso.waitFor()
       expect(await aviso.innerText()).toContain('não vale em Suíte 01')
       expect(await p.locator('.fv-item').count()).toBe(0)
+      // sem "Pendente": a ficha não se aplica no cômodo
+      expect(await p.getByTestId('fvs-sit-fora-da-ficha').innerText()).toBe('Não se aplica')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_fora_da_ficha_${largura}.png`) })
-      // na alvenaria a suíte vale: itens de volta e os 20 ambientes na conta
+      // na alvenaria a suíte vale: itens de volta e os 19 ambientes na conta (o sem tipo continua fora)
       await p.getByTestId('fvs-servico').selectOption('TESTE-PVS-ALV')
       await p.locator('.fv-ficha', { hasText: 'TESTE-PVS-ALV' }).waitFor()
       expect(await aviso.count()).toBe(0)
+      expect(await p.getByTestId('fvs-sit-fora-da-ficha').count()).toBe(0)
       expect(await p.locator('.fv-item').count()).toBeGreaterThan(0)
-      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/20 liberados')
+      // o 104-03 (sem tipo) fica fora também na alvenaria: 19, não 20
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('0/19 liberados')
+      // 25/11: cômodo com vãos fora da ficha (?comodos=2, o 101-01 tem janela e porta): os vãos somem junto com os itens
+      // (antes, a faixa "Esquadrias: 0 de N OK" ficava marcável num cômodo que não leva a ficha)
+      // contexto novo: a planta de teste fica guardada no aparelho e não é baixada de novo com outro ?comodos
+      expect(erros).toEqual([])
+      await contexto.close()
+      const outro = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const q: Page = await outro.newPage()
+      q.on('pageerror', (e: Error) => erros.push(e.message))
+      await q.goto(`${url}?abrir=ambientes&comodos=2&esquadrias=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await q.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(q, '101-01')
+      await q.getByTestId('fvs-sit-fora-da-ficha').waitFor()
+      expect(await q.getByTestId('fvs-esquadrias-do-ambiente').count()).toBe(0)
+      // na alvenaria o 101-01 vale: os vãos voltam
+      await q.getByTestId('fvs-servico').selectOption('TESTE-PVS-ALV')
+      await q.getByTestId('fvs-esquadrias-do-ambiente').waitFor()
+      expect(erros).toEqual([])
+      await outro.close()
+    }, 120_000)
+
+    it(`${largura}x${altura}: unidade de conferência por trecho marca o grupo; ficha sem unidade segue como sempre`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=ambientes&regras=unidades&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, '101-01')
+      await nomeNoPainel(p, '101-01')
+      // o painel diz que a conferência é por trecho e quantos locais vão junto
+      const aviso = p.getByTestId('fvs-unidade-grupo')
+      await aviso.waitFor()
+      expect(await aviso.innerText()).toMatch(/Conferência por trecho: o C marca também os outros \d+ locais do trecho/)
+      expect(await p.getByTestId('fvs-unidade-anterior').count()).toBe(0)
+      // um C no item 1 do 101-01 marca o item 1 dos outros ambientes do trecho
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"].on').waitFor()
+      await p.getByText(/mais \d+ locais do trecho/).waitFor()
+      await buscar(p, '102-01')
+      await nomeNoPainel(p, '102-01')
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"].on').waitFor()
+      expect(await p.locator('.fv-item[data-item="2"] button[data-r="C"].on').count()).toBe(0)
+      // o que já está marcado não é sobrescrito: NA no item 2 do 102-01 continua NA depois do C do grupo
+      await p.locator('.fv-item[data-item="2"] button[data-r="NA"]').click()
+      await p.locator('.fv-item[data-item="2"] button[data-r="NA"].on').waitFor()
+      await buscar(p, '101-01')
+      await nomeNoPainel(p, '101-01')
+      await p.locator('.fv-item[data-item="2"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="2"] button[data-r="C"].on').waitFor()
+      await buscar(p, '102-01')
+      await nomeNoPainel(p, '102-01')
+      await p.locator('.fv-item[data-item="2"] button[data-r="NA"].on').waitFor()
+      expect(await p.locator('.fv-item[data-item="2"] button[data-r="C"].on').count()).toBe(0)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      // ficha sem unidade nas regras (a alvenaria): sem aviso, e o C fica só no local, como sempre
+      await p.getByTestId('fvs-servico').selectOption('TESTE-PVS-ALV')
+      await p.locator('.fv-item').first().waitFor()
+      expect(await p.getByTestId('fvs-unidade-grupo').count()).toBe(0)
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"]').click()
+      await p.locator('.fv-item[data-item="1"] button[data-r="C"].on').waitFor()
+      await buscar(p, '101-01')
+      await nomeNoPainel(p, '101-01')
+      await p.locator('.fv-item').first().waitFor()
+      expect(await p.locator('.fv-item[data-item="1"] button[data-r="C"].on').count()).toBe(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${largura}x${altura}: acabamentos por acabamento (reboco, piso, pintura) e andamento por apartamento`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      // libera o reboco do 101-01 (os 4 itens C) na planta de ambientes
+      await p.goto(`${url}?abrir=ambientes&acabamentos=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, '101-01')
+      await nomeNoPainel(p, '101-01')
+      for (const n of [1, 2, 3, 4]) {
+        await p.locator(`.fv-item[data-item="${n}"] button[data-r="C"]`).click()
+        await p.locator(`.fv-item[data-item="${n}"] button[data-r="C"].on`).waitFor()
+      }
+      expect(await p.getByTestId('fvs-progresso').innerText()).toContain('1/20 liberados')
+
+      // menu do pavimento: Acabamentos diz as categorias, não as fichas uma a uma
+      await p.goto(`${url}?abrir=0&acabamentos=1`)
+      await noInicio(p)
+      await p.getByTestId('fvs-pavimento').first().click()
+      await expect.poll(() => p.locator('[data-testid=fvs-disciplina][data-disciplina=acabamentos]').innerText()).toContain('Reboco, Piso e revestimento, Pintura')
+      await p.locator('[data-testid=fvs-disciplina][data-disciplina=acabamentos]').click()
+      const filtro = p.getByTestId('fvs-filtro-acabamento')
+      const chips = () => filtro.locator('button').allInnerTexts()
+      await expect.poll(chips).toEqual(['Reboco', 'Piso e revestimento', 'Pintura', 'Todos'])
+      // começa no reboco: só a opção do reboco e o andamento dele por apartamento
+      expect(await filtro.locator('button[aria-pressed=true]').innerText()).toBe('Reboco')
+      const opcoes = () => p.getByTestId('fvs-ambientes').getByTestId('fvs-opcao-ambiente').allInnerTexts()
+      expect(await opcoes()).toEqual([expect.stringContaining('Reboco (ficha de teste)')])
+      expect(await p.getByTestId('fvs-resumo-acabamento').innerText()).toContain('Reboco (ficha de teste): 1 de 20 liberados')
+      const aptos = () => p.getByTestId('fvs-apartamento').allInnerTexts()
+      await expect.poll(aptos).toEqual([
+        'Apto 101: Reboco (ficha de teste) 1 de 3',
+        'Apto 102: Reboco (ficha de teste) 0 de 3',
+        'Apto 103: Reboco (ficha de teste) 0 de 3',
+        'Apto 104: Reboco (ficha de teste) 0 de 3',
+        'Apto 105: Reboco (ficha de teste) 0 de 3',
+        'Apto 106: Reboco (ficha de teste) 0 de 3',
+        'Área comum: Reboco (ficha de teste) 0 de 2',
+      ])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `acabamentos_reboco_${largura}.png`), fullPage: true })
+      // "Por apartamento" abre e fecha e mostra a seta (▾ aberta, ▸ fechada; rodada 9 do testador)
+      const porApto = p.getByTestId('fvs-por-apartamento')
+      const seta = () => porApto.locator('summary').evaluate((s: Element) => getComputedStyle(s, '::before').content)
+      expect(await seta()).toBe('"▾"')
+      await porApto.locator('summary').click()
+      await expect.poll(() => porApto.evaluate((d: Element) => (d as HTMLDetailsElement).open)).toBe(false)
+      expect(await seta()).toBe('"▸"')
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `acabamentos_por_apto_fechado_${largura}.png`), fullPage: true })
+      await porApto.locator('summary').click()
+      await expect.poll(aptos).toHaveLength(7)
+      // piso: não vale no AC-02, então a área comum conta 1
+      await filtro.getByRole('button', { name: 'Piso e revestimento' }).click()
+      expect(await opcoes()).toEqual([expect.stringContaining('Piso cerâmico (teste)')])
+      await expect.poll(aptos).toContain('Área comum: Piso cerâmico (teste) 0 de 1')
+      // uma ficha só no acabamento: sem o seletor de ficha
+      expect(await p.getByTestId('fvs-ficha-apartamento').count()).toBe(0)
+      expect(await p.getByTestId('fvs-resumo-acabamento').innerText()).toContain('Piso cerâmico (teste): 0 de 19 liberados')
+      // Todos: as três opções juntas e o aviso para escolher um acabamento
+      await filtro.getByRole('button', { name: 'Todos' }).click()
+      expect((await opcoes()).length).toBe(3)
+      expect(await p.getByTestId('fvs-por-apartamento').count()).toBe(0)
+      expect(await p.getByTestId('fvs-ambientes').innerText()).toContain('Escolha um acabamento')
+      // a escolha fica: sai para o pavimento e volta, continua em Todos
+      await filtro.getByRole('button', { name: 'Pintura' }).click()
+      await p.getByRole('button', { name: /^Voltar para/ }).click()
+      await p.locator('[data-testid=fvs-disciplina][data-disciplina=acabamentos]').click()
+      expect(await filtro.locator('button[aria-pressed=true]').innerText()).toBe('Pintura')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `acabamentos_pintura_${largura}.png`), fullPage: true })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -1023,7 +1508,8 @@ suite('FVS na bancada (Chrome)', () => {
       // ------------------------------------------------------------ início resume a ficha começada
       await p.locator('.fv-topo .fv-voltar').click()
       await noInicio(p)
-      expect(await pavimento.innerText()).toContain('1 de 62 peças liberadas · 1 com NC · 1 com ficha duplicada')
+      // o P1 (ficha toda aceita, sem concretagem cadastrada no Concreto) fica azul, não verde (achado #2, 24/11)
+      expect(await pavimento.innerText()).toContain('0 de 62 peças liberadas · 1 p/ concretar · 1 com NC · 1 com ficha duplicada')
       await capturar('5_inicio_depois')
       await naDisciplina(p, 'acabamentos')
       const resumo = await cartaoAmbientes.locator('.fv-servicos').innerText()
@@ -1066,10 +1552,12 @@ suite('FVS na bancada (Chrome)', () => {
       await p.waitForTimeout(400)
       expect(await p.locator('.fv-seg button').allTextContents()).toEqual(['Pilares', 'Vigas', 'Lajes'])
       expect(await p.locator('.fv-rot').count()).toBe(0) // o nome da peça já está na prancha
-      // P1 veio aprovado do histórico e P2 tem uma ficha com NC
+      // P1 veio aprovado do histórico e P2 tem uma ficha com NC. Sem concretagem cadastrada no Concreto, o P1
+      // fica azul (liberado para concretar), não verde (achado #2, 24/11)
       const progresso = await p.getByTestId('fvs-progresso').innerText()
-      expect(progresso).toContain('1/24 liberados')
-      expect(await p.getByTestId('fvs-progresso').getAttribute('title')).toBe('1 de 24 pilares liberados')
+      expect(progresso).toContain('0/24 liberados')
+      expect(progresso).toContain('1 p/ concretar')
+      expect(await p.getByTestId('fvs-progresso').getAttribute('title')).toBe('0 de 24 pilares liberados')
       expect(progresso).toContain('1 com NC')
       expect(await p.locator('.fv-nomes select option').allTextContents()).toEqual(['Trecho 1', 'Ambientes'])
       expect(await topoCabe(p)).toBe(true)
@@ -1093,7 +1581,7 @@ suite('FVS na bancada (Chrome)', () => {
       await nomeNoPainel(p, 'P1')
       expect(await p.locator('.fv-item[data-item="1"] .fv-hr').innerText()).toBe('C em 10/08 às 09:30 · V01 · Pessoa Um')
       expect(await p.getByTestId('fvs-fichas-abertas').innerText()).toContain('FVS-TESTE-0001')
-      expect(await p.locator('.fv-sit').first().innerText()).toBe('Liberado')
+      expect(await p.locator('.fv-sit').first().innerText()).toBe('Liberado p/ concretar') // sem concretagem cadastrada: azul (achado #2)
       expect(await p.locator('.fv-aberta').first().evaluate((e: Element) => e.tagName)).toBe('DIV') // uma ficha só: nada para escolher
 
       // P2: ficha duplicada. Abre na que tem R; a outra continua lá, aprovada.
@@ -1131,6 +1619,31 @@ suite('FVS na bancada (Chrome)', () => {
       const reinspecao = (await registros(p)).slice(antesDaReinspecao)
       expect(reinspecao.map((e) => [e.item, e.r, e.rod])).toEqual([[2, 'C', 2]])
       expect(await aceita.innerText()).toContain('Liberado')
+      // ficha única (23/11): o que ainda não está no Construpoint fica em tom mais claro, na mesma ficha
+      await p.locator('.fv-item.so-app[data-item="2"]').waitFor()
+      expect(await p.locator('.fv-item[data-item="2"] [data-testid=fvs-so-no-app]').innerText()).toContain('ainda não está no')
+      expect(await p.locator('.fv-item[data-item="1"]').getAttribute('class')).not.toContain('so-app')
+
+      // P3 tem ficha aberta (agendada) e uma marcação feita só no app, sem ficha: vira uma ficha só,
+      // sem a aba "Marcado só no app" (pedido do Nicolas, 23/11)
+      await p.evaluate(`(async () => {
+        const { banco } = await import('/src/nucleo/servicos.ts')
+        const base = (await banco.registros.get(['fichas_modelo', 'f0000000-0000-0000-0000-000000000001'])).linha
+        await banco.registros.put({ tabela: 'fvs_eventos', id: 'f9000000-0000-0000-0000-000000000123', obra_id: base.obra_id, pendente: 0, linha: { ...base, itens: undefined, id: 'f9000000-0000-0000-0000-000000000123', elemento_id: 'e0000000-0000-0000-0000-000000000003', ficha_id: base.id, item: 1, resultado: 'C', rodada: 1, observacao: null, lote_id: null, planta_id: null, ficha_campo_id: null, usuario_id: 'outra', criado_em_dispositivo: '2026-10-01T12:00:00.000Z' } })
+      })()`)
+      await p.goto(`${url}?abrir=0`)
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, 'P3')
+      await nomeNoPainel(p, 'P3')
+      await p.locator('.fv-item.so-app[data-item="1"]').waitFor()
+      const abertasP3 = p.getByTestId('fvs-fichas-abertas')
+      expect(await abertasP3.innerText()).not.toContain('Marcado só no app')
+      expect(await abertasP3.getByTestId('fvs-ficha-com-app').innerText()).toContain('tom mais claro')
+      expect(await p.locator('.fv-aberta').count()).toBe(1)
+      await capturar('6_ficha_unica')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
 
       // pincel não escolhe por conta própria numa peça com duas fichas
       await p.locator('.fv-cab button').click()
@@ -1252,7 +1765,7 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.getByTestId('fvs-rep-trecho').locator('option').allTextContents()).toEqual(['Todos', 'Trecho 1'])
       await p.getByTestId('fvs-rep-situacao').selectOption('reinspecionadas')
       await p.getByTestId('fvs-rep-vazia').waitFor()
-      expect(await p.getByTestId('fvs-rep-vazia').innerText()).toBe('Nenhuma reprovação com estes filtros.')
+      expect(await p.getByTestId('fvs-rep-vazia').innerText()).toBe('Sem reprovações com estes filtros')
       await p.getByTestId('fvs-rep-situacao').selectOption('abertas')
       await linhas.first().waitFor()
 
@@ -1401,6 +1914,115 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: tratativa do NC: quem resolve, prazo que só avisa, causa, concessão com quem decidiu e eficácia`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const capturar = async (passo: string) => {
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_trat_${nome}_${passo}.png`) })
+      }
+      const linhas = p.getByTestId('fvs-rep')
+      const contagem = () => p.getByTestId('fvs-rep-contagem').innerText()
+      // tratativas gravadas no aparelho, da mais antiga para a mais nova
+      const tratativas = (): Promise<Array<Record<string, unknown>>> =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const ls = await sincronizador.linhas('fvs_tratativas', '${OBRA}')
+          return ls.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : 1))
+            .map((t) => ({ resp: t.responsavel, prazo: t.prazo, causa: t.causa, conc: t.concessao, por: t.concessao_por, efic: t.eficacia, ev: t.evento_nc_id }))
+        })()`)
+      const ultima = async () => (await tratativas()).at(-1) ?? null
+      const esperar = async (f: (t: Record<string, unknown> | null) => boolean) => {
+        for (let i = 0; i < 50 && !f(await ultima()); i++) await p.waitForTimeout(100)
+        expect(f(await ultima())).toBe(true)
+      }
+
+      await p.goto(`${url}?abrir=0`)
+      await p.getByTestId('fvs-entra-reprovacoes').click()
+      await linhas.first().locator('button.fv-rep').click()
+      await nomeNoPainel(p, 'P2')
+      const trat = p.locator('.fv-item[data-item="2"] [data-testid=fvs-trat]')
+      await trat.waitFor()
+      // vindo da lista para o item, a tratativa já abre
+      expect(await trat.evaluate((e: Element) => (e as HTMLDetailsElement).open)).toBe(true)
+      expect(await tratativas()).toEqual([])
+
+      // quem resolve (texto: grava ao sair do campo)
+      const resp = trat.getByTestId('fvs-trat-responsavel')
+      await resp.fill('Empreiteiro Exemplo')
+      await resp.blur()
+      await esperar((t) => t?.resp === 'Empreiteiro Exemplo')
+      // prazo vencido: avisa, e nada fica bloqueado
+      await trat.getByTestId('fvs-trat-prazo').fill('2026-01-10')
+      await trat.getByTestId('fvs-trat-aviso-prazo').waitFor()
+      expect(await trat.getByTestId('fvs-trat-aviso-prazo').innerText()).toBe('até 10/01/2026 · atrasado')
+      await esperar((t) => t?.prazo === '2026-01-10')
+      expect(await item(p, 2, 'C').isEnabled()).toBe(true)
+      // causa: um toque
+      await trat.getByTestId('fvs-trat-causa-material').click()
+      await esperar((t) => t?.causa === 'material')
+      expect(await trat.getByTestId('fvs-trat-causa-material').getAttribute('aria-pressed')).toBe('true')
+      expect(await trat.getByTestId('fvs-trat-resumo').innerText()).toContain('atrasado')
+
+      // concessão sem quem decidiu: avisa e não vale (o banco recusaria)
+      const antes = (await tratativas()).length
+      await trat.getByTestId('fvs-trat-concessao').check()
+      await trat.getByTestId('fvs-trat-falta-quem').waitFor()
+      await p.waitForTimeout(300)
+      expect((await tratativas()).length).toBe(antes)
+      const quem = trat.getByTestId('fvs-trat-concessao_por')
+      await quem.fill('Engenheiro Exemplo')
+      await quem.blur()
+      await esperar((t) => t?.conc === true)
+      await p.locator('.fv-item[data-item="2"] [data-testid=fvs-concessao]').waitFor()
+      const ts = await tratativas()
+      expect(ts.at(-1)).toEqual({ resp: 'Empreiteiro Exemplo', prazo: '2026-01-10', causa: 'material', conc: true, por: 'Engenheiro Exemplo', efic: null, ev: ts[0].ev })
+      // cada mudança é uma linha nova, todas do mesmo NC, nenhuma concessão sem nome
+      expect(new Set(ts.map((t) => t.ev)).size).toBe(1)
+      expect(ts.every((t) => !t.conc || !!t.por)).toBe(true)
+      expect(await alvosPequenos(p)).toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(await contrasteNosDoisTemas(p)).toEqual([])
+      await capturar('1_tratativa')
+
+      // na lista: a concessão fecha o NC sem reinspeção, com quem decidiu
+      await p.locator('.fv-topo .fv-voltar').click()
+      await p.getByTestId('fvs-rep-vazia').waitFor()
+      expect(await contagem()).toBe('0 abertas · 0 reinspecionadas · 1 sob concessão')
+      await p.getByTestId('fvs-rep-situacao').selectOption('todas')
+      await linhas.first().waitFor()
+      const texto = (await linhas.first().textContent()) ?? ''
+      for (const parte of ['NC V01 · concessão', 'Quem resolve: Empreiteiro Exemplo', 'Causa: Material', 'Aceito sob concessão por Engenheiro Exemplo']) expect(texto).toContain(parte)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('2_lista')
+
+      // sem concessão de novo, reinspeção C: a tratativa fica à vista e pergunta se a correção resolveu
+      await linhas.first().locator('button.fv-rep').click()
+      await nomeNoPainel(p, 'P2')
+      await trat.getByTestId('fvs-trat-concessao').uncheck()
+      await esperar((t) => t?.conc === false)
+      await p.locator('.fv-item[data-item="2"] [data-testid=fvs-concessao]').waitFor({ state: 'detached' })
+      await item(p, 2, 'C').click()
+      await p.locator('.fv-item[data-item="2"] button[data-r="C"].on').waitFor()
+      const fechada = p.locator('.fv-item[data-item="2"] .fv-nc-fechada [data-testid=fvs-trat]')
+      await fechada.waitFor()
+      expect(await fechada.evaluate((e: Element) => (e as HTMLDetailsElement).open)).toBe(true)
+      // reinspecionado: o prazo não avisa mais e só a eficácia se mexe
+      expect(await fechada.getByTestId('fvs-trat-aviso-prazo').count()).toBe(0)
+      expect(await fechada.getByTestId('fvs-trat-responsavel').isDisabled()).toBe(true)
+      await fechada.getByTestId('fvs-trat-eficacia-eficaz').click()
+      await esperar((t) => t?.efic === 'eficaz')
+      expect(await ultima()).toMatchObject({ resp: 'Empreiteiro Exemplo', causa: 'material', conc: false, efic: 'eficaz' })
+      expect(await fechada.getByTestId('fvs-trat-resumo').innerText()).toContain('Correção eficaz')
+      expect(await alvosPequenos(p)).toEqual([])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await capturar('3_eficacia')
+
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: lista do que falta lançar no Construpoint`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700, acceptDownloads: true })
       const p: Page = await contexto.newPage()
@@ -1476,12 +2098,12 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.getByTestId('fvs-entra-lancamento').count()).toBe(0)
 
       // planilha da situação da obra: uma linha por peça e ficha, inclusive o que está pendente
-      expect(await p.getByTestId('fvs-resumo-obra').innerText()).toContain('1 de 62 peças liberadas')
+      expect(await p.getByTestId('fvs-resumo-obra').innerText()).toContain('0 de 62 peças liberadas')
       const [dlSituacao] = await Promise.all([p.waitForEvent('download'), p.getByTestId('fvs-planilha-situacao').click()])
       expect(dlSituacao.suggestedFilename()).toMatch(/^situacao_fvs_TESTE_\d{4}-\d{2}-\d{2}\.csv$/)
       const situacao = readFileSync(await dlSituacao.path(), 'utf8')
       expect(situacao.charCodeAt(0)).toBe(0xfeff)
-      expect(situacao).toContain('Pavimento de teste;Pilar;P1;20x60;TESTE-PVS-P;Liberado;7;0;0;0;100;10/08/2026;09:30;Pessoa Um;FVS-TESTE-0001;Aceito;')
+      expect(situacao).toContain('Pavimento de teste;Pilar;P1;20x60;TESTE-PVS-P;Liberado p/ concretar;7;0;0;0;100;10/08/2026;09:30;Pessoa Um;FVS-TESTE-0001;Aceito;')
       expect(situacao).toContain(';Com NC;') // P2: uma das duas fichas tem R
       expect(situacao).toContain(';FVS-TESTE-0002;Aceito;sim')
       expect(situacao).toContain(';FVS-TESTE-0003;Pendente Reinspeção;sim')
@@ -1721,9 +2343,19 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await sit.textContent()).not.toBe('Liberado')
       await consolo.locator('summary').click()
       for (const n of [8, 9]) await item(p, n, 'C').click()
-      await p.waitForFunction(() => document.querySelector('.fv-inf .fv-sit')?.textContent === 'Liberado')
+      // tudo marcado, sem concretagem cadastrada: azul (achado #2, 24/11)
+      await p.waitForFunction(() => document.querySelector('.fv-inf .fv-sit')?.textContent === 'Liberado p/ concretar')
       // o capitel o P8 não tem: o item dele nem aparece
       expect(await p.locator('.fv-item[data-item="10"]').count()).toBe(0)
+      // os itens do consolo só existem no app (24/11): o painel diz, e só neles
+      const soDoApp = p.getByTestId('fvs-item-so-do-app')
+      expect(await soDoApp.count()).toBe(2)
+      expect(await p.locator('.fv-item[data-item="8"] [data-testid="fvs-item-so-do-app"]').innerText()).toBe('Só do app (não vai para o Construpoint)')
+      expect(await p.locator('.fv-item[data-item="9"] [data-testid="fvs-item-so-do-app"]').count()).toBe(1)
+      expect(await p.locator('.fv-item[data-item="1"] [data-testid="fvs-item-so-do-app"]').count()).toBe(0)
+      // legível: pelo menos 14 px, como os outros rótulos do painel
+      expect(await soDoApp.first().evaluate((e: HTMLElement) => parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThanOrEqual(14)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/partes_${nome}_so_do_app.png` })
       await fechar()
 
       // P9: capitel em volta do pilar
@@ -1734,6 +2366,8 @@ suite('FVS na bancada (Chrome)', () => {
       await capitel.waitFor()
       expect(await capitel.evaluate((d: HTMLDetailsElement) => d.open)).toBe(true)
       expect(await p.getByTestId('fvs-parte-consolo').count()).toBe(0)
+      // o item do capitel também é só do app
+      expect(await capitel.getByTestId('fvs-item-so-do-app').innerText()).toBe('Só do app (não vai para o Construpoint)')
       await fechar()
 
       // pilar sem parte: nenhuma seção de parte
@@ -1758,8 +2392,156 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await p.locator('.fv-inf .fv-sit').textContent()).toBe('Pendente')
       expect(await p.getByTestId('fvs-area-travada').count()).toBe(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/partes_${nome}_laje_capitel.png` })
+      expect(await semRolagemHorizontal(p)).toBe(0)
+
+      // na lista do que falta lançar, os itens do consolo do P8 dizem que não vão para o Construpoint (24/11)
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+      await p.getByTestId('fvs-entra-lancamento').click()
+      const doP8 = p.getByTestId('fvs-lan-ficha').filter({ hasText: 'P8' })
+      await doP8.waitFor()
+      expect(await doP8.getByTestId('fvs-lan-so-do-app').count()).toBe(2)
+      const itensDoP8 = await doP8.locator('.fv-lan-item').evaluateAll((l: Element[]) =>
+        l.map((e) => [e.querySelector('b')!.textContent!.split('.')[0], !!e.querySelector('[data-testid="fvs-lan-so-do-app"]')]),
+      )
+      expect(itensDoP8.filter((x: [string, boolean]) => x[1]).map((x: [string, boolean]) => x[0])).toEqual(['8', '9'])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/partes_${nome}_lancar_so_do_app.png` })
+
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: redesenhar o pilar ponto a ponto no fim da ficha; o desenho novo vale no toque e volta ao original`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      p.on('dialog', (d: any) => d.accept())
+      await p.goto(`${url}?abrir=0`)
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const painel = p.getByTestId('fvs-painel')
+      const fechar = async () => {
+        await p.locator('.fv-cab button').click()
+        await painel.waitFor({ state: 'detached' })
+      }
+      const redesenhos = () =>
+        p.evaluate(`(async () => {
+          const { sincronizador } = await import('/src/nucleo/servicos.ts')
+          const l = await sincronizador.linhas('fvs_redesenhos', '${OBRA}')
+          return l.sort((a, b) => (a.criado_em_dispositivo < b.criado_em_dispositivo ? -1 : 1)).map((r) => ({ id: r.id, contorno: r.contorno, substitui_id: r.substitui_id, cancelado: r.cancelado }))
+        })()`)
+
+      // P2: pilar em (450, 150), contorno original de 440 a 460 por 125 a 175
+      await enquadrar(p, [-150, 450], 1)
+      await tocarNaPlanta(p, 450, 150)
+      await nomeNoPainel(p, 'P2')
+      expect(await p.getByTestId('fvs-redesenhada').count()).toBe(0)
+      expect(await p.getByTestId('fvs-voltar-original').count()).toBe(0)
+      await p.getByTestId('fvs-redesenhar-peca').click()
+      await painel.waitFor({ state: 'detached' })
+      const barra = p.getByTestId('fvs-desenho')
+      await barra.waitFor()
+      expect(await barra.textContent()).toContain('Novo contorno de P2')
+      await enquadrar(p, [-150, 470], 1)
+      // os cantos, um a mais por engano (desfeito), e o toque no primeiro canto fecha o contorno
+      const cantos = (n: number) => p.waitForFunction((k: number) => document.querySelector('[data-testid=fvs-desenho]')?.textContent?.includes(`(${k} cantos)`), n)
+      for (const [x, y] of [[430, 110], [520, 110], [520, 190], [430, 190], [480, 230]]) await tocarNaPlanta(p, x, y)
+      await cantos(5)
+      await p.getByTestId('fvs-desfazer-ponto').click()
+      await cantos(4)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/redesenho_${nome}_desenhando.png` })
+      await tocarNaPlanta(p, 430, 110)
+      await barra.waitFor({ state: 'detached' })
+      await nomeNoPainel(p, 'P2')
+      await p.getByTestId('fvs-redesenhada').waitFor()
+      expect(await p.getByTestId('fvs-redesenho-revisao').count()).toBe(0)
+      let linhas = await redesenhos()
+      expect(linhas).toHaveLength(1)
+      expect(linhas[0].contorno).toEqual([[430, 110], [520, 110], [520, 190], [430, 190]])
+      expect(linhas[0].substitui_id).toBeNull()
+      if (PRINTS) {
+        await p.getByTestId('fvs-redesenho').scrollIntoViewIfNeeded()
+        await p.screenshot({ path: `${PRINTS}/redesenho_${nome}_painel.png` })
+      }
+      await fechar()
+
+      // o toque usa o desenho novo: (500, 185) fica fora do original e de todas as vigas
+      await enquadrar(p, [-150, 470], 1)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/redesenho_${nome}_planta.png` })
+      await tocarNaPlanta(p, 500, 185)
+      await nomeNoPainel(p, 'P2')
+
+      // voltar ao original: linha nova cancelando, apontando para o redesenho (nada se apaga)
+      await p.getByTestId('fvs-voltar-original').click()
+      await p.getByTestId('fvs-redesenhada').waitFor({ state: 'detached' })
+      linhas = await redesenhos()
+      expect(linhas).toHaveLength(2)
+      expect(linhas[1].cancelado).toBe(true)
+      expect(linhas[1].substitui_id).toBe(linhas[0].id)
+      expect(await p.getByTestId('fvs-voltar-original').count()).toBe(0)
+      await fechar()
+      // de volta ao original: o mesmo ponto já não é do P2
+      await enquadrar(p, [-150, 470], 1)
+      await tocarNaPlanta(p, 500, 185)
+      await p.waitForTimeout(400)
+      expect(await painel.count()).toBe(0)
 
       expect(await semRolagemHorizontal(p)).toBe(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    // Achado #6 da lista de campo (24/11): viga com ficha aberta do sistema oficial e o item de furação OK pelos
+    // furos ficava laranja: o item ia para "só no app" (outra revisão da ficha) e virava uma ficha à parte.
+    it(`${nome} ${largura}x${altura}: furos da viga com ficha aberta: o item vai para a ficha aberta e a viga fica liberada`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&furos=1&furosaberta=1`)
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const painel = p.getByTestId('fvs-painel')
+      const aba = (t: string) => p.locator('.fv-seg button', { hasText: t }).click()
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const V1 = 'e1000000-0000-0000-0000-000000000001'
+      const FC = 'f8000000-0000-0000-0000-000000000091'
+      const sitDaViga = async () => {
+        await aba('Vigas')
+        await enquadrar(p, [-150, 300], 1)
+        await tocarNaPlanta(p, 300, 156)
+        await nomeNoPainel(p, 'V1')
+        return p.locator('.fv-inf .fv-sit').textContent()
+      }
+      // itens 1 a 4 aceitos no sistema oficial, o de furação vazio
+      expect(await sitDaViga()).toBe('Em andamento')
+      await p.locator('.fv-cab button').click()
+      await painel.waitFor({ state: 'detached' })
+      await aba('Furos')
+      for (const [x, n] of [[220, 1], [300, 2], [380, 3]] as const) {
+        await enquadrar(p, [-150, x], 2)
+        await tocarNaPlanta(p, x, 150)
+        await aviso(`V1-F${n}: OK`)
+      }
+      // o item de furação vai para a ficha aberta da V1, na revisão dela (R0), com o número do item nela
+      await expect
+        .poll(async () => (await registros(p)).filter((r) => r.el === V1).map((r) => [r.fc, r.ficha, r.item, r.r]))
+        .toEqual([[FC, 'f0000000-0000-0000-0000-000000000091', 5, 'C']])
+      // rodada 9b do testador (24/11): o painel do furo mostra a ficha em que o item conta (a aberta, R0), não a vigente
+      await buscar(p, 'V1-F3')
+      await nomeNoPainel(p, 'V1-F3')
+      expect(await p.getByTestId('fvs-ficha-do-painel').innerText()).toBe('TESTE-PVS-V · Vigas (ficha de teste) · rev. 0 · ficha FVS-TESTE-0091')
+      await p.locator('.fv-cab button').click()
+      await painel.waitFor({ state: 'detached' })
+      expect(await sitDaViga()).toBe('Liberado p/ concretar') // sem concretagem cadastrada: azul (achado #2)
+      // uma ficha só no painel: sem a aba "Marcado só no app"
+      expect(await painel.getByText('Marcado só no app').count()).toBe(0)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/furos_ficha_aberta_${nome}.png` })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -1892,7 +2674,7 @@ suite('FVS na bancada (Chrome)', () => {
       await noFuro(380, 150)
       await aviso('V1-F3: OK')
       await expect.poll(itemDaViga).toMatchObject({ item: 5, r: 'C' })
-      expect(await sitDaViga()).toBe('Liberado')
+      expect(await sitDaViga()).toBe('Liberado p/ concretar') // sem concretagem cadastrada: azul (achado #2)
       expect(await semRolagemHorizontal(p)).toBe(0)
 
       // a busca do início mostra o furo como a planta (bug do celular, 18/11: aparecia "Pendente")
@@ -2094,6 +2876,11 @@ suite('FVS na bancada (Chrome)', () => {
       await naDisciplina(p, 'instalacoes')
       const secoes = p.getByTestId('fvs-secao-outra')
       expect(await secoes.locator('h3').allTextContents()).toEqual(['Hidráulica', 'Esgoto', 'Elétrico', 'Preventivo contra incêndio', 'SPDA'])
+      // a de ficha conta "x de y OK"; o preventivo (sem ficha) diz que é só consulta (rodada 9, 24/11)
+      const linhaDa = (s: string) => secoes.filter({ has: p.locator('h3', { hasText: new RegExp(`^${s}$`) }) }).getByRole('button').first()
+      await expect.poll(() => linhaDa('Hidráulica').innerText()).toContain('0 de 4 pontos OK')
+      expect(await linhaDa('Preventivo contra incêndio').innerText()).toContain('6 pontos · só consulta')
+      expect(await linhaDa('Hidráulica').innerText()).not.toContain('só consulta')
       expect(await p.getByTestId('fvs-ambientes-instalacoes').getByTestId('fvs-opcao-ambiente').allInnerTexts()).toEqual([expect.stringContaining('Instalações (ficha de teste)')])
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_menu.png`, fullPage: true })
@@ -2103,7 +2890,7 @@ suite('FVS na bancada (Chrome)', () => {
         ['Hidráulica', 'hidro', 'PONTO_AGUA 1 (ponto de água)', 4, 1],
         ['Esgoto', 'sanitario', 'RALO 1 (ralo)', 4, 2],
         ['Elétrico', 'eletrico', 'CAIXA_PASSAGEM 1 (caixa de passagem)', 5, 3],
-        ['Preventivo contra incêndio', 'preventivo', 'HIDRANTE 1 (hidrante)', 5, null],
+        ['Preventivo contra incêndio', 'preventivo', 'HIDRANTE 1 (hidrante)', 6, null],
         ['SPDA', 'spda', 'CAPTOR 1 (captor)', 6, 4],
       ] as const
       for (const [i, [secao, d, nomeDoPonto, total, item]] of disciplinas.entries()) {
@@ -2120,6 +2907,13 @@ suite('FVS na bancada (Chrome)', () => {
           await tocarNaPlanta(p, 300, y)
           await p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), `${nomeDoPonto} · só consulta`)
           await p.waitForTimeout(500)
+          // a placa sobre o extintor (sessão 6, 25/11): nem de perto se separam; o toque diz os dois
+          await enquadrar(p, [-y, 600], 3)
+          await tocarNaPlanta(p, 600, y)
+          await p.waitForFunction(
+            (t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t),
+            'No mesmo lugar: EXTINTOR 2 (extintor) + Placa de extintor (sinalização) · só consulta',
+          )
           expect((await registros(p)).filter((r) => r.barra?.startsWith(`pt-${d}-`))).toEqual([])
           if (PRINTS) await p.screenshot({ path: `${PRINTS}/instalacoes_${nome}_${d}.png` })
           await p.locator('.fv-topo .fv-voltar').click()
@@ -2155,6 +2949,138 @@ suite('FVS na bancada (Chrome)', () => {
       expect(erros).toEqual([])
       await contexto.close()
     }, 180_000)
+
+    it(`${nome} ${largura}x${altura}: elétrico sem item de ambiente volta para a ficha de laje (25/11)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1&redes=1&furoslaje=1&laje=1`)
+      await noInicio(p)
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
+      const doPonto = (id: string) => registros(p).then((rs) => rs.filter((r) => r.barra === id).map((r) => [r.ficha, r.item, r.r]))
+      const F = (n: number) => `f0000000-0000-0000-0000-${String(n).padStart(12, '0')}`
+      await naDisciplina(p, 'instalacoes')
+      await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Elétrico$/ }) }).getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      // 5 da laje (caixa de passagem, 2 pontos de luz, quadro, eletroduto) e 3 caixas de parede
+      await expect.poll(progresso).toBe('0/8 OK')
+      await enquadrar(p, [-500, 300], 2)
+      await tocarNaPlanta(p, 300, 500)
+      await aviso('CAIXA_PASSAGEM 1 (caixa de passagem): OK')
+      await expect.poll(() => doPonto('pt-eletrico-1')).toEqual([[F(9), 8, 'C']])
+      await enquadrar(p, [-500, 600], 2)
+      await tocarNaPlanta(p, 600, 500)
+      await aviso('PONTO_LUZ 2 (ponto de luz): OK')
+      await expect.poll(() => doPonto('pt-eletrico-2')).toEqual([[F(9), 8, 'C']])
+      await expect.poll(progresso).toBe('2/8 OK')
+      // a caixa de parede segue nas fichas de ambiente (pergunta alvenaria ou drywall)
+      await enquadrar(p, [-610, 450], 2)
+      await tocarNaPlanta(p, 450, 610)
+      await p.getByTestId('fvs-escolha-ficha').waitFor()
+      expect((await p.getByTestId('fvs-escolha-ficha-opcao').allInnerTexts()).join(' ')).not.toContain('Laje')
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/eletrico_laje_${nome}.png` })
+      await p.getByTestId('fvs-escolha-ficha-cancelar').click()
+      // no 101-02, nenhuma ficha de elétrica vale (&laje=1): a caixa de parede de lá vai para a laje, sem perguntar
+      await enquadrar(p, [-610, 750], 2)
+      await tocarNaPlanta(p, 750, 610)
+      await aviso('Caixa 4x2 (caixa de parede): OK')
+      await expect.poll(() => doPonto('pt-eletrico-cp3')).toEqual([[F(9), 8, 'C']])
+      expect(await p.getByTestId('fvs-escolha-ficha').count()).toBe(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    })
+
+    it(`${nome} ${largura}x${altura}: 5.1 a 5.3: tubo e coluna na ficha de redes, caixa de parede pergunta alvenaria ou drywall uma vez por ambiente`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1&redes=1`)
+      await noInicio(p)
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const progresso = () => p.getByTestId('fvs-progresso').innerText()
+      const doPonto = (id: string) => registros(p).then((rs) => rs.filter((r) => r.barra === id).map((r) => [r.ficha, r.item, r.r]))
+      const secao = (s: string) => p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: new RegExp(`^${s}$`) }) })
+      const F = (n: number) => `f0000000-0000-0000-0000-${String(n).padStart(12, '0')}`
+      // hidráulica: 4 pontos na ficha de teste, tubo e coluna na de redes (item 10): 6 contam
+      await naDisciplina(p, 'instalacoes')
+      await secao('Hidráulica').getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await expect.poll(progresso).toBe('0/6 OK')
+      await enquadrar(p, [-260, 750], 2)
+      await tocarNaPlanta(p, 750, 260)
+      await aviso('Tubo 25 mm (tubo): OK')
+      await expect.poll(() => doPonto('pt-hidro-tubo')).toEqual([[F(51), 10, 'C']])
+      await enquadrar(p, [-260, 1200], 2)
+      await tocarNaPlanta(p, 1200, 260)
+      await aviso('AF-1 (coluna (prumada)): OK')
+      await expect.poll(() => doPonto('pt-hidro-coluna')).toEqual([[F(51), 10, 'C']])
+      // o ponto de água segue no item 1 da ficha de teste
+      await enquadrar(p, [-200, 300], 2)
+      await tocarNaPlanta(p, 300, 200)
+      await aviso('PONTO_AGUA 1 (ponto de água): OK')
+      await expect.poll(() => doPonto('pt-hidro-1')).toEqual([[F(20), 1, 'C']])
+      await expect.poll(progresso).toBe('3/6 OK')
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+
+      // elétrico: 5 da ficha de teste (com o eletroduto) e 3 caixas de parede
+      await naDisciplina(p, 'instalacoes')
+      await secao('Elétrico').getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await expect.poll(progresso).toBe('0/8 OK')
+      const y = 610
+      // antes, um ponto da ficha de teste: o aviso dele (com Desfazer) fica 5 s embaixo da tela
+      await enquadrar(p, [-500, 300], 2)
+      await tocarNaPlanta(p, 300, 500)
+      await aviso('CAIXA_PASSAGEM 1 (caixa de passagem): OK')
+      // 1ª caixa do 101-01: pergunta qual ficha (com o nome do ambiente, não o id); Cancelar não grava
+      await enquadrar(p, [-y, 450], 2)
+      await tocarNaPlanta(p, 450, y)
+      await p.getByTestId('fvs-escolha-ficha').waitFor()
+      // o aviso de antes não cobre as opções (teste de desempenho de 24/11: no celular o dedo caía no Desfazer)
+      expect(await p.locator('.fv-toast').count()).toBe(0)
+      for (const o of await p.getByTestId('fvs-escolha-ficha-opcao').all()) {
+        expect(await o.evaluate((e: Element) => { const r = e.getBoundingClientRect(); return e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) })).toBe(true)
+      }
+      expect((await p.getByTestId('fvs-escolha-ficha').innerText()).replace(/\s+/g, ' ')).toContain('Qual ficha? · 101-01')
+      await p.getByTestId('fvs-escolha-ficha-cancelar').click()
+      await p.waitForTimeout(400)
+      expect(await doPonto('pt-eletrico-cp1')).toEqual([])
+      // de novo: escolhe alvenaria (item 4)
+      await tocarNaPlanta(p, 450, y)
+      await p.getByTestId('fvs-escolha-ficha').waitFor()
+      expect(await p.getByTestId('fvs-escolha-ficha-opcao').allInnerTexts()).toEqual(['Elétrica em alvenaria (teste)', 'Elétrica em drywall (teste)'])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/redes_${nome}_qual_ficha.png` })
+      await p.getByTestId('fvs-escolha-ficha-opcao').first().click()
+      await aviso('Caixa 4x2 (caixa de parede): OK')
+      await expect.poll(() => doPonto('pt-eletrico-cp1')).toEqual([[F(52), 4, 'C']])
+      expect(await p.getByTestId('fvs-escolha-ficha').count()).toBe(0)
+      // 2º toque na mesma caixa: a caixa do NC, sem perguntar de novo (a ficha é a do registro)
+      await tocarNaPlanta(p, 450, y)
+      await p.getByTestId('fvs-nc-ponto').waitFor()
+      expect(await p.getByTestId('fvs-escolha-ficha').count()).toBe(0)
+      await p.getByTestId('fvs-nc-ponto-texto').fill('Caixa baixa')
+      await p.getByTestId('fvs-nc-ponto-confirmar').click()
+      await expect.poll(() => doPonto('pt-eletrico-cp1')).toEqual([[F(52), 4, 'C'], [F(52), 4, 'NC']])
+      // outra caixa do mesmo ambiente: sem pergunta, na alvenaria
+      await enquadrar(p, [-y, 1050], 2)
+      await tocarNaPlanta(p, 1050, y)
+      await aviso('Caixa 4x2 (caixa de parede): OK')
+      await expect.poll(() => doPonto('pt-eletrico-cp2')).toEqual([[F(52), 4, 'C']])
+      // caixa do 101-02, onde o drywall não vale (sem_fichas da planta de ambientes): sem pergunta, na alvenaria
+      await enquadrar(p, [-y, 750], 2)
+      await tocarNaPlanta(p, 750, y)
+      await aviso('Caixa 4x2 (caixa de parede): OK')
+      expect(await p.getByTestId('fvs-escolha-ficha').count()).toBe(0)
+      await expect.poll(() => doPonto('pt-eletrico-cp3')).toEqual([[F(52), 4, 'C']])
+      await expect.poll(progresso).toBe('3/8 OK · 1 errada')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 150_000)
 
     it(`${nome} ${largura}x${altura}: SPDA igual aos furos: filtro por tipo, toque OK, 2º toque NC, "+ Área" e o avanço no menu`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
@@ -2259,6 +3185,89 @@ suite('FVS na bancada (Chrome)', () => {
       expect(erros).toEqual([])
       await contexto.close()
     }, 150_000)
+
+    it(`${nome} ${largura}x${altura}: planta com muitos pontos: de longe um número por quadrado, que aproxima; de perto o toque marca`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1&muitos=1`)
+      await noInicio(p)
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const numeros = p.getByTestId('fvs-numero-pontos')
+      const noMapa = () =>
+        p.evaluate(() => {
+          let n = 0
+          ;(window as any).__fvMapa.eachLayer((l: any) => void (l.getRadius && l.options.radius === 7 && n++))
+          return n
+        })
+      await naDisciplina(p, 'instalacoes')
+      await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Elétrico$/ }) }).getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe('0/105 OK')
+      // longe: só números (a soma dá os 105), nenhuma bolinha
+      await numeros.first().waitFor()
+      const soma = async () => (await numeros.allTextContents()).reduce((t: number, x: string) => t + Number(x.match(/(\d+) pontos?/)?.[1] ?? 0), 0)
+      expect(await soma()).toBe(105)
+      expect(await noMapa()).toBe(0)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/muitos_${nome}_longe.png` })
+      // o toque longe não marca: pede para aproximar
+      await tocarNaPlanta(p, 300, 500)
+      await aviso('Muitos pontos aqui')
+      expect((await registros(p)).filter((r) => r.barra?.startsWith('pt-eletrico-'))).toEqual([])
+      // o toque no número aproxima (até caber o quadrado, ou 2 zooms; não pula direto para os pontos)
+      const z0 = await p.evaluate(() => (window as any).__fvMapa.getZoom())
+      await numeros.first().click()
+      await expect.poll(() => p.evaluate(() => (window as any).__fvMapa.getZoom())).toBeGreaterThan(z0)
+      await mapaParado(p)
+      // perto (zoom 1: os pontos de teste ficam a 15 pt, 24 px pede 1,6x): as bolinhas voltam e o toque marca
+      await enquadrar(p, [-500, 300], 1)
+      await expect.poll(noMapa).toBeGreaterThan(0)
+      expect(await numeros.count()).toBe(0)
+      await tocarNaPlanta(p, 300, 500)
+      await aviso('CAIXA_PASSAGEM 1 (caixa de passagem): OK')
+      await expect.poll(() => registros(p).then((rs) => rs.filter((r) => r.barra === 'pt-eletrico-1').map((r) => [r.item, r.r]))).toEqual([[3, 'C']])
+      // um ponto da grade, de perto
+      await enquadrar(p, [-660, 390], 1)
+      await tocarNaPlanta(p, 390, 660)
+      await aviso('LUZ 44 (ponto de luz): OK')
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/muitos_${nome}_perto.png` })
+      // de volta longe, o número do quadrado conta o OK
+      await enquadrar(p, [-500, 600], -2)
+      await expect.poll(async () => (await numeros.allTextContents()).join(' | ')).toMatch(/2 de \d+ pontos OK|1 de \d+ pontos OK/)
+      // "+ Área" na planta toda (24/11): grava tudo numa transação só no aparelho (até 500 por vez, núcleo
+      // registrarVarios); com 103 pontos, sem "Gravando x de y…" no meio
+      await p.evaluate(() => {
+        const w = window as any
+        w.__avisos = []
+        new MutationObserver(() => {
+          const t = document.querySelector('.fv-toast span')?.textContent
+          if (t && w.__avisos.at(-1) !== t) w.__avisos.push(t)
+        }).observe(document.body, { subtree: true, childList: true, characterData: true })
+      })
+      await p.getByTestId('fvs-area-pontos').click()
+      await p.getByTestId('fvs-desenho').waitFor()
+      await enquadrar(p, [-615, 790], -2)
+      for (const [x, yy] of [[260, 460], [1320, 460], [1320, 770], [260, 770]]) await tocarNaPlanta(p, x, yy)
+      await p.getByTestId('fvs-concluir-area').click()
+      await p.getByTestId('fvs-selecao-furos').waitFor()
+      const quantos = Number((await p.getByTestId('fvs-selecao-furos').innerText()).match(/(\d+) pontos sem conferir/)?.[1])
+      expect(quantos).toBeGreaterThanOrEqual(100)
+      await p.getByTestId('fvs-selecao-confirmar').click()
+      await aviso(`${quantos} pontos OK nesta área`)
+      const avisos: string[] = await p.evaluate(() => (window as any).__avisos)
+      expect(avisos.filter((t) => t.startsWith('Gravando'))).toEqual([])
+      expect(avisos.at(-1)).toBe(`${quantos} pontos OK nesta área`)
+      // todos no aparelho, um registro C por ponto, e na fila para subir
+      await expect.poll(async () => (await registros(p)).filter((r) => r.barra?.startsWith('pt-eletrico-') && r.r === 'C').length).toBe(quantos + 2)
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('105/105 OK')
+      // o Desfazer do aviso tira o lote inteiro
+      await p.locator('.fv-toast').getByRole('button', { name: 'Desfazer' }).click()
+      await expect.poll(() => p.getByTestId('fvs-progresso').innerText()).toBe('2/105 OK')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
 
     it(`${nome} ${largura}x${altura}: furos de laje em plantas próprias: uma por camada, só os furos dela, o item da área da forma`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
@@ -2639,7 +3648,7 @@ suite('FVS na bancada (Chrome)', () => {
       // tela das regras: a ligação entre peças diz que vale para as peças de dentro da área
       await p.getByTestId('fvs-entra-regras').click()
       expect(await p.getByTestId('fvs-regra-ligacao').count()).toBe(3)
-      expect(await p.getByTestId('fvs-regras-entre-pecas').innerText()).toContain('cada pilar e viga dentro dela')
+      expect(await p.getByTestId('fvs-regras-entre-pecas').textContent()).toContain('cada pilar e viga dentro dela')
       const daLaje = p.getByTestId('fvs-regra-ligacao').filter({ hasText: 'TESTE-PVS-V item 4' })
       expect(await daLaje.innerText()).toContain('em cada pilar e viga dentro da área de laje')
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
@@ -2861,6 +3870,74 @@ suite('FVS na bancada (Chrome)', () => {
       await linha.waitFor()
       expect(await linha.locator('b').textContent()).toBe('101-01-JA120B')
       expect(await linha.locator('.fv-sit').textContent()).toBe('Com NC')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: item de esquadria só de janela: a porta fica só para ver e fora da conta`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      await p.goto(`${url}?abrir=ambientes&esquadrias=1&contramarco=1&servico=TESTE-PVS-REB&aba=esquadrias`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.getByTestId('fvs-item-esquadria').waitFor()
+      expect(await p.getByTestId('fvs-item-esquadria').locator('option').allTextContents()).toEqual(['5. Requadros dos vãos', '6. Contramarco das janelas'])
+      // requadros: todas as 7 esquadrias; contramarco das janelas: só as janelas
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/7 OK')
+      await p.getByTestId('fvs-item-esquadria').selectOption('6')
+      const conta = await p.getByTestId('fvs-progresso').innerText()
+      const total = Number(/0\/(\d+) OK/.exec(conta)?.[1])
+      expect(total).toBeGreaterThan(0)
+      expect(total).toBeLessThan(7)
+      expect(await topoCabe(p)).toBe(true)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await enquadrar(p, [-200, 260], 1)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/esquadrias_${nome}_so_janela.png` })
+      // a porta não marca: avisa por quê
+      await tocarNaPlanta(p, 305, 170)
+      await aviso('não vale em PM80')
+      // a janela marca
+      await tocarNaPlanta(p, 180, 112)
+      await aviso('101-01-JA120B: OK')
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe(`1/${total} OK`)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    it(`${nome} ${largura}x${altura}: esquadria de cômodo em que a ficha não vale: não se marca nela (porta do banho no reboco)`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      // ?comodos=1&esquadrias=1: o 101-03 é "Banho 01" e o reboco de teste não vale nele
+      await p.goto(`${url}?abrir=ambientes&comodos=1&esquadrias=1&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, '101-03')
+      await nomeNoPainel(p, 'Banho 01')
+      await p.getByTestId('fvs-fora-da-ficha').waitFor()
+      // o painel do banho não oferece as portas dele para marcar no reboco
+      expect(await p.getByTestId('fvs-esquadrias-do-ambiente').count()).toBe(0)
+      // no 101-01 (vale) as esquadrias continuam no painel
+      await buscar(p, '101-01')
+      await nomeNoPainel(p, 'Dormitório 01')
+      await p.getByTestId('fvs-esquadrias-do-ambiente').waitFor()
+      // aba Esquadrias: das 7, as 2 do banho (PM70 e PM90) saem da conta e o toque nelas só avisa
+      await p.goto(`${url}?abrir=ambientes&comodos=1&esquadrias=1&servico=TESTE-PVS-REB&aba=esquadrias`)
+      await p.getByTestId('fvs-item-esquadria').waitFor()
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/5 OK')
+      await enquadrar(p, [-296, 220], 1)
+      await tocarNaPlanta(p, 220, 312)
+      await aviso('não vale em Banho 01 (101-03-PM70, 101-03)')
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/5 OK')
+      // a porta do outro lado (no 101-01, onde vale) marca
+      await tocarNaPlanta(p, 220, 280)
+      await aviso('101-01-PM70: OK')
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('1/5 OK')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/esquadrias_${nome}_fora_da_ficha.png` })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -3137,6 +4214,72 @@ suite('FVS na bancada (Chrome)', () => {
       await p.getByTestId('fvs-item-pelas-barras').locator('span', { hasText: '5 de 5 OK' }).waitFor()
 
       expect(await semRolagemHorizontal(p)).toBe(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
+    // Achado #5 da lista de campo (24/11), o Nicolas: "se tem duas barras muito próximas, elas são juntas. Então a
+    // pessoa dá um clique e já confira as duas." A N6 corre colada na N1 (4,4 cm): um toque, as duas OK, sem zoom;
+    // o 2º toque abre o NC e a pessoa escolhe qual das duas está errada; a outra fica OK.
+    it(`${nome} ${largura}x${altura}: barras juntas: um toque confere as duas e o NC escolhe qual está errada`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&barras=1&juntas=1`)
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const N1 = 'e4000000-0000-0000-0000-000000000001'
+      const N6 = 'e4000000-0000-0000-0000-000000000006'
+      const das = async () => {
+        const rs = await registros(p)
+        // sem registro: 'nada'; registro vazio (sem conferir): null
+        return [N1, N6].map((id) => {
+          const u = rs.filter((r) => r.el === id).at(-1)
+          return u ? u.r : 'nada'
+        })
+      }
+      await p.locator('.fv-seg button', { hasText: 'Barras' }).click()
+      await p.getByTestId('fvs-camada').selectOption('longitudinal_inferior')
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/5 OK')
+      // de longe (zoom 0, as duas a ~2,5 px uma da outra): o toque pega as duas, sem pedir zoom
+      await enquadrar(p, [-600, 600], 0)
+      await tocarNaPlanta(p, 610, 521)
+      await aviso('Barras juntas N1 + N6 (long. inf.): OK')
+      await expect.poll(das).toEqual(['C', 'C'])
+      expect(await p.getByTestId('fvs-progresso').innerText()).toBe('2/5 OK')
+      // um Desfazer para as duas
+      await p.getByTestId('fvs-desfazer').click()
+      await aviso('Desfeito: 2 barras')
+      // o Desfazer grava as duas de novo sem conferir (como o "Tudo OK" da camada)
+      await expect.poll(das).toEqual([null, null])
+      await tocarNaPlanta(p, 610, 521)
+      await aviso('Barras juntas N1 + N6 (long. inf.): OK')
+      await expect.poll(das).toEqual(['C', 'C'])
+
+      // 2º toque: a caixa do NC pergunta qual das duas está errada
+      await tocarNaPlanta(p, 610, 521)
+      const caixa = p.getByTestId('fvs-nc-barra')
+      await caixa.waitFor()
+      const qual = p.getByTestId('fvs-nc-barra-qual')
+      expect(await qual.getByRole('button').allInnerTexts()).toEqual(['N1 1ø8 C=400', 'N6 1ø8 C=400'])
+      await qual.locator(`button[data-barra="${N6}"]`).click()
+      expect(await qual.locator('button.on').innerText()).toBe('N6 1ø8 C=400')
+      expect(await caixa.locator('b').first().innerText()).toContain('N6')
+      expect(await semRolagemHorizontal(p)).toBe(0)
+      if (PRINTS) await p.screenshot({ path: `${PRINTS}/barras_juntas_${nome}.png` })
+      await p.getByTestId('fvs-nc-barra-texto').fill('Bitola trocada')
+      await p.getByTestId('fvs-nc-barra-confirmar').click()
+      await caixa.waitFor({ state: 'detached' })
+      await expect.poll(das).toEqual(['C', 'NC'])
+      expect((await registros(p)).filter((r) => r.el === N6).at(-1)?.obs).toBe('Bitola trocada')
+
+      // 3º toque (com uma errada): tira a verificação das duas
+      await tocarNaPlanta(p, 610, 521)
+      await aviso('Barras juntas N1 + N6 (long. inf.): sem conferir')
+      await expect.poll(das).toEqual([null, null])
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -3802,10 +4945,11 @@ suite('FVS na bancada (Chrome)', () => {
         await etapas.first().click()
         await p.waitForFunction((m: number) => document.querySelectorAll('.fv-etapa-tit button').length < m, n)
       }
-      await p.waitForFunction(() => document.querySelector('.fv-sit')?.textContent === 'Liberado')
+      // tudo marcado, sem concretagem cadastrada: azul (achado #2, 24/11)
+      await p.waitForFunction(() => document.querySelector('.fv-sit')?.textContent === 'Liberado p/ concretar')
       await p.locator('.fv-topo .fv-voltar').click()
       await noInicio(p)
-      expect(await pavimento.innerText()).toContain('2 de 62 peças liberadas')
+      expect(await pavimento.innerText()).toContain('0 de 62 peças liberadas · 2 p/ concretar')
 
       // sai a rev. 1 da ficha, com outros itens. Chega também um registro do servidor, com hora "no futuro"
       await p.evaluate(`(async () => {
@@ -3818,15 +4962,15 @@ suite('FVS na bancada (Chrome)', () => {
       await p.goto(`${url}?abrir=0`)
       await noInicio(p)
 
-      // o que estava liberado continua liberado, na revisão em que foi marcado
-      expect(await pavimento.innerText()).toContain('2 de 62 peças liberadas')
+      // o que estava liberado (para concretar) continua assim, na revisão em que foi marcado
+      expect(await pavimento.innerText()).toContain('0 de 62 peças liberadas · 2 p/ concretar')
       const relogio = p.getByTestId('fvs-relogio')
       await relogio.waitFor()
       expect(await relogio.innerText()).toContain('estão atrasadas')
       await abrirTrecho()
       await buscar(p, 'P4')
       await nomeNoPainel(p, 'P4')
-      expect(await p.locator('.fv-sit').first().innerText()).toBe('Liberado')
+      expect(await p.locator('.fv-sit').first().innerText()).toBe('Liberado p/ concretar')
       expect(await p.locator('.fv-item').count()).toBe(7)
       const naFicha = p.getByTestId('fvs-ficha-do-painel')
       expect(await naFicha.innerText()).toContain('rev. 0 (a vigente é a rev. 1; esta peça foi marcada nesta)')
@@ -4034,6 +5178,47 @@ suite('FVS na bancada (Chrome)', () => {
       await contexto.close()
     }, 120_000)
 
+    it(`${nome} ${largura}x${altura}: mesma prancha publicada de novo (mesma revisão, id novo): "Planta atualizada · Baixar de novo"`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&revisao=mesma`)
+      await noInicio(p)
+      // já na lista de pavimentos e no menu do pavimento, antes de entrar (rodada 9 do testador, 24/11)
+      const cartao = p.getByTestId('fvs-pavimento').first()
+      await cartao.getByTestId('fvs-aviso-revisao-pavimento').waitFor()
+      expect((await cartao.innerText()).replace(/\s+/g, ' ')).toContain('Planta atualizada · Baixar de novo')
+      expect(await cartao.innerText()).not.toContain('No aparelho')
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_planta_atualizada_lista_${nome}.png`) })
+      await cartao.click()
+      const estrutura = p.locator('[data-testid=fvs-disciplina][data-disciplina=estrutura]')
+      expect(await estrutura.getByTestId('fvs-aviso-revisao-disciplina').innerText()).toBe('Planta atualizada · Baixar de novo')
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      await naDisciplina(p, 'estrutura')
+      const linha = p.getByTestId('fvs-secao-estrutura').locator('li', { hasText: 'Trecho 1' })
+      const aviso = linha.getByTestId('fvs-aviso-revisao')
+      await aviso.waitFor()
+      expect(await aviso.innerText()).toBe('Planta atualizada · Baixar de novo')
+      expect(await linha.innerText()).not.toContain('Revisão nova')
+      await linha.getByRole('button', { name: 'Abrir', exact: true }).waitFor()
+      const baixar = linha.getByRole('button', { name: /^Baixar de novo/ })
+      expect(await baixar.isDisabled()).toBe(false)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fvs_planta_atualizada_${nome}.png`) })
+      // dentro da planta, a faixa também não fala em revisão nova
+      await linha.getByRole('button', { name: 'Abrir', exact: true }).click()
+      const faixa = p.getByTestId('fvs-revisao-antiga')
+      await faixa.waitFor()
+      expect(await faixa.innerText()).toContain('Planta atualizada no servidor.')
+      expect(await p.getByTestId('fvs-baixar-revisao').innerText()).toMatch(/^Baixar de novo/)
+      // baixa: a faixa sai
+      await p.getByTestId('fvs-baixar-revisao').click()
+      await faixa.waitFor({ state: 'detached' })
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+
     it(`${nome} ${largura}x${altura}: lista de fichas duplicadas e atalhos`, async () => {
       const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
       const p: Page = await contexto.newPage()
@@ -4118,7 +5303,8 @@ suite('FVS na bancada (Chrome)', () => {
           return c
         })()`)
       const antes = await coresNaPlanta()
-      expect(antes['#1565c0']).toBeUndefined() // ninguém pronto para concretar ainda
+      // só o P1 (ficha toda aceita, sem concretagem cadastrada no Concreto): azul, não verde (achado #2, 24/11)
+      expect(antes['#1565c0']).toBe(1)
       expect(antes['#1b5fa8']).toBeUndefined() // o azul antigo do pendente saiu
       expect(antes['#6b7075']).toBeGreaterThan(50) // pendente é cinza
 
@@ -4131,14 +5317,14 @@ suite('FVS na bancada (Chrome)', () => {
       for (const n of [1, 2, 3, 4]) await item(p, n, n === 4 ? 'NA' : 'C').click()
       await p.locator('.fv-item[data-item="4"] button[data-r="NA"].on').waitFor()
       expect(await situacao.innerText()).toBe('Em andamento')
-      expect(await p.getByTestId('fvs-para-concretar').count()).toBe(0)
+      expect(await p.getByTestId('fvs-para-concretar').innerText()).toContain('1 p/ concretar') // só o P1
 
       // o último item antes da concretagem deixa azul, e o topo conta
       await item(p, 5, 'C').click()
       await p.locator('.fv-cab .fv-sit.s-concretagem').waitFor()
       expect(await situacao.innerText()).toBe('Liberado p/ concretar')
-      expect(await p.getByTestId('fvs-para-concretar').innerText()).toContain('1 p/ concretar')
-      await expect.poll(async () => (await coresNaPlanta())['#1565c0'], { timeout: 5000 }).toBe(1) // a peça na planta ficou azul
+      expect(await p.getByTestId('fvs-para-concretar').innerText()).toContain('2 p/ concretar')
+      await expect.poll(async () => (await coresNaPlanta())['#1565c0'], { timeout: 5000 }).toBe(2) // a peça na planta ficou azul
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       expect(await topoCabe(p)).toBe(true)
 
@@ -4148,15 +5334,17 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await situacao.innerText()).toBe('Liberado p/ concretar')
       await item(p, 3, 'NC').click()
       await p.locator('.fv-cab .fv-sit.s-reprovado').waitFor()
-      expect(await p.getByTestId('fvs-para-concretar').count()).toBe(0)
+      expect(await p.getByTestId('fvs-para-concretar').innerText()).toContain('1 p/ concretar')
       await item(p, 3, 'C').click()
       await p.locator('.fv-cab .fv-sit.s-concretagem').waitFor()
 
-      // a ficha inteira: verde
+      // a ficha inteira sem concretagem cadastrada no Concreto: continua azul (achado #2, 24/11)
       await item(p, 7, 'C').click()
-      await p.locator('.fv-cab .fv-sit.s-liberado').waitFor()
-      expect(await p.getByTestId('fvs-para-concretar').count()).toBe(0)
+      await p.locator('.fv-item[data-item="7"] button[data-r="C"].on').waitFor()
+      expect(await situacao.innerText()).toBe('Liberado p/ concretar')
+      expect(await p.getByTestId('fvs-para-concretar').innerText()).toContain('2 p/ concretar')
       await item(p, 7, 'C').click() // desmarca
+      await p.locator('.fv-item[data-item="7"] button[data-r="C"]:not(.on)').waitFor()
       await p.locator('.fv-cab .fv-sit.s-concretagem').waitFor()
 
       // filtrando uma etapa, a pergunta é outra: a cor diz se aquela etapa terminou
@@ -4169,7 +5357,7 @@ suite('FVS na bancada (Chrome)', () => {
       await p.goto(`${url}?abrir=0`)
       const pavimento = p.getByTestId('fvs-pavimento')
       await noInicio(p)
-      expect(await pavimento.innerText()).toContain('1 p/ concretar')
+      expect(await pavimento.innerText()).toContain('2 p/ concretar')
 
       expect(erros).toEqual([])
       await contexto.close()

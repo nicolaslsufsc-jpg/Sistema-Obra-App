@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { banco } from '../nucleo/servicos'
 import type { Linha } from '../nucleo/banco_local'
 import type { DadosFvs } from './dados'
-import { DadosDaTela, dadosGuardados, preLer, preLeituraEmCurso } from './leitura'
+import { aoMudarOAparelho, DadosDaTela, dadosGuardados, obraVazia, preLer, preLeituraEmCurso } from './leitura'
 import { guardarPacote, pacotesJaLidos, pacotesNoAparelho, removerPacotes } from './pacote'
 
 // Abrir a FVS de novo sem reler o aparelho (pedido do Nicolas, 21/11: "FVS demora 5s para abrir").
 const OBRA = 'e0000000-0000-0000-0000-0000000020c1'
-const dadosDe = (n: number) => ({ eventosDe: new Map(), n }) as unknown as DadosFvs
+// uma ficha: obra com dados (obra vazia nunca vale como guardada, ver abaixo)
+const dadosDe = (n: number) => ({ eventosDe: new Map(), fichas: [{}], plantasDe: new Map(), n }) as unknown as DadosFvs
+const vazios = (n: number) => ({ eventosDe: new Map(), fichas: [], plantasDe: new Map(), n }) as unknown as DadosFvs
 const esperar = () => new Promise((ok) => setTimeout(ok, 30))
 
 describe('abrir a FVS de novo', () => {
@@ -46,6 +48,32 @@ describe('abrir a FVS de novo', () => {
     expect(new DadosDaTela(async () => dadosDe(0), () => {}, chave).guardadoVale(Date.now() + 31 * 60 * 1000)).toBe(false)
     // sem chave nada é guardado
     expect(new DadosDaTela(async () => dadosDe(0), () => {}).guardadoVale()).toBe(false)
+  })
+
+  // Testador, 23/11: trocar de obra (obra piloto → EXE) mostrava "ainda não tem fichas" até recarregar a página. A baixa
+  // da obra nova, começada no menu, ainda gravava depois que a FVS abria com a leitura vazia.
+  it('obra vazia não vale como guardada e relê quando o aparelho muda', async () => {
+    const chave = `${OBRA}|vazia`
+    let leituras = 0
+    const a = new DadosDaTela(async () => vazios(++leituras), () => {}, chave)
+    a.aberta(true)
+    await a.recarregar()
+    a.aberta(false)
+    expect(obraVazia(a.dados()!)).toBe(true)
+    expect(new DadosDaTela(async () => vazios(0), () => {}, chave).guardadoVale()).toBe(false)
+    expect(obraVazia({ fichas: [], plantasDe: new Map([['pav', []]]) } as unknown as DadosFvs)).toBe(false)
+
+    // a tela vazia ouve o aparelho: várias gravações seguidas viram uma releitura só
+    let chamadas = 0
+    const parar = aoMudarOAparelho(() => chamadas++, 20)
+    for (const id of ['v1', 'v2', 'v3']) await banco.registros.put({ tabela: 'fichas_modelo', id, obra_id: OBRA, linha: { id, obra_id: OBRA } as unknown as Linha, pendente: 0 })
+    await new Promise((ok) => setTimeout(ok, 80))
+    expect(chamadas).toBe(1)
+    // parou de ouvir: nada mais
+    parar()
+    await banco.registros.put({ tabela: 'fichas_modelo', id: 'v4', obra_id: OBRA, linha: { id: 'v4', obra_id: OBRA } as unknown as Linha, pendente: 0 })
+    await new Promise((ok) => setTimeout(ok, 80))
+    expect(chamadas).toBe(1)
   })
 
   it('a lista de plantas do aparelho é lida uma vez e acompanha o que se baixa e apaga', async () => {

@@ -99,6 +99,11 @@ O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de laj
   4. Elétrico no IFC real (piloto do 2º, 21/11): o eletroduto vem como "Conduit with/without Fittings" (IfcFlowSegment, com corpo extrudado; já casa com a regra) e a eletrocalha como "Cable Tray" (fica fora). Caixas na laje: "Tomada de Teto" e "Tomada de Piso" (Conjunto 4x2 e 4x4, IfcBuildingElementProxy), "CAIXA DE PASSAGEM", "Quadro de Distribuição". **Pendente de decisão do Nicolas:** os eletrodutos horizontais do 2º ficam cerca de 36 cm abaixo do piso do 3º (12,60 m; o 3º está em 12,96 m), e a tomada de teto do 2º fica em 12,96 m. Isso é a laje do 3º (embutido) ou o forro do 2º? Conforme a resposta, o elétrico passa a ser escolhido pela altura da laje e não pelo pavimento que contém o objeto. As tomadas e os interruptores de parede vêm uns 15 m acima do andar (erro do IFC) e não entram na laje.
   5. Preventivo: não há PES nem PVS, então os itens entram marcados como suposição. **App pronto (21/11):** disciplina `preventivo` (setor "Hidrantes, extintores e sprinklers"), tipos `hidrante`, `extintor`, `sprinkler`, `detector`, `iluminacao_emergencia`, `alarme`, `sinalizacao` e a tubulação como linha (`tubo_incendio`), item da ficha `"pontos": "preventivo"`; tipo desconhecido aparece com o nome do objeto. **Planta de consulta (decisão do Nicolas, 21/11: "se não tiver [ficha] vamos fazer que nem aço, mas não vai para ficha"):** a planta da disciplina que nenhuma ficha marca (PPCI; SPDA enquanto não tiver ficha) aparece no menu para olhar e conferir no local; o topo diz "Só consulta", o toque mostra o nome do ponto e nada grava em `fvs_eventos`. Marcação "visto" fica para depois, com o Nicolas. **Falta no pipeline** (`instalacoes.py` e `publicar_fichas.py`, que têm de ter a mesma lista de disciplinas): ler o IFC do preventivo e aceitar `"pontos": "preventivo"` na ficha.
 
+## No app, 23/11/2026 (chat 10, combinado com o 20)
+Divisão: o 20 gera e publica os pacotes (pipeline, só no servidor de testes); o 10 cuida das telas (`app/src/fvs/`). Formato do `PontoPacote` sem mudança; o 20 acrescenta os tipos `conector` (SPDA) e os do preventivo, a disciplina `preventivo` com o trecho "Preventivo" (só consulta) e as `origens` na folha, como na furação. **Planta com muitos pontos:** com mais de 60 pontos visíveis, de longe a planta mostra um número por quadrado ("2 de 40 pontos OK"), que aproxima ao toque; o ponto só se marca de perto (regra em [1_fvs.md](1_fvs.md)). Pacotes reais conferidos no navegador: elétrico do mezanino (908 pontos). **Elétrico do andar-tipo (5.855 pontos no 3º):** medido no PC com a CPU 4x mais lenta, abre em 0,6 s, aproxima e arrasta sem travar (depois da correção de 23/11 na conta do zoom); não precisa juntar trechos por ora. Falta o S23 de verdade.
+
+**5.1 a 5.3 no app (23/11, chat 10, branch `fvs/instalacoes-5-1-a-5-3`):** a tela já lê os tipos `tubo`, `coluna` e `caixa_parede`, o `ambiente` do ponto e o item com `pontos` em lista mais `pontos_tipos`. O toque grava no item da ficha de ambiente que tem a disciplina e o tipo do ponto. Quando duas servem (alvenaria e drywall), pergunta "Qual ficha?" uma vez por ambiente. Tipo sem item é só consulta e não entra na conta. Regras em [1_fvs.md](1_fvs.md).
+
 ## SPDA como planta (22/11/2026, feito)
 
 Pedido do Nicolas ("faça a mesma coisa dos furos"): uma planta "SPDA" por pavimento, com fundo das pranchas de SPDA coladas pelos pilares e os pontos do modelo. Decisões dele: a cobertura, sem forma, não entra; a BEP conta como caixa.
@@ -114,6 +119,234 @@ Pedido do Nicolas ("faça a mesma coisa dos furos"): uma planta "SPDA" por pavim
 - **A conferir:** descida a mais de 30 cm do contorno de um pilar vai para `a_conferir.descida_longe_de_pilar` no relatório.
 - **Gerado na obra piloto (22/11), sem publicar:** 8 pavimentos (subsolo, pilotis, mezanino, 2º a 6º), 241 pontos: 204 descidas, 20 captores (mezanino), 13 conectores, 4 BEP. Fundo: todas as pranchas encaixaram no mezanino e do 2º ao 6º; no subsolo 2 de 3, no pilotis 1 de 3 (as outras ficam fora). Descidas longe de pilar: 8 no subsolo (todas), 9 no 2º, 5 no mezanino, 5 no 6º, 1 no pilotis.
 - **Publicar:** `PUBLICAR_SPDA.bat` na pasta da FVS da obra, fora do repositório. Ele desliga o vigia do Autodoc (mesmo login), publica um pavimento por vez (`--so-spda --aceita-ambientes`), para no primeiro erro e religa o vigia.
+
+## Instalações além dos furos (23/11/2026, frente 20)
+
+Pedido do Professor: as cinco disciplinas da obra piloto, com os dados reais, no **servidor de testes** (nunca no da obra real). Branch `instalacoes/alem-dos-furos`.
+
+- **Preventivo (PPCI) no pipeline:** disciplina `preventivo` ("Preventivo") em `instalacoes.py`, `pacote.py` e `publicar_fichas.py`. Sem ficha: a planta sai "Só consulta" no app. Nomes do IFC real, nesta ordem:
+  - placa, sinalização, fotoluminescente → sinalizacao;
+  - mangueira (abrigo) fica fora; hidrante → hidrante;
+  - gás, aquecedor, chaminé, medidor, cilindro, interfone, grelha, vidro → fora;
+  - extintor, sprinkler, detector; "emergência" e "autônomas com faróis" → iluminacao_emergencia; sirene, acionador, alarme, botoeira → alarme.
+  - Entram também as classes IfcDistributionControlElement, IfcAlarm, IfcSensor e IfcFireSuppressionTerminal.
+  - **Pavimento:** no IFC do PPCI o objeto vem uns 9 m acima do nível; vale a altura do nível que o contém, não a do objeto.
+  - O IFC do PPCI é grande. Usa-se uma cópia leve fora do repositório, só com os objetos classificados, sem geometria.
+- **Fundo das pranchas por disciplina:** `"pdf"` e `"escala"` valem em qualquer disciplina de `"instalacoes"`, com o encaixe pelos pilares da furação. No preventivo (1:50, pilar cinza 0,12) e no SPDA (1:100, cinza 0,39) as pranchas encaixam. Nas de hidráulica, esgoto e elétrico o pilar vem só com contorno, sem preenchimento, e não encaixa: essas três ficam com o fundo da forma.
+- **Nomes para o encarregado** (achado do 10 no 2º): sai o prefixo do Revit (HID_, SAN_, PCI_, SPDA_, ELE_, também com "x_" ou "z_NAO_USAR_"), o número colado no fim do nome e o inglês ("Conduit" → "Eletroduto", "Pipe" → "Tubo", "Cable Tray" → "Eletrocalha").
+- **Água junta por lugar:** na hidráulica, pontos a menos de 20 cm viram um só, com a contagem no nome ("2 Valvula Esfera Vermelha"). Fica o id do menor, o tipo mais importante (ponto de água > hidrômetro > registro) e a posição média. No 2º: de 546 para 341.
+- **SPDA longe da estrutura:** descida ou conector a mais de 2 m de qualquer pilar sai da planta e vai para `a_conferir.fora_da_estrutura` no relatório (no 2º, 18 pontos que caíam na diagonal da folha).
+- **Login por servidor:** o login do pipeline fica num arquivo por servidor (`sessao_supabase.json` para o da obra real, `sessao_supabase_<ref>.json` para os outros). Entrar no de testes não apaga o login da obra real.
+- **Fora do repositório (pasta da FVS da obra):** configs `pavimentos_instalacoes_2026-11-21\*_todas.json`, pacotes gerados em `pacotes_instalacoes_2026-11-23`, `LOGIN_SERVIDOR_TESTES.bat` e `PUBLICAR_TESTES_INSTALACOES.bat` (desliga o vigia do Autodoc, publica um pavimento por vez no servidor de testes, para no erro, religa o vigia). O `PUBLICAR_SPDA.bat` de 22/11 (obra real) foi renomeado para não rodar.
+- **Gerado na obra piloto (23/11), sem publicar, 9 pavimentos** (pontos por planta):
+
+  | Pavimento | Água | Esgoto | Elétrico | Preventivo | SPDA |
+  |---|---|---|---|---|---|
+  | Subsolo | 36 | – | – | 13 | 12 |
+  | Térreo comercial | 64 | 150 | 18 | 178 | – |
+  | Pilotis | 133 | 109 | 549 | 377 | 33 |
+  | Mezanino | 77 | 57 | 908 | 123 | 58 |
+  | 2º | 341 | 207 | 1223 | 176 | 23 |
+  | 3º | 341 | 206 | 5855 | 176 | 23 |
+  | 4º | 339 | 207 | 5844 | 176 | 22 |
+  | 5º | 335 | 211 | 5844 | 176 | 22 |
+  | 6º | 329 | 195 | 5890 | 176 | 29 |
+
+  - Do 3º ao 6º, o elétrico tem uns 5.800 pontos (quase todos trechos de eletroduto); o 10 mede o desempenho no app.
+  - Fundo do preventivo: as pranchas encaixam do 2º ao 5º; no subsolo, térreo, pilotis, mezanino e 6º nenhuma encaixa (0 pilar em comum) e fica a forma. Fundo do SPDA: encaixam todas no mezanino e do 2º ao 6º; 2 de 3 no subsolo e 1 de 3 no pilotis.
+  - SPDA a conferir: descidas longe de pilar no subsolo (7), pilotis (1), mezanino (5) e 6º (5); fora da estrutura (fora da planta) no 2º (18) e no subsolo (1).
+- **Pendente (Nicolas):** o "visto" do PPCI; o elétrico da laje ou do forro (item 4 do status de 21/11).
+
+## Redes, alvenaria e drywall: 5.1 a 5.3 (23/11/2026, frente 20)
+
+Pedido do Professor: hidráulica e elétrica na FVS além dos furos, com o 2º pavimento como piloto. Branch `instalacoes/fichas-5-1-a-5-3`, commit f2e03b4. A tela é do 10 (`fvs/instalacoes-5-1-a-5-3`).
+
+- **Tipos novos no pacote:**
+  - `tubo`: trecho deitado, desenhado como linha, igual ao eletroduto.
+  - `coluna`: a prumada. São os trechos em pé no mesmo lugar (grade de 10 cm) que, somados, passam de 2,5 m. A descida curta até o aparelho fica fora.
+  - `caixa_parede`: tomada, interruptor, pulsador e dimmer. A tomada de teto ou de piso continua `caixa_passagem`.
+- **Ambiente do ponto:** o modelo de instalações está nas mesmas coordenadas da arquitetura. Cada ponto ganha `ambiente`, que é o id do elemento A onde ele cai; o ponto na parede fica com o ambiente mais perto, até 30 cm. Sem ambiente, o ponto vai sem esse campo. O config aceita `"instalacoes": {"ambientes": <pavimento_ambientes.json>}`.
+- **Fichas:** `"pontos"` aceita uma lista de disciplinas e `"pontos_tipos"` diz quais tipos o item marca. O mesmo tipo não pode marcar dois itens da mesma ficha. `publicar_fichas --trocar-itens` troca os itens de uma ficha já publicada; é recusado no servidor da obra.
+- **Marcas** (arquivo `fichas_instalacoes_2026-11-23\fichas_5_1_a_5_3.json`, fora do repositório):
+  - 010.4 (redes suspensas e colunas): item 10 água [tubo, coluna]; item 17 esgoto [tubo, coluna]; item 19 esgoto [ralo, caixa sifonada, caixa, ponto de esgoto].
+  - 010.6 (dreno suspenso): nenhuma marca.
+  - 010.5 (alvenaria e drywall): item 6 água [ponto de água, registro, hidrômetro].
+  - 009.6: item 4 [caixa de parede]. 009.7: item 5 [caixa de parede].
+  - O ponto de esgoto fica só na 010.4, por decisão do Nicolas em 23/11 ("só uma delas").
+- **2º gerado** (pacotes em `pacotes_instalacoes_5x_2026-11-23\05_2_pavimento`):
+  - água: tubo 5208, coluna 222, registro 189, ponto de água 145, hidrômetro 7;
+  - esgoto: tubo 3175, coluna 256, caixa sifonada 124, ralo 73, caixa 10 (541 pontos sem ambiente);
+  - elétrico: caixa de parede 2440, eletroduto 1120, caixa de passagem 103.
+- **Login do pipeline no servidor de testes:** a conta de teste do `.env` (`SUPABASE_TESTES_*`), só em memória, sem sessão guardada. Nunca vale para o servidor da obra.
+- **No servidor de testes (24/11):**
+  - fichas 010.4, 010.6, 010.5, 009.6 e 009.7: 4 novas e 1 com os itens trocados;
+  - instalações do 2º: água 5771 locais, esgoto 3638, elétrico 3663, preventivo 176 e SPDA 23.
+- **Falta:** a conferência na tela, com o Professor quando o Nicolas entrar.
+- **Caixas empilhadas (24/11, achado do 10, commit bd17ee4):** o "módulo ... não listável" saía como ponto à parte, no mesmo lugar do conjunto. Agora não vira ponto. No 2º, as caixas de parede foram de 2440 (509 grupos empilhados) para 1396, sem nenhum. O elétrico do 2º foi republicado nos testes: 2619 locais, e o 10 conferiu na tela.
+- **Pendência (app):** a planta republicada com a mesma prancha mantém a revisão (R02), e o menu mostra "Revisão nova… Baixar R02". A proposta é o app comparar pelo id da planta e dizer "Planta atualizada". O pipeline não muda a revisão, porque o planta_ref do Concreto depende dela.
+
+## Estrutura no servidor de testes (23 e 24/11/2026, frente 20)
+
+Pedido do Professor: forma + furação de todos os pavimentos e a armadura de laje no servidor de testes, pelo `publicar_planta.py --folha-unica --aceita-ambientes`, com a conta de teste. Configs: `pavimentos_instalacoes_2026-11-21\*_furacao*.json` (a mesma lista do `PUBLICAR_TESTES_INSTALACOES.bat`) e `pavimentos_armadura_2026-11-20\*.json` (`--so-armadura`). Script: `pavimentos_instalacoes_2026-11-21\pub_testes_estrutura.sh` (fora do repositório), um pavimento por vez.
+
+- **Publicado (24/11 de manhã; o Subsolo foi em 23/11):**
+
+  | Pavimento | Forma (peças novas) | Furos | Armadura (locais nas 4 plantas) |
+  |---|---|---|---|
+  | Subsolo | R14: 440 | 13 | sem config |
+  | Térreo comercial | R01: 305 | 104 | 7 / 4 / 3 / 2 |
+  | Pilotis | R02: 1502 | 658 | 483 / 397 / 454 / 491 |
+  | Mezanino | R00: 1281 | 683 | 434 / 420 / 358 / 365 |
+  | 2º | R02: 1537 | 1114 | 538 / 534 / 590 / 574 |
+  | 3º | R03: 1462 | 1072 | 549 / 549 / 577 / 564 |
+  | 4º | R02: 1466 | 1073 | 504 / 537 / 576 / 552 |
+  | 5º | R01: 1476 | 1070 | falta prancha |
+  | 6º | R01: 1451 | 1070 | falta prancha |
+
+  A armadura está na ordem transversal superior / transversal inferior / longitudinal superior / longitudinal inferior.
+- **Ambientes do 22 intactos:** os 5 setores "Ambientes" (2º ao 6º) e os elementos A e E (301/724, 306/732, 303/722, 307/732, 294/717) seguem iguais, e nada foi apagado. A planta "Blocos" do Subsolo é do chat 03.
+- **5º e 6º sem detalhe e sem armadura:** o PC (índice de projetos do PC) só tem as formas. Faltam PIL5PAVTIP, PIL6PAVTIP, VIG5PAVTIP, VIG6PAVTIP, LAJ5PAVTIP e LAJ6PAVTIP. Nada foi baixado; o Professor decide.
+- **Vigia do Autodoc:** desligado durante a publicação.
+- **Concreto, TRAVADO:** as 276 `caminhao_areas` (eram 245 em 23/11) guardam `planta_ref` da produção. Cada id antigo, o id novo nos testes (mesma revisão, folha do mesmo tamanho) e o pavimento:
+  - 004b772f… → 619bb992… (Subsolo);
+  - 2abf095a… → 405aaaa5… (Pilotis);
+  - 9c1f5082… → 3d8bf1df… (Mezanino, planta);
+  - 5d74d93d… → 40b765c4… (Mezanino, setor);
+  - 025647b0… → 8c103047… (2º).
+
+  O UPDATE é recusado pelo núcleo ("caminhao_areas é só de inclusão"). Nada foi trocado. O desfazer está pronto em `pavimentos_instalacoes_2026-11-21\DESFAZER_planta_ref_caminhao_areas_2026-11-24.sql`. Decisão do Professor (24/11): caminho (b), feito pelo 04 (Concreto) pelo caminho do app, com este mapeamento. O `b6593cf2…@R00` (5 áreas) é um setor que já existe nos testes e não se mexe.
+
+## Instalações de todos os pavimentos no servidor de testes (24/11/2026, sessão 6 do plano)
+
+Pedido do Professor: SPDA, PPCI, água, esgoto e elétrico em todos os pavimentos, no padrão do 2º. Só no servidor de testes, sempre por `com_vigia_desligado.py`, um pavimento por vez.
+- **Configs:** `pavimentos_instalacoes_2026-11-23\*_todas.json`, fora do repositório, montadas iguais à do 2º. Usam as cópias leves de 23/11 do IFC de água, esgoto e elétrico (com geometria e com as caixas de parede) e o arquivo de ambientes, que só existe do 2º ao 6º.
+- **Primeira rodada errada:** o 3º e o 4º saíram antes com as configs de 21/11 (IFC sem geometria nem caixas de parede). Foram republicados no padrão do 2º, e as plantas novas substituíram essas.
+- **SPDA:** as decisões do Nicolas (pranchas coladas pelos pilares; BEP como caixa) já estavam no código desde 22/11.
+- **Nada baixado:** todas as pranchas e IFCs já estavam no PC.
+- **Locais por planta:**
+
+  | Pavimento | Água | Esgoto | Elétrico | Preventivo | SPDA |
+  |---|---|---|---|---|---|
+  | Subsolo | 158 | – | – | 13 | 12 |
+  | Térreo comercial | 529 | 1080 | 86 | 178 | – |
+  | Pilotis | 1936 | 3082 | 967 | 377 | 33 |
+  | Mezanino | 1044 | 2488 | 1146 | 123 | 58 |
+  | 2º (23/11) | 5771 | 3638 | 2619 | 176 | 23 |
+  | 3º | 5763 | 3573 | 7251 | 176 | 23 |
+  | 4º | 5741 | 2829 | 7240 | 176 | 22 |
+  | 5º | 5731 | 2842 | 7240 | 176 | 22 |
+  | 6º | 5679 | 2946 | 7474 | 176 | 29 |
+
+- **Caixas de parede:** no 3º são 1.396, nenhuma empilhada (conferido no IFC).
+- **Ponto sem ambiente**, só do 3º ao 6º:
+
+  | Pavimento | Esgoto | Elétrico | Água |
+  |---|---|---|---|
+  | 3º | 164 | 8 | 0 |
+  | 4º | 206 | 8 | 0 |
+  | 5º | 165 | 8 | 0 |
+  | 6º | 268 | 19 | 2 |
+
+- **Fundo da forma**, sem as pranchas da disciplina: PPCI do 6º, do mezanino, do pilotis, do térreo e do subsolo (as pranchas não encaixam).
+- **Falta:** conferir no app o desempenho do elétrico de ~7.200 pontos (o 10) e o "visto" do PPCI (Nicolas).
+
+## Fichas do SPDA no servidor de testes (25/11/2026, frente 20, pedido do Professor)
+
+Antes, o SPDA abria como "Só consulta", porque nenhuma ficha marcava os pontos dele. Foram publicadas as fichas PVS 009.2.1 e 009.2.2 na obra piloto, só no servidor de testes. Só as fichas: nenhuma planta foi republicada.
+
+- **Origem dos itens:** a leitura do Construpoint de 21/11, já no PC.
+  - O arquivo e o gerador ficam fora do repositório, em `fichas_spda_2026-11-25\` (`gerar_fichas_spda.py` gera `fichas_spda.json`).
+  - A publicação usou `publicar_fichas.py` pelo `com_vigia_desligado.py`, com a conta de teste.
+- **Títulos reais:** 009.2.1 é o "anel de aterramento" e 009.2.2 é o "subsistema de captação". O plano de 20/11 dizia o contrário: captores na 009.2.1 e descidas e caixas na 009.2.2.
+- **Marcas** (`"pontos": "spda"` e `"pontos_tipos"`). A regra do Nicolas para a BEP ("2 conta como caixa") vale aqui: ela é `caixa_inspecao` e marca o item das caixas de inspeção.
+
+  | Ficha | Item | O que diz | Tipo de ponto |
+  |---|---|---|---|
+  | 009.2.1 | 8 | colocação das hastes | `haste` (o modelo não tem nenhuma; o item fica pronto) |
+  | 009.2.1 | 9 | instalação das caixas de inspeção | `caixa_inspecao` |
+  | 009.2.1 | 10 | união das hastes com os cabos | `conector` |
+  | 009.2.2 | 2 | número de pontos de descida | `descida` |
+  | 009.2.2 | 10 | interligação com o captor ou minicaptor | `captor` |
+
+- **PPCI:** não existe PVS de preventivo na leitura do Construpoint; a de gás (020) não é PPCI. Pela regra de 21/11, o PPCI continua "Só consulta".
+- **Falta (10):** conferir na tela que o toque no SPDA grava no item certo de cada tipo. Hoje são duas fichas da mesma disciplina, então o app precisa escolher a ficha pelo `pontos_tipos`.
+
+**No app, sessão 6 (25/11, chat 10):** conferido na bancada com os pacotes reais, em 375 px e no tablet. Água e esgoto gravam em todos os pavimentos, o SPDA grava em cada uma das duas fichas pelo tipo do ponto e o PPCI é só consulta. Duas correções na tela: os pontos no mesmo lugar (placa sobre o extintor, BEP sobre a descida) agora mostram os nomes no toque, e a planta sem ponto que marque (o elétrico de baixo) diz "Só consulta". Detalhes em [1_fvs_historico.md](1_fvs_historico.md), 25/11.
+
+## Ambiente dos pontos nos pavimentos sem IFC de arquitetura (25/11/2026, frente 20, commit 1f2fb2a)
+
+Mezanino, pilotis e subsolo não têm IFC de arquitetura; o do mezanino tem só 37 objetos. Por isso o chat 22 tirou as salas da prancha em PDF. Os pontos de instalações, porém, estão nas coordenadas do modelo.
+
+- **Encaixe:** a prancha do pavimento é casada com as paredes de um andar tipo, por `ambientes.casar_com_a_prancha`, porque o núcleo e os pilares se repetem.
+  - No mezanino, o 2º, o 3º e o 6º dão o mesmo encaixe.
+  - No pilotis e no subsolo, o 2º e o 3º concordam; o 6º, com outra planta, não.
+  - A coincidência fica entre 12% e 15%. No próprio andar ela é de 38%. Abaixo de 10%, a publicação para.
+- **Config** (`"instalacoes": {"ambientes": {...}}`): `"pacote"` é a pasta Ambientes do pacote da planta de ambientes. Vão junto a `"prancha"` e a `"escala"` da arquitetura, e o `"ifc"` e o `"andar"` do andar tipo de referência. O nome do ambiente ("AC-07") vira o id do elemento A no servidor, como nos outros andares.
+- **Conferido no PC:** os pontos foram desenhados por cima da prancha e caem nas casas, nas prumadas, nos banheiros e na volta da piscina.
+- **Com ambiente:**
+
+  | Pavimento | Pontos com ambiente | Total de pontos |
+  |---|---|---|
+  | Mezanino | 589 | 4.859 |
+  | Pilotis | 1.348 | 6.514 |
+  | Subsolo | 0 | 199 |
+
+  - As casas do mezanino e o estacionamento do subsolo não são ambiente na planta do 22. Os pontos de água do subsolo ficam nos dois salões grandes, que também não são ambiente.
+  - Por isso o subsolo não foi republicado: nada mudaria.
+- **No servidor de testes (25/11):** só o pilotis, com as 5 plantas trocadas (água 1.936 locais, esgoto 3.082, elétrico 967, PPCI 377 e SPDA 33).
+  - O mezanino e o subsolo ficam para depois do aviso final do 22, que vai fazer de cada casa e da faixa da piscina um ambiente, e do estacionamento um ambiente só. Os dois vão juntos, numa publicação só.
+- **Configs:** `pavimentos_instalacoes_2026-11-25\` (fora do repositório).
+- **Publicado nos testes, 25/11 à tarde:** o mezanino, já com as casas UN-01 a UN-09, e o subsolo, com o estacionamento EA-01. A publicação foi feita depois da mudança da caixa de parede.
+- **Conferência no servidor** (`fvs/conferir_ambientes_publicados.py`, só leitura). Ela baixa só os manifest.json, uns 3 MB, sem o pacote.bin, e compara cada ponto com o ambiente calculado no PC e com os elementos A vivos do pavimento.
+
+  | Pavimento | Certo | Sem ambiente | Id inexistente | Outro cômodo |
+  |---|---|---|---|---|
+  | Pilotis | 1.331 | 5.064 | 0 | 0 |
+  | Mezanino | 2.970 | 1.874 | 0 | 0 |
+  | Subsolo | 119 | 64 | 0 | 0 |
+
+  Estes números são de locais, depois de juntar os pontos empilhados; por isso são um pouco menores que os do log. O subsolo tem 350 elementos A a mais (por exemplo "ESC-V27"), que não são da planta de ambientes; nenhum ponto aponta para eles.
+- **Pacotes no PC** (o mesmo conteúdo, com ids locais, para a bancada do 10): `pacotes_instalacoes_2026-11-25\{03_pilotis,04_mezanino,01_subsolo}`.
+- **Caixa de passagem na parede (25/11, decisão do Professor pela regra do Nicolas):** a "Caixa de Passagem na Parede" do Revit agora sai como `caixa_parede`, para gravar na ficha de alvenaria ou drywall, e não na laje. A "CAIXA DE PASSAGEM 4X2 - CONDUTELE" continua `caixa_passagem`.
+  - A regra vale para todos os pavimentos.
+  - Os que já estão no servidor só mudam quando forem republicados.
+
+## Vigia sempre religado (24/11/2026, achado do revisor)
+
+- **O defeito:** se a publicação parasse no meio (erro, Ctrl+C, janela fechada), a tarefa agendada que usa o mesmo login (o vigia) ficava desligada. Quem religava era só a última linha do .bat.
+- **A correção:** `pipeline/fvs/com_vigia_desligado.py` desliga a tarefa, espera ela parar e roda o comando. Depois religa sempre: no fim, em erro, no Ctrl+C e com a janela fechada.
+  - Se for interrompido, encerra antes o comando e os filhos dele.
+  - Um segundo Ctrl+C não corta a limpeza.
+  - No fim mostra o estado da tarefa e avisa se ela não ficou ligada.
+  - O nome da tarefa entra por `--tarefa`.
+- **O .bat:** o .bat de publicação (fora do repositório) chama `com_vigia_desligado.py --tarefa ... -- "%~f0" passos`. O próprio .bat roda os passos.
+- **Quando nada segura:** só matar o Python à força ou desligar o PC. Nesse caso a próxima rodada avisa que a tarefa já estava desligada, e há um `RELIGAR_VIGIA.bat` ao lado do .bat.
+- **Testes:** `pipeline/testes/test_com_vigia_desligado.py`, 10 testes, um deles com processo de verdade.
+
+## Maciços (capitel) completos no 3º e no 4º (24/11/2026, frente 20, achado de campo #1 e #3)
+
+Commit c59cfbd, em `pipeline/fvs/partes.py`.
+- **Recorte:** antes, entrava só o grupo de desenho colado ao título; o P66 do 3º saía só com as barras N1. Agora entram todos os desenhos que ficam embaixo e à direita do título; cada um vai para o título mais perto acima e à esquerda. O selo da prancha (achado pelo quadro de revisões) e a tabela de aço ficam fora.
+- **Títulos:** dois títulos no mesmo bloco de texto agora contam como dois. Por isso o P67 e o P122 (LO.4109) se perdiam. Também passou a ler "P200 P213" sem traço.
+- **P67a:** o título diz "P67", e o nome casa com o P67a da forma pela base do nome. Volta a ter capitel.
+- **P50a:** não aparece em nenhuma prancha de maciço do PC, nem do 3º nem do 4º. Falta o detalhe; não é o sufixo.
+- **Contagem nas pranchas** (pilares nos títulos / com imagem):
+
+  | Pavimento | Antes | Depois |
+  |---|---|---|
+  | 3º | 123 / 101 | 129 / 129 |
+  | 4º | 116 / 106 | 118 / 118 |
+
+  Os recortes únicos passaram de 47 para 56 no 3º e de 34 para 43 no 4º.
+- **Republicado no servidor de testes:** só a Planta inteira do 3º e do 4º (configs `*_so_forma.json`, sem a furação), com o vigia desligado nesse tempo.
+- **Anel do capitel no tamanho real** (campo #1, commit 7609405): antes era um quadrado fixo de 0,5 m em volta do pilar. Agora as cotas do desenho da armadura dão o tamanho: o maior trecho reto escrito deitado é a largura, o maior em pé é a altura. O P66 do 3º dá 235 × 327 cm, e o anel fica centrado no pilar.
+  - Sem as duas cotas, ou com medida menor que o pilar, volta ao anel de 0,5 m.
+  - Todos os 129 maciços do 3º e os 118 do 4º têm medida.
+- **Aviso de maciço sem prancha** (pedido do Professor, LISTA DE CAMPO #3): a publicação lê as cubetas da forma (camada `LJ_NERV*`). Pilar com cubetas nos quatro lados, todas a pelo menos 0,55 m dele, tem maciço. Se não ganhou capitel, o resumo avisa "ATENÇÃO: maciço na forma e em nenhuma prancha de maciços". É só aviso; a planta não muda.
+  - 3º: P64b e P237.
+  - 4º: P64b, P74, P86, P87, P90, P95a, P100a, P198a, P237, P322a e P327a. Conferir na forma; o 4º tem só 3 pranchas de maciço no PC.
+  - O P67a, o P122a e o P78aa do 3º já ganham capitel com a leitura nova.
+- **5º e 6º:** sem pranchas de maciço no PC (LO.4156–4159 e 4180–4183 estavam "Em Análise").
 
 ## Plano do SPDA como aba (22/11/2026, só o plano)
 

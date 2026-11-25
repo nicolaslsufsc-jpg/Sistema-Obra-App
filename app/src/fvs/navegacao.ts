@@ -10,6 +10,7 @@ import type { OpcaoDosAmbientes } from './opcoes_ambientes'
 
 /** Disciplina do setor da planta → disciplina do menu. A que o app não conhece vira uma disciplina própria. */
 const GRUPO: Record<string, string> = {
+  fundacao: 'fundacao', // blocos de fundação (planta de locação, 23/11/2026)
   estrutura: 'estrutura', // forma: pilares, vigas, lajes e furos de viga
   armadura: 'estrutura', // armadura de laje, uma planta por direção
   furacao: 'estrutura', // furos de laje, uma planta por camada
@@ -23,14 +24,15 @@ const GRUPO: Record<string, string> = {
 }
 
 export const NOME_DA_DISCIPLINA: Record<string, string> = {
+  fundacao: 'Fundação',
   estrutura: 'Estrutura',
   alvenaria: 'Alvenaria',
   acabamentos: 'Acabamentos',
   instalacoes: 'Instalações',
 }
 
-/** Ordem da obra: estrutura, alvenaria, acabamentos, instalações; as outras depois, na ordem em que aparecem. */
-const ORDEM = ['estrutura', 'alvenaria', 'acabamentos', 'instalacoes']
+/** Ordem da obra: fundação, estrutura, alvenaria, acabamentos, instalações; as outras depois, na ordem em que aparecem. */
+const ORDEM = ['fundacao', 'estrutura', 'alvenaria', 'acabamentos', 'instalacoes']
 
 /** Opção da planta de ambientes que é de alvenaria (vai para Alvenaria, e não para Acabamentos). */
 export const ehOpcaoDeAlvenaria = (op: Pick<OpcaoDosAmbientes, 'titulo'>) => /alvenaria|veda[cç][aã]o|modula[cç][aã]o|fiada/i.test(op.titulo)

@@ -24,7 +24,7 @@ export function Registros({ ligacoes }: { ligacoes: Ligacoes }) {
       <section class="doc-grupo" data-testid="registros-fvs">
         <h3>FVS · fichas de verificação</h3>
         {fichas.length === 0 ? (
-          <p class="discreto">Nenhuma ficha no aparelho.</p>
+          <p class="discreto">Sem fichas no aparelho</p>
         ) : (
           <ul class="lista">
             {fichas.map((f) => (
@@ -46,7 +46,7 @@ export function Registros({ ligacoes }: { ligacoes: Ligacoes }) {
       <section class="doc-grupo" data-testid="registros-concreto">
         <h3>Concreto · concretagens e corpos de prova</h3>
         {concretagens.length === 0 ? (
-          <p class="discreto">Nenhuma concretagem registrada.</p>
+          <p class="discreto">Sem concretagens</p>
         ) : (
           <ul class="lista">
             {concretagens.map((c) => (
@@ -68,7 +68,7 @@ export function Registros({ ligacoes }: { ligacoes: Ligacoes }) {
       <section class="doc-grupo" data-testid="registros-nc">
         <h3>Não conformidades abertas (relatórios de Qualidade)</h3>
         {ncs.length === 0 ? (
-          <p class="discreto">Nenhuma NC aberta.</p>
+          <p class="discreto">Sem NC aberta</p>
         ) : (
           <ul class="lista">
             {ncs.map((n) => (

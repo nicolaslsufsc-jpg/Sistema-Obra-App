@@ -36,10 +36,38 @@ export function dadosGuardados(chave: string): DadosFvs | null {
   return ultimosDados.get(chave)?.dados ?? null
 }
 
-/** Os guardados desta chave ainda valem (nada mudou com a FVS fechada e têm menos de 30 min). */
+/**
+ * Obra sem fichas e sem plantas no aparelho: ou é nova, ou os dados dela ainda estão chegando (troca de obra,
+ * testador 23/11: a FVS dizia "ainda não tem fichas" e só mostrava as peças depois de recarregar a página).
+ */
+export function obraVazia(d: Pick<DadosFvs, 'fichas' | 'plantasDe'>): boolean {
+  return d.fichas.length === 0 && d.plantasDe.size === 0
+}
+
+/** Os guardados desta chave ainda valem (nada mudou com a FVS fechada e têm menos de 30 min). Obra vazia
+ *  não vale: ler de novo é rápido e pega o que chegou depois. */
 function guardadoValeDe(chave: string, agora = Date.now()): boolean {
   const g = ultimosDados.get(chave)
-  return !!g && !mudouComAFvsFechada && agora - g.lidoEm < RELER_DEPOIS_MS
+  return !!g && !obraVazia(g.dados) && !mudouComAFvsFechada && agora - g.lidoEm < RELER_DEPOIS_MS
+}
+
+/**
+ * Chama `f` quando o banco do app mudar (qualquer gravação, desta página ou de outra aba), no máximo uma vez a
+ * cada `espera` ms. Devolve a função que para de ouvir. Uso: a FVS aberta com a obra vazia relê sozinha quando
+ * os dados da obra chegam (a baixa que o menu começou continua gravando depois que a FVS abre).
+ */
+export function aoMudarOAparelho(f: () => void, espera = 500): () => void {
+  let relogio: ReturnType<typeof setTimeout> | undefined
+  const ouvir = (partes: Record<string, unknown>) => {
+    if (!Object.keys(partes).some((k) => k.startsWith('idb://sistema-obra/'))) return
+    clearTimeout(relogio)
+    relogio = setTimeout(f, espera)
+  }
+  Dexie.on('storagemutated', ouvir)
+  return () => {
+    clearTimeout(relogio)
+    Dexie.on('storagemutated').unsubscribe(ouvir)
+  }
 }
 
 /** Leitura feita antes de a FVS abrir (pre_leitura.ts), por chave, enquanto não termina. */

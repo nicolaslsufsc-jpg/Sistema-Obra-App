@@ -1,0 +1,84 @@
+{
+  "_leia": "Lista de materiais controlados da obra fictícia EXE (Obra Exemplo), para teste. A lista de verdade de cada obra fica fora do repositório. Itens só de sim ou não (C, NC ou NA no portão), sem medida digitada.",
+  "materiais": [
+    {
+      "codigo": "ACO-CA50",
+      "nome": "Aço CA-50 (barras)",
+      "unidade": "kg",
+      "estrutural": true,
+      "exige_ensaio": false,
+      "itens": [
+        { "codigo": "1", "texto": "Bitolas e quantidades conferem com o pedido e a nota" },
+        { "codigo": "2", "texto": "Feixes com etiqueta do fabricante (bitola, categoria e lote)" },
+        { "codigo": "3", "texto": "Barras sem corrosão profunda, sem graxa e sem barro" },
+        { "codigo": "4", "texto": "Barras sem dobras ou amassados fora do pedido" }
+      ],
+      "documentos": ["Certificado de qualidade do lote"]
+    },
+    {
+      "codigo": "BLOCO-EST",
+      "nome": "Bloco de concreto estrutural",
+      "unidade": "un",
+      "estrutural": true,
+      "exige_ensaio": true,
+      "itens": [
+        { "codigo": "1", "texto": "Tipo e classe de resistência conferem com o pedido" },
+        { "codigo": "2", "texto": "Blocos sem trincas, quebras ou cantos lascados" },
+        { "codigo": "3", "texto": "Paletes identificados com o lote" },
+        { "codigo": "4", "texto": "Descarregados em local plano, coberto e longe da água" }
+      ],
+      "documentos": ["Laudo de resistência do lote"]
+    },
+    {
+      "codigo": "CIMENTO",
+      "nome": "Cimento Portland (saco)",
+      "unidade": "saco",
+      "estrutural": false,
+      "exige_ensaio": false,
+      "itens": [
+        { "codigo": "1", "texto": "Tipo de cimento confere com o pedido" },
+        { "codigo": "2", "texto": "Dentro da validade impressa no saco" },
+        { "codigo": "3", "texto": "Sacos inteiros, secos e sem empedramento" },
+        { "codigo": "4", "texto": "Guardado sobre estrado, em pilhas de até 10 sacos, em local coberto" }
+      ],
+      "documentos": []
+    },
+    {
+      "codigo": "ARGAMASSA",
+      "nome": "Argamassa industrializada (saco)",
+      "unidade": "saco",
+      "estrutural": false,
+      "exige_ensaio": false,
+      "itens": [
+        { "codigo": "1", "texto": "Tipo de argamassa confere com o pedido (assentamento, reboco, colante)" },
+        { "codigo": "2", "texto": "Dentro da validade impressa no saco" },
+        { "codigo": "3", "texto": "Sacos inteiros, secos e sem empedramento" }
+      ],
+      "documentos": []
+    },
+    {
+      "codigo": "DRYWALL-ST",
+      "nome": "Chapa de gesso para drywall (standard)",
+      "unidade": "chapa",
+      "estrutural": false,
+      "exige_ensaio": false,
+      "itens": [
+        { "codigo": "1", "texto": "Tipo de chapa confere com o pedido (standard, RU ou RF)" },
+        { "codigo": "2", "texto": "Chapas sem quebra nas bordas e sem cantos amassados" },
+        { "codigo": "3", "texto": "Embalagem e chapas secas, sem sinal de umidade" },
+        { "codigo": "4", "texto": "Guardadas deitadas sobre apoios, em local coberto" }
+      ],
+      "documentos": []
+    },
+    {
+      "codigo": "CONCRETO",
+      "nome": "Concreto usinado",
+      "unidade": "m³",
+      "estrutural": true,
+      "exige_ensaio": true,
+      "via": "concreto",
+      "itens": [],
+      "documentos": []
+    }
+  ]
+}

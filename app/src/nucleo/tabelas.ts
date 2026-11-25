@@ -6,8 +6,8 @@
 import { TABELAS_NUCLEO } from '../config'
 import { TABELAS_CONCRETO } from '../concreto/tabelas'
 import { TABELAS_DOCUMENTOS } from '../documentos/tabelas'
-import { TABELAS_FVS, TABELAS_FVS_HISTORICO } from '../fvs/tabelas'
-import { TABELAS_PROJETOS, TABELAS_PROJETOS_DISTRIBUICAO } from '../projetos/tabelas'
+import { TABELAS_FVS, TABELAS_FVS_HISTORICO, TABELAS_FVS_REDESENHOS, TABELAS_FVS_TRATATIVAS } from '../fvs/tabelas'
+import { TABELAS_PROJETOS, TABELAS_PROJETOS_DISTRIBUICAO, TABELAS_PROJETOS_FORMULARIOS } from '../projetos/tabelas'
 import { TABELAS_RELATORIOS } from '../relatorios/tabelas'
 
 /**
@@ -36,6 +36,9 @@ export const TABELAS_SINCRONIZADAS: readonly string[] = [
   // em 07/11 a migração das áreas de laje (20261106130000_fvs_areas.sql) ainda não estava aplicada
   ...TABELAS_FVS_HISTORICO,
   ...TABELAS_SISTEMA_OFICIAL,
+  ...TABELAS_FVS_REDESENHOS,
+  ...TABELAS_PROJETOS_FORMULARIOS,
+  ...TABELAS_FVS_TRATATIVAS,
 ]
 
 /**
@@ -56,4 +59,9 @@ export const BLOCOS_SINCRONIZADOS: readonly (readonly string[])[] = [
   TABELAS_DOCUMENTOS,
   TABELAS_PROJETOS_DISTRIBUICAO,
   TABELAS_SISTEMA_OFICIAL,
+  TABELAS_FVS_REDESENHOS,
+  // formulário próprio da obra para a entrega (23/11/2026): só esta tabela para num servidor sem a migração
+  TABELAS_PROJETOS_FORMULARIOS,
+  // tratativa de NC da FVS (25/11/2026): só esta tabela para num servidor sem a migração
+  TABELAS_FVS_TRATATIVAS,
 ]

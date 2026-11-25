@@ -164,6 +164,9 @@ export function ehLinhaDeExemplo(l: Pick<Linha, 'usuario_id'> & { exemplo?: unkn
   return l.exemplo === true || l.usuario_id === USUARIO_DOS_EXEMPLOS
 }
 
+/** Tipos que o relatório mostra (estaca e bloco do Concreto ficam de fora). */
+const TIPOS_DO_RELATORIO: ReadonlySet<string> = new Set(['P', 'V', 'L', 'A', 'F', 'E', 'M'])
+
 /**
  * A laje que o exemplo criou para a concretagem fictícia. O pacote da obra também traz lajes com a
  * mesma assinatura (e o mesmo id, que vem do Python), então "do pacote" não basta: a do exemplo tem
@@ -205,7 +208,8 @@ export function montarDados(t: LinhasPorTabela): DadosRelatorios {
   const pavimentos = (t.pavimentos ?? [])
     .map((p) => ({ id: p.id, nome: String(p.nome), ordem: Number(p.ordem) }))
     .sort((a, b) => a.ordem - b.ordem)
-  const pecas: Peca[] = (t.elementos ?? []).map((e) => ({ id: e.id, pavimento_id: String(e.pavimento_id), tipo: String(e.tipo), nome: String(e.nome) }))
+  // estaca e bloco do Concreto (S, K) e tipo desconhecido: fora do relatório, sem erro (22/11)
+  const pecas: Peca[] = (t.elementos ?? []).filter((e) => TIPOS_DO_RELATORIO.has(String(e.tipo))).map((e) => ({ id: e.id, pavimento_id: String(e.pavimento_id), tipo: String(e.tipo), nome: String(e.nome) }))
 
   const clima = new Map<string, Map<string, Linha>>()
   for (const l of ultimoPorChave(t.diario_clima ?? [], (c) => `${String(c.data)}|${String(c.periodo)}`).values()) {

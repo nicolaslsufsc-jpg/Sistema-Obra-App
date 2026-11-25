@@ -9,6 +9,7 @@ import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
 import { alvoDaFolha, alvoDe, seloDe } from './TelaPranchaBase'
 import '../../telas/cabecalho.css'
+import { Icone } from '../../telas/icones'
 
 const nomeDa = (p: Pick<Pessoa, 'colaborador'>) => p.colaborador || 'sem nome (a empresa)'
 
@@ -59,7 +60,7 @@ export function TelaPessoas({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void
                   </span>
                   <Contagens atrasadas={e.atrasadas} aEntregar={e.aEntregar} conferir={e.conferir} />
                   <span class="pj-seta" aria-hidden="true">
-                    {aberto ? '▾' : '▸'}
+                    <Icone id={aberto ? 'abrir' : 'avancar'} />
                   </span>
                 </button>
                 {aberto && (
@@ -172,7 +173,7 @@ export function TelaPessoa({ ctx, chave }: { ctx: Contexto; chave: string }) {
       <section class="pj-bloco" data-testid="pessoa-tem">
         <h2>O que tem em campo</h2>
         <p class="discreto">Por pavimento e, dentro dele, por disciplina.</p>
-        {pavimentos.length === 0 && <p class="discreto">Nenhuma cópia em campo.</p>}
+        {pavimentos.length === 0 && <p class="discreto">Sem cópias em campo</p>}
         {pavimentos.map((g) => (
           <details key={g.pavimento} class="pj-disc" open={pavimentos.length <= 2} data-testid="pessoa-pavimento">
             <summary>

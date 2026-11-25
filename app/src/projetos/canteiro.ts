@@ -34,6 +34,16 @@ export function nomesDeDisciplina(documentos: readonly Pick<Documento, 'discipli
     const k = normalizar(DISCIPLINAS_FICHA[d.disciplina_sigla.toUpperCase()] ?? d.disciplina)
     if (!m.has(k)) m.set(k, d.disciplina)
   }
+  // duas disciplinas da ficha com o mesmo nome no servidor (ES "ESTRUTURAL" e EC "ESCORAMENTO" são "Estrutura"
+  // lá; testador, 23/11): o nome do servidor fica com a que bate com ele, a outra leva o nome da ficha
+  const todas = [...m]
+  for (const [k, nome] of todas) {
+    const mesmas = todas.filter(([, x]) => x === nome)
+    if (mesmas.length < 2) continue
+    const n = normalizar(nome)
+    const dona = mesmas.find(([x]) => x === n) ?? mesmas.find(([x]) => x.startsWith(n) || n.startsWith(x)) ?? mesmas[0]
+    if (dona[0] !== k) m.set(k, nomeSemCaixaAlta(Object.values(DISCIPLINAS_FICHA).find((f) => normalizar(f) === k) ?? k))
+  }
   return m
 }
 
@@ -67,11 +77,33 @@ export function documentosPorFolha(d: Pick<DadosProjetos, 'documentos' | 'vigent
 export const LINHA_APP = 900_000
 
 /**
+ * Pastas do Autodoc retiradas da obra (24/11/2026, decisão do Nicolas de 22/11: a pasta que a obra deixou de
+ * usar some de todos os módulos). Sem cadastro nem nome de pasta: vale a marca que já está no banco. Uma pasta
+ * está retirada quando TODAS as pranchas dela têm revisão e todas as revisões estão obsoletas. Uma folha solta
+ * que saiu de uso dentro de uma pasta ainda em uso não conta: a cópia dela continua "a trocar".
+ */
+export function pastasRetiradas(d: Pick<DadosProjetos, 'documentos' | 'revisoesDe'>): Set<string> {
+  const viva = new Map<string, boolean>()
+  for (const doc of d.documentos) {
+    const pasta = (doc.pasta_autodoc ?? '').trim()
+    if (!pasta) continue
+    const revs = (d.revisoesDe.get(doc.id) ?? []).filter((r) => !r.apagado)
+    const retirada = revs.length > 0 && revs.every((r) => !!r.obsoleta)
+    viva.set(pasta, (viva.get(pasta) ?? false) || !retirada)
+  }
+  return new Set([...viva].filter(([, v]) => !v).map(([p]) => p))
+}
+
+/**
  * As entregas registradas no app (com ou sem assinatura) como cópias do canteiro (achado do testador, 21/11:
  * "a entrega assinada tem que entrar no canteiro"). Uma cópia por entrega; devolvida quando há a devolução
  * dela. Número e disciplina como na lista vigente do servidor, para cruzar com a mesma folha.
  */
-export function copiasDoApp(d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' | 'revisaoPorId' | 'vigentes' | 'empresaPorId'>): Copia[] {
+export function copiasDoApp(
+  d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' | 'revisaoPorId' | 'vigentes' | 'empresaPorId'>,
+  /** pastas retiradas (pastasRetiradas): as cópias delas não aparecem no canteiro; o banco não muda */
+  retiradas: ReadonlySet<string> = new Set(),
+): Copia[] {
   const vivos = d.eventos.filter((e) => !e.apagado)
   const devolucao = new Map<string, string>()
   for (const e of vivos) if (e.tipo === 'devolucao' && e.entrega_id) devolucao.set(String(e.entrega_id), String(e.data_evento ?? '').slice(0, 10))
@@ -83,6 +115,7 @@ export function copiasDoApp(d: Pick<DadosProjetos, 'eventos' | 'documentoPorId' 
     const doc = d.documentoPorId.get(String(e.documento_id))
     const rev = d.revisaoPorId.get(String(e.revisao_id))
     if (!doc || !rev) return
+    if (retiradas.has((doc.pasta_autodoc ?? '').trim())) return
     const vig = d.vigentes.get(doc.id)
     const faseVig = String(vig?.fase ?? rev.fase ?? 'EX').toUpperCase()
     const fase = (String(rev.fase ?? 'EX').toUpperCase() === 'LO' ? 'LO' : 'EX') as Fase

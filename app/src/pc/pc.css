@@ -1,0 +1,636 @@
+/* Versão PC (protótipo 23/11/2026). Só entra em tela larga com mouse e com a versão PC ligada:
+   nada aqui vale no celular nem no tablet. Cores só pelas variáveis do tema.css. */
+
+.pc-casca {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---- barra lateral ---- */
+.pc-barra {
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 0.75rem;
+  background: var(--cor-primaria);
+  color: var(--cor-primaria-texto);
+  font-size: var(--fs-texto);
+}
+.pc-obra {
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--cor-primaria-texto) 25%, transparent);
+  margin-bottom: 0.5rem;
+}
+.pc-obra b {
+  font-size: var(--fs-titulo);
+}
+.pc-obra small {
+  margin-top: 0.25rem;
+  font-size: var(--fs-legenda);
+}
+.pc-offline {
+  font-weight: 700;
+  text-decoration: underline;
+}
+.pc-grupo {
+  margin: 0.75rem 0.5rem 0.25rem;
+  font-size: var(--fs-legenda);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pc-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pc-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-radius: var(--raio-max);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pc-item:hover {
+  background: color-mix(in srgb, var(--cor-primaria-texto) 12%, transparent);
+}
+.pc-item:focus-visible {
+  outline: 2px solid var(--cor-selecionado);
+  outline-offset: 1px;
+}
+.pc-item.pc-ativo {
+  background: var(--cor-selecionado);
+  color: var(--cor-selecionado-texto);
+  font-weight: 700;
+}
+.pc-item .icone-modulo,
+.pc-icone {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.pc-item .selo-beta {
+  margin-left: auto;
+}
+.pc-rodape {
+  margin-top: auto;
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.pc-desligar {
+  background: transparent;
+  color: inherit;
+  border: 1px solid color-mix(in srgb, var(--cor-primaria-texto) 45%, transparent);
+  border-radius: var(--raio-max);
+  padding: 0.4rem 0.6rem;
+  font-size: var(--fs-legenda);
+  cursor: pointer;
+}
+
+/* A área do conteúdo vira a "janela" das telas dos módulos: o transform faz o que eles prendem com
+   position: fixed (topo da planta, avisos, painéis) ficar preso a ela, e não à tela inteira; quem rola
+   é a .pc-rolagem, de dentro, então o que está preso não rola junto. */
+.pc-conteudo {
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+.pc-rolagem {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* botão no canto do menu (versão PC desligada) */
+.pc-experimentar {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 50;
+  padding: 0.6rem 1rem;
+  border: 2px solid var(--cor-primaria);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font-weight: 700;
+  font-size: var(--fs-texto);
+  cursor: pointer;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--cor-marinho) 25%, transparent);
+}
+
+/* ---- páginas do PC ---- */
+.pc-pagina {
+  max-width: none;
+  padding: 1.25rem 1.5rem 3rem;
+  font-size: var(--fs-texto);
+}
+.pc-pagina h1 {
+  font-size: var(--fs-titulo);
+  margin: 0;
+}
+.pc-pagina h2 {
+  font-size: var(--fs-secao);
+  margin: 1.25rem 0 0.5rem;
+}
+.pc-titulo {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.pc-titulo p {
+  color: var(--discreto);
+  margin: 0;
+}
+
+/* abas no topo */
+.pc-abas {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 2px solid var(--borda);
+  margin-bottom: 1rem;
+}
+.pc-aba {
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pc-aba[aria-selected='true'] {
+  border-bottom-color: var(--cor-primaria);
+  color: var(--texto);
+  font-weight: 800;
+}
+.pc-aba:hover {
+  background: color-mix(in srgb, var(--cor-selecionado) 35%, transparent);
+}
+
+/* filtros numa linha */
+.pc-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  padding: 0.75rem 1rem;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  margin-bottom: 1rem;
+}
+.pc-filtros label {
+  margin: 0;
+  font-size: var(--fs-legenda);
+  font-weight: 700;
+}
+.pc-filtros input,
+.pc-filtros select {
+  display: block;
+  margin-top: 0.2rem;
+  min-height: 2.5rem;
+  width: auto;
+  min-width: 10rem;
+  font-size: var(--fs-texto);
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+}
+.pc-busca input {
+  min-width: 26rem;
+}
+.pc-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0 1rem;
+}
+.pc-bt {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--cor-primaria);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pc-bt.pc-principal {
+  background: var(--cor-primaria);
+  color: var(--cor-primaria-texto);
+}
+.pc-bt:disabled {
+  opacity: 1;
+  background: var(--superficie);
+  color: var(--discreto);
+  border-color: var(--borda);
+  cursor: not-allowed;
+}
+.pc-pagina .so-bt-pdf {
+  min-height: 2.5rem;
+  font-size: var(--fs-texto);
+}
+/* nas tabelas largas a palavra não quebra no meio: se não couber, a tabela rola para o lado na caixa dela */
+.pc-pagina .so-tabela td,
+.pc-pagina .so-tabela th {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.pc-pagina .so-tabela td:first-child {
+  white-space: nowrap;
+}
+.pc-nota {
+  color: var(--discreto);
+  font-size: var(--fs-legenda);
+  margin: 0.25rem 0;
+}
+.pc-msg {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--status-liberado);
+  background: var(--superficie);
+}
+.pc-msg.pc-erro {
+  border-left-color: var(--status-nc);
+}
+
+/* tabela larga + painel de detalhe à direita */
+.pc-dividido {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.pc-dividido.pc-com-detalhe {
+  grid-template-columns: minmax(0, 1fr) 22rem;
+}
+.pc-detalhe {
+  position: sticky;
+  top: 1rem;
+  padding: 1rem;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+}
+.pc-detalhe h2 {
+  margin-top: 0;
+  word-break: break-word;
+}
+.pc-detalhe dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 0.75rem;
+  margin: 0.5rem 0 1rem;
+}
+.pc-detalhe dt {
+  color: var(--discreto);
+}
+.pc-detalhe dd {
+  margin: 0;
+  word-break: break-word;
+}
+.pc-fechar {
+  float: right;
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.4rem;
+}
+
+/* ---- Avanço da obra ---- */
+/* cores das situações no gráfico: as mesmas da planta da FVS (verde pronto, azul liberado para concretar,
+   laranja em andamento, cinza pendente, vermelho NC). Conferidas com o validador de paleta nos dois temas;
+   o cinza é neutro de propósito (pendente = nada feito). */
+.pc-avanco {
+  --av-pronto: #2e7d32;
+  --av-concretar: #1565c0;
+  --av-andamento: #c27800;
+  --av-pendente: #6b7075;
+  --av-nc: #c62828;
+  --av-concretado: var(--cor-marinho);
+  --av-falta: var(--cor-cinza-claro);
+}
+:root[data-tema='escuro'] .pc-avanco {
+  --av-pronto: #3d9a42;
+  --av-concretar: #4a90e2;
+  --av-andamento: #c98500;
+  --av-pendente: #8a9099;
+  --av-nc: #e66767;
+  --av-concretado: var(--cor-areia);
+  --av-falta: #3a4654;
+}
+.pc-titulo-acoes {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+/* um indicador por caixa, todos da mesma altura: título, número e uma linha de apoio */
+.pc-indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+.pc-indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--borda);
+  border-radius: var(--raio-max);
+  min-width: 0;
+}
+.pc-indicador dt {
+  color: var(--discreto);
+  font-size: var(--fs-legenda);
+  font-weight: 700;
+}
+.pc-indicador dd {
+  margin: 0;
+  height: 2rem;
+  line-height: 2rem;
+  font-size: 1.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pc-indicador p {
+  margin: 0;
+  color: var(--discreto);
+  font-size: var(--fs-legenda);
+  line-height: 1.3;
+  min-height: 2.6em;
+}
+.pc-indicador.pc-alerta {
+  border-left-color: var(--status-nc);
+}
+.pc-secao {
+  padding: 0.9rem 1rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  min-width: 0;
+}
+.pc-secao h2 {
+  margin: 0 0 0.5rem;
+}
+.pc-secao-cab {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+}
+.pc-secao-cab h2 {
+  margin: 0;
+}
+.pc-duas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(34rem, 1fr));
+  gap: 0 1rem;
+}
+/* gráfico: pavimento | conferência (empilhada) | concretagem */
+.pc-grafico {
+  position: relative;
+}
+.pc-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  font-size: var(--fs-legenda);
+  color: var(--texto);
+}
+.pc-legenda li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.pc-legenda-sep {
+  margin-left: 0.75rem;
+}
+.pc-cor {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex: none;
+}
+.pc-cor-pronto {
+  background: var(--av-pronto);
+}
+.pc-cor-concretar {
+  background: var(--av-concretar);
+}
+.pc-cor-andamento {
+  background: var(--av-andamento);
+}
+.pc-cor-pendente {
+  background: var(--av-pendente);
+}
+.pc-cor-nc {
+  background: var(--av-nc);
+}
+.pc-cor-concretado {
+  background: var(--av-concretado);
+}
+.pc-cor-falta {
+  background: var(--av-falta);
+}
+.pc-grafico-grade {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 3fr) minmax(0, 2fr);
+  gap: 0.4rem 1rem;
+  align-items: center;
+}
+.pc-grafico-cab {
+  font-size: var(--fs-legenda);
+  color: var(--discreto);
+}
+.pc-grafico-rotulo {
+  font-size: var(--fs-texto);
+  white-space: nowrap;
+}
+.pc-grafico-linha {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.pc-pilha {
+  display: flex;
+  gap: 2px;
+  height: 20px;
+  min-width: 4px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.pc-pilha-concreto {
+  flex: 1;
+}
+.pc-seg {
+  min-width: 3px;
+  flex-basis: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+.pc-seg:hover {
+  filter: brightness(1.15);
+}
+.pc-grafico-total {
+  font-size: var(--fs-legenda);
+  color: var(--discreto);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pc-dica {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem 0.6rem;
+  background: var(--cor-marinho);
+  color: var(--cor-creme);
+  border-radius: var(--raio-max);
+  font-size: var(--fs-legenda);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--cor-marinho) 30%, transparent);
+}
+/* barra fina de "% pronto" dentro da tabela */
+.pc-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 7rem;
+}
+.pc-mini-trilho {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--av-falta);
+  overflow: hidden;
+}
+.pc-mini-cheio {
+  display: block;
+  height: 100%;
+  background: var(--av-pronto);
+  border-radius: 4px;
+}
+.pc-mini-num {
+  width: 2.6rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* faixa de ações: os atalhos numa caixa, com título */
+.pc-faixa-acoes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+}
+.pc-faixa-acoes h2 {
+  margin: 0 0.5rem 0 0;
+}
+
+/* filtros da busca por origem */
+.pc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.pc-chip {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.8rem;
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  cursor: pointer;
+}
+.pc-chip[aria-pressed='true'] {
+  background: var(--cor-selecionado);
+  color: var(--cor-selecionado-texto);
+  border-color: var(--cor-primaria);
+  font-weight: 700;
+}
+.pc-origem {
+  font-size: var(--fs-legenda);
+  color: var(--discreto);
+  white-space: nowrap;
+}
+/* Qualidade (ideia 6): o número da barra pode ser "12 de 30"; liberadas por semana em barras deitadas */
+.pc-qualidade .pc-mini-num {
+  width: auto;
+  min-width: 2.6rem;
+  white-space: nowrap;
+}
+.pc-semanas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.pc-semanas li {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+.pc-semanas .pc-mini {
+  width: 100%;
+}
+.pc-semanas-rotulo {
+  font-variant-numeric: tabular-nums;
+  color: var(--discreto);
+  font-size: var(--fs-legenda);
+}
+.pc-qualidade .pc-indicadores {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}

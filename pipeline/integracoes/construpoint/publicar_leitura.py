@@ -7,7 +7,8 @@ Uso (no PC, na raiz do repositório):
 NÃO acessa o Construpoint: lê os arquivos da pasta (leitura.py diz quais) e grava no Supabase:
     locais_sistema     todos os locais de lá
     fvs_fichas_campo   todas as fichas abertas, com local_id (e a peça, quando é pilar ou viga da planta)
-    fvs_eventos        só os itens verificados de fichas com peça na planta
+    fvs_eventos        os itens verificados de fichas com peça na planta; com --com-locais, também os das
+                       fichas que só têm local (tela "Locais fora da planta" da FVS), com local_id
     importacoes        uma linha com as contagens desta leitura
 As fichas modelo do servidor não mudam (publicar_fichas.py continua sendo o caminho delas).
 Publicar de novo não duplica: os ids saem dos ids de lá e o que já existe fica como está.
@@ -17,10 +18,12 @@ Login igual ao do app (gestor da obra). Sem chave secreta. Registro de obra real
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import json
 import pathlib
 import sys
+import urllib.parse
 
 AQUI = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI))
@@ -36,19 +39,49 @@ COLUNAS_NOVAS = ("local_id", "agendada_em", "reinspecao_em", "medicao")
 
 def linhas_para_enviar(h: dict, fichas: list[dict], pavimentos: list[dict], elementos: list[dict]) -> dict:
     """Junta o que a leitura montou com os ids do servidor (publicar_historico.resolver) e as colunas da v1.7."""
-    from publicar_historico import resolver
+    from publicar_historico import fichas_vigentes, resolver
 
-    r = resolver(h, fichas, pavimentos, elementos)
+    com_peca = [e for e in h["eventos"] if e.get("elemento_id")]
+    r = resolver({**h, "eventos": com_peca}, fichas, pavimentos, elementos)
     extra = {f["id"]: {k: f.get(k) for k in COLUNAS_NOVAS} for f in h["fichas_campo"]}
     for f in r["fichas"]:
         f.update(extra[f["id"]])
-    return {"locais": h["locais"], "fichas": r["fichas"], "eventos": r["eventos"], "fora": r["fora"]}
+    eventos, fora = r["eventos"], collections.Counter(r["fora"])
+    so_local = [e for e in h["eventos"] if not e.get("elemento_id") and e.get("local_id")]
+    if so_local:
+        # ficha que só tem local: liga à ficha modelo vigente pelo código (a tela do local mostra os itens dela)
+        vigentes = fichas_vigentes(fichas)
+        por_id = {f["id"]: f for f in r["fichas"]}
+        for f in r["fichas"]:
+            modelo = vigentes.get(f.get("ficha_codigo"))
+            if not f["elemento_id"] and f.get("local_id") and modelo is not None:
+                f["ficha_id"] = modelo["id"]
+        itens = {c: {int(i["n"]) for i in m.get("itens") or []} for c, m in vigentes.items()}
+        for e in so_local:
+            ficha = por_id.get(e["ficha_campo_id"]) or {}
+            if not ficha.get("ficha_id"):
+                fora["registro de local com ficha modelo que não está no servidor"] += 1
+            elif e["item"] not in itens.get(e["ficha_codigo"], set()):
+                fora["registro de item que não está na ficha do servidor"] += 1
+            else:
+                eventos.append({"id": e["id"], "local_id": e["local_id"], "ficha_id": ficha["ficha_id"],
+                                "ficha_campo_id": e["ficha_campo_id"], "item": e["item"], "resultado": e["resultado"],
+                                "rodada": e["rodada"], "observacao": e["observacao"], "verificado_por": e["verificado_por"],
+                                "origem_id": e["origem_id"], "criado_em_dispositivo": e["criado_em"]})
+    return {"locais": h["locais"], "fichas": r["fichas"], "eventos": eventos, "fora": dict(fora)}
+
+
+def servidor_da_obra(url: str, url_da_obra: str) -> bool:
+    """O endereço aponta para o servidor da obra (o mesmo host, com ou sem barra ou caminho no fim)?"""
+    host = lambda u: (urllib.parse.urlparse(u.strip()).hostname or "").lower()
+    return host(url) == host(url_da_obra)
 
 
 def linha_importacao(obra: str, lido_em: str, contagens: dict) -> dict:
     return {"id": ic.novo_id(obra, "importacao", f"{leitura.SISTEMA}|{lido_em}"), "sistema": leitura.SISTEMA,
             "lida_em": lido_em, "contagens": contagens,
-            "observacao": "Leitura completa do Construpoint (só leitura lá). Verificações fora da planta ficam só nas contagens das fichas."}
+            "observacao": "Leitura completa do Construpoint (só leitura lá)." + (
+                "" if contagens.get("fvs_eventos_so_local") else " Verificações fora da planta ficam só nas contagens das fichas.")}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--obra", required=True, help="código da obra no Sistema Obra")
     ap.add_argument("--fichas-com-peca", default="EXE-PVS-001,EXE-PVS-002", help="códigos das fichas de pilar e de viga (nessa ordem)")
     ap.add_argument("--so-conferir", action="store_true", help="só mostra o que entraria; não grava nada")
+    ap.add_argument("--com-locais", action="store_true",
+                    help="publica também as verificações das fichas que só têm local (por enquanto só fora do servidor da obra)")
     ap.add_argument("--empresa-autorizou", action="store_true", help="obrigatório para gravar registros de obra real")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
@@ -68,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     ic.FICHA_DO_TIPO.update(dict(zip(("P", "V"), codigos)))
     obra = args.obra.upper()
     try:
+        if args.com_locais and not args.so_conferir and servidor_da_obra(args.url, URL_PADRAO):
+            raise ic.ErroImportacao("--com-locais ainda não grava no servidor da obra: só no de testes (--url), até o Nicolas liberar.")
         if obra != "TESTE" and not args.so_conferir and not args.empresa_autorizou:
             raise ic.ErroImportacao(f"registros da {obra} só sobem com --empresa-autorizou.")
         dados = leitura.ler_pasta(pathlib.Path(args.pasta))
@@ -81,10 +118,12 @@ def main(argv: list[str] | None = None) -> int:
         o = srv.obra(obra)
         filtro = {"obra_id": f"eq.{o['id']}"}
         fichas, pavimentos, elementos = (srv.obter(t, filtro) for t in ("fichas_modelo", "pavimentos", "elementos"))
-        h = leitura.montar_leitura(obra, dados, fichas_vigentes(fichas), pavimentos, elementos, set(codigos))
+        h = leitura.montar_leitura(obra, dados, fichas_vigentes(fichas), pavimentos, elementos, set(codigos),
+                                  com_locais=args.com_locais)
         r = linhas_para_enviar(h, fichas, pavimentos, elementos)
         contagens = {"locais": len(r["locais"]), "fichas": len(r["fichas"]),
                      "fichas_com_peca": sum(1 for f in r["fichas"] if f["elemento_id"]),
+                     "fvs_eventos_so_local": sum(1 for e in r["eventos"] if e.get("local_id")),
                      "verificacoes_lidas": h["resumo"]["verificacoes_lidas"], "fvs_eventos": len(r["eventos"])}
         print(json.dumps({**h["resumo"], "fora_ao_ligar_no_servidor": r["fora"], "publica": contagens}, ensure_ascii=False, indent=1))
         if args.so_conferir:

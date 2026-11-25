@@ -1,7 +1,7 @@
 // Tabela comum (guia de estilo, docs/DESIGN.md › Layout e Componentes, 21/11/2026):
 // cabeçalho fixo, linha fina entre as linhas, 40 px de altura no mínimo, números à direita com
 // algarismos de largura fixa, unidade só no cabeçalho, "–" quando não há dado.
-// Ainda não usada em tela nenhuma: cada módulo troca os cards por ela na frente dele (passo 4).
+// Em uso no Concreto (pavimentos, concretagens, ficha do dia) e no Projetos (resumo e pranchas), desde 23/11/2026.
 import type { ComponentChildren } from 'preact'
 import { textoDaCelulaTabela, textoDoResumo, type ValorCelula } from './tabela_formato'
 import './tabela.css'
@@ -11,6 +11,8 @@ export type Status = 'liberado' | 'pendente' | 'nc' | 'sem-dado'
 export interface ColunaTabela<L> {
   /** com a unidade, quando houver: "Volume (m³)" */
   titulo: string
+  /** título curto para o celular (até 480 px), quando o longo não cabe: "Conc." */
+  tituloCurto?: string
   valor: (linha: L) => ValorCelula | ComponentChildren
   /** coluna de número ou data: à direita, tabular-nums */
   numero?: boolean
@@ -26,6 +28,7 @@ export function Tabela<L>({
   selecionada,
   rotulo,
   testid,
+  atributos,
 }: {
   colunas: ReadonlyArray<ColunaTabela<L>>
   linhas: readonly L[]
@@ -36,6 +39,8 @@ export function Tabela<L>({
   /** nome da tabela para o leitor de tela */
   rotulo: string
   testid?: string
+  /** atributos data-* de cada linha (data-codigo...), para os testes e para quem precisar achar a linha */
+  atributos?: (linha: L) => Record<`data-${string}`, string>
 }) {
   return (
     <div class="so-tabela-caixa" data-testid={testid}>
@@ -44,7 +49,16 @@ export function Tabela<L>({
           <tr>
             {colunas.map((c) => (
               <th scope="col" class={c.numero ? 'so-num' : undefined}>
-                {c.titulo}
+                {c.tituloCurto ? (
+                  <>
+                    <span class="so-th-longo">{c.titulo}</span>
+                    <abbr class="so-th-curto" title={c.titulo}>
+                      {c.tituloCurto}
+                    </abbr>
+                  </>
+                ) : (
+                  c.titulo
+                )}
               </th>
             ))}
           </tr>
@@ -55,6 +69,7 @@ export function Tabela<L>({
             return (
               <tr
                 key={k}
+                {...(atributos ? atributos(l) : {})}
                 class={`${aoTocar ? 'so-tocavel' : ''}${selecionada === k ? ' so-selecionada' : ''}`}
                 tabIndex={aoTocar ? 0 : undefined}
                 onClick={aoTocar ? () => aoTocar(l) : undefined}

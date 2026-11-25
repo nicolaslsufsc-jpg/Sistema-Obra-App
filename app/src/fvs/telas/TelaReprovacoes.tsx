@@ -13,6 +13,7 @@ import {
   type SituacaoDaLista,
 } from '../reprovacoes'
 import { hojeBr, hojeNoAparelho, quando } from '../formato'
+import { AVISO_ACAO_CORRETIVA, hojeLocal, resumoDaTratativa, repetidosNaObra, situacaoDoPrazo } from '../tratativas'
 import { trechoDoRegistro, usarIrAtePeca } from './IrAtePeca'
 import type { ContextoFvs } from './ModuloFvs'
 import '../../telas/cabecalho.css'
@@ -47,6 +48,11 @@ export function TelaReprovacoes({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
 
   const visiveis = filtrarReprovacoes(lista, filtros, trechoDe)
   const abertas = lista.filter((r) => r.aberta).length
+  // o mesmo item da mesma ficha com NC em 3 locais ou mais: aviso de ação corretiva (só avisa, 25/11)
+  const repetidos = useMemo(() => repetidosNaObra(lista), [lista])
+  // aceito sob concessão: fechado sem reinspeção (conta à parte)
+  const concessoes = lista.filter((r) => r.concessao).length
+  const hoje = hojeLocal()
   const quemMarcou = [...new Set(lista.flatMap((r) => (r.reinspecao ? [r.quem, r.reinspecao.quem] : [r.quem])))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
   const pavimentos = dados.pavimentos.filter((p) => lista.some((r) => r.pavimentoId === p.id))
   const trechos = [...new Set(lista.filter((r) => !filtros.pavimentoId || r.pavimentoId === filtros.pavimentoId).map(trechoDe).filter((t): t is string => !!t))].sort((a, b) =>
@@ -101,7 +107,8 @@ export function TelaReprovacoes({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
         <div class="so-cab-titulo">
           <h1>Reprovações</h1>
           <p class="discreto" data-testid="fvs-rep-contagem">
-            {abertas} {abertas === 1 ? 'aberta' : 'abertas'} · {lista.length - abertas} {lista.length - abertas === 1 ? 'reinspecionada' : 'reinspecionadas'}
+            {abertas} {abertas === 1 ? 'aberta' : 'abertas'} · {lista.length - abertas - concessoes} {lista.length - abertas - concessoes === 1 ? 'reinspecionada' : 'reinspecionadas'}
+            {concessoes > 0 && ` · ${concessoes} sob concessão`}
           </p>
         </div>
       </header>
@@ -178,12 +185,15 @@ export function TelaReprovacoes({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
 
       {visiveis.length === 0 ? (
         <p class="discreto" data-testid="fvs-rep-vazia">
-          {lista.length === 0 ? 'Nenhuma reprovação nesta obra.' : 'Nenhuma reprovação com estes filtros.'}
+          {lista.length === 0 ? 'Sem reprovações' : 'Sem reprovações com estes filtros'}
         </p>
       ) : (
         <ul class="lista fv-rep-lista">
           {visiveis.map((r) => {
             const trecho = trechoDe(r)
+            const trat = resumoDaTratativa(r.tratativa, r.aberta, hoje)
+            const atrasado = situacaoDoPrazo(r.tratativa?.prazo ?? null, r.aberta, hoje) === 'atrasado'
+            const vezes = repetidos.get(`${r.fichaId}|${r.item}`)
             return (
               <li key={r.chave} data-testid="fvs-rep">
                 <button type="button" class={`fv-rep${r.aberta ? '' : ' fechada'}${r.fotos.length ? ' com-foto' : ''}`} onClick={() => abrir(r)}>
@@ -204,6 +214,16 @@ export function TelaReprovacoes({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
                     {r.etapa && ` · ${r.etapa.charAt(0) + r.etapa.slice(1).toLowerCase()}`}
                   </span>
                   {r.observacao && <span class="fv-rep-obs">{r.observacao}</span>}
+                  {trat && (
+                    <span class={`fv-rep-trat${atrasado ? ' atrasado' : ''}`} data-testid="fvs-rep-trat">
+                      {trat}
+                    </span>
+                  )}
+                  {vezes && r.aberta && (
+                    <span class="fv-rep-acao" data-testid="fvs-rep-acao">
+                      Este item tem NC em {vezes} locais. {AVISO_ACAO_CORRETIVA}
+                    </span>
+                  )}
                   <span class="discreto">
                     NC {quando(r.quando)} · {r.quem}
                   </span>

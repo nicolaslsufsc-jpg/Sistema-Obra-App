@@ -1,0 +1,6 @@
+/* Ícones de ação (icones.tsx › Icone): alinhados ao texto do botão, na cor do texto. */
+.so-icone {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: -0.2em;
+}

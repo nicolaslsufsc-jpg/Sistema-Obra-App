@@ -895,3 +895,23 @@ textarea {
   border-radius: 3px;
   opacity: 0.6;
 }
+
+/* FVM: editor do modelo de material (25/11): campo e botão "Tirar" na mesma linha */
+.fvm-linha-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+.fvm-linha-editor input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.fvm-linha-editor .erro {
+  flex-basis: 100%;
+}
+/* lista de materiais do gestor: o nome ocupa a linha e o "Editar" fica no canto */
+.cc-linha > span.fvm-editar:not(.cc-bolinha):not(.selo) {
+  flex: none;
+}

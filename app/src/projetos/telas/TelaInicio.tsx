@@ -2,6 +2,7 @@ import { escritorioAtualizado } from '../dados'
 import { baixarTexto, fichaCsv, nomeDaFicha } from '../ficha'
 import type { Contexto } from './ModuloProjetos'
 import { plural, Topo } from './comum'
+import { Ajuda } from '../../telas/Ajuda'
 
 export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void }) {
   const { dados, obra, ir, avisar, semConta } = ctx
@@ -12,7 +13,7 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
 
   const exportar = () => {
     if (dados.eventos.length === 0) {
-      avisar('Nenhuma entrega registrada ainda: a ficha sairia vazia.', 'erro')
+      avisar('Sem entregas registradas: a ficha sairia vazia.', 'erro')
       return
     }
     baixarTexto(nomeDaFicha(obra.codigo, dados.hoje), fichaCsv(dados))
@@ -74,10 +75,13 @@ export function TelaInicio({ ctx, aoSair }: { ctx: Contexto; aoSair: () => void 
       </nav>
 
       {dados.documentos.length === 0 && (
-        <p class="pj-vazio" data-testid="projetos-vazio">
-          {semConta
-            ? 'Ainda não há pranchas nesta obra. Importar a lista de pranchas do sistema de projetos direto no app vem numa próxima versão. Empresas já podem ser cadastradas.'
-            : 'Ainda não há pranchas nesta obra. A lista vem do sistema de projetos da obra, pelo PC do escritório, e chega aqui na sincronização.'}
+        <p class="pj-vazio so-com-ajuda" data-testid="projetos-vazio">
+          Sem pranchas
+          <Ajuda>
+            {semConta
+              ? 'Importar a lista de pranchas do sistema de projetos direto no app vem numa próxima versão. Empresas já podem ser cadastradas.'
+              : 'A lista vem do sistema de projetos da obra, pelo PC do escritório, e chega aqui na sincronização.'}
+          </Ajuda>
         </p>
       )}
     </main>

@@ -159,7 +159,7 @@ describe('Nova obra: cadastro pela tela', () => {
   it('o .zip abre pelo "Abrir pacote da obra (.zip)" e vira a obra no aparelho', async () => {
     const zip = await zipDoRascunho(RASCUNHO, AGORA)
     const lido = await abrirZip(zip)
-    expect([...lido.itens.keys()]).toEqual(['fichas.json', 'indice.json'])
+    expect([...lido.itens.keys()]).toEqual(['fichas.json', 'config_fvs.json', 'indice.json'])
     const pacote = await abrirPacoteZip(zip, 'obra_EX2.zip')
     const banco = novoBanco()
     const r = await prepararObraLocal(banco, pacote)
@@ -173,6 +173,9 @@ describe('Nova obra: cadastro pela tela', () => {
     ])
     const [ficha] = await linhas('fichas_modelo')
     expect((ficha.linha.itens as Array<{ concretagem?: boolean }>).map((i) => i.concretagem)).toEqual([false, false, false, true, false])
+    // a unidade de conferência (ideia 14) entra como fvs_regras no aparelho
+    const [regras] = await linhas('fvs_regras')
+    expect((regras.linha.regras as { unidades: Array<{ unidade: string }> }).unidades.map((u) => u.unidade)).toEqual(['peca'])
   })
 
   it('pacote antigo (sem gerado_em, sem a marca de concretagem) continua abrindo igual', async () => {

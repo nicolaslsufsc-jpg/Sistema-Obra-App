@@ -6,9 +6,11 @@
 // - Último registro R = aberto. Último registro A ou NA depois de um R = reinspecionado: sai dos
 //   abertos e continua na lista de reinspecionados e no histórico da peça.
 // - Último registro vazio = o R foi desmarcado por engano: não é reprovação.
+// - NC aceito sob concessão (tratativa, 25/11) sai dos abertos sem reinspeção, com quem decidiu.
 
 import { nomeDaPeca } from './comodos'
-import { daFichaAberta, eventosDaFichaAberta, juntarFichasDoModelo, maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
+import { resumoDaTratativa, tratativaDaRodada, type Tratativa } from './tratativas'
+import { daFichaAberta, eventosDaFichaAberta, juntarFichasDoModelo, juntarMarcadosNoApp, maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
 
 export interface Reinspecao {
   resultado: 'C' | 'NA'
@@ -46,6 +48,12 @@ export interface Reprovacao {
   fotos: string[]
   /** planta que estava na tela quando o R foi marcado no app */
   plantaMarcada: string | null
+  /** tratativa da rodada do NC (quem resolve, prazo, causa, concessão, eficácia); sem tratativa, null */
+  tratativa: Tratativa | null
+  /** NC aceito sob concessão (fechado sem reinspeção) */
+  concessao: boolean
+  /** registros NC da rodada (a tratativa aponta para um deles) */
+  eventosNc: string[]
 }
 
 export interface PecaDaLista {
@@ -61,6 +69,8 @@ export interface EntradaDaLista {
   fichaPorId: ReadonlyMap<string, Ficha>
   fichasCampoDe: ReadonlyMap<string, readonly FichaCampo[]>
   fotosDe: ReadonlyMap<string, readonly string[]>
+  /** tratativas por registro NC (sem a tabela no aparelho, nenhuma) */
+  tratativasDe?: ReadonlyMap<string, readonly Tratativa[]>
   quem: (e: EventoFvs) => string
 }
 
@@ -74,7 +84,8 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
     if (!eventos?.some((e) => e.resultado === 'NC')) continue
     const abertas = d.fichasCampoDe.get(peca.id) ?? []
     // duas fichas do mesmo modelo na viga contam como uma, como o painel mostra (21/11)
-    const daTela = juntarFichasDoModelo(abertas, (id) => d.fichaPorId.get(id), eventos)
+    // e o marcado só no app entra na ficha aberta do mesmo modelo (ficha única, 23/11)
+    const { fichas: daTela, juntou: comApp } = juntarMarcadosNoApp(juntarFichasDoModelo(abertas, (id) => d.fichaPorId.get(id), eventos), eventos)
     const juntou = daTela.some((fc) => fc.juntas)
     const porItem = new Map<string, EventoFvs[]>()
     const juntar = (evs: readonly EventoFvs[], fichaCampoId: string | null) => {
@@ -87,7 +98,7 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
     }
     if (!juntou) for (const e of eventos) juntar([e], e.ficha_campo_id ?? null)
     else {
-      juntar(daFichaAberta(eventos, null), null)
+      if (!comApp) juntar(daFichaAberta(eventos, null), null)
       for (const fc of daTela) juntar(eventosDaFichaAberta(eventos, fc), fc.id)
     }
     for (const [k, lista] of porItem) {
@@ -103,7 +114,11 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
       // o texto pode estar num registro anterior da mesma rodada ("O que fazer?" é um registro novo)
       const comTexto = [...daRodada].reverse().find((e) => e.observacao)
       const item = ficha.itens.find((i) => i.n === ultimo.item)
-      const aberta = abertas.find((a) => a.id === ultimo.ficha_campo_id)
+      // o NC marcado só no app que entrou na ficha aberta abre nela (ficha única, 23/11)
+      const doGrupo = k.split('|')[1] || null
+      const aberta = abertas.find((a) => a.id === (ultimo.ficha_campo_id ?? doGrupo))
+      const tratativa = tratativaDaRodada(d.tratativasDe, daRodada)
+      const concessao = ultimo.resultado === 'NC' && !!tratativa?.concessao
       saida.push({
         chave: `${peca.id}|${k}`,
         pecaId: peca.id,
@@ -113,7 +128,7 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
         fichaId: ficha.id,
         fichaCodigo: ficha.codigo,
         fichaTitulo: ficha.titulo,
-        fichaCampoId: ultimo.ficha_campo_id ?? null,
+        fichaCampoId: ultimo.ficha_campo_id ?? doGrupo ?? null,
         fichaCampoCodigo: aberta?.codigo ?? null,
         fichasNaPeca: abertas.length,
         local: aberta?.local ?? null,
@@ -124,13 +139,16 @@ export function listarReprovacoes(d: EntradaDaLista): Reprovacao[] {
         observacao: comTexto?.observacao ?? null,
         quem: d.quem(r),
         quando: r.criado_em_dispositivo,
-        aberta: ultimo.resultado === 'NC',
+        aberta: ultimo.resultado === 'NC' && !concessao,
         reinspecao:
           ultimo.resultado === 'NC'
             ? null
             : { resultado: ultimo.resultado, rodada: ultimo.rodada, quando: ultimo.criado_em_dispositivo, quem: d.quem(ultimo) },
         fotos: daRodada.flatMap((e) => d.fotosDe.get(e.id) ?? []),
         plantaMarcada: r.planta_id ?? null,
+        tratativa,
+        concessao,
+        eventosNc: daRodada.map((e) => e.id),
       })
     }
   }
@@ -145,6 +163,8 @@ export function textoDaLista(lista: readonly Reprovacao[], titulo: string, onde:
   const blocos = lista.map((r) => {
     const linhas = [`*${r.pecaNome}* · ${onde(r)}`, `${r.item}. ${r.itemTitulo}`]
     if (r.observacao) linhas.push(`O que fazer: ${r.observacao}`)
+    const trat = resumoDaTratativa(r.tratativa, r.aberta)
+    if (trat) linhas.push(trat)
     linhas.push(`${rotuloDaReprovacao(r)} · ${r.reinspecao ? r.reinspecao.quem : r.quem}`)
     return linhas.join('\n')
   })
@@ -158,6 +178,7 @@ export function filtrosDoTrecho(pavimentoId: string, trecho: string): FiltrosDaL
 
 /** Rótulo curto do resultado: "NC V01" ou, depois da reinspeção, "C V02". */
 export function rotuloDaReprovacao(r: Reprovacao): string {
+  if (r.concessao) return `NC ${rotuloRodada(r.rodada)} · concessão`
   return r.reinspecao ? `${r.reinspecao.resultado} ${rotuloRodada(r.reinspecao.rodada)}` : `NC ${rotuloRodada(r.rodada)}`
 }
 

@@ -1,0 +1,74 @@
+/* Página "Como conferir" da versão PC (TelaUnidades.tsx). */
+.un-lista {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.un-ficha {
+  border: 1px solid color-mix(in srgb, var(--texto) 20%, transparent);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  padding: 0.75rem 1rem;
+}
+.un-cabeca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.un-cabeca > div {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.un-hoje,
+.un-historico,
+.un-ajuda {
+  margin: 0;
+  font-size: var(--fs-legenda);
+}
+.un-hoje {
+  flex: 1 1 14rem;
+}
+.un-historico {
+  margin-top: 0.4rem;
+  opacity: 0.8;
+}
+.un-troca {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--texto) 15%, transparent);
+  max-width: 34rem;
+}
+.un-troca label {
+  display: grid;
+  gap: 0.25rem;
+}
+.un-troca select,
+.un-troca input {
+  min-height: 44px;
+  font-size: var(--fs-texto);
+}
+.un-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.un-acoes .pc-bt,
+.un-cabeca .pc-bt {
+  min-height: 44px;
+}
+.un-erro {
+  margin: 0;
+  color: var(--cor-erro, #b00020);
+}
+.un-aviso,
+.un-ok {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--raio-max);
+  background: color-mix(in srgb, var(--cor-primaria) 10%, transparent);
+}

@@ -109,7 +109,7 @@ export function TelaCaminhao({ ctx, raiz }: { ctx: Contexto; raiz: string }) {
       <section class="cartao">
         <h2 class="sem-topo">Onde foi</h2>
         {pecas.length === 0 ? (
-          <p class="discreto">Nenhuma peça ainda. Desenhe na planta a área que este caminhão encheu.</p>
+          <p class="discreto">Sem peças desenhadas</p>
         ) : (
           <ul class="cc-pecas">
             {pecas.map(({ e, peca }) => (

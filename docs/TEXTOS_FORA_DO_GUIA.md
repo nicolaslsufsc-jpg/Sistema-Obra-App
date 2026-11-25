@@ -1,6 +1,26 @@
 # Textos fora do guia de estilo, por tela
 
-Levantamento de 22/11/2026 (frente 06), na `main` depois do #61. Só a lista: nada foi trocado. Cada frente troca os textos das telas dela, pela seção "Textos" do `docs/DESIGN.md`.
+Levantamento de 22/11/2026 (frente 06), na `main` depois do #61. Cada frente troca os textos das telas dela, pela seção "Textos" do `docs/DESIGN.md`.
+
+## Situação em 23/11/2026 (branch `front/guia-fechar`)
+
+**Trocados (98 de 110):** todos os textos das listas abaixo, menos os que estão em "Ficaram" logo a seguir. O que mudou, em resumo:
+- "Nenhum..." / "Nenhuma..." virou uma linha curta ("Sem concretagens", "Sem entregas") quando a tela ou a seção ficou vazia, e "–" quando é uma célula ou um campo ("Revisão anterior: –");
+- parágrafo explicativo: ficou só a frase que a pessoa precisa ver, e o resto foi para o "?" (`app/src/telas/Ajuda.tsx`), que abre o texto curto ao tocar. Onde a frase curta bastava, o resto saiu;
+- emoji ("⚠", "✍", "📍") saiu, e o texto ficou;
+- "Escolha…" nas listas de escolher virou "Escolher";
+- "PC atrás do Autodoc" virou "Cópia desatualizada no escritório" (painel da obra do Projetos);
+- fora da lista, mas pela mesma regra: o aviso de "Ainda não há pranchas" do Projetos sem conta, "Nenhuma entrega com esse filtro" e "Nenhum recebimento registrado" (Concreto, materiais).
+
+**Ficaram, de propósito:**
+| Onde | Por quê |
+| --- | --- |
+| `fvs/telas/TelaPlanta.tsx` (6 textos) | fica para a frente dona: outra frente mexe na planta hoje |
+| `fvs/telas/TelaEscoramento.tsx` (3 textos) | fica para a frente dona: outra frente mexe no escoramento hoje |
+| `concreto/telas/TelaLaudo.tsx` (1 texto, "Nenhum caminhão registrado nesta concretagem.") | fica para a frente dona: o laudo está com outra frente hoje |
+| `telas/Obras.tsx` (2 textos) | o texto das telas de entrada é da 07 · LOGIN (ver `docs/modulos/6_frontend.md`); o teste com servidor (`telas.e2e`) confere a frase |
+| "Carregando…", "Gerando…", "Importando…", "Abrindo o PDF…" | o guia deixa as reticências de carregamento |
+| mensagens de erro montadas fora das telas (`dados.ts`, `pacote.ts`, `offline.ts`) | não são texto de tela fixo; ficam para a revisão de cada frente |
 
 **Como foi feito:** leitura automática dos textos que aparecem nas telas (`app/src/**/*.tsx`), procurando:
 - **parágrafo explicativo:** texto com mais de 90 letras. O guia manda a ajuda para um ícone "?" ou para a documentação;

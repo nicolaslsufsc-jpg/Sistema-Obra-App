@@ -131,7 +131,7 @@ export function TelaPranchaBase({ ctx, alvo }: { ctx: Contexto; alvo: AlvoPranch
 
       <section class="pj-bloco">
         <h2>Quem está com esta prancha: {plural(emCampo.length, 'cópia', 'cópias')} em campo</h2>
-        {emCampo.length === 0 && <p class="discreto">Nenhuma cópia em campo.</p>}
+        {emCampo.length === 0 && <p class="discreto">Sem cópias em campo</p>}
         <ul class="pj-lista-painel" data-testid="prancha-em-campo">
           {emCampo.map((x) => (
             <LinhaCopia key={x.copia.linha} x={x} gestor={gestor} registra={podeRegistrar(obra.papel)} ir={ctx.ir} empresas={empresas} hoje={dados.hoje} aoSalvar={(d, texto) => gravar({ tipo: 'copia', alvo: x.copia.linha, codigo: x.copia.codigo, dados: d }, texto)} />
@@ -279,7 +279,7 @@ function LinhaCopia({
           <div class="pj-botoes-linha" data-testid="copia-do-app">
             {c.app.assinaturaId && (
               <button type="button" class="secundario" onClick={() => ir({ nome: 'comprovante', assinaturaId: c.app!.assinaturaId! })}>
-                ✍ Comprovante
+                Comprovante
               </button>
             )}
             {registra && !c.devolucao && (

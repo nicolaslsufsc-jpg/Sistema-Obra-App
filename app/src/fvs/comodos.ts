@@ -30,5 +30,20 @@ export function fichaValeNoLocal(e: { tipo: string; sem_fichas?: readonly string
   return !e.sem_fichas.includes(codigo)
 }
 
+/**
+ * Ambientes sem tipo (25/11/2026, aviso do chat 22): numa planta com a tabela ficha × tipo de cômodo (algum ambiente
+ * com `sem_fichas`), o cômodo que ficou sem nome num apartamento em que os outros têm nome não tem como dizer que
+ * fichas valem nele, e caía em todas (piso cerâmico no quarto). Ele fica sem ficha, com o aviso, até ganhar o nome.
+ * Planta sem a tabela, apartamento sem nenhum nome de cômodo e o quadrado da grade de escavação ficam como antes.
+ */
+export function ambientesSemTipo(
+  elementos: Readonly<Record<string, { tipo: string; comodo?: string; grade?: string; grupo?: string; sem_fichas?: readonly string[] }>> | undefined,
+): Set<string> {
+  const ambientes = Object.entries(elementos ?? {}).filter(([, e]) => e.tipo === 'A' && !e.grade)
+  if (!ambientes.some(([, e]) => e.sem_fichas?.length)) return new Set()
+  const gruposComNome = new Set(ambientes.filter(([, e]) => e.comodo && e.grupo).map(([, e]) => e.grupo))
+  return new Set(ambientes.filter(([, e]) => !e.comodo && e.grupo && gruposComNome.has(e.grupo)).map(([id]) => id))
+}
+
 /** O nome da peça para as listas, com o cômodo se for ambiente com nome. */
 export const nomeDaPeca = (peca: { id: string; nome: string }): string => nomeComComodo(peca.nome, comodoGuardado(peca.id))

@@ -53,11 +53,11 @@ def nomes_do_macico(texto: str) -> list[str]:
 
     "P78a/78aa" é P78a e P78aa: o que vem depois da barra repete o número com outra letra."""
     t = _limpo(texto)
-    m = re.search(r"MACI\S*\s+NO\s+PILAR\s*\((.*?)\)?\s*$", t, re.I)
-    if not m:
-        return []
+    # 24/11 (campo, P67 do 3º): dois títulos podem vir no mesmo bloco de texto ("...(P69 - P122) ARMADURA DO
+    # MACIÇO NO PILAR (P67 - ...)"); lê cada parêntese. O espaço sem traço ("P200 P213") também separa.
+    grupos = re.findall(r"MACI\S*\s+NO\s+PILAR\s*\(([^)]*)\)?", t, re.I)
     nomes: list[str] = []
-    for bloco in re.split(r"\s*-\s*|\s*,\s*", m.group(1)):
+    for bloco in (b for g in grupos for b in re.split(r"\s*-\s*|\s*,\s*|\s+(?=P\s?\d)", g)):
         primeiro = None
         for pedaco in bloco.split("/"):
             p = pedaco.strip().replace(" ", "")
@@ -82,6 +82,39 @@ def _caixa(polys) -> tuple[float, float, float, float] | None:
     xs = [float(x) for x, _ in pts]
     ys = [float(y) for _, y in pts]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+RE_COTA = re.compile(r"^\d{2,4}$")
+COTA_MIN_CM, COTA_MAX_CM = 60, 1000  # o trecho reto da barra: menor que isso é gancho ou espaçamento
+
+
+def medidas_do_macico(palavras) -> tuple[int, int] | None:
+    """(largura, altura) do maciço em cm, pelas cotas do desenho da armadura (24/11/2026, campo #1).
+
+    palavras: [(deitada, texto)] das palavras dentro do recorte do título; deitada = escrita na
+    horizontal, como se lê a prancha. O maior número inteiro deitado é o trecho reto da barra que
+    atravessa o maciço na largura; o maior em pé, na altura (P66 do 3º: 235 e 327). Sem os dois: None."""
+    deit, pe = [], []
+    for deitada, texto in palavras:
+        t = (texto or "").strip()
+        if RE_COTA.match(t) and COTA_MIN_CM <= int(t) <= COTA_MAX_CM:
+            (deit if deitada else pe).append(int(t))
+    return (max(deit), max(pe)) if deit and pe else None
+
+
+def anel_pelas_medidas(polys, medidas_cm) -> list[list[float]] | None:
+    """O capitel no tamanho do maciço (largura x altura em cm), centrado no pilar. Medida menor que
+    o pilar ou maior que 10 m é leitura errada: None (fica o anel de meio metro)."""
+    c = _caixa(polys)
+    if c is None or not medidas_cm:
+        return None
+    pt = PONTOS_POR_METRO / 100
+    lx, ly = medidas_cm[0] * pt, medidas_cm[1] * pt
+    if lx < c[2] - c[0] or ly < c[3] - c[1] or max(medidas_cm) > 1000:
+        return None
+    cx, cy = (c[0] + c[2]) / 2, (c[1] + c[3]) / 2
+    x0, y0, x1, y1 = cx - lx / 2, cy - ly / 2, cx + lx / 2, cy + ly / 2
+    return [[round(x0, 2), round(y0, 2)], [round(x1, 2), round(y0, 2)], [round(x1, 2), round(y1, 2)], [round(x0, 2), round(y1, 2)]]
 
 
 def anel_do_capitel(polys, margem: float = MARGEM_CAPITEL) -> list[list[float]] | None:
@@ -124,10 +157,114 @@ def consolo_do_pilar(quads: list[list[list[float]]], pilar_polys, tamanho_max: f
     return [[round(float(x), 2), round(float(y), 2)] for x, y in melhor[1]] if melhor else None
 
 
+# ---------------------------------------------------------------------------
+# Maciço que a forma mostra (aviso, 24/11/2026: LISTA DE CAMPO #3)
+# ---------------------------------------------------------------------------
+# Na laje nervurada o maciço é a região lisa, sem cubetas, em volta do pilar. Pilar com cubetas nos
+# quatro lados, todas a pelo menos ~0,6 m dele, tem maciço. Se nenhuma prancha de maciços o lista, o
+# relatório da publicação avisa (só aviso: a planta não muda).
+
+PONTOS_POR_METRO = 1 / (0.0254 / 72 * 50)  # planta 1:50
+RE_CAMADA_CUBETA = re.compile(r"^LJ_NERV", re.I)
+# FOLGA_MACICO: 0,55 e não 0,6 porque há maciço de verdade com folga menor que 0,6 num lado (no 3º
+# da obra piloto: P128a 0,56, P80a e P99a 0,58; o desenho arredonda). Falso aviso conhecido: a
+# moldura de uma abertura na laje também é lisa (o P64b e o P237 do 3º, 0,57 e 0,76 m), e não é maciço.
+FOLGA_MACICO = 0.55   # m
+ALCANCE_MACICO = 3.0  # m: cubeta mais longe que isso não conta (borda da laje, vão, poço)
+FAIXA_MACICO = 0.5    # m: a cubeta de um lado pode passar até meio metro do canto do pilar
+CUBETA_MIN, CUBETA_MAX = 0.18, 1.25  # m: lado da cubeta (inteira ou meia)
+
+
+def e_camada_de_cubeta(camada) -> bool:
+    return bool(RE_CAMADA_CUBETA.match(camada or ""))
+
+
+def cubetas_dos_desenhos(desenhos) -> list[tuple[float, float, float, float]]:
+    """Caixas (x0, y0, x1, y1) das cubetas nos desenhos (formato de page.get_drawings, já nas
+    coordenadas da planta). Só a camada da nervurada; do tamanho de uma cubeta."""
+    lo, hi = CUBETA_MIN * PONTOS_POR_METRO, CUBETA_MAX * PONTOS_POR_METRO
+    saida = []
+    for d in desenhos:
+        if not e_camada_de_cubeta(d.get("layer")):
+            continue
+        for it in d.get("items") or ():
+            if it[0] == "re":
+                r = it[1]
+            elif it[0] == "qu":
+                r = it[1].rect
+            else:
+                continue
+            x0, y0, x1, y1 = min(r.x0, r.x1), min(r.y0, r.y1), max(r.x0, r.x1), max(r.y0, r.y1)
+            if lo < x1 - x0 < hi and lo < y1 - y0 < hi:
+                saida.append((x0, y0, x1, y1))
+    return saida
+
+
+def folgas_ate_as_cubetas(caixa, cubetas) -> dict[str, float | None]:
+    """Distância, em metros, do pilar até a cubeta mais perto de cada lado (None: nenhuma no alcance)."""
+    b = caixa
+    alc, fx = ALCANCE_MACICO * PONTOS_POR_METRO, FAIXA_MACICO * PONTOS_POR_METRO
+    melhor: dict[str, float | None] = {"esq": None, "dir": None, "cima": None, "baixo": None}
+    for c in cubetas:
+        na_faixa_y = c[3] > b[1] - fx and c[1] < b[3] + fx
+        na_faixa_x = c[2] > b[0] - fx and c[0] < b[2] + fx
+        for lado, ok, d in (("esq", na_faixa_y and c[2] <= b[0] + 1, b[0] - c[2]),
+                            ("dir", na_faixa_y and c[0] >= b[2] - 1, c[0] - b[2]),
+                            ("cima", na_faixa_x and c[3] <= b[1] + 1, b[1] - c[3]),
+                            ("baixo", na_faixa_x and c[1] >= b[3] - 1, c[1] - b[3])):
+            if ok and d < alc and (melhor[lado] is None or d < melhor[lado]):
+                melhor[lado] = d
+    return {k: (None if v is None else v / PONTOS_POR_METRO) for k, v in melhor.items()}
+
+
+def marcar_macico_na_forma(pecas: list[dict], cubetas) -> list[str]:
+    """Marca p["macico_na_forma"] nos pilares com cubetas longe nos quatro lados. Devolve os nomes."""
+    nomes = []
+    if not cubetas:
+        return nomes
+    for p in pecas:
+        if p.get("tipo") != "P":
+            continue
+        cx = _caixa(p.get("polys"))
+        if cx is None:
+            continue
+        f = folgas_ate_as_cubetas(cx, cubetas)
+        if all(v is not None and v >= FOLGA_MACICO for v in f.values()):
+            p["macico_na_forma"] = True
+            nomes.append(p["nome"])
+    return nomes
+
+
 def base_do_nome(nome: str) -> str:
     """"P78aa" -> "P78": os pilares do mesmo par (P78, P78a, P78aa) têm a mesma base."""
     m = re.match(r"^(P\d+)", nome)
     return m.group(1) if m else nome
+
+
+def pilar_pelo_numero(nome: str, nomes, so_detalhe=None) -> tuple[str | None, str | None]:
+    """Acha o pilar da planta para um nome do sistema oficial: "P184" lá é o "P184a" no app.
+
+    nomes: os nomes dos pilares do pavimento (na mesma caixa de `nome`).
+    so_detalhe: nomes do pavimento que estão na planta só para o detalhe (sem ficha), do pacote;
+    None quando não há pacote (peças lidas do servidor, que não guarda isso).
+    Nome exato ganha. Senão, os da mesma base_do_nome (a regra do capitel, acima), tirando os só de
+    detalhe. Um candidato: ele. Dois ou mais (pares do 2º, P102a e P102aa) sem saber qual é o só de
+    detalhe: o nome mais curto, e volta um aviso para o relatório.
+    Devolve (nome escolhido ou None, aviso ou None)."""
+    if nome in nomes:
+        return nome, None
+    base = base_do_nome(nome)
+    if not re.match(r"^P\d+$", base, re.I):
+        return None, None
+    cands = sorted((c for c in nomes if base_do_nome(c) == base), key=lambda c: (len(c), c))
+    if so_detalhe is not None:
+        cands = [c for c in cands if c not in so_detalhe]
+    if not cands:
+        return None, None
+    if len(cands) == 1:
+        return cands[0], None
+    por_que = "sem pacote" if so_detalhe is None else "nenhum é só de detalhe"
+    return cands[0], f"{nome}: {len(cands)} pilares com o mesmo número ({', '.join(cands)}), {por_que}: ficou {cands[0]}"
 
 
 def distribuir_partes(pecas: list[dict], consolos: dict[str, list[list[float]]], com_capitel: set[str],
@@ -170,7 +307,8 @@ def distribuir_partes(pecas: list[dict], consolos: dict[str, list[list[float]]],
                 return dets[n]
         return None
 
-    rel = {"consolos": [], "capiteis": [], "consolo_sem_pilar": [], "capitel_sem_pilar": [], "sem_detalhe": []}
+    rel = {"consolos": [], "capiteis": [], "consolo_sem_pilar": [], "capitel_sem_pilar": [], "sem_detalhe": [],
+           "macico_sem_prancha": [], "capitel_pela_medida": []}
     for nome in sorted(consolos):
         alvo = com_ficha(nome)
         if alvo is None:
@@ -189,21 +327,35 @@ def distribuir_partes(pecas: list[dict], consolos: dict[str, list[list[float]]],
         if nome not in nomes_na_forma and not any(base_do_nome(n) == base_do_nome(nome) for n in nomes_na_forma):
             continue  # pilar de outro pavimento na mesma lista (a prancha de maciços cobre o pavimento todo)
         alvo = com_ficha(nome)
-        anel = anel_do_capitel(alvo.get("polys")) if alvo else None
+        d = detalhe_de("capitel", nome, alvo["nome"]) if alvo else None
+        anel = anel_pelas_medidas(alvo.get("polys"), (d or {}).get("medidas_cm")) if alvo else None
+        medido = anel is not None
+        if not medido and alvo:
+            anel = anel_do_capitel(alvo.get("polys"))  # sem cota lida: meio metro em volta
         if alvo is None or anel is None:
             rel["capitel_sem_pilar"].append(nome)
             continue
         if any(pt["tipo"] == "capitel" for pt in alvo.get("partes") or []):
             continue  # P78a/78aa: os dois nomes caem no mesmo pilar com ficha
         parte = {"tipo": "capitel", "polys": [anel]}
-        d = detalhe_de("capitel", nome, alvo["nome"])
         if d:
             parte["detalhe"] = d
         else:
             rel["sem_detalhe"].append(f"capitel {nome}")
         _juntar(alvo, parte)
         rel["capiteis"].append(alvo["nome"] if alvo["nome"] == nome else f"{alvo['nome']} ({nome})")
+        if medido:
+            rel["capitel_pela_medida"].append(alvo["nome"])
+    # maciço que a forma mostra e nenhuma prancha de maciços lista (pilar do par que já ganhou capitel não conta)
+    com_parte = {base_do_nome(p["nome"]) for p in pilares if any(pt["tipo"] == "capitel" for pt in p.get("partes") or [])}
+    rel["macico_sem_prancha"] = sorted((p["nome"] for p in pilares if p.get("macico_na_forma")
+                                        and base_do_nome(p["nome"]) not in com_parte), key=_ordem_do_nome)
     return rel
+
+
+def _ordem_do_nome(nome: str):
+    m = re.match(r"^P(\d+)(.*)$", nome)
+    return (int(m.group(1)), m.group(2)) if m else (10**9, nome)
 
 
 def _juntar(pilar: dict, parte: dict) -> None:
@@ -258,20 +410,133 @@ def consolos_da_forma(page, anns, pilares: list[dict]) -> dict[str, list[list[fl
 EXCLUIR = {"A-FOLHA", "ALAN-FOLHA", "SELO", "TABELAS", "TEXTO_TABELAS", "VPORT", "VIEW", "Relação do aço", "Rela��o do a�o"}
 
 
+RE_INICIO_DE_TITULO = re.compile(r"MACI\S*\s+NO\s+PILAR|CONSOLO\s+P", re.I)
+
+
 def _blocos_de_titulo(page, nomes_de):
-    """[(texto, Rect sem girar, nomes)] dos títulos da prancha que dão nome de pilar."""
+    """[(texto, Rect sem girar, nomes)] dos títulos da prancha que dão nome de pilar.
+
+    Um bloco de texto pode trazer dois títulos (24/11, LO.4109 do 3º): a linha que começa um título novo abre
+    outro pedaço, com o retângulo só das linhas dele. O título que quebra em duas linhas fica junto."""
     import pymupdf
 
     saida = []
     for b in page.get_text("dict")["blocks"]:
         if b.get("type") != 0:
             continue
-        linhas = [" ".join(s["text"] for s in ln["spans"]) for ln in b["lines"]]
-        texto = _limpo(" ".join(linhas))
-        nomes = nomes_de(texto)
-        if nomes:
-            saida.append((texto, pymupdf.Rect(b["bbox"]), nomes))
+        pedacos: list[list] = []  # [texto, Rect]
+        for ln in b["lines"]:
+            txt = _limpo(" ".join(s["text"] for s in ln["spans"]))
+            r = pymupdf.Rect(ln["bbox"])
+            if not pedacos or RE_INICIO_DE_TITULO.search(txt):
+                pedacos.append([txt, r])
+            else:
+                pedacos[-1][0] = _limpo(pedacos[-1][0] + " " + txt)
+                pedacos[-1][1] |= r
+        for texto, r in pedacos:
+            nomes = nomes_de(texto)
+            if nomes:
+                saida.append((texto, r, nomes))
     return saida
+
+
+RE_SELO = re.compile(r"REVIS[ÕO]ES|PRANCHA\s*:", re.I)
+RE_TABELA = re.compile(r"C\.\s*TOTAL|RELA[ÇC][ÃA]O DO A[ÇC]O|RESUMO DO A[ÇC]O", re.I)
+
+
+def _sem_selo_nem_tabela(page, caixas: list, M) -> list:
+    """Tira os grupos de desenho que são o selo da prancha (o canto de baixo à direita, a partir do quadro de
+    revisões) ou a tabela de aço. 24/11: no P95 do 3º e no P321a do 4º o selo entrava no recorte."""
+    import pymupdf
+
+    selo, tabelas = [], []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        txt = " ".join(s["text"] for ln in b["lines"] for s in ln["spans"])
+        if RE_SELO.search(txt):
+            selo.append(pymupdf.Rect(b["bbox"]) * M)
+        if RE_TABELA.search(txt):
+            tabelas.append(pymupdf.Rect(b["bbox"]))
+    x0 = min((r.x0 for r in selo), default=None)
+    y0 = min((r.y0 for r in selo), default=None)
+    saida = []
+    for c in caixas:
+        g = c * M
+        cx, cy = (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2
+        if x0 is not None and cx >= x0 - 10 and cy >= y0 - 10:
+            continue
+        if any(c.intersects(t) for t in tabelas):
+            continue
+        saida.append(c)
+    return saida
+
+
+PERTO_DO_MACICO = 80.0  # pontos: entre os desenhos de um maciço ~40; até o selo ou a moldura, bem mais
+
+
+def _juntar_perto(caixa, grupo: list, perto: float = PERTO_DO_MACICO):
+    """Cresce `caixa` (o título) com os desenhos do grupo que ficam a até `perto` dela, um de cada vez; o que
+    fica longe (o selo da prancha, a moldura) não entra (24/11: o P321a do 4º puxava o selo)."""
+    resto = list(grupo)
+    mudou = True
+    while mudou and resto:
+        mudou = False
+        for c in list(resto):
+            dx = max(c.x0 - caixa.x1, caixa.x0 - c.x1, 0)
+            dy = max(c.y0 - caixa.y1, caixa.y0 - c.y1, 0)
+            if max(dx, dy) <= perto:
+                caixa = caixa | c
+                resto.remove(c)
+                mudou = True
+    return caixa
+
+
+# FOLGA_DO_TITULO, em pontos: o desenho começa um pouco à esquerda do título (P251 do 3º, P65 do 4º). 25/11,
+# conferido em todas as pranchas de maciços do 2º, 3º e 4º da obra piloto: abaixo de ~41 o 1º desenho do P80a do
+# 4º (40,3 pt à esquerda) ia para o P62a; de 67 para cima o P83a do 3º levava 2 dos 4 desenhos do P198a. 52 fica
+# no meio; entre 41 e 65 nada muda nas 12 pranchas.
+FOLGA_DO_TITULO = 52.0
+
+
+def _desenhos_por_titulo(caixas: list, titulos: list, M) -> dict[int, list]:
+    """Cada grupo de desenho (Rect sem girar) vai para o título mais perto que fica acima e à esquerda dele,
+    na prancha como se lê (girada por M). Na prancha de maciços cada título tem 2 a 4 desenhos embaixo e à
+    direita (as barras de um sentido, as do outro). Devolve {índice do título: [caixas]}."""
+    FOLGA = FOLGA_DO_TITULO
+    tits = [r * M for _, r, _ in titulos]
+    saida: dict[int, list] = {}
+    for c in caixas:
+        g = c * M
+        cands = [(abs(g.x0 - t.x0) + abs(g.y0 - t.y0), i) for i, t in enumerate(tits)
+                 if t.x0 <= g.x0 + FOLGA and t.y0 <= g.y0 + FOLGA]
+        if cands:
+            saida.setdefault(min(cands)[1], []).append(c)
+    return saida
+
+
+MARGEM_DO_DESENHO = 4.0  # pontos em volta de cada desenho e de cada texto do maciço que ficam na imagem
+
+
+def _so_o_que_e_do_macico(png_ou_webp: bytes, clip, escala: float, regioes: list) -> bytes:
+    """Pinta de branco, na imagem do recorte, o que fica fora das `regioes` (Rects na prancha como se lê).
+
+    25/11 (4º da obra piloto): o recorte é um retângulo e trazia o que caísse dentro dele: a ponta do desenho
+    do maciço vizinho (P112) e a moldura da folha (a linha solta embaixo do P226a)."""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    im = Image.open(io.BytesIO(png_ou_webp)).convert("L")
+    manter = Image.new("1", im.size, 0)
+    d = ImageDraw.Draw(manter)
+    for r in regioes:
+        d.rectangle([(r.x0 - clip.x0) * escala, (r.y0 - clip.y0) * escala,
+                     (r.x1 - clip.x0) * escala, (r.y1 - clip.y0) * escala], fill=1)
+    saida = Image.composite(im, Image.new("L", im.size, 255), manter)
+    b = io.BytesIO()
+    saida.save(b, "WEBP", lossless=True, method=6)
+    return b.getvalue()
 
 
 def ler_detalhes_de_partes(pdfs: list[str], tipo: str, escala: float = 2.4) -> dict[str, dict]:
@@ -304,16 +569,68 @@ def ler_detalhes_de_partes(pdfs: list[str], tipo: str, escala: float = 2.4) -> d
             W, H = page.mediabox.width, page.mediabox.height
             s = 0.25
             mask = np.zeros((int(H * s) + 2, int(W * s) + 2), bool)
+            usados = []  # Rects dos desenhos que entram na máscara (para saber, depois, de qual grupo cada um é)
             for d in page.get_drawings():
                 r = d["rect"]
                 if d.get("layer") in EXCLUIR or r.width > W * 0.5 or r.height > H * 0.5:
                     continue
                 mask[max(int(r.y0 * s), 0):int(r.y1 * s) + 1, max(int(r.x0 * s), 0):int(r.x1 * s) + 1] = True
+                usados.append(pymupdf.Rect(r))
+            prancha = estrutura.nome_da_prancha(caminho)
+            if tipo == "capitel":
+                # 24/11 (campo, P66 do 3º): o maciço tem 2 a 4 desenhos (um por sentido das barras); junta todos
+                # os grupos de desenho que caem embaixo e à direita do título, até o título seguinte
+                lab, _ = ndimage.label(ndimage.binary_dilation(mask, iterations=3))
+                rotulo_da_caixa = {}  # Rect do grupo -> número dele na máscara
+                for k, sl in enumerate(ndimage.find_objects(lab), 1):
+                    if sl is not None:
+                        rotulo_da_caixa[tuple(pymupdf.Rect(sl[1].start / s, sl[0].start / s, sl[1].stop / s, sl[0].stop / s))] = k
+                caixas = [pymupdf.Rect(c) for c in rotulo_da_caixa]
+                caixas = [c for c in caixas if c.width >= 40 and c.height >= 40]  # cota ou texto solto não é desenho
+                grandes = {rotulo_da_caixa[tuple(c)] for c in caixas}  # desenhos de verdade (de algum maciço, selo...)
+                caixas = _sem_selo_nem_tabela(page, caixas, M)
+                por_titulo = _desenhos_por_titulo(caixas, titulos, M)
+                palavras = page.get_text("words")
+                # cada desenho é de um grupo só (o do ponto do meio dele na máscara)
+                rotulo_de = lambda r: lab[min(int((r.y0 + r.y1) / 2 * s), lab.shape[0] - 1),
+                                          min(int((r.x0 + r.x1) / 2 * s), lab.shape[1] - 1)]
+                rot_usados = [rotulo_de(r) for r in usados]
+                for i, (texto, r, nomes) in enumerate(titulos):
+                    grupo = por_titulo.get(i)
+                    if not grupo:
+                        continue
+                    caixa = _juntar_perto(pymupdf.Rect(r), grupo) + (-4, -4, 4, 4)
+                    if caixa.width > 1600 or caixa.height > 1600:
+                        continue  # pegou a prancha inteira: melhor sem imagem que com a errada
+                    clip = (caixa * M) & page.rect
+                    img = base64.b64decode(legado.render(page, clip, escala))
+                    # na imagem fica branco o que é de outro desenho grande (o maciço vizinho, o selo) e o que não
+                    # entra na máscara (a moldura da folha); ficam os desenhos e os textos deste maciço e o título
+                    # (o que é só risco pequeno, como o "ESC.: 1:25" desenhado a traço, fica)
+                    outros = grandes - {rotulo_da_caixa[tuple(g)] for g in grupo}
+                    m = MARGEM_DO_DESENHO
+                    regioes = [u + (-m, -m, m, m) for u, k in zip(usados, rot_usados) if k not in outros]
+                    tits_outros = [rr for j, (_, rr, _) in enumerate(titulos) if j != i]
+                    regioes += [pymupdf.Rect(w[:4]) + (-m, -m, m, m) for w in palavras
+                                if rotulo_de(pymupdf.Rect(w[:4])) not in outros
+                                and not any(rr.intersects(pymupdf.Rect(w[:4])) for rr in tits_outros)]
+                    regioes.append(pymupdf.Rect(r) + (-m, -m, m, m))
+                    img = _so_o_que_e_do_macico(img, clip, escala, [g * M for g in regioes])
+                    titulo = titulo_de(texto)
+                    det = {"chave": chave_de_detalhe("K", titulo), "titulo": titulo, "prancha": prancha, "img": img,
+                           "aco": None}
+                    # tamanho do maciço pelas cotas do desenho (o anel do capitel na planta sai dele)
+                    med = medidas_do_macico([((pymupdf.Rect(w[:4]) * M).width > (pymupdf.Rect(w[:4]) * M).height, w[4])
+                                             for w in palavras if caixa.contains(pymupdf.Rect(w[:4]))])
+                    if med:
+                        det["medidas_cm"] = med
+                    for n in nomes:
+                        saida.setdefault(n, det)
+                continue
             for _, r, _ in titulos:
                 mask[max(int(r.y0 * s), 0):int(r.y1 * s) + 1, max(int(r.x0 * s), 0):int(r.x1 * s) + 1] = True
             lab, _ = ndimage.label(ndimage.binary_dilation(mask, iterations=3))
             objs = ndimage.find_objects(lab)
-            prancha = estrutura.nome_da_prancha(caminho)
             # quadro desenhado em volta do detalhe (as pranchas de consolo têm): o menor que contém o título
             quadros = [d["rect"] for d in page.get_drawings()
                        if d.get("layer") not in EXCLUIR and 150 < d["rect"].width < W * 0.5 and 100 < d["rect"].height < H * 0.5]

@@ -156,7 +156,7 @@ export function TelaDia({ ctx, data }: { ctx: Contexto; data: string }) {
 
       <section class="cartao rl-secao" data-testid="relatorios-do-dia">
         <h2 class="sem-topo">Relatórios deste dia</h2>
-        {relatoriosDoDia.length === 0 && <p class="discreto">Nenhum relatório neste dia.</p>}
+        {relatoriosDoDia.length === 0 && <p class="discreto">Sem relatórios neste dia</p>}
         {relatoriosDoDia.length > 0 && (
           <ul class="lista">
             {relatoriosDoDia.map((r) => (

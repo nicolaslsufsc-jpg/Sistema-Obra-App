@@ -6,7 +6,7 @@ import { usarSincronizacao } from '../../nucleo/usarSincronizacao'
 import { avisoDaSincronizacao } from '../aviso_sync'
 import { carregar, type DadosConcreto } from '../dados'
 import { carregarFvm, type DadosFvm } from '../fvm_dados'
-import { TelaMateriais, TelaReceber, TelaRecebimento } from './TelasFvm'
+import { TelaMaterial, TelaMateriais, TelaReceber, TelaRecebimento } from './TelasFvm'
 import { registrarFonteDePlantas } from '../planta'
 import { TelaInicio } from './TelaInicio'
 import { TelaPavimento } from './TelaPavimento'
@@ -41,6 +41,7 @@ export type TelaConcreto =
   | { nome: 'ficha'; data: string }
   | { nome: 'laudo'; concretagemRaiz: string }
   | { nome: 'materiais' }
+  | { nome: 'material'; codigo?: string }
   | { nome: 'receber'; codigo?: string }
   | { nome: 'recebimento'; raiz: string }
 
@@ -180,11 +181,13 @@ export function ModuloConcreto({
       conteudo = <TelaLaudo ctx={ctx} concretagemRaiz={tela.concretagemRaiz} />
       break
     case 'materiais':
+    case 'material':
     case 'receber':
     case 'recebimento':
       // FVM escondido (ex.: voltou pelo histórico depois de entrar com conta): volta ao início
       if (!ctx.fvm) conteudo = <TelaInicio ctx={ctx} aoSair={aoSair} />
       else if (tela.nome === 'materiais') conteudo = <TelaMateriais ctx={ctx} fvm={ctx.fvm} />
+      else if (tela.nome === 'material') conteudo = <TelaMaterial key={tela.codigo ?? 'novo'} ctx={ctx} fvm={ctx.fvm} codigo={tela.codigo} />
       else if (tela.nome === 'receber') conteudo = <TelaReceber ctx={ctx} fvm={ctx.fvm} codigo={tela.codigo} />
       else conteudo = <TelaRecebimento ctx={ctx} fvm={ctx.fvm} raiz={tela.raiz} />
       break

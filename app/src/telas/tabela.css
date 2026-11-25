@@ -29,6 +29,10 @@
   font-weight: 600;
   white-space: nowrap;
 }
+.so-tabela td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .so-tabela .so-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -77,4 +81,21 @@
 }
 .so-status-sem-dado .so-status-bola {
   background: var(--status-sem-dado);
+}
+/* título curto da coluna no celular (o longo continua no tablet e no PC) */
+.so-th-curto {
+  display: none;
+  text-decoration: none;
+}
+@media (max-width: 480px) {
+  .so-tabela th,
+  .so-tabela td {
+    padding: 0 0.4rem;
+  }
+  .so-th-longo {
+    display: none;
+  }
+  .so-th-curto {
+    display: inline;
+  }
 }

@@ -9,7 +9,8 @@ import type { GrupoAEntregar } from '../distribuicao'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { podeGerir } from '../dados'
 import type { Contexto } from './ModuloProjetos'
-import { dataBR, plural } from './comum'
+import { COLUNAS_RESUMO, dataBR, plural, type LinhaResumoObra } from './comum'
+import { LinhaResumo, Tabela } from '../../telas/Tabela'
 import { alvoDe } from './TelaPranchaBase'
 import { escritorioDasFolhas, situacaoFicha, SITUACOES_FICHA } from '../canteiro'
 import { fichaV2Xlsx, nomeFichaV2 } from '../ficha_v2'
@@ -17,12 +18,15 @@ import type { RegistroEscritorio } from '../edicoes'
 import { baixarBlob } from '../../nucleo/baixar'
 import { frasesAgora, oQueFazerAgora } from '../agora'
 import { QuadroSituacao } from './QuadroSituacao'
+import { Ajuda } from '../../telas/Ajuda'
+import { Icone } from '../../telas/icones'
+import { BotaoArquivo } from '../../telas/BotaoArquivo'
 
 const LIMITE = 40
 
 export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: () => void; importar?: boolean }) {
   const { ir, trocar } = ctx
-  const { base, setBase, resumo, escritorio, regras, pendentes, cruzadas, corrigida, fonteVigente, vigServidor } = usarBase(ctx)
+  const { base, setBase, resumo, escritorio, regras, pendentes, cruzadas, corrigida, fonteVigente, vigServidor, escondidas, retiradas } = usarBase(ctx)
 
   if (base === undefined) return <main class="tela">Carregando…</main>
   const mostrarImportar = importar || !resumo
@@ -46,6 +50,12 @@ export function TelaPainel({ ctx, aoSair, importar }: { ctx: Contexto; aoSair: (
         cruzadas &&
         corrigida && (
           <>
+            {escondidas > 0 && (
+              <p class="pj-aviso-base discreto" data-testid="painel-retiradas">
+                {plural(escondidas, 'cópia em campo não aparece', 'cópias em campo não aparecem')} aqui: {retiradas.size === 1 ? 'são de uma pasta' : `são de ${retiradas.size} pastas`} do Autodoc
+                com todas as pranchas obsoletas (pasta retirada da obra). Nada foi apagado.
+              </p>
+            )}
             <Canteiro ctx={ctx} cruzadas={cruzadas} vigentes={corrigida.vigentes} escritorio={corrigida.escritorio} fonteVigente={fonteVigente} />
             <Painel resumo={resumo} escritorio={escritorio} ir={ir} trocar={trocar} temLista={regras.some((r) => r.ativo)} pendentes={pendentes ?? []} cruzadas={cruzadas} documentos={ctx.dados.documentos} />
           </>
@@ -80,45 +90,42 @@ function Painel({
   const [todasDes, setTodasDes] = useState(false)
   const [todasConf, setTodasConf] = useState(false)
   const maxFaixa = Math.max(1, ...r.faixas)
+  const linhas: LinhaResumoObra[] = [
+    { id: 'em-dia', rotulo: 'Em dia', testidRotulo: 'painel-cartao-em-dia', n: r.emDia, nota: `de ${plural(r.emCampo, 'cópia', 'cópias')} em campo`, status: 'liberado', abrir: () => trocar({ nome: 'pranchas-base', filtro: 'canteiro' }) },
+    { id: 'desatualizadas', rotulo: 'Desatualizadas', testid: 'painel-desatualizadas', testidRotulo: 'painel-cartao-desatualizadas', n: r.desatualizadas.length, nota: 'recolher e entregar a nova', status: r.desatualizadas.length ? 'nc' : 'liberado', abrir: () => trocar({ nome: 'pranchas-base', filtro: 'trocar' }) },
+    { id: 'conferir', rotulo: 'Conferir', testid: 'painel-conferir', n: r.conferir.length, nota: 'não achada, revisão maior, datas', status: r.conferir.length ? 'pendente' : 'liberado', abrir: () => rolarPara('painel-lista-conferir') },
+    {
+      id: 'escritorio',
+      rotulo: 'Escritório desatualizado',
+      testid: 'painel-escritorio',
+      n: esc.desatualizados.length,
+      nota: `pasta sem a vigente${esc.semRegistro ? ` · ${plural(esc.semRegistro, 'folha', 'folhas')} sem registro` : ''}`,
+      status: esc.desatualizados.length ? 'nc' : 'liberado',
+      abrir: () => trocar({ nome: 'pranchas-base', filtro: 'escritorio' }),
+    },
+    {
+      id: 'a-entregar',
+      rotulo: 'A entregar',
+      testid: 'painel-a-entregar',
+      n: temLista ? aEntregar : '–',
+      nota: !temLista ? 'monte a lista de distribuição' : aEntregar ? `para ${plural(pendentes.length, 'pessoa', 'pessoas')} da lista de distribuição` : 'todos da lista com a vigente',
+      status: !temLista ? 'sem-dado' : aEntregar ? 'nc' : 'liberado',
+      abrir: () => trocar({ nome: temLista ? 'a-entregar' : 'distribuicao' }),
+    },
+  ]
   return (
     <>
       {/* o resumo do "O que fazer agora" no topo do painel (item C); toque abre a lista */}
       <button type="button" class={`pj-agora-topo ${agora.copias || agora.recolher.length ? 'ruim' : 'bom'}`} onClick={() => trocar({ nome: 'agora' })} data-testid="painel-agora">
-        <strong>O que fazer agora:</strong> {frasesAgora(agora)} ›
+        <strong>O que fazer agora:</strong> {frasesAgora(agora)} <Icone id="avancar" />
       </button>
       <QuadroSituacao cruzadas={cruzadas} ir={ir} documentos={documentos} />
-      {/* cada número abre a lista dele (item D) */}
-      <ul class="pj-cartoes" aria-label="Resumo" data-testid="painel-resumo">
-        <li class="bom pj-tocavel" data-testid="painel-cartao-em-dia" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'canteiro' }))}>
-          <span class="numero">{r.emDia}</span>
-          <strong>em dia</strong>
-          <span class="discreto">de {plural(r.emCampo, 'cópia', 'cópias')} em campo</span>
-        </li>
-        <li class="ruim pj-tocavel" data-testid="painel-cartao-desatualizadas" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'trocar' }))}>
-          <span class="numero" data-testid="painel-desatualizadas">{r.desatualizadas.length}</span>
-          <strong>desatualizadas</strong>
-          <span class="discreto">recolher e entregar a nova</span>
-        </li>
-        <li class="atencao pj-tocavel" {...tocavel(() => rolarPara('painel-lista-conferir'))}>
-          <span class="numero" data-testid="painel-conferir">{r.conferir.length}</span>
-          <strong>conferir</strong>
-          <span class="discreto">não achada, revisão maior, datas</span>
-        </li>
-        <li class="neutro pj-tocavel" {...tocavel(() => trocar({ nome: 'pranchas-base', filtro: 'escritorio' }))}>
-          <span class="numero" data-testid="painel-escritorio">{esc.desatualizados.length}</span>
-          <strong>escritório desatualizado</strong>
-          <span class="discreto">
-            pasta sem a vigente{esc.semRegistro ? ` · ${plural(esc.semRegistro, 'folha', 'folhas')} sem registro` : ''}
-          </span>
-        </li>
-        <li class={`largo pj-tocavel ${aEntregar ? 'ruim' : 'neutro'}`} {...tocavel(() => trocar({ nome: temLista ? 'a-entregar' : 'distribuicao' }))}>
-          <span class="numero" data-testid="painel-a-entregar">{temLista ? aEntregar : '–'}</span>
-          <strong>a entregar</strong>
-          <span class="discreto">
-            {!temLista ? 'monte a lista de distribuição' : aEntregar ? `para ${plural(pendentes.length, 'pessoa', 'pessoas')} da lista de distribuição` : 'todos da lista com a vigente'}
-          </span>
-        </li>
-      </ul>
+      {/* resumo numa linha e tabela no lugar dos cartões (guia de estilo, 23/11/2026); cada linha abre a lista dela (item D) */}
+      <LinhaResumo
+        testid="painel-linha-resumo"
+        partes={[`${r.emDia} em dia`, `${r.desatualizadas.length} desatualizadas`, `${r.conferir.length} a conferir`, temLista ? `${aEntregar} a entregar` : null]}
+      />
+      <Tabela rotulo="Resumo" testid="painel-resumo" colunas={COLUNAS_RESUMO} linhas={linhas} chave={(l) => l.id} aoTocar={(l) => l.abrir()} />
 
       <section class="pj-bloco">
         <h2>Há quanto tempo estão desatualizadas</h2>
@@ -140,7 +147,7 @@ function Painel({
 
       <section class="pj-bloco">
         <h2>Desatualizadas, mais antigas primeiro</h2>
-        {r.desatualizadas.length === 0 && <p class="discreto">Nenhuma cópia desatualizada em campo.</p>}
+        {r.desatualizadas.length === 0 && <p class="discreto">Sem cópias desatualizadas</p>}
         <ul class="pj-lista-painel" data-testid="painel-lista">
           {(todasDes ? r.desatualizadas : r.desatualizadas.slice(0, LIMITE)).map((x) => (
             <LinhaDesatualizada key={x.copia.linha} x={x} abrir={() => ir({ nome: 'prancha-base', ...alvoDe(x) })} />
@@ -172,10 +179,9 @@ function Painel({
       <section class="pj-bloco">
         <h2>Escritório desatualizado</h2>
         {esc.desatualizados.length === 0 && (
-          <p class="discreto">
-            {esc.emDia === 0
-              ? 'Nenhuma pasta do escritório registrada ainda. Abra uma prancha e toque em "Atualizar" quando a pasta estiver com a vigente.'
-              : 'Todas as pastas registradas estão com a vigente.'}
+          <p class="discreto so-com-ajuda">
+            {esc.emDia === 0 ? 'Sem pastas do escritório registradas' : 'Todas as pastas registradas estão com a vigente.'}
+            {esc.emDia === 0 && <Ajuda>Abra uma prancha e toque em "Atualizar" quando a pasta estiver com a vigente.</Ajuda>}
           </p>
         )}
         <ul class="pj-lista-painel" data-testid="painel-lista-escritorio">
@@ -251,7 +257,7 @@ function Barras({ titulo, barras, comAtraso }: { titulo: string; barras: Barra[]
   return (
     <section class="pj-bloco">
       <h2>{titulo}</h2>
-      {barras.length === 0 && <p class="discreto">Nenhuma.</p>}
+      {barras.length === 0 && <p class="discreto">–</p>}
       {barras.map((b) => (
         <div class="pj-barra" key={b.nome}>
           <b>{b.nome}</b>
@@ -382,43 +388,58 @@ function Importar({
   return (
     <form class="pj-bloco pj-importar" onSubmit={importar} data-testid="painel-importar">
       <h2>Importar a base da obra</h2>
-      <p class="discreto">
-        Os arquivos ficam só neste aparelho e não entram no "Salvar arquivo". Quando a ficha ou o índice mudar, importe de novo: o painel é refeito.
+      <p class="discreto so-com-ajuda">
+        Arquivos só neste aparelho.
+        <Ajuda>Eles não entram no "Salvar arquivo". Quando a ficha ou o índice mudar, importe de novo: o painel é refeito.</Ajuda>
       </p>
       {vigenteDoServidor && (
-        <p class="pj-aviso-base" data-testid="importar-vigente-servidor">
-          A revisão vigente vem do servidor (a lista do Autodoc publicada pelo PC). A lista vigente em CSV só vale sem conta.
+        <p class="pj-aviso-base so-com-ajuda" data-testid="importar-vigente-servidor">
+          A revisão vigente vem do servidor.
+          <Ajuda>É a lista do Autodoc publicada pelo PC. A lista vigente em CSV só vale sem conta.</Ajuda>
         </p>
       )}
-      <label class="pj-campo">
-        <span>Lista vigente (.csv){vigenteDoServidor ? ' · não precisa' : ''}</span>
-        <input type="file" accept=".csv,text/csv" data-testid="arquivo-vigentes" onChange={(e) => setVig(e.currentTarget.files?.[0] ?? null)} />
-        <span class="discreto">
-          Colunas: disciplina, numero_de, numero_ate, codigo_exemplo, revisao, data (e, se tiver, pasta, status, titulo).
-          {base?.vigentesArquivo ? ` Atual: ${base.vigentesArquivo} (${base.vigentes.length} linhas).` : ''}
+      <div class="pj-campo">
+        <span class="so-com-ajuda">
+          Lista vigente (.csv){vigenteDoServidor ? ' · não precisa' : ''}
+          <Ajuda>Colunas: disciplina, numero_de, numero_ate, codigo_exemplo, revisao, data (e, se tiver, pasta, status, titulo).</Ajuda>
         </span>
-      </label>
-      <label class="pj-campo">
-        <span>Distribuição de cópias (ficha .xlsx ou .csv)</span>
-        <input
-          type="file"
-          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          data-testid="arquivo-distribuicao"
-          onChange={(e) => setDist(e.currentTarget.files?.[0] ?? null)}
+        <BotaoArquivo
+          rotulo="Importar lista (.csv)"
+          rotuloLeitor="Lista vigente (.csv)"
+          accept=".csv,text/csv"
+          testid="arquivo-vigentes"
+          nome={vig?.name ?? (base?.vigentesArquivo ? `Atual: ${base.vigentesArquivo} (${base.vigentes.length} linhas)` : null)}
+          aoEscolher={(arquivos) => setVig(arquivos[0] ?? null)}
         />
-        <span class="discreto">
-          A ficha de controle do Excel entra como está (primeira aba). Em CSV, as colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.
-          {base?.copiasArquivo ? ` Atual: ${base.copiasArquivo} (${base.copias.length} cópias).` : ''}
+      </div>
+      <div class="pj-campo">
+        <span class="so-com-ajuda">
+          Distribuição de cópias (ficha .xlsx ou .csv)
+          <Ajuda>A ficha de controle do Excel entra como está (primeira aba). Em CSV, as colunas: codigo, revisao, titulo, disciplina, entrega, empresa, colaborador, devolucao.</Ajuda>
         </span>
-      </label>
-      <label class="pj-campo">
-        <span>Índice do escritório (.csv)</span>
-        <input type="file" accept=".csv,text/csv" data-testid="arquivo-escritorio" onChange={(e) => setEsc(e.currentTarget.files?.[0] ?? null)} />
-        <span class="discreto">
-          As pranchas que estão na pasta do PC (coluna codigo ou arquivo, com o código do Autodoc). Vale a revisão mais nova de cada folha.
-          {base?.escritorioArquivo ? ` Atual: ${base.escritorioArquivo} (${Object.keys(base.escritorioIndice ?? {}).length} folhas).` : ''}
+        <BotaoArquivo
+          rotulo="Importar planilha (.xlsx)"
+          rotuloLeitor="Distribuição de cópias (ficha .xlsx ou .csv)"
+          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          testid="arquivo-distribuicao"
+          nome={dist?.name ?? (base?.copiasArquivo ? `Atual: ${base.copiasArquivo} (${base.copias.length} cópias)` : null)}
+          aoEscolher={(arquivos) => setDist(arquivos[0] ?? null)}
+        />
+      </div>
+      <div class="pj-campo">
+        <span class="so-com-ajuda">
+          Índice do escritório (.csv)
+          <Ajuda>As pranchas que estão na pasta do PC (coluna codigo ou arquivo, com o código do Autodoc). Vale a revisão mais nova de cada folha.</Ajuda>
         </span>
-      </label>
+        <BotaoArquivo
+          rotulo="Importar lista (.csv)"
+          rotuloLeitor="Índice do escritório (.csv)"
+          accept=".csv,text/csv"
+          testid="arquivo-escritorio"
+          nome={esc?.name ?? (base?.escritorioArquivo ? `Atual: ${base.escritorioArquivo} (${Object.keys(base.escritorioIndice ?? {}).length} folhas)` : null)}
+          aoEscolher={(arquivos) => setEsc(arquivos[0] ?? null)}
+        />
+      </div>
       {erro && (
         <p class="erro" role="alert">
           {erro}

@@ -140,6 +140,103 @@ export function compararListas<A extends { codigo: string }>(
 }
 
 // ---------------------------------------------------------------------
+// Editor do modelo de material (gestor, 25/11): o mesmo dado do materiais.json, digitado no app
+// ---------------------------------------------------------------------
+
+export const LIMITES_MATERIAL = { codigo: 40, nome: 120, unidade: 20, item: 300, itens: 200, documento: 200, documentos: 50 } as const
+
+export interface FormMaterial {
+  codigo: string
+  nome: string
+  unidade: string
+  estrutural: boolean
+  exige_ensaio: boolean
+  /** cada item com o código que já tinha (vazio = item novo) */
+  itens: { codigo: string; texto: string }[]
+  documentos: string[]
+}
+
+/**
+ * Erros do formulário (chave = campo; "item:<i>" e "doc:<i>" pela posição). Vazio = pode salvar.
+ * `outrosCodigos`: códigos dos outros materiais da obra (o código não repete).
+ */
+export function errosDoMaterial(f: FormMaterial, outrosCodigos: readonly string[], via: string | null = null): Record<string, string> {
+  const e: Record<string, string> = {}
+  const codigo = f.codigo.trim()
+  if (!codigo) e.codigo = 'Informe o código (ex.: ACO-CA50).'
+  else if (codigo.length > LIMITES_MATERIAL.codigo) e.codigo = `Código com no máximo ${LIMITES_MATERIAL.codigo} letras.`
+  else if (outrosCodigos.some((c) => c.toLowerCase() === codigo.toLowerCase())) e.codigo = 'Já existe um material com esse código.'
+  if (!f.nome.trim()) e.nome = 'Informe o nome do material.'
+  else if (f.nome.trim().length > LIMITES_MATERIAL.nome) e.nome = `Nome com no máximo ${LIMITES_MATERIAL.nome} letras.`
+  if (f.unidade.trim().length > LIMITES_MATERIAL.unidade) e.unidade = `Unidade com no máximo ${LIMITES_MATERIAL.unidade} letras.`
+  const itens = f.itens.filter((i) => i.texto.trim())
+  if (!via && itens.length === 0) e.itens = 'Escreva pelo menos um item a conferir no recebimento.'
+  if (itens.length > LIMITES_MATERIAL.itens) e.itens = `No máximo ${LIMITES_MATERIAL.itens} itens.`
+  f.itens.forEach((i, n) => {
+    if (i.texto.trim().length > LIMITES_MATERIAL.item) e[`item:${n}`] = `Item com no máximo ${LIMITES_MATERIAL.item} letras.`
+  })
+  const docs = f.documentos.filter((d) => d.trim())
+  if (docs.length > LIMITES_MATERIAL.documentos) e.documentos = `No máximo ${LIMITES_MATERIAL.documentos} documentos.`
+  f.documentos.forEach((d, n) => {
+    if (d.trim().length > LIMITES_MATERIAL.documento) e[`doc:${n}`] = `Documento com no máximo ${LIMITES_MATERIAL.documento} letras.`
+  })
+  return e
+}
+
+/**
+ * Material pronto para gravar. Item que já existia fica com o mesmo código (e com a faixa `valor`, se a
+ * lista importada trazia); item novo ganha o próximo número livre. Linhas em branco saem.
+ */
+export function materialDoFormulario(
+  f: FormMaterial,
+  base: Pick<MaterialControlado, 'via' | 'ordem' | 'itens'> | null,
+  ordemNova: number,
+): MaterialControlado {
+  const antigos = new Map((base?.itens ?? []).map((i) => [i.codigo, i]))
+  const usados = new Set(f.itens.map((i) => i.codigo).filter(Boolean))
+  let proximo = 1
+  const novoCodigo = () => {
+    while (usados.has(String(proximo)) || antigos.has(String(proximo))) proximo++
+    usados.add(String(proximo))
+    return String(proximo)
+  }
+  const itens: ItemDeCriterio[] = f.itens
+    .filter((i) => i.texto.trim())
+    .map((i) => {
+      const antigo = i.codigo ? antigos.get(i.codigo) : undefined
+      const item: ItemDeCriterio = { codigo: antigo ? antigo.codigo : novoCodigo(), texto: i.texto.trim() }
+      if (antigo?.valor) item.valor = antigo.valor
+      return item
+    })
+  const documentos = [...new Set(f.documentos.map((d) => d.trim()).filter(Boolean))]
+  return {
+    codigo: f.codigo.trim(),
+    nome: f.nome.trim(),
+    unidade: f.unidade.trim() || 'un',
+    estrutural: f.estrutural,
+    exige_ensaio: f.exige_ensaio,
+    via: base?.via ?? null,
+    itens,
+    documentos,
+    ordem: base ? base.ordem : ordemNova,
+  }
+}
+
+/** Formulário a partir de um material (para editar) ou vazio (material novo). */
+export function formularioDoMaterial(m: MaterialControlado | null): FormMaterial {
+  if (!m) return { codigo: '', nome: '', unidade: 'un', estrutural: false, exige_ensaio: false, itens: [{ codigo: '', texto: '' }], documentos: [] }
+  return {
+    codigo: m.codigo,
+    nome: m.nome,
+    unidade: m.unidade,
+    estrutural: m.estrutural,
+    exige_ensaio: m.exige_ensaio,
+    itens: m.itens.map((i) => ({ codigo: i.codigo, texto: i.texto })),
+    documentos: [...m.documentos],
+  }
+}
+
+// ---------------------------------------------------------------------
 // Ficha de recebimento
 // ---------------------------------------------------------------------
 
@@ -221,4 +318,43 @@ export function ordenarRecebimentos<R extends { situacao: string; data: string; 
       b.data.localeCompare(a.data) ||
       b.criado_em_dispositivo.localeCompare(a.criado_em_dispositivo),
   )
+}
+
+// ---------------------------------------------------------------------
+// Onde o lote foi usado (recebimento_usos, 25/11): marcado à mão, como a ligação entre fichas da FVS
+// ---------------------------------------------------------------------
+
+export const LIMITES_USO = { local_texto: 200, observacao: 1000 } as const
+
+export interface FormUso {
+  pavimento_id: string
+  elemento_id: string | null
+  local_texto: string
+  quantidade: number | null
+  data: string
+}
+
+/** Material retido ou devolvido não pode ser usado: a tela nem mostra o formulário. */
+export function podeMarcarUso(situacao: SituacaoRecebimento): boolean {
+  return situacao === 'liberado' || situacao === 'liberado_ressalva'
+}
+
+/** Erros por campo. Vazio = pode salvar. A data vai do recebimento até hoje. */
+export function errosDoUso(f: FormUso, recebimento: { data: string; situacao: SituacaoRecebimento }, hoje: string): Record<string, string> {
+  const e: Record<string, string> = {}
+  if (!podeMarcarUso(recebimento.situacao)) e.situacao = 'Material retido ou devolvido não pode ser usado.'
+  if (!f.pavimento_id) e.pavimento_id = 'Escolha o pavimento.'
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.data)) e.data = 'Informe a data.'
+  else if (f.data > hoje) e.data = 'A data não pode ser depois de hoje.'
+  else if (f.data < recebimento.data) e.data = 'A data não pode ser antes do recebimento.'
+  if (f.quantidade !== null && (Number.isNaN(f.quantidade) || f.quantidade <= 0 || f.quantidade > LIMITES.quantidadeMax)) {
+    e.quantidade = 'Quantidade: número maior que zero (ou deixe em branco).'
+  }
+  if (f.local_texto.trim().length > LIMITES_USO.local_texto) e.local_texto = `No máximo ${LIMITES_USO.local_texto} letras.`
+  return e
+}
+
+/** Soma da quantidade marcada nos usos (os sem quantidade não entram). */
+export function quantidadeUsada(usos: readonly { quantidade: number | null }[]): number {
+  return usos.reduce((s, u) => s + (u.quantidade ?? 0), 0)
 }

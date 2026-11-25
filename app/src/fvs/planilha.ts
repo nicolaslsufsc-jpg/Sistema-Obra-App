@@ -3,6 +3,8 @@
 // Situação da obra: uma linha por peça e ficha, para o escritório filtrar. Quem fica pendente também
 // aparece: a pergunta do dia é justamente o que falta.
 
+import { concretadaDe } from './concretada'
+import { dataDoPrazo, rotuloDaCausa, type CamposDaTratativa } from './tratativas'
 import { nomeDaPeca } from './comodos'
 import { textoDaMetragem } from './areas'
 import { daFichaAberta, fichaDaPeca, fichaNaPeca, fichasPara, maisNovo, percentualConforme, ROTULO_SITUACAO as ROTULO, situacaoDaPeca, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
@@ -26,6 +28,8 @@ const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A:
 const ordemNatural = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' })
 
 export interface EntradaDaSituacao {
+  /** pilares, vigas e áreas de laje numa concretagem cadastrada (concretada.ts): verde só com ela */
+  concretadas?: ReadonlySet<string>
   pecas: Iterable<{ id: string; tipo: string; nome: string; secao?: string | null; pavimento_id: string }>
   pavimentos: ReadonlyArray<{ id: string; nome: string }>
   fichas: readonly Ficha[]
@@ -93,7 +97,7 @@ export function linhasDaSituacao(d: EntradaDaSituacao): LinhaDaSituacao[] {
         ...base,
         ficha: ficha ? ficha.codigo : (aberta?.ficha_codigo ?? ''),
         // ficha modelo que não está no app: vale o status do sistema oficial, na coluna ao lado
-        situacao: ficha ? ROTULO[situacaoDaPeca(ficha, daFicha)] : aberta ? '' : ROTULO.nada,
+        situacao: ficha ? ROTULO[situacaoDaPeca(ficha, daFicha, undefined, concretadaDe(d.concretadas, peca.id, peca.tipo))] : aberta ? '' : ROTULO.nada,
         a: contar('C'),
         r: contar('NC'),
         na: contar('NA'),
@@ -168,6 +172,20 @@ export function planilhaDaSituacao(linhas: readonly LinhaDaSituacao[], sistema: 
 }
 
 /** A lista de reprovações, com os filtros aplicados. */
+/** As colunas da tratativa na planilha de NC (vazias sem tratativa). */
+function colunasDaTratativa(t: CamposDaTratativa | null): (string | null)[] {
+  if (!t) return ['', '', '', '', '', '', '']
+  return [
+    t.responsavel,
+    t.prazo ? dataDoPrazo(t.prazo) : '',
+    t.causa ? `${rotuloDaCausa(t.causa)}${t.causa_obs ? ` (${t.causa_obs})` : ''}` : '',
+    t.casos_parecidos,
+    t.concessao ? 'Sim' : '',
+    t.concessao ? t.concessao_por : '',
+    t.eficacia === 'eficaz' ? 'Eficaz' : t.eficacia === 'nao_eficaz' ? `Não eficaz${t.eficacia_obs ? ` (${t.eficacia_obs})` : ''}` : '',
+  ]
+}
+
 export function planilhaDeReprovacoes(
   lista: ReadonlyArray<{
     pecaNome: string
@@ -183,6 +201,9 @@ export function planilhaDeReprovacoes(
     aberta: boolean
     fichaCampoCodigo: string | null
     reinspecao: { resultado: string; quando: string; quem: string } | null
+    /** tratativa da rodada (25/11): quem resolve, prazo, causa, concessão, eficácia */
+    tratativa?: CamposDaTratativa | null
+    concessao?: boolean
   }>,
   pavimentoDe: (i: number) => string,
   trechoDe: (i: number) => string,
@@ -190,7 +211,7 @@ export function planilhaDeReprovacoes(
 ): string {
   return montarPlanilha(
     ...semSistema(
-    ['Pavimento', 'Trecho', 'Tipo', 'Peça', 'Ficha', `Ficha no ${sistema}`, 'Item', 'Etapa', 'Verificação', 'O que fazer', 'Rodada', 'Data do NC', 'Hora', 'Quem marcou', 'Situação', 'Reinspeção', 'Data', 'Quem reinspecionou'],
+    ['Pavimento', 'Trecho', 'Tipo', 'Peça', 'Ficha', `Ficha no ${sistema}`, 'Item', 'Etapa', 'Verificação', 'O que fazer', 'Rodada', 'Data do NC', 'Hora', 'Quem marcou', 'Situação', 'Reinspeção', 'Data', 'Quem reinspecionou', 'Quem resolve', 'Prazo', 'Causa', 'Casos parecidos', 'Concessão', 'Quem decidiu', 'Eficácia'],
     lista.map((r, i) => [
       pavimentoDe(i),
       trechoDe(i),
@@ -206,10 +227,11 @@ export function planilhaDeReprovacoes(
       dataBr(r.quando),
       horaBr(r.quando),
       r.quem,
-      r.aberta ? 'Aberta' : 'Reinspecionada',
+      r.concessao ? 'Concessão' : r.aberta ? 'Aberta' : 'Reinspecionada',
       r.reinspecao?.resultado,
       r.reinspecao ? dataBr(r.reinspecao.quando) : '',
       r.reinspecao?.quem,
+      ...colunasDaTratativa(r.tratativa ?? null),
     ]),
     sistema,
     [5],

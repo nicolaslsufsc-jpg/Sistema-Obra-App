@@ -58,20 +58,44 @@ $repo = "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\codigo"; $destino
 - Segunda às 12:30 (confirmado). Se o PC estiver desligado nessa hora, roda assim que ligar (`StartWhenAvailable`).
 - Roda com o usuário do Windows logado, sem senha guardada no Agendador.
 - A cópia `codigo\` não se atualiza sozinha. Depois de um merge que mude o backup ou as migrações, atualizar (no checkout principal): `git fetch aberto` e depois `git -C "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\codigo" checkout --detach aberto/main`. Sem isso a conferência usa migrações velhas e pode acusar diferença.
-- O `--copia` só existe no script a partir do PR do Drive. Até esse merge, a tarefa roda sem `--copia` (só a pasta do PC); depois, registrar de novo com o comando acima (antes, `Unregister-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Confirm:$false`).
+- Registrada de novo com `--copia` em 21/11, depois do PR #59. Para trocar algo na tarefa: `Unregister-ScheduledTask -TaskName "Sistema Obra - backup semanal" -Confirm:$false` e o comando acima.
 - Ver se rodou: abrir `ULTIMO_BACKUP.txt` na pasta de destino, ou o Agendador de Tarefas > "Sistema Obra - backup semanal" > Último resultado (0 = deu certo, 2 = com aviso, 1 = não feito).
 - Rodar agora para testar: `Start-ScheduledTask -TaskName "Sistema Obra - backup semanal"`.
 - Tirar: `Unregister-ScheduledTask -TaskName "Sistema Obra - backup semanal"`.
+
+## Como restaurar (ensaio no PC, sem servidor)
+
+Serve para saber se o backup presta e para olhar os dados de um backup antigo. Tudo fica no PC: não lê nem grava no servidor oficial nem no de testes.
+
+1. Abrir o PowerShell na pasta `C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra\codigo` (a cópia fixa da `main`, a mesma do Agendador; atualizar antes se a `main` mudou, como dito acima).
+2. Rodar:
+   ```
+   py pipeline\restaurar_backup.py --backups "C:\Users\nicol\Nicolas\09_ESTAGIO\Backup Sistema Obra" --abrir
+   ```
+   Ele pega o backup mais novo, cria uma base nova no Postgres portátil do PC, restaura todas as obras, confere e abre o app no navegador (`http://127.0.0.1:54360`). Leva uns 2 minutos (a primeira vez, mais, porque compila o app).
+3. Ler o resultado: a primeira linha diz **RESTAUROU E CONFERIU** ou **RESTAUROU COM DIFERENÇA**. O mesmo texto fica em `Backup Sistema Obra\restauracao\RELATORIO_RESTAURACAO.txt`, com, por obra:
+   - linhas de cada tabela: manifesto, arquivo de dados e banco restaurado têm de bater;
+   - FVS e Concreto: quantos registros e a data do último de cada tabela;
+   - arquivos: cada foto, planta e anexo registrado tem de estar no zip, com o tamanho e o SHA-256 certos; e quantas fotos e plantas apontam para arquivo que não veio;
+   - o que o backup não traz e as contas que voltaram.
+4. No navegador: digitar qualquer e-mail e qualquer código de 6 números (entra como o administrador do backup). Escolher a obra, esperar "Sincronizado" e abrir FVS e Concreto. As plantas abrem dos arquivos do backup.
+5. Fechar: Ctrl+C no PowerShell. O que for marcado nesse app fica só na base de ensaio e some na próxima restauração.
+
+Outras opções: `--zip <arquivo>` (um backup específico); sem `--abrir`, só restaura e confere. Se o app não compilar porque falta instalar, rodar uma vez `npm install` dentro da pasta `app` da cópia `codigo`.
+
+Primeiro ensaio, 25/11/2026, com o backup de 23/11 (309 MB): restaurou e conferiu as 3 obras (65.346 linhas e 156 arquivos, nenhum faltando) e o app abriu a obra piloto com a FVS (planta e marcações) e o Concreto (concretagens e laudos). O que faltou está em "Limites".
 
 ## Restaurar de verdade (se o servidor se perder)
 
 1. Criar o projeto novo no Supabase e aplicar as migrações (`supabase/README.md`).
 2. Abrir o zip; para cada obra, rodar o `restaurar.sql` no editor SQL (o `LEIAME.txt` de cada obra explica). Depois de todas as obras, rodar `convites/restaurar_convites.sql` (se houver).
 3. Subir a pasta `arquivos/` de cada obra para o armazenamento `obras`, no mesmo caminho.
-4. As pessoas entram de novo no app com o e-mail (as contas voltam pelo `restaurar.sql`).
+4. Antes de alguém entrar: as contas voltam pelo `restaurar.sql` com nome e papel, mas **sem e-mail** (o e-mail de login fica na parte de contas do Supabase, que o backup não lê). É preciso pôr o e-mail de cada pessoa na conta restaurada (no editor SQL, `update auth.users set email = ... where id = ...`; quem é quem está em `dados/perfis.json`). Se a pessoa entrar antes, nasce uma conta nova, sem papel e sem acesso, e os registros antigos ficam na conta sem e-mail.
 
 ## Limites (o que este backup não faz)
 
 - Cópia no Google Drive: depende do Google Drive para computador ligado e com espaço (cada backup tem uns 260 MB; 8 dão uns 2 GB). Se o Drive parar de sincronizar, a pasta do PC continua, mas a cópia na nuvem fica para trás: olhar de vez em quando no drive.google.com se o último zip chegou.
 - Não guarda o que está só nos aparelhos e ainda não sincronizou (a fila de cada celular).
 - O que foi marcado como apagado no app continua no backup (nada é apagado de fato no servidor).
+- Contas: o e-mail de login de cada pessoa não vem (ver o passo 4 de "Restaurar de verdade"). Achado no ensaio de 25/11.
+- A tabela `projetos_pedidos_atualizacao` (pedidos de "atualizar do Autodoc" do módulo Projetos) não entra: ela não está na lista de tabelas sincronizadas que a exportação segue. Achado no ensaio de 25/11.

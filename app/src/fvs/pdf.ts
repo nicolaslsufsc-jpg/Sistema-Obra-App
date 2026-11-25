@@ -1,6 +1,7 @@
 // Folha do "Exportar PDF" da FVS (21/11/2026): andamento, fichas por peça e não conformidades, de um
 // pavimento ou da obra inteira. Os dados são os mesmos da planilha da situação e da lista de reprovações.
 import type { FolhaPdf } from '../telas/folha_pdf'
+import { resumoDaTratativa } from './tratativas'
 import { dataHoraBR } from '../telas/folha_pdf'
 import type { LinhaDaSituacao } from './planilha'
 import type { Reprovacao } from './reprovacoes'
@@ -62,23 +63,24 @@ export function folhaDaFvs({
       },
       {
         titulo: 'Não conformidades',
-        colunas: [...pav, 'Peça', 'Ficha', 'Item', 'O que fazer', 'Rodada', 'Marcada em', 'Quem', 'Situação'],
-        curtas: [...pav.map((_, i) => i), ...[1, 4, 5].map((i) => i + pav.length)],
+        colunas: [...pav, 'Peça', 'Ficha', 'Item', 'O que fazer', 'Tratativa', 'Rodada', 'Marcada em', 'Quem', 'Situação'],
+        curtas: [...pav.map((_, i) => i), ...[1, 5, 6].map((i) => i + pav.length)],
         linhas: reprovacoes.map((r) => [
           ...(comPavimento ? [nomeDoPavimento(r.pavimentoId)] : []),
           `${NOME_TIPO[r.tipo] ?? r.tipo} ${r.pecaNome}`,
           r.fichaCodigo,
           `${r.item}. ${r.itemTitulo}`,
           r.observacao,
+          resumoDaTratativa(r.tratativa, r.aberta),
           `V${String(r.rodada).padStart(2, '0')}`,
           quando(r.quando),
           r.quem,
-          r.aberta ? 'Aberta' : `Reinspecionada (${r.reinspecao?.resultado ?? ''}) em ${quando(r.reinspecao?.quando ?? null)} por ${r.reinspecao?.quem ?? ''}`,
+          r.concessao ? `Concessão (${r.tratativa?.concessao_por ?? ''})` : r.aberta ? 'Aberta' : `Reinspecionada (${r.reinspecao?.resultado ?? ''}) em ${quando(r.reinspecao?.quando ?? null)} por ${r.reinspecao?.quem ?? ''}`,
         ]),
         vazio: 'Nenhuma não conformidade.',
       },
     ],
-    // onze colunas: deitada fica legível sem quebrar cada palavra
+    // doze colunas (com a tratativa, 25/11): deitada fica legível sem quebrar cada palavra
     deitada: true,
   }
 }

@@ -28,7 +28,7 @@
 .no-ok { color: var(--ok-borda-claro); font-weight: 600; }
 .no-tela .barra ul { margin: 0.25rem 0; padding-left: 1.2rem; }
 /* etapa 2: plantas */
-.no-passos { grid-template-columns: repeat(5, 1fr); }
+.no-passos { grid-template-columns: repeat(6, 1fr); }
 @media (max-width: 640px) { .no-passos { grid-template-columns: repeat(3, 1fr); } }
 .no-folha { position: relative; border: 1px solid var(--borda); margin: 0.5rem 0; touch-action: none; user-select: none; background: var(--fundo-ffffff); min-height: 6rem; }
 .no-janela { position: absolute; border: 3px solid var(--borda-b3261e); background: rgba(179, 38, 30, 0.08); pointer-events: none; box-sizing: border-box; }
@@ -47,3 +47,5 @@
 .no-conferir h4 { margin: 0.75rem 0 0.25rem; }
 .no-conferir ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .no-conferir li button { min-width: 3rem; }
+/* link com cara de botão ("Abrir o app", passo Publicar) */
+.no-tela a.botao { display: inline-flex; align-items: center; justify-content: center; min-height: 3rem; padding: 0.5rem 1rem; border: 2px solid var(--primaria-claro); border-radius: var(--raio); background: var(--superficie); color: var(--primaria-claro); font-weight: 600; text-decoration: none; box-sizing: border-box; }

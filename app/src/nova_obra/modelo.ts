@@ -13,7 +13,44 @@ export const TIPOS_DE_PECA = [
   { id: 'V', nome: 'Viga' },
   { id: 'L', nome: 'Laje' },
   { id: 'A', nome: 'Ambiente' },
+  { id: 'M', nome: 'Parede' },
 ] as const
+
+/**
+ * Unidade de conferência da ficha (ideia 14, 25/11/2026): como a obra confere aquele serviço. É dado da obra
+ * (fvs_regras.regras.unidades; no .zip, config_fvs.json), lido pela FVS em fvs/regras.ts (unidadeDe).
+ * Peça, parede e ambiente: um toque marca um local. Trecho, área e pavimento: um toque marca todos os locais
+ * do grupo (um lote). O registro fica sempre no local, por isso trocar no meio da obra não perde nada.
+ */
+export type Unidade = 'peca' | 'parede' | 'ambiente' | 'trecho' | 'area' | 'pavimento'
+export const UNIDADES: ReadonlyArray<{ id: Unidade; nome: string; ajuda: string }> = [
+  { id: 'peca', nome: 'Por peça', ajuda: 'cada pilar, viga ou laje é conferido sozinho' },
+  { id: 'parede', nome: 'Por parede', ajuda: 'cada parede (modulação) é conferida sozinha' },
+  { id: 'ambiente', nome: 'Por ambiente', ajuda: 'cada cômodo é conferido sozinho' },
+  { id: 'trecho', nome: 'Por trecho', ajuda: 'um toque confere todos os locais do trecho da planta' },
+  { id: 'area', nome: 'Por área', ajuda: 'um toque confere todos os locais dentro da área desenhada' },
+  { id: 'pavimento', nome: 'Por pavimento', ajuda: 'um toque confere todos os locais do pavimento' },
+]
+const PECAS = ['P', 'V', 'L']
+
+/** A unidade da ficha: a escolhida, ou a que o "Vale para" sugere (parede para M, ambiente para A, peça para o resto). */
+export function unidadeDaFicha(f: FichaRascunho): Unidade {
+  if (f.unidade) return f.unidade
+  if (f.aplica_a.length && f.aplica_a.every((a) => a === 'M')) return 'parede'
+  if (f.aplica_a.length && f.aplica_a.every((a) => a === 'A')) return 'ambiente'
+  return 'peca'
+}
+
+/** Escolher a unidade acerta o "Vale para" quando ela diz o tipo de local (parede = M, ambiente = A, peça = P/V/L). */
+export function comUnidade(f: FichaRascunho, unidade: Unidade): FichaRascunho {
+  if (unidade === 'parede') return { ...f, unidade, aplica_a: ['M'] }
+  if (unidade === 'ambiente') return { ...f, unidade, aplica_a: ['A'] }
+  if (unidade === 'peca') {
+    const pecas = f.aplica_a.filter((a) => PECAS.includes(a))
+    return { ...f, unidade, aplica_a: pecas.length ? pecas : ['P'] }
+  }
+  return { ...f, unidade }
+}
 
 /** Como a ficha diz qual é a etapa da concretagem. */
 export type EtapaConcretagem = { modo: 'pelo_nome' } | { modo: 'nenhuma' } | { modo: 'etapa'; etapa: string }
@@ -33,7 +70,36 @@ export interface FichaRascunho {
   aplica_a: string[]
   itens: ItemRascunho[]
   concretagem: EtapaConcretagem
+  /** como conferir (ideia 14); sem: a que o "Vale para" sugere (unidadeDaFicha) */
+  unidade?: Unidade
 }
+
+/** Até onde a publicação no servidor foi (publicar.ts), para recomeçar sem repetir. */
+export interface EstadoPublicacao {
+  obraId: string
+  codigo: string
+  /** as linhas já estão na fila do aparelho */
+  naFila: boolean
+  /** a fila esvaziou: tudo no servidor */
+  enviada: boolean
+  /** índices de r.pessoas já convidadas */
+  convidadas: number[]
+  em: string
+}
+
+/** Quem tem acesso à obra no servidor (publicar.ts, função convidar do banco). */
+export interface PessoaRascunho {
+  nome: string
+  /** vazio: o convite fica esperando o e-mail (o administrador põe depois) */
+  email: string
+  papel: 'gestor' | 'campo' | 'leitura'
+}
+
+export const PAPEIS: ReadonlyArray<{ id: PessoaRascunho['papel']; nome: string; ajuda: string }> = [
+  { id: 'gestor', nome: 'Gestor', ajuda: 'cadastro da obra, projetos e documentos; também registra em campo' },
+  { id: 'campo', nome: 'Campo', ajuda: 'registra em campo (FVS, fotos, concreto) e lê o resto' },
+  { id: 'leitura', nome: 'Leitura', ajuda: 'só lê' },
+]
 
 export interface RascunhoObra {
   codigo: string
@@ -44,6 +110,10 @@ export interface RascunhoObra {
   fichas: FichaRascunho[]
   /** plantas (etapa 2); os PDFs e os tiles ficam em guardados.ts */
   plantas: PlantaRascunho[]
+  /** quem tem acesso no servidor (passo Pessoas) */
+  pessoas?: PessoaRascunho[]
+  /** publicação no servidor em andamento ou feita */
+  publicacao?: EstadoPublicacao
 }
 
 export const rascunhoVazio = (): RascunhoObra => ({ codigo: '', nome: '', empresa: '', pavimentos: [], fichas: [], plantas: [] })
@@ -180,8 +250,22 @@ export function problemas(r: RascunhoObra): string[] {
       if (!it.titulo.trim()) p.push(`Ficha ${nome}, item ${j + 1}: falta o título.`)
       if (it.titulo.length > 500 || it.etapa.length > 120 || it.descricao.length > 2000) p.push(`Ficha ${nome}, item ${j + 1}: texto longo demais.`)
     })
+    const u = unidadeDaFicha(f)
+    if (u === 'peca' && f.aplica_a.some((a) => !PECAS.includes(a))) p.push(`Ficha ${nome}: "Por peça" vale só para pilar, viga e laje. Para ambiente ou parede, escolha "Por ambiente", "Por parede" ou um grupo (trecho, área, pavimento).`)
+    if (u === 'parede' && f.aplica_a.join() !== 'M') p.push(`Ficha ${nome}: "Por parede" vale só para parede.`)
+    if (u === 'ambiente' && f.aplica_a.join() !== 'A') p.push(`Ficha ${nome}: "Por ambiente" vale só para ambiente.`)
     if (f.concretagem.modo === 'etapa' && !etapasDaFicha(f).includes(f.concretagem.etapa))
       p.push(`Ficha ${nome}: a etapa da concretagem escolhida não existe mais nos itens.`)
+  })
+  const emails = new Set<string>()
+  ;(r.pessoas ?? []).forEach((pe, i) => {
+    const quem = pe.nome.trim() || `pessoa ${i + 1}`
+    if (!pe.nome.trim()) p.push(`Pessoa ${i + 1}: falta o nome.`)
+    const e = pe.email.trim().toLowerCase()
+    if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) p.push(`${quem}: e-mail inválido (${pe.email.trim()}).`)
+    else if (e && emails.has(e)) p.push(`${quem}: e-mail repetido (${e}).`)
+    if (e) emails.add(e)
+    if (!PAPEIS.some((x) => x.id === pe.papel)) p.push(`${quem}: escolha o papel.`)
   })
   const trechos = new Set<string>()
   for (const pl of r.plantas ?? []) {
@@ -249,7 +333,7 @@ export async function pacoteDoRascunho(
   r: RascunhoObra,
   agora = new Date(),
   lerTiles: LerTiles = async () => null,
-): Promise<{ indice: IndicePacote & { empresa?: string; origem: string }; fichas: FichaDoPacote[]; arquivos: Array<[string, string | Blob]> }> {
+): Promise<{ indice: IndicePacote & { empresa?: string; origem: string }; fichas: FichaDoPacote[]; arquivos: Array<[string, string | Blob]>; configFvs: ReturnType<typeof configFvsDoRascunho> }> {
   const arquivos: Array<[string, string | Blob]> = []
   const pavimentos: IndicePacote['pavimentos'] = []
   for (const [ordem, nomePav] of r.pavimentos.entries()) {
@@ -296,14 +380,23 @@ export async function pacoteDoRascunho(
     origem: 'nova_obra',
     pavimentos,
   }
-  return { indice, fichas: r.fichas.map(fichaDoPacote), arquivos }
+  return { indice, fichas: r.fichas.map(fichaDoPacote), arquivos, configFvs: configFvsDoRascunho(r, agora) }
+}
+
+/**
+ * O config_fvs.json da obra (vai para fvs_regras.regras): a unidade de conferência de cada ficha, desde hoje.
+ * Uma entrada por ficha; trocar depois, no meio da obra, é outra entrada da mesma ficha com "desde" novo.
+ */
+export function configFvsDoRascunho(r: RascunhoObra, agora = new Date()): { unidades: Array<{ id: string; ficha: string; unidade: Unidade; desde: string }> } {
+  const desde = agora.toISOString().slice(0, 10)
+  return { unidades: r.fichas.map((f, i) => ({ id: `unidade-${i + 1}`, ficha: f.codigo.trim(), unidade: unidadeDaFicha(f), desde })) }
 }
 
 /** O .zip do pacote, pronto para o "Abrir pacote da obra (.zip)". */
 export async function zipDoRascunho(r: RascunhoObra, agora = new Date(), lerTiles?: LerTiles): Promise<Blob> {
-  const { indice, fichas, arquivos } = await pacoteDoRascunho(r, agora, lerTiles)
+  const { indice, fichas, arquivos, configFvs } = await pacoteDoRascunho(r, agora, lerTiles)
   // o indice.json por último, como no pipeline: zip cortado no meio não parece pacote completo
-  return gravarZipBlob([...arquivos, ['fichas.json', JSON.stringify(fichas, null, 1)], ['indice.json', JSON.stringify(indice, null, 1)]], agora)
+  return gravarZipBlob([...arquivos, ['fichas.json', JSON.stringify(fichas, null, 1)], ['config_fvs.json', JSON.stringify(configFvs, null, 1)], ['indice.json', JSON.stringify(indice, null, 1)]], agora)
 }
 
 /** Nome do arquivo: "obra_EX2_2026-11-09.zip". */

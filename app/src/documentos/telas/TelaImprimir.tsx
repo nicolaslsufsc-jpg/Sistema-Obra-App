@@ -64,7 +64,7 @@ export function TelaImprimir({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo
             </tbody>
           </table>
         </div>
-        {docs.length === 0 && <p>Nenhum documento cadastrado.</p>}
+        {docs.length === 0 && <p>Sem documentos</p>}
         {nExemplos > 0 && (
           <p class="doc-nota" data-testid="nota-exemplos">
             {nExemplos === docs.length ? 'Todos os documentos desta lista são' : nExemplos === 1 ? '1 documento desta lista é' : `${nExemplos} documentos desta lista são`} de exemplo (marcados EXEMPLO) e não valem para a auditoria.
@@ -123,7 +123,7 @@ export function TelaImprimir({ ctx, escopo }: { ctx: ContextoDoc; escopo: Escopo
             </div>
           </section>
         )}
-        <p class="doc-nota">Só a revisão vigente de cada documento. As revisões anteriores ficam no aplicativo, marcadas como obsoletas.</p>
+        <p class="doc-nota">Só a revisão vigente de cada documento.</p>
       </article>
     </>
   )

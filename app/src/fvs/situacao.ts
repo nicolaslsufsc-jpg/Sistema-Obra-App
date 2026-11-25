@@ -15,7 +15,7 @@
 export type Resultado = 'C' | 'NC' | 'NA'
 
 /** Locais que não são peça de estrutura: ambiente, furo, esquadria e parede de alvenaria (modulação, 20/11). */
-export const FORA_DA_ESTRUTURA: ReadonlySet<string> = new Set(['A', 'F', 'E', 'M'])
+export const FORA_DA_ESTRUTURA: ReadonlySet<string> = new Set(['A', 'F', 'E', 'M', 'K', 'S'])
 
 /** Nome por extenso de cada resultado, como na ficha (PVS). */
 export const NOME_DO_RESULTADO: Record<Resultado, string> = { C: 'Conforme', NC: 'Não conforme', NA: 'Não aplicável' }
@@ -64,6 +64,11 @@ export interface ItemFicha {
    */
   parte?: string
   /**
+   * Item que só existe no app, não na ficha do sistema oficial (não vai para lá). Sem o campo: os itens de
+   * consolo e capitel (com parte), que o app criou em 17/11 (itemSoDoApp). Vem da ficha, como dado.
+   */
+  so_app?: boolean
+  /**
    * Item de furação da ficha de viga ("passagens em vigas"): quem marca são os furos da viga na planta
    * (aba Furos). Todos OK: C; algum errado: NC; algum sem conferir: pendente. Vem da ficha, como dado.
    */
@@ -82,13 +87,37 @@ export interface ItemFicha {
    * Item da ficha de ambiente que os pontos de uma disciplina marcam (instalações, 20/11/2026): na planta da
    * disciplina (aba Pontos) a pessoa confere ralo, caixa, ponto de água... um a um (pontos.ts). Vem da ficha.
    */
-  pontos?: 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
+  pontos?: DisciplinaDoItem | readonly DisciplinaDoItem[]
+  /**
+   * Só estes tipos de ponto marcam o item (5.1 a 5.3, 23/11/2026): duas fichas marcam a mesma disciplina
+   * (trajeto de água na 010.4, altura dos pontos na 010.5). Sem a lista: todos os tipos da disciplina.
+   */
+  pontos_tipos?: readonly string[]
   /**
    * Item de vão ou esquadria da ficha de ambiente ("eixos e vãos", "requadros", "recorte na porta"): quem
    * marca são as esquadrias do ambiente na planta (aba Esquadrias, 19/11/2026), uma a uma, como os furos.
    * Pode haver mais de um na ficha; a pessoa escolhe qual no topo da aba. Vem da ficha, como dado.
+   * Lista (23/11/2026): o item vale só nas esquadrias dela, por classe ("janela", "porta") ou pelo começo do
+   * código ("PCF", "PV"): contramarco de janela só nas janelas, porta corta-fogo só nas PCF. `true`: em todas.
    */
-  esquadrias?: boolean
+  esquadrias?: boolean | readonly string[]
+}
+
+/**
+ * Item só do app (24/11, pedido do Professor): não existe na ficha do sistema oficial e não vai para lá. Os
+ * itens de consolo e capitel (parte) foram criados no app em 17/11; na obra piloto são os itens 25 a 34 da
+ * ficha de pilar, que lá tem 24. A ficha pode dizer o contrário com so_app.
+ */
+export function itemSoDoApp(it: Pick<ItemFicha, 'parte' | 'so_app'> | undefined): boolean {
+  return it ? (it.so_app ?? !!it.parte) : false
+}
+
+/** Disciplina de pontos de instalação que um item da ficha pode marcar (o mesmo de pontos.ts). */
+export type DisciplinaDoItem = 'hidro' | 'sanitario' | 'eletrico' | 'preventivo' | 'spda'
+
+/** As disciplinas de pontos que o item marca ("pontos" em texto ou lista, 23/11/2026); vazio se nenhuma. */
+export function disciplinasDoItem(i: Pick<ItemFicha, 'pontos'>): readonly DisciplinaDoItem[] {
+  return i.pontos === undefined ? [] : typeof i.pontos === 'string' ? [i.pontos] : i.pontos
 }
 
 export interface Ficha {
@@ -295,7 +324,17 @@ export function itensDaConcretagem(ficha: Pick<Ficha, 'itens'>): ItemFicha[] {
 }
 
 /** Situação da peça na ficha (só nos itens da etapa, se escolhida). */
-export function situacaoDaPeca(ficha: Ficha, eventos: readonly EventoFvs[], etapa?: string): Situacao {
+export function situacaoDaPeca(
+  ficha: Ficha,
+  eventos: readonly EventoFvs[],
+  etapa?: string,
+  /**
+   * Pilar, viga e laje (concretada.ts, achado #2, 24/11): se a peça está numa concretagem cadastrada no Concreto.
+   * Com ele, verde = azul (tudo antes da concretagem marcado, sem NC) + concretada; a ficha toda marcada sem
+   * concretagem fica azul. undefined: a regra de antes (ficha completa = verde), para os outros tipos.
+   */
+  concretada?: boolean,
+): Situacao {
   const itens = ficha.itens.filter((i) => !etapa || i.etapa === etapa)
   const ult = ultimosPorItem(eventos.filter((e) => e.ficha_id === ficha.id))
   let marcados = 0
@@ -307,6 +346,13 @@ export function situacaoDaPeca(ficha: Ficha, eventos: readonly EventoFvs[], etap
     if (itemConta(ficha, it, !!r)) contam++
   }
   if (marcados === 0) return 'nada'
+  if (!etapa && concretada !== undefined) {
+    const antes = itensAntesDaConcretagem(ficha)
+    if (antes.length) {
+      if (!antes.every((it) => ult.get(it.n)?.resultado)) return 'andamento'
+      return concretada ? 'liberado' : 'concretagem'
+    }
+  }
   if (marcados >= contam) return 'liberado'
   // olhando uma etapa só, a pergunta é outra: se aquela etapa terminou
   if (!etapa) {
@@ -439,7 +485,8 @@ export function juntarFichasDoModelo(fichasAbertas: readonly FichaCampo[], ficha
 export function eventosDaFichaAberta(eventos: readonly EventoFvs[], fc: FichaCampo): EventoFvs[] {
   const proprios = daFichaAberta(eventos, fc.id === SO_NO_APP ? null : fc.id)
   if (!fc.juntas?.length) return proprios
-  const porFicha = [proprios, ...fc.juntas.map((j) => daFichaAberta(eventos, j.id))].map((evs) => {
+  // ficha única (23/11): o marcado só no app (SO_NO_APP) é mais uma junta, com a mesma regra item a item
+  const porFicha = [proprios, ...fc.juntas.map((j) => daFichaAberta(eventos, j.id === SO_NO_APP ? null : j.id))].map((evs) => {
     const m = new Map<number, EventoFvs[]>()
     for (const e of evs) m.set(e.item, [...(m.get(e.item) ?? []), e])
     return m
@@ -504,6 +551,20 @@ export function situacaoDoFuroNaObra(fichaDeViga: Ficha | undefined, eventos: re
   return ficha && item !== undefined ? situacaoDoFuro(ficha.id, item, eventos) : 'nada'
 }
 
+/**
+ * O item de esquadria vale nesta esquadria? `true` (ou sem dado da esquadria): sim. Lista: a classe ("porta",
+ * "janela") ou o começo do código ("PCF" pega PCF90) tem de estar nela. Maiúsculas e minúsculas tanto faz.
+ */
+export function esquadriaValeNoItem(item: Pick<ItemFicha, 'esquadrias'> | undefined, esq: { codigo: string; classe: string } | undefined): boolean {
+  const f = item?.esquadrias
+  if (!Array.isArray(f) || !f.length || !esq) return true
+  const cod = esq.codigo.toUpperCase()
+  return f.some((x) => {
+    const k = x.trim().toUpperCase()
+    return !!k && (k === esq.classe.toUpperCase() || cod.startsWith(k))
+  })
+}
+
 /** Os itens de vão ou esquadria da ficha de ambiente (marcados com `"esquadrias": true`), na ordem da ficha. */
 export function itensDasEsquadrias(ficha: Ficha | undefined): ItemFicha[] {
   return ficha?.itens.filter((i) => i.esquadrias) ?? []
@@ -541,9 +602,17 @@ export function resumoDosFuros(furos: readonly Situacao[]): { total: number; ok:
 }
 
 /** Situação de uma ficha aberta, com os registros dela. Ficha modelo não cadastrada = sem marcação. */
-export function situacaoDaFichaAberta(fc: FichaCampo, fichaPorId: (id: string) => Ficha | undefined, eventos: readonly EventoFvs[], etapa?: string, partes?: readonly string[]): Situacao {
+export function situacaoDaFichaAberta(
+  fc: FichaCampo,
+  fichaPorId: (id: string) => Ficha | undefined,
+  eventos: readonly EventoFvs[],
+  etapa?: string,
+  partes?: readonly string[],
+  /** pilar, viga e laje: numa concretagem cadastrada (situacaoDaPeca) */
+  concretada?: boolean,
+): Situacao {
   const ficha = fichaNaPeca(fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined, partes)
-  return ficha ? situacaoDaPeca(ficha, eventosDaFichaAberta(eventos, fc), etapa) : 'nada'
+  return ficha ? situacaoDaPeca(ficha, eventosDaFichaAberta(eventos, fc), etapa, concretada) : 'nada'
 }
 
 /**
@@ -559,13 +628,19 @@ export function situacaoDoLocal(
   etapa?: string,
   /** partes do pilar na planta (consolo, capitel): os itens delas passam a contar */
   partes?: readonly string[],
+  /** pilar, viga e laje: numa concretagem cadastrada no Concreto (concretada.ts); verde só com ela */
+  concretada?: boolean,
 ): Situacao {
+  // furos e barras gravados só no app contam dentro da ficha aberta da peça (achado #6, 24/11)
+  if (fichasAbertas.length) eventos = automaticosNaFichaAberta(eventos, fichasAbertas, fichaPorId)
   const doApp = daFichaAberta(eventos, null)
   const padrao = fichaNaPeca(fichaPadrao, partes)
-  const situacaoDoApp = padrao ? situacaoDaPeca(padrao, doApp, etapa) : 'nada'
+  const situacaoDoApp = padrao ? situacaoDaPeca(padrao, doApp, etapa, concretada) : 'nada'
   if (!fichasAbertas.length) return situacaoDoApp
-  const delas = juntarFichasDoModelo(fichasAbertas, fichaPorId, eventos).map((fc) => situacaoDaFichaAberta(fc, fichaPorId, eventos, etapa, partes))
-  return combinarSituacoes(doApp.length ? [...delas, situacaoDoApp] : delas)
+  // o marcado só no app entra na ficha aberta do mesmo modelo (ficha única, 23/11), como o painel mostra
+  const { fichas, juntou } = juntarMarcadosNoApp(juntarFichasDoModelo(fichasAbertas, fichaPorId, eventos), eventos)
+  const delas = fichas.map((fc) => situacaoDaFichaAberta(fc, fichaPorId, eventos, etapa, partes, concretada))
+  return combinarSituacoes(doApp.length && !juntou ? [...delas, situacaoDoApp] : delas)
 }
 
 /**
@@ -580,10 +655,12 @@ export function situacaoDaParteNoLocal(
   parte: string,
 ): Situacao | undefined {
   const lista: Situacao[] = []
-  const doApp = situacaoDaParte(fichaPadrao, daFichaAberta(eventos, null), parte)
+  // ficha única (23/11): o marcado só no app vai junto da ficha aberta do mesmo modelo
+  const { fichas, juntou } = juntarMarcadosNoApp(fichasAbertas, eventos)
+  const doApp = juntou ? undefined : situacaoDaParte(fichaPadrao, daFichaAberta(eventos, null), parte)
   if (doApp && (!fichasAbertas.length || doApp !== 'nada')) lista.push(doApp)
-  for (const fc of fichasAbertas) {
-    const s = situacaoDaParte(fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined, daFichaAberta(eventos, fc.id), parte)
+  for (const fc of fichas) {
+    const s = situacaoDaParte(fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined, eventosDaFichaAberta(eventos, fc), parte)
     if (s) lista.push(s)
   }
   return lista.length ? combinarSituacoes(lista) : undefined
@@ -614,6 +691,110 @@ export function fichaSoNoApp(ficha: Ficha): FichaCampo {
     qtd_r: 0,
     qtd_na: 0,
   }
+}
+
+/**
+ * Ficha única por peça (pedido do Nicolas de 23/11): o que foi marcado só no app (registro sem ficha
+ * aberta) entra na ficha aberta do mesmo modelo, como mais uma junta, e a aba "Marcado só no app" some.
+ * Item a item vale a regra de eventosDaFichaAberta (o mais novo marcado no app; senão o NC; senão a base).
+ * Só na leitura: nada é apagado nem regravado, e a marcação nova grava na ficha aberta.
+ * `juntou` false = não havia o que juntar, ou o marcado no app é de um modelo que nenhuma ficha aberta tem:
+ * aí a aba à parte continua (fichaSoNoApp).
+ */
+export function juntarMarcadosNoApp(fichasDaTela: readonly FichaCampo[], eventos: readonly EventoFvs[]): { fichas: FichaCampo[]; juntou: boolean } {
+  const doApp = daFichaAberta(eventos, null)
+  if (!doApp.length || !fichasDaTela.length) return { fichas: fichasDaTela as FichaCampo[], juntou: false }
+  const modelos = new Set(doApp.map((e) => e.ficha_id))
+  // todos os registros do app têm de caber numa ficha aberta só (um modelo só, e ela existe)
+  const alvo = modelos.size === 1 ? fichasDaTela.find((fc) => fc.ficha_id === doApp[0].ficha_id) : undefined
+  if (!alvo) return { fichas: fichasDaTela as FichaCampo[], juntou: false }
+  const soNoApp = fichaSoNoApp({ id: alvo.ficha_id ?? '', codigo: alvo.ficha_codigo ?? '', titulo: alvo.ficha_titulo ?? '' } as Ficha)
+  return { fichas: fichasDaTela.map((fc) => (fc === alvo ? { ...fc, juntas: [...(fc.juntas ?? []), soNoApp] } : fc)), juntou: true }
+}
+
+/**
+ * Registros de uma ficha aberta da peça como a tela mostra, para o pincel e o "Por item": com o marcado
+ * só no app junto, se ele entra nela (ficha única, 23/11). Sem ficha aberta, só os do app, como antes.
+ */
+export function eventosNaFicha(eventos: readonly EventoFvs[], fichaCampoId: string | null, fichasAbertas: readonly FichaCampo[]): EventoFvs[] {
+  const fc = fichaCampoId ? fichasAbertas.find((f) => f.id === fichaCampoId) : undefined
+  if (!fc) return daFichaAberta(eventos, fichaCampoId)
+  return eventosDaFichaAberta(eventos, juntarMarcadosNoApp([fc], eventos).fichas[0])
+}
+
+/** Item que o app marca sozinho: o de furação (pelos furos) ou o de armadura (pelas barras de laje). */
+export type ItemAutomatico = 'furos' | 'barras'
+
+/** Qual item automático é o `item` da ficha (undefined: item comum, marcado pela pessoa). */
+export function itemAutomatico(ficha: Ficha | undefined, item: number): ItemAutomatico | undefined {
+  const it = ficha?.itens.find((i) => i.n === item)
+  return it?.furos ? 'furos' : it?.barras ? 'barras' : undefined
+}
+
+/**
+ * A ficha aberta em uso da peça em que o item automático (furos ou barras) grava, e o número do item nela
+ * (achado #6 da lista de campo, 24/11: a viga com o item de furação OK ficava laranja, porque o item ia
+ * para "só no app" e virava uma ficha à parte, com um item só, em andamento para sempre).
+ * Em uso = as fichas abertas como a tela mostra (duas do mesmo modelo na viga viram uma). Entre as que têm
+ * o item: a do mesmo modelo da ficha do app; senão a do mesmo código (outra revisão); senão, se for uma só,
+ * ela. Undefined: a peça não tem ficha aberta com o item, ou há mais de uma e nenhuma é do mesmo modelo.
+ */
+export function fichaAbertaDoAutomatico(
+  tipo: ItemAutomatico,
+  fichaDoApp: Ficha | undefined,
+  fichasAbertas: readonly FichaCampo[],
+  fichaPorId: (id: string) => Ficha | undefined,
+  eventos: readonly EventoFvs[],
+  /** o número do item na ficha do app (para a revisão que não marca o item como automático) */
+  item?: number,
+): { fc: FichaCampo; ficha: Ficha; item: number } | undefined {
+  if (!fichasAbertas.length) return undefined
+  const candidatas: { fc: FichaCampo; ficha: Ficha; item: number }[] = []
+  for (const fc of juntarFichasDoModelo(fichasAbertas, fichaPorId, eventos)) {
+    const ficha = fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined
+    const it = ficha?.itens.find((i) => (tipo === 'furos' ? i.furos : i.barras))
+    if (ficha && it) candidatas.push({ fc, ficha, item: it.n })
+  }
+  const achada =
+    candidatas.find((x) => x.ficha.id === fichaDoApp?.id) ??
+    candidatas.find((x) => !!fichaDoApp && x.ficha.codigo === fichaDoApp.codigo) ??
+    (candidatas.length === 1 ? candidatas[0] : undefined)
+  if (achada || !fichaDoApp || item === undefined) return achada
+  // a revisão da ficha aberta não marca o item como automático: a do mesmo código, no mesmo número de item
+  for (const fc of juntarFichasDoModelo(fichasAbertas, fichaPorId, eventos)) {
+    const ficha = fc.ficha_id ? fichaPorId(fc.ficha_id) : undefined
+    if (ficha?.codigo === fichaDoApp.codigo && ficha.itens.some((i) => i.n === item)) return { fc, ficha, item }
+  }
+  return undefined
+}
+
+/**
+ * Registros automáticos (furos e barras) gravados só no app numa peça que tem ficha aberta: passam a contar
+ * dentro da ficha aberta em uso (fichaAbertaDoAutomatico), com o número do item dela. Só na leitura: nada é
+ * regravado, e conserta os registros que já existem (V17, V49, V182 do 3º, 24/11). Os outros ficam iguais.
+ */
+export function automaticosNaFichaAberta(eventos: readonly EventoFvs[], fichasAbertas: readonly FichaCampo[], fichaPorId: (id: string) => Ficha | undefined): EventoFvs[] {
+  if (!fichasAbertas.length || !eventos.some((e) => !e.ficha_campo_id)) return eventos as EventoFvs[]
+  const alvos = new Map<string, ReturnType<typeof fichaAbertaDoAutomatico> | null>()
+  let mudou = false
+  const saida = eventos.map((e) => {
+    if (e.ficha_campo_id) return e
+    const doApp = fichaPorId(e.ficha_id)
+    const tipo = itemAutomatico(doApp, e.item)
+    if (!tipo) return e
+    const chave = `${e.ficha_id}:${tipo}`
+    if (!alvos.has(chave)) alvos.set(chave, fichaAbertaDoAutomatico(tipo, doApp, fichasAbertas, fichaPorId, eventos, e.item) ?? null)
+    const alvo = alvos.get(chave)
+    if (!alvo) return e
+    mudou = true
+    return { ...e, ficha_campo_id: alvo.fc.id, ficha_id: alvo.ficha.id, item: alvo.item }
+  })
+  return mudou ? saida : (eventos as EventoFvs[])
+}
+
+/** Registro que está valendo e foi marcado no app, ainda não chegou ao sistema oficial nem foi dado como lançado. */
+export function soNoAppAinda(e: Pick<EventoFvs, 'id' | 'origem_id'> | undefined, lancados: ReadonlySet<string>): boolean {
+  return !!e && !e.origem_id && !lancados.has(e.id)
 }
 
 /** Fichas abertas da pior situação para a melhor: o painel abre na que pede atenção. */
@@ -663,6 +844,8 @@ export type ContextoCampo = {
   ficha: (id: string) => Ficha | undefined
   /** partes do pilar (consolo, capitel) pelo pacote guardado no aparelho */
   partesDe?: (id: string) => readonly string[]
+  /** pilar, viga e laje numa concretagem cadastrada (concretadaDe): verde só com ela (achado #2, 24/11) */
+  concretada?: (id: string, tipo: string) => boolean | undefined
 }
 
 /**
@@ -688,7 +871,7 @@ export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readon
     if (abertas.length > 1) duplicadas++
     const eventos = eventosDe(l.id)
     const fichaPorId = campo?.ficha ?? porId
-    const s = situacaoDoLocal(fichaDaPeca(fichaDoTipo.get(l.tipo), eventos, fichaPorId), abertas, fichaPorId, eventos, undefined, campo?.partesDe?.(l.id))
+    const s = situacaoDoLocal(fichaDaPeca(fichaDoTipo.get(l.tipo), eventos, fichaPorId), abertas, fichaPorId, eventos, undefined, campo?.partesDe?.(l.id), campo?.concretada?.(l.id, l.tipo))
     if (s === 'liberado') liberadas++
     if (s === 'concretagem') paraConcretar++
     if (s === 'reprovado') comR++
@@ -700,7 +883,17 @@ export function resumoDaEstrutura(locais: readonly LocalResumo[], fichas: readon
  * Ambientes: para cada ficha por ambiente (alvenaria, reboco...) que já tem alguma marcação,
  * quantos ambientes liberados e quantos com NC. Ficha ainda não começada não entra na lista.
  */
-export function resumoDosAmbientes(locais: readonly LocalResumo[], fichas: readonly Ficha[], eventosDe: EventosDe) {
+/**
+ * Avanço das fichas por ambiente de um pavimento. `vale(ambienteId, codigo)` diz se a ficha vale no cômodo (tabela
+ * ficha × tipo de cômodo, `sem_fichas` do pacote); cada serviço conta só os ambientes em que vale (`total` do serviço).
+ * Sem `vale`, toda ficha vale em todo ambiente, como antes.
+ */
+export function resumoDosAmbientes(
+  locais: readonly LocalResumo[],
+  fichas: readonly Ficha[],
+  eventosDe: EventosDe,
+  vale: (ambienteId: string, codigo: string) => boolean = () => true,
+) {
   const ambientes = locais.filter((l) => l.tipo === 'A')
   const mapaDeFichas = new Map(fichas.map((f) => [f.id, f]))
   const porId = (id: string) => mapaDeFichas.get(id)
@@ -724,13 +917,16 @@ export function resumoDosAmbientes(locais: readonly LocalResumo[], fichas: reado
     .map((ficha) => {
       let liberados = 0
       let comR = 0
+      let total = 0
       for (const a of ambientes) {
+        if (!vale(a.id, ficha.codigo)) continue
+        total++
         const eventos = eventosDe(a.id)
         const s = situacaoDaPeca(fichaDaPeca(ficha, eventos, porId) ?? ficha, eventos)
         if (s === 'liberado') liberados++
         if (s === 'reprovado') comR++
       }
-      return { ficha, liberados, comR }
+      return { ficha, liberados, comR, total }
     })
   return { total: ambientes.length, servicos }
 }

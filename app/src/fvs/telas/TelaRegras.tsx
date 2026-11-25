@@ -4,6 +4,7 @@ import { useMemo } from 'preact/hooks'
 import { regrasNaTela, type ItemDaRegra } from '../regras_tela'
 import type { ContextoFvs } from './ModuloFvs'
 import '../../telas/cabecalho.css'
+import { Ajuda } from '../../telas/Ajuda'
 
 function Item({ i }: { i: ItemDaRegra }) {
   return (
@@ -41,7 +42,7 @@ export function TelaRegras({ ctx }: { ctx: ContextoFvs }) {
           {r.semFicha === 1 ? '1 item citado não está' : `${r.semFicha} itens citados não estão`} nas fichas da obra: a regra só vale quando a ficha chegar.
         </p>
       )}
-      {vazio && <p data-testid="fvs-regras-vazio">Esta obra não tem regras válidas: nenhum prazo e nenhuma ligação.</p>}
+      {vazio && <p data-testid="fvs-regras-vazio">Sem regras válidas (prazos e ligações)</p>}
 
       {r.prazos.length > 0 && (
         <section>
@@ -61,11 +62,14 @@ export function TelaRegras({ ctx }: { ctx: ContextoFvs }) {
 
       {r.ligacoes.length > 0 && (
         <section>
-          <h2>Ligações</h2>
-          <p class="discreto">O C no primeiro item marca C no segundo, na mesma peça, se ele ainda estiver vazio. Dá para desfazer.</p>
+          <h2 class="so-com-ajuda">
+            Ligações
+            <Ajuda>O C no primeiro item marca C no segundo, na mesma peça, se ele ainda estiver vazio. Dá para desfazer.</Ajuda>
+          </h2>
           {r.ligacoes.some((l) => l.entrePecas) && (
-            <p class="discreto" data-testid="fvs-regras-entre-pecas">
-              Entre peças: o C no item da área de laje marca C no item de cada pilar e viga dentro dela (vale o centro da peça).
+            <p class="discreto so-com-ajuda" data-testid="fvs-regras-entre-pecas">
+              Entre peças: vale o centro da peça.
+              <Ajuda>O C no item da área de laje marca C no item de cada pilar e viga dentro dela (vale o centro da peça).</Ajuda>
             </p>
           )}
           <ul class="lista fv-regras-lista">
@@ -74,6 +78,27 @@ export function TelaRegras({ ctx }: { ctx: ContextoFvs }) {
                 <Item i={l.de} />
                 <span class="fv-regra-seta">{l.entrePecas ? '↓ marca C, em cada pilar e viga dentro da área de laje, em' : '↓ marca C em'}</span>
                 <Item i={l.para} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {!!dados.regras.residenciais?.length && (
+        <section>
+          <h2>Residenciais</h2>
+          <p class="discreto">Para o aviso do escoramento por residencial. Viga e laje entram pelos pilares que as apoiam.</p>
+          <ul class="lista fv-regras-lista">
+            {dados.regras.residenciais.map((res, i) => (
+              <li key={`${res.nome}|${res.pavimento ?? ''}|${i}`} data-testid="fvs-regra-residencial">
+                <span class="fv-regra-nome">
+                  {res.nome}
+                  {res.pavimento ? ` · ${res.pavimento}` : ''}
+                </span>
+                <span class="discreto">
+                  {res.pilares.length === 1 ? '1 pilar' : `${res.pilares.length} pilares`}: {res.pilares.slice(0, 12).join(', ')}
+                  {res.pilares.length > 12 ? '…' : ''}
+                </span>
               </li>
             ))}
           </ul>

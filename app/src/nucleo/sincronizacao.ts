@@ -136,6 +136,37 @@ export class Sincronizador {
   }
 
   /**
+   * Vários registros da mesma tabela numa transação só (24/11/2026, aprovado pelo Nicolas: o "Confirmar OK em
+   * todos" da FVS com milhares de pontos). Cada linha e cada item da fila são iguais aos de `registrar`, na
+   * mesma ordem; só a gravação no aparelho é junta: ou entram todos, ou nenhum.
+   */
+  async registrarVarios(tabela: string, obraId: string, usuarioId: string, lista: readonly Record<string, unknown>[]): Promise<Linha[]> {
+    this.conferirTabela(tabela)
+    if (!lista.length) return []
+    const dispositivo = await this.banco.dispositivoId()
+    const linhas = lista.map((campos) => this.linhaCom(obraId, usuarioId, campos, dispositivo))
+    const b = this.banco
+    const criadoEm = new Date().toISOString()
+    await b.transaction('rw', b.registros, b.fila, async () => {
+      await b.registros.bulkPut(linhas.map((linha) => ({ tabela, id: linha.id, obra_id: linha.obra_id, linha, pendente: 1 as const })))
+      await b.fila.bulkAdd(
+        linhas.map((linha) => ({
+          usuario_id: linha.usuario_id,
+          obra_id: linha.obra_id,
+          tabela,
+          id: linha.id,
+          linha,
+          arquivo: undefined,
+          estado: 'pendente' as const,
+          tentativas: 0,
+          criado_em: criadoEm,
+        })),
+      )
+    })
+    return linhas
+  }
+
+  /**
    * Inclui um arquivo (ex.: foto de NC): guarda o conteúdo no aparelho e põe na fila.
    * Caminho no armazenamento: {obra_id}/{modulo}/{id}{extensão}.
    * Devolve a linha da tabela "arquivos" (use linha.id para referenciar o arquivo).
@@ -492,6 +523,10 @@ export class Sincronizador {
   }
 
   private async montarLinha(obraId: string, usuarioId: string, campos: Record<string, unknown>): Promise<Linha> {
+    return this.linhaCom(obraId, usuarioId, campos, await this.banco.dispositivoId())
+  }
+
+  private linhaCom(obraId: string, usuarioId: string, campos: Record<string, unknown>, dispositivo: string): Linha {
     for (const c of COLUNAS_DO_NUCLEO) {
       if (c in campos) throw new Error(`A coluna ${c} é preenchida pelo núcleo; não passe em campos`)
     }
@@ -503,7 +538,7 @@ export class Sincronizador {
       id,
       obra_id: obraId,
       usuario_id: usuarioId,
-      dispositivo_id: await this.banco.dispositivoId(),
+      dispositivo_id: dispositivo,
       criado_em_dispositivo: new Date().toISOString(),
       apagado: false,
     }

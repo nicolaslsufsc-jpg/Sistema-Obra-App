@@ -3,6 +3,7 @@
 // Ver projetos/pedido_autodoc.ts.
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { pedirAtualizacao, textoDoPedido, ultimoPedido, type PedidoAtualizacao } from '../pedido_autodoc'
+import { Icone } from '../../telas/icones'
 
 /** Enquanto o pedido está aberto, a tela pergunta ao servidor a cada tanto. */
 export const CONSULTA_MS = { valor: 20_000 }
@@ -79,7 +80,7 @@ export function PedidoAutodoc({ obraId, aoPronto, depois }: { obraId: string; ao
       )}
       {t?.tipo === 'pronto' && depois && (
         <button type="button" class="pj-pequeno" onClick={depois.abrir} data-testid="pedido-autodoc-agora">
-          Agora: {depois.texto} ›
+          Agora: {depois.texto} <Icone id="avancar" />
         </button>
       )}
       {t && t.falharam.length > 0 && (

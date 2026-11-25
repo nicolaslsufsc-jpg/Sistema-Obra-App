@@ -29,6 +29,8 @@ sys.path.insert(0, str(AQUI))
 sys.path.insert(0, str(AQUI.parent))
 sys.path.insert(0, str(AQUI.parent / "projetos"))
 
+from partes import pilar_pelo_numero  # noqa: E402
+
 LOTE = 500
 COLUNAS_DA_FICHA = ("id", "codigo", "construpoint_id", "local_construpoint", "ficha_codigo", "ficha_titulo", "status",
                     "inspetor", "parceiro", "atualizada_em", "qtd_a", "qtd_r", "qtd_na")
@@ -60,12 +62,19 @@ def resolver(historico: dict, fichas: list[dict], pavimentos: list[dict], elemen
 
     Ficha cuja peça ainda não está em "elementos" (planta não publicada) entra na lista sem peça, e os
     registros dela ficam de fora até publicar a planta e rodar de novo.
+    Pilar com letra: "P184" de fora é o "P184a" da planta (partes.pilar_pelo_numero). O servidor não guarda
+    quem é só de detalhe: com dois do mesmo número fica o nome mais curto, e a conta vai em "avisos".
     """
     vigentes = fichas_vigentes(fichas)
     itens = {c: {int(i["n"]) for i in f.get("itens") or []} for c, f in vigentes.items()}
     id_do_pavimento = {p["nome"].strip().lower(): p["id"] for p in pavimentos if not p.get("apagado")}
     pecas = {(e["pavimento_id"], e["tipo"], e["nome"].upper()): e["id"] for e in elementos if not e.get("apagado")}
+    pilares: dict[str, set[str]] = collections.defaultdict(set)
+    for (pav_id, tipo, nome) in pecas:
+        if tipo == "P":
+            pilares[pav_id].add(nome)
     fora = collections.Counter()
+    avisos: list[str] = []
     linhas_fichas: list[dict] = []
     ligadas: dict[str, tuple[str, str]] = {}
     for f in historico["fichas_campo"]:
@@ -73,6 +82,12 @@ def resolver(historico: dict, fichas: list[dict], pavimentos: list[dict], elemen
         if f.get("nome"):
             pav = id_do_pavimento.get(str(f.get("pavimento") or "").strip().lower())
             elemento = pecas.get((pav, f.get("tipo"), f["nome"].upper())) if pav else None
+            if elemento is None and pav and f.get("tipo") == "P":
+                achado, aviso = pilar_pelo_numero(f["nome"].upper(), pilares[pav])
+                if achado is not None:
+                    elemento = pecas[(pav, "P", achado)]
+                if aviso:
+                    avisos.append(f"{f.get('pavimento')}: {aviso}")
             if elemento is None:
                 fora["ficha com peça que não está no servidor (publique a planta)"] += 1
         modelo = vigentes.get(f.get("ficha_codigo"))
@@ -105,7 +120,7 @@ def resolver(historico: dict, fichas: list[dict], pavimentos: list[dict], elemen
             "origem_id": e["origem_id"],
             "criado_em_dispositivo": e["criado_em"],
         })
-    return {"fichas": linhas_fichas, "eventos": linhas_eventos, "fora": dict(fora)}
+    return {"fichas": linhas_fichas, "eventos": linhas_eventos, "fora": dict(fora), "avisos": avisos}
 
 
 def enviar(sb, base: dict, tabela: str, linhas: list[dict], avisar=print) -> None:
@@ -147,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(r['fichas'])} fichas e {len(r['eventos'])} registros para a obra {obra}.")
         for motivo, n in sorted(r["fora"].items()):
             print(f"  fora: {n} {motivo}")
+        for aviso in r["avisos"]:
+            print(f"  conferir: {aviso}")
         if args.so_conferir:
             print("Só conferência: nada foi gravado.")
             return 0

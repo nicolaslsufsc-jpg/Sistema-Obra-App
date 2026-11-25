@@ -10,7 +10,7 @@
 
 import { nomeDaPeca } from './comodos'
 import { dataBr, horaBr, montarPlanilha } from './planilha'
-import { maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo, type Resultado } from './situacao'
+import { itemSoDoApp, maisNovo, rotuloRodada, type EventoFvs, type Ficha, type FichaCampo, type Resultado } from './situacao'
 
 export interface LinhaDeLancamento {
   chave: string
@@ -34,6 +34,8 @@ export interface LinhaDeLancamento {
   quando: string
   quem: string
   observacao: string | null
+  /** item só do app (consolo, capitel): não existe na ficha do sistema oficial, não tem onde lançar */
+  soDoApp: boolean
 }
 
 export interface EntradaDeLancamento {
@@ -117,6 +119,7 @@ export function listarParaLancar(d: EntradaDeLancamento, lancados?: ReadonlySet<
           quando: e.criado_em_dispositivo,
           quem: d.quem(e),
           observacao: e.observacao,
+          soDoApp: itemSoDoApp(item),
         })
       }
     }
@@ -169,7 +172,8 @@ export function agruparPorFicha(linhas: readonly LinhaDeLancamento[]): GrupoDeLa
 /** Planilha para abrir no Excel. `sistema` = nome do sistema oficial em que a pessoa vai lançar. */
 export function planilhaDeLancamento(linhas: readonly LinhaDeLancamento[], sistema: string): string {
   return montarPlanilha(
-    ['Pavimento', 'Peça', 'Ficha', 'Título da ficha', `Ficha no ${sistema}`, 'Item', 'Etapa', 'Verificação', 'Resultado', 'Rodada', 'Data', 'Hora', 'Quem marcou', 'O que fazer'],
+    // "Só do app" no fim (24/11), para não mudar a posição das colunas de antes
+    ['Pavimento', 'Peça', 'Ficha', 'Título da ficha', `Ficha no ${sistema}`, 'Item', 'Etapa', 'Verificação', 'Resultado', 'Rodada', 'Data', 'Hora', 'Quem marcou', 'O que fazer', 'Só do app'],
     linhas.map((l) => [
       l.pavimentoNome,
       l.pecaNome,
@@ -185,6 +189,7 @@ export function planilhaDeLancamento(linhas: readonly LinhaDeLancamento[], siste
       horaBr(l.quando),
       l.quem,
       l.observacao,
+      l.soDoApp ? `sim: não vai para o ${sistema}` : '',
     ]),
   )
 }

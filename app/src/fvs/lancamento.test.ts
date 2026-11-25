@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { agruparPorFicha, listarParaLancar, passosDoItem, planilhaDeLancamento, type EntradaDeLancamento, type LinhaDeLancamento } from './lancamento'
 import type { EventoFvs, Ficha, FichaCampo } from './situacao'
+import { itemSoDoApp } from './situacao'
 
 /** Nome de sistema oficial só para os testes (os galhos de verdade ficam em src/integracoes/). */
 const SISTEMA = 'Sistema Exemplo'
@@ -52,6 +53,17 @@ function entrada(eventos: EventoFvs[], extra: Partial<EntradaDeLancamento> = {})
   }
 }
 const passos = (eventos: EventoFvs[]) => passosDoItem(eventos).map((e) => [e.resultado, e.rodada, e.observacao])
+
+describe('itemSoDoApp (24/11)', () => {
+  it('consolo e capitel são só do app; os outros itens, não; a ficha decide com so_app', () => {
+    expect(itemSoDoApp({ parte: 'capitel' })).toBe(true)
+    expect(itemSoDoApp({ parte: 'consolo' })).toBe(true)
+    expect(itemSoDoApp({})).toBe(false)
+    expect(itemSoDoApp(undefined)).toBe(false)
+    expect(itemSoDoApp({ so_app: true })).toBe(true)
+    expect(itemSoDoApp({ parte: 'capitel', so_app: false })).toBe(false)
+  })
+})
 
 describe('passos que faltam lançar em um item', () => {
   it('o que veio do sistema oficial já está lá: não entra', () => {
@@ -176,7 +188,8 @@ describe('planilha', () => {
 
   it('não deixa texto de campo virar fórmula nem quebrar colunas', () => {
     const f = planilhaDeLancamento([linha({ observacao: '=HYPERLINK("http://x")' })], SISTEMA).split('\r\n')[1]
-    expect(f.endsWith(`"'=HYPERLINK(""http://x"")"`)).toBe(true)
+    // depois dela, a coluna "Só do app" (vazia aqui)
+    expect(f.endsWith(`"'=HYPERLINK(""http://x"")";`)).toBe(true)
     expect(planilhaDeLancamento([linha({ observacao: '-1+1' })], SISTEMA)).toContain(";'-1+1")
     expect(planilhaDeLancamento([linha({ observacao: 'a;b' })], SISTEMA)).toContain('"a;b"')
     expect(planilhaDeLancamento([linha({ observacao: 'duas\nlinhas' })], SISTEMA)).toContain('duas linhas')
@@ -184,5 +197,37 @@ describe('planilha', () => {
 
   it('desmarcar aparece escrito', () => {
     expect(planilhaDeLancamento([linha({ resultado: null })], SISTEMA)).toContain(';desmarcar;')
+  })
+
+  it('item só do app (consolo, capitel): a última coluna diz que não vai para o sistema oficial (24/11)', () => {
+    const t = planilhaDeLancamento([linha(), linha({ soDoApp: true })], SISTEMA).slice(1).split('\r\n')
+    expect(t[0].split(';').slice(-2)).toEqual(['O que fazer', 'Só do app'])
+    expect(t[1].endsWith(';Falha;')).toBe(true)
+    expect(t[2].endsWith(';Falha;sim: não vai para o Sistema Exemplo')).toBe(true)
+  })
+})
+
+describe('item só do app na lista para lançar (24/11)', () => {
+  const comPartes: Ficha = {
+    ...ficha,
+    itens: [
+      ...ficha.itens,
+      { n: 30, etapa: 'CAPITEL - ARMADURA', titulo: 'Armadura do maciço', parte: 'capitel' },
+      { n: 25, etapa: 'CONSOLO - ARMADURA', titulo: 'Barras principais', parte: 'consolo' },
+      { n: 3, etapa: 'EXECUÇÃO', titulo: 'Item marcado como só do app pela ficha', so_app: true },
+      { n: 31, etapa: 'CAPITEL - ARMADURA', titulo: 'Capitel que existe no sistema oficial', parte: 'capitel', so_app: false },
+    ],
+  }
+  it('consolo e capitel ficam marcados; a ficha pode dizer o contrário', () => {
+    const l = listarParaLancar(
+      entrada([ev('C'), ev('C', 1, { item: 30 }), ev('C', 1, { item: 25 }), ev('C', 1, { item: 3 }), ev('C', 1, { item: 31 })], { fichaPorId: new Map([['f1', comPartes]]) }),
+    )
+    expect(l.map((x) => [x.item, x.soDoApp])).toEqual([
+      [1, false],
+      [3, true],
+      [25, true],
+      [30, true],
+      [31, false],
+    ])
   })
 })

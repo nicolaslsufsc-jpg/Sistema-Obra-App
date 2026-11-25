@@ -1,5 +1,6 @@
 // Busca de peça na obra inteira: digita "P124", escolhe o pavimento, cai na peça. Funciona sem
 // internet; se a planta da peça não estiver no aparelho, oferece baixar ali mesmo.
+import { concretadaDe } from '../concretada'
 import { nomeDaPeca } from '../comodos'
 import { useMemo, useState } from 'preact/hooks'
 import { buscarPecas } from '../busca'
@@ -43,7 +44,7 @@ function Resultados({ texto, ctx }: { texto: string; ctx: ContextoFvs }) {
   const { abrir, erro, ofertaDaLinha } = usarIrAtePeca<ReturnType<typeof paraLinha>>(ctx, (l, plantaId) => ir({ nome: 'planta', plantaId, pecaId: l.pecaId }))
   const nomePavimento = useMemo(() => new Map(dados.pavimentos.map((p) => [p.id, p.nome])), [dados])
 
-  if (!achadas.length) return <p class="discreto" data-testid="fvs-busca-vazia">Nenhuma peça com esse nome nesta obra.</p>
+  if (!achadas.length) return <p class="discreto" data-testid="fvs-busca-vazia">Sem peças com esse nome</p>
 
   function paraLinha(p: Peca) {
     return { chave: p.id, pecaId: p.id, pavimentoId: p.pavimento_id, tipo: p.tipo, local: dados.fichasCampoDe.get(p.id)?.[0]?.local ?? null, plantaMarcada: null }
@@ -59,7 +60,15 @@ function Resultados({ texto, ctx }: { texto: string; ctx: ContextoFvs }) {
     }
     // esquadria: o registro dela é nos itens de esquadria das fichas de ambiente (qualquer serviço)
     if (p.tipo === 'E') return situacaoDaEsquadriaNaObra(fichasPara('A', dados.fichas), eventos)
-    return situacaoDoLocal(fichaDaPeca(fichaDoLocalNaObra(dados, p), eventos, fichaPorId), dados.fichasCampoDe.get(p.id) ?? [], fichaPorId, eventos, undefined, partesDoPilar(p.id))
+    return situacaoDoLocal(
+      fichaDaPeca(fichaDoLocalNaObra(dados, p), eventos, fichaPorId),
+      dados.fichasCampoDe.get(p.id) ?? [],
+      fichaPorId,
+      eventos,
+      undefined,
+      partesDoPilar(p.id),
+      concretadaDe(dados.concretadas, p.id, p.tipo),
+    )
   }
 
   return (

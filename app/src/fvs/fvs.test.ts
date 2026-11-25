@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto'
+import { COBERTURA_CONCRETADA, concretadaDe, pecasConcretadas } from './concretada'
 import { describe, expect, it } from 'vitest'
 import {
   aoTocar,
@@ -17,6 +18,7 @@ import {
   reprovacoesDoItem,
   resumoDaEstrutura,
   resumoDosAmbientes,
+  esquadriaValeNoItem,
   rotuloRodada,
   situacaoDaFichaAberta,
   situacaoDaPeca,
@@ -41,7 +43,7 @@ import {
   pecasNoAparelho,
   textoDoErroDeDownload,
 } from './pacote'
-import { cadeiaDeRevisoes, manterNaLimpeza, pacoteDaPlanta, pacotesAManter } from './revisoes'
+import { avisoDasPlantas, cadeiaDeRevisoes, manterNaLimpeza, pacoteDaPlanta, pacotesAManter, textosDaRevisao } from './revisoes'
 import { ehPlantaDeEstrutura, plantaDeDesenho, plantasVigentes } from './plantas'
 import { SEM_REGRAS } from './regras'
 import type { Linha } from '../nucleo/banco_local'
@@ -198,6 +200,34 @@ describe('liberado para concretar (azul)', () => {
   it('continua azul durante a concretagem e fica verde só com a ficha inteira', () => {
     expect(situacaoDaPeca(pilar, [...antes(), ev(3, 'C')])).toBe('concretagem')
     expect(situacaoDaPeca(pilar, [...antes(), ev(3, 'C'), ev(4, 'C')])).toBe('liberado')
+  })
+
+  // Achado #2 da lista de campo (24/11), o Nicolas: "a peça fica verde quando estiver numa concretagem cadastrada
+  // ... Vamos botar um coeficiente aí de 90%". Pilar, viga e laje: verde = azul + concretagem cadastrada no Concreto.
+  it('com o Concreto: a ficha inteira sem concretagem fica azul; azul e concretada fica verde', () => {
+    const tudo = [...antes(), ev(3, 'C'), ev(4, 'C')]
+    expect(situacaoDaPeca(pilar, tudo, undefined, false)).toBe('concretagem')
+    expect(situacaoDaPeca(pilar, tudo, undefined, true)).toBe('liberado')
+    // verde não espera os itens da concretagem para frente (cura, desforma): basta o azul e a concretagem
+    expect(situacaoDaPeca(pilar, antes(), undefined, true)).toBe('liberado')
+    // concretada mas sem o azul: em andamento; com NC: NC; nada marcado: pendente
+    expect(situacaoDaPeca(pilar, [ev(1, 'C')], undefined, true)).toBe('andamento')
+    expect(situacaoDaPeca(pilar, [...antes(), ev(3, 'NC')], undefined, true)).toBe('reprovado')
+    expect(situacaoDaPeca(pilar, [], undefined, true)).toBe('nada')
+    // olhando uma etapa só, a concretagem não muda nada
+    expect(situacaoDaPeca(pilar, antes(), 'MONTAGEM - FORMA E ARMADURA', false)).toBe('liberado')
+  })
+
+  it('com o Concreto: ficha sem etapa de concretagem segue a regra de antes', () => {
+    expect(situacaoDaPeca(ficha, [ev(1, 'C'), ev(2, 'C')], undefined, false)).toBe(situacaoDaPeca(ficha, [ev(1, 'C'), ev(2, 'C')]))
+  })
+
+  it('com o Concreto: o local e as fichas abertas também (azul sem concretagem, verde com)', () => {
+    const tudo = [...antes(), ev(3, 'C'), ev(4, 'C')]
+    const porId = (id: string) => (id === pilar.id ? pilar : undefined)
+    expect(situacaoDoLocal(pilar, [], porId, tudo, undefined, undefined, false)).toBe('concretagem')
+    expect(situacaoDoLocal(pilar, [], porId, tudo, undefined, undefined, true)).toBe('liberado')
+    expect(situacaoDoLocal(pilar, [], porId, tudo)).toBe('liberado')
   })
 
   it('olhando uma etapa só, a pergunta é se ela terminou: não fica azul', () => {
@@ -636,6 +666,8 @@ describe('registros novos nos dados da tela', () => {
     lancados: new Set<string>(),
     servidorMaisNovo: null,
     regras: SEM_REGRAS,
+    redesenhos: new Map(),
+    concretadas: new Set(),
   } as DadosFvs
   const paraEventoDeTeste = (id: string, elemento: string) =>
     ({ id, elemento_id: elemento, ficha_id: 'f1', item: 1, resultado: 'C', rodada: 1, observacao: null, lote_id: null, planta_id: null, usuario_id: '', criado_em_dispositivo: '2026-11-05T03:00:00.000Z' }) as const
@@ -733,8 +765,9 @@ describe('registros novos nos dados da tela', () => {
 
 describe('lista de tabelas', () => {
   it('tabela que depende de migração nova fica por último: se faltar no servidor, não trava as outras', () => {
-    // desde 21/11 os locais do sistema oficial (migração mais nova) vêm depois das fichas abertas
-    expect(TABELAS_SINCRONIZADAS.slice(-4)).toEqual(['fvs_fichas_campo', 'fvs_areas', 'locais_sistema', 'importacoes'])
+    // desde 21/11 os locais do sistema oficial vêm depois das fichas abertas; desde 23/11 os redesenhos
+    // e o formulário da obra do Projetos (migrações mais novas) ficam por último
+    expect(TABELAS_SINCRONIZADAS.slice(-6)).toEqual(['fvs_fichas_campo', 'fvs_areas', 'locais_sistema', 'importacoes', 'fvs_redesenhos', 'projetos_formularios'])
     expect(TABELAS_SINCRONIZADAS).toContain('fvs_eventos')
     expect(TABELAS_SINCRONIZADAS.indexOf('fvs_eventos')).toBeLessThan(TABELAS_SINCRONIZADAS.indexOf('fvs_fichas_campo'))
   })
@@ -794,10 +827,16 @@ describe('fichas abertas no sistema oficial (ficha duplicada)', () => {
   })
 
   it('marcação feita só no app não some quando a ficha do sistema oficial chega', () => {
+    // ficha única (23/11): o marcado só no app entra na ficha aberta, com a regra item a item de 21/11
+    const doSistema = () => [1, 2, 3].map((n) => ev(n, 'C', 1, { ficha_campo_id: 'a', origem_id: `cp${n}` }))
     const doApp = [ev(1, 'NC')]
-    expect(situacaoDoLocal(ficha, [aberta('a')], porId, [...doApp, ...tudoA('a')])).toBe('reprovado')
+    expect(situacaoDoLocal(ficha, [aberta('a')], porId, [...doApp, ...doSistema()])).toBe('reprovado')
     const comA = [1, 2, 3].map((n) => ev(n, 'C'))
-    expect(situacaoDoLocal(ficha, [aberta('a')], porId, [...comA, ...tudoA('a')])).toBe('liberado')
+    expect(situacaoDoLocal(ficha, [aberta('a')], porId, [...comA, ...doSistema()])).toBe('liberado')
+    // a correção feita no app depois do NC de lá libera o item
+    const ncLa = [ev(1, 'NC', 1, { ficha_campo_id: 'a', origem_id: 'cp9' }), ev(2, 'C', 1, { ficha_campo_id: 'a', origem_id: 'cp8' }), ev(3, 'C', 1, { ficha_campo_id: 'a', origem_id: 'cp7' })]
+    expect(situacaoDoLocal(ficha, [aberta('a')], porId, ncLa)).toBe('reprovado')
+    expect(situacaoDoLocal(ficha, [aberta('a')], porId, [...ncLa, ev(1, 'C', 2)])).toBe('liberado')
     expect(situacaoDaFichaAberta(fichaSoNoApp(ficha), porId, doApp)).toBe('reprovado')
     expect(fichaSoNoApp(ficha).id).toBe(SO_NO_APP)
   })
@@ -874,6 +913,14 @@ describe('fichas por ambiente (alvenaria, reboco...)', () => {
     expect(r.servicos.map((s) => [s.ficha.id, s.liberados, s.comR])).toEqual([['fa', 1, 1]])
     // a estrutura não conta ambiente, e o ambiente não conta pilar
     expect(resumoDaEstrutura(locais, fichas, eventosDe)).toEqual({ total: 1, liberadas: 1, paraConcretar: 0, comR: 0, duplicadas: 0 })
+  })
+
+  it('resumo: a ficha conta só os ambientes em que vale (tabela ficha × tipo de cômodo)', () => {
+    const evs = new Map<string, EventoFvs[]>([['a1', tudoA('a1', 'fa')]])
+    const codigoFa = fichas.find((f) => f.id === 'fa')!.codigo
+    const r = resumoDosAmbientes(locais, fichas, (id) => evs.get(id) ?? [], (id, codigo) => !(id === 'a2' && codigo === codigoFa))
+    expect(r.total).toBe(3)
+    expect(r.servicos.map((s) => [s.ficha.id, s.liberados, s.total])).toEqual([['fa', 1, 2]])
   })
 
   it('item desmarcado não conta como ficha começada', () => {
@@ -1133,6 +1180,41 @@ describe('pacote de planta no aparelho', () => {
     expect([...pacotesAManter(['nova'], anterioresDe, new Set(['nova', 'r1']))]).toEqual(['nova'])
   })
 
+  it('mesma revisão com id novo (prancha publicada de novo): "Planta atualizada", não "Revisão nova"', () => {
+    // revisão mudou de fato: avisa a revisão nova e diz qual está no aparelho
+    expect(textosDaRevisao({ revisao: 'R02' }, { id: 'velha', revisao: 'R01' })).toEqual({
+      aviso: 'Revisão nova: no aparelho ainda está a R01',
+      abrir: 'Abrir R01',
+      baixar: 'Baixar R02',
+      faixa: 'Planta na revisão R01. Já saiu a R02.',
+    })
+    // mesma revisão (o id da planta é outro): planta atualizada, baixar de novo
+    const mesma = textosDaRevisao({ revisao: 'R02' }, { id: 'velha', revisao: 'R02' })
+    expect(mesma).toEqual({ aviso: 'Planta atualizada · Baixar de novo', abrir: 'Abrir', baixar: 'Baixar de novo', faixa: 'Planta atualizada no servidor.' })
+    expect(Object.values(mesma).join(' ')).not.toMatch(/Revisão nova|R02/)
+    // espaço sobrando não vira revisão nova
+    expect(textosDaRevisao({ revisao: ' R02' }, { id: 'velha', revisao: 'R02 ' }).aviso).toBe('Planta atualizada · Baixar de novo')
+  })
+
+  it('aviso do pavimento e da disciplina antes de entrar: revisão nova vence planta atualizada', () => {
+    const anterioresDe = new Map([
+      ['a2', [{ id: 'a1', revisao: 'R02' }]],
+      ['b2', [{ id: 'b1', revisao: 'R02' }]],
+      ['c2', [{ id: 'c1', revisao: 'R01' }]],
+    ])
+    const a2 = { id: 'a2', revisao: 'R02' }
+    const b2 = { id: 'b2', revisao: 'R02' }
+    const c2 = { id: 'c2', revisao: 'R02' }
+    // tudo baixado (ou nada a baixar): sem aviso
+    expect(avisoDasPlantas([a2, c2], anterioresDe, new Set(['a2', 'c2']))).toBeNull()
+    expect(avisoDasPlantas([a2], anterioresDe, new Set())).toBeNull()
+    // só mesma revisão com id novo
+    expect(avisoDasPlantas([a2], anterioresDe, new Set(['a1']))).toBe('Planta atualizada · Baixar de novo')
+    expect(avisoDasPlantas([a2, b2], anterioresDe, new Set(['a1', 'b1']))).toBe('2 plantas atualizadas · Baixar de novo')
+    // uma com revisão nova de fato: vence
+    expect(avisoDasPlantas([a2, c2], anterioresDe, new Set(['a1', 'c1']))).toBe('Revisão nova para baixar')
+  })
+
   it('limpeza com dados lidos antes da sincronização não apaga a planta que acabou de baixar (24/11)', async () => {
     const bin = () => new Blob([new Uint8Array([1, 2, 3, 4, 5])])
     for (const id of ['baixada-agora', 'nova', 'r1']) await guardarPacote(JSON.stringify({ ...manifest, planta_id: id }), bin(), eu)
@@ -1165,5 +1247,62 @@ describe('pacote de planta no aparelho', () => {
       'pv',
     )
     expect(v.map((p) => p.id).sort()).toEqual(['b', 'c'])
+  })
+})
+
+describe('item de esquadria por classe ou código (23/11)', () => {
+  const porta = { codigo: 'PM80', classe: 'porta' }
+  const janela = { codigo: 'JA120B', classe: 'janela' }
+  const pcf = { codigo: 'PCF90', classe: 'porta' }
+  it('true ou sem lista: vale em todas', () => {
+    expect(esquadriaValeNoItem({ esquadrias: true }, porta)).toBe(true)
+    expect(esquadriaValeNoItem({ esquadrias: [] }, janela)).toBe(true)
+    expect(esquadriaValeNoItem(undefined, porta)).toBe(true)
+  })
+  it('por classe e pelo começo do código, sem ligar para maiúsculas', () => {
+    expect(esquadriaValeNoItem({ esquadrias: ['janela'] }, janela)).toBe(true)
+    expect(esquadriaValeNoItem({ esquadrias: ['janela'] }, porta)).toBe(false)
+    expect(esquadriaValeNoItem({ esquadrias: ['pcf'] }, pcf)).toBe(true)
+    expect(esquadriaValeNoItem({ esquadrias: ['PCF'] }, porta)).toBe(false)
+    expect(esquadriaValeNoItem({ esquadrias: ['PCF', 'janela'] }, janela)).toBe(true)
+  })
+  it('esquadria sem dado: vale (como antes)', () => {
+    expect(esquadriaValeNoItem({ esquadrias: ['janela'] }, undefined)).toBe(true)
+  })
+})
+
+describe('peça concretada pelo Concreto (achado #2, 24/11)', () => {
+  const cam = (fracao: number | null) => ({ caminhao_raiz: 'c', concretagem_raiz: 'k', sequencia: 1, nota_fiscal: null, data: '2026-11-20', fracao, parcial: false })
+
+  it('o coeficiente é um só, com nome: 90%', () => {
+    expect(COBERTURA_CONCRETADA).toBe(0.9)
+  })
+
+  it('pilar e viga: a soma das frações dos caminhões chega a 90% (incluída à mão conta inteira)', () => {
+    const c = pecasConcretadas(
+      new Map([
+        ['inteira', [cam(1)]],
+        ['duas_metades', [cam(0.5), cam(0.45)]],
+        ['parte', [cam(0.6)]],
+        ['a_mao', [cam(null)]],
+      ]),
+      new Map(),
+    )
+    expect([...c].sort()).toEqual(['a_mao', 'duas_metades', 'inteira'])
+  })
+
+  it('laje: a área da FVS coberta em pelo menos 90% pelas áreas dos caminhões', () => {
+    const c = pecasConcretadas(new Map(), new Map([['l90', { cobertura: 0.9 }], ['l89', { cobertura: 0.89 }], ['l100', { cobertura: 1 }]]))
+    expect([...c].sort()).toEqual(['l100', 'l90'])
+  })
+
+  it('só pilar, viga e laje pedem a concretagem; os outros tipos seguem como antes', () => {
+    const c = new Set(['p1'])
+    expect(concretadaDe(c, 'p1', 'P')).toBe(true)
+    expect(concretadaDe(c, 'v1', 'V')).toBe(false)
+    expect(concretadaDe(c, 'l1', 'L')).toBe(false)
+    expect(concretadaDe(c, 'a1', 'A')).toBe(undefined)
+    expect(concretadaDe(c, 'k1', 'K')).toBe(undefined)
+    expect(concretadaDe(undefined, 'p1', 'P')).toBe(undefined)
   })
 })

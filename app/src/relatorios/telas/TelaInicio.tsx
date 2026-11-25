@@ -58,7 +58,7 @@ function AvisoExemplos({ ctx }: { ctx: Contexto }) {
   return (
     <div class="rl-exemplos" data-testid="aviso-exemplos">
       <p class="discreto">
-        Os registros com o selo EXEMPLO (três dias de diário, relatórios, uma concretagem com caminhões e a laje dela) são da apresentação. Não saem na impressão nem entram nas contagens.
+        Registros com o selo EXEMPLO são da apresentação: não saem na impressão nem entram nas contagens.
       </p>
       {podeFechar(obra.papel) && (
         <button
@@ -129,7 +129,7 @@ function AbaDiario({ ctx }: { ctx: Contexto }) {
       )}
 
       <h2>Dias anteriores</h2>
-      {dias.length === 0 && <p class="discreto">Nenhum dia anterior registrado.</p>}
+      {dias.length === 0 && <p class="discreto">Sem dias anteriores</p>}
       <ul class="lista" data-testid="lista-dias">
         {dias.slice(0, quantos).map((d) => {
           const r = resumoDoDia(dados, d)
@@ -214,7 +214,7 @@ function AbaRelatorios({ ctx }: { ctx: Contexto }) {
       </p>
       <Chips opcoes={TIPOS_RELATORIO} valor={tipo} rotulo="Filtrar por tipo" aoEscolher={setTipo} teste="filtro-tipo" />
       <Chips opcoes={SITUACOES_RELATORIO} valor={situacao} rotulo="Filtrar por situação" aoEscolher={setSituacao} teste="filtro-situacao" />
-      {lista.length === 0 && <p class="discreto">{dados.relatorios.length === 0 ? 'Nenhum relatório ainda.' : 'Nenhum relatório com este filtro.'}</p>}
+      {lista.length === 0 && <p class="discreto">{dados.relatorios.length === 0 ? 'Sem relatórios' : 'Sem relatórios com este filtro'}</p>}
       <ul class="lista" data-testid="lista-relatorios">
         {lista.slice(0, quantos).map((r) => (
           <li key={r.raiz}>

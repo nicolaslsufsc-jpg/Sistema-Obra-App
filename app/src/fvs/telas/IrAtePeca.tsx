@@ -101,7 +101,7 @@ export function usarIrAtePeca<T extends Local>(ctx: ContextoFvs, aoAbrir: (l: T,
     if (destino?.tipo === 'sem_planta') {
       return (
         <p class="aviso fv-rep-oferta" data-testid="fvs-rep-oferta">
-          Esta peça não está em nenhuma planta deste pavimento.
+          Peça fora das plantas deste pavimento.
         </p>
       )
     }

@@ -28,6 +28,11 @@ describe('faixa da última atualização do Autodoc', () => {
     expect(f.detalhe).toBe('3 revisões novas · 1 documento novo')
   })
 
+  it('a primeira leitura da obra é a carga inicial: não fala em revisões novas', () => {
+    const f = faixaAutodoc({ ...estado(new Date('2026-11-21T08:40:00').toISOString(), { revisoesNovas: 3150, documentosNovos: 2377 }), anterior: null }, agora)
+    expect(f.detalhe).toBe('Carga inicial: 2377 pranchas. Nada conta como revisão nova até a próxima atualização.')
+  })
+
   it('mais de 1 dia: pede para rodar o atalho no PC', () => {
     const f = faixaAutodoc(estado(new Date('2026-11-20T14:59:00').toISOString(), { revisoesNovas: 2 }), agora)
     expect(f.tipo).toBe('atrasada')

@@ -32,6 +32,7 @@ import { mensagemDeFalha } from '../horarios'
 import { urlDoLaudo } from '../laudo_arquivo'
 import type { Contexto } from './ModuloConcreto'
 import { dataBR, lerNumero, numBR, plural, Topo } from './comum'
+import { Ajuda } from '../../telas/Ajuda'
 
 const CLASSE: Record<SituacaoRecebimento, string> = { liberado: 'bom', liberado_ressalva: 'info', retido: 'ruim', devolvido: 'neutro' }
 const MAX_FOTOS = 5
@@ -153,7 +154,7 @@ export function TelaMateriais({ ctx, fvm }: { ctx: Contexto; fvm: DadosFvm }) {
 
       <h2>Recebimentos</h2>
       {outros.length === 0 ? (
-        <p class="discreto">Nenhum recebimento registrado{retidos.length > 0 ? ' além dos retidos' : ''}.</p>
+        <p class="discreto">Sem recebimentos{retidos.length > 0 ? ' além dos retidos' : ''}</p>
       ) : (
         <ul class="lista">
           {outros.slice(0, 100).map((r) => (
@@ -166,7 +167,10 @@ export function TelaMateriais({ ctx, fvm }: { ctx: Contexto; fvm: DadosFvm }) {
 
       <h2>Lista de materiais controlados</h2>
       {fvm.materiais.length === 0 ? (
-        <p class="discreto">A obra ainda não tem a lista. Ela vem num arquivo materiais.json (o mesmo que vai no pacote da obra).</p>
+        <p class="discreto so-com-ajuda">
+          Sem lista de materiais
+          <Ajuda>A lista vem num arquivo materiais.json (o mesmo que vai no pacote da obra).</Ajuda>
+        </p>
       ) : (
         <p class="discreto" data-testid="lista-materiais">
           {fvm.materiais.map((m) => m.nome).join(' · ')}

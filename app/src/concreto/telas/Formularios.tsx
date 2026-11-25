@@ -363,7 +363,7 @@ export function FormCaminhao({ ctx, concretagemRaiz, raiz }: { ctx: Contexto; co
         </Campo>
         {avisos.map((a) => (
           <p key={a} class="aviso">
-            ⚠ {a}
+            {a}
           </p>
         ))}
         <div class="acoes">

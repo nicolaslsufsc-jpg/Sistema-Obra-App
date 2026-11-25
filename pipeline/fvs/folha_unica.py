@@ -343,8 +343,9 @@ def _rotulos_de_peca(p: Prancha) -> dict[str, list[tuple[float, float]]]:
     return saida
 
 
-def _desenhos_na_folha(p: Prancha) -> list[dict]:
-    """Linhas de pilar e viga da janela desta prancha, nas coordenadas da folha."""
+def _desenhos_na_folha(p: Prancha, camada_ok=None) -> list[dict]:
+    """Linhas de pilar e viga da janela desta prancha, nas coordenadas da folha.
+    camada_ok: outra escolha de camadas (as cubetas, para o aviso de maciço em partes.py)."""
     import pymupdf
 
     e = p.encaixe
@@ -356,7 +357,7 @@ def _desenhos_na_folha(p: Prancha) -> list[dict]:
         total = M * T
         for d in page.get_drawings():
             camada = d.get("layer")
-            if camada not in CAMADAS_DO_LEITOR:
+            if not (camada_ok(camada) if camada_ok else camada in CAMADAS_DO_LEITOR):
                 continue
             itens = []
             for it in d["items"]:
@@ -376,6 +377,18 @@ def _desenhos_na_folha(p: Prancha) -> list[dict]:
             if itens:
                 saida.append({"layer": camada, "items": itens})
     return saida
+
+
+def _marcar_macicos(pranchas: list[Prancha], pecas: list[dict], imprimir=print) -> None:
+    """Pilares com maciço na forma (cubetas longe nos quatro lados): ganham "macico_na_forma"."""
+    import partes
+
+    cubetas = []
+    for p in pranchas:
+        cubetas += partes.cubetas_dos_desenhos(_desenhos_na_folha(p, partes.e_camada_de_cubeta))
+    if cubetas:
+        nomes = partes.marcar_macico_na_forma(pecas, cubetas)
+        imprimir(f"  {len(cubetas)} cubetas; {len(nomes)} pilares com maciço na forma")
 
 
 def _coordenadas_da_folha(pranchas: list[Prancha]) -> tuple[float, float, float, float]:
@@ -526,6 +539,7 @@ def ler_folha_unica(formas: list[dict], imprimir=print) -> dict:
     with _leitor_rapido():
         pecas = estrutura.ler_pecas(FolhaVirtual(desenhos), anns)
     del desenhos
+    _marcar_macicos(pranchas, pecas, imprimir)
     imprimir(f"  folha de {round(largura)} x {round(altura)} pontos: {sum(1 for x in pecas if x['tipo'] == 'P')} pilares, {sum(1 for x in pecas if x['tipo'] == 'V')} vigas")
     niveis = niveis_da_folha(largura, altura)
     tiles = _tiles(pranchas, niveis)
@@ -571,6 +585,7 @@ def ler_plotada(pdf: str, escala: float = 1.0, nome: str | None = None, imprimir
     anns = [(t, pymupdf.Rect(*p.encaixe.ponto(q[0], q[1]), *p.encaixe.ponto(q[2], q[3]))) for t, q in sem_repetidos(p.anotacoes)]
     with _leitor_rapido():
         pecas = estrutura.ler_pecas(FolhaVirtual(_desenhos_na_folha(p)), anns)
+    _marcar_macicos([p], pecas, imprimir)
     imprimir(f"  folha de {round(largura)} x {round(altura)} pontos: {sum(1 for x in pecas if x['tipo'] == 'P')} pilares, {sum(1 for x in pecas if x['tipo'] == 'V')} vigas")
     niveis = niveis_da_folha(largura, altura)
     return {

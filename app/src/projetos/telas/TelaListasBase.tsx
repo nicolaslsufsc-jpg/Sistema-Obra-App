@@ -8,6 +8,7 @@ import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { dataBR, plural } from './comum'
 import { alvoDe, alvoDaFolha, seloDe } from './TelaPranchaBase'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import { EtiquetaStatus, Tabela } from '../../telas/Tabela'
 import { abaFicha, baixarXlsx, type Aba } from '../ficha_v2'
 import type { FolhaPdf } from '../../telas/folha_pdf'
 
@@ -153,7 +154,7 @@ export function TelaPranchasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto
           l.desatualizadas || '',
           `${l.escritorio ? rotuloRev(l.escritorio.fase, l.escritorio.revisao) : 'sem registro'}${l.escritorioAtrasado ? ' (desatualizado)' : ''}`,
         ]),
-        vazio: 'Nenhuma prancha.',
+        vazio: '–',
       },
     ],
     deitada: true,
@@ -187,27 +188,43 @@ export function TelaPranchasBase({ ctx, aoSair, filtroInicial }: { ctx: Contexto
             { v: 'escritorio', rotulo: 'Escritório desatualizado', n: achadas.filter(PASSA_PRANCHA.escritorio).length },
           ]}
         />
-        {filtradas.length === 0 && <p class="discreto">Nenhuma prancha.</p>}
-        <ul class="pj-lista-painel" data-testid="lista-pranchas">
-          {filtradas.slice(0, quantas).map((l) => (
-            <li key={l.vigente.codigo} class="pj-linha-painel pj-tocavel" {...tocavel(() => ctx.ir({ nome: 'prancha-base', ...alvoDaFolha(l.vigente) }))}>
-              <div>
-                <b>{l.vigente.codigo}</b> <span class="discreto">{l.vigente.titulo}</span>
-                <br />
-                <span class="pj-rev nova">{rotuloRev(l.vigente.fase, l.vigente.revisao)}</span> de {dataBR(l.vigente.data)}
-                <div class="discreto">
-                  {l.vigente.disciplina} · {plural(l.emCampo, 'cópia', 'cópias')} em campo · escritório{' '}
-                  {l.escritorio ? rotuloRev(l.escritorio.fase, l.escritorio.revisao) : 'sem registro'}
-                </div>
-              </div>
-              {l.desatualizadas > 0 ? (
-                <span class="pj-selo des">{plural(l.desatualizadas, 'desatualizada', 'desatualizadas')}</span>
-              ) : l.escritorioAtrasado ? (
-                <span class="pj-selo conf">escritório</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        {filtradas.length === 0 && <p class="discreto">Sem pranchas</p>}
+        {filtradas.length > 0 && (
+          <Tabela
+            rotulo="Pranchas da lista vigente"
+            testid="lista-pranchas"
+            linhas={filtradas.slice(0, quantas)}
+            chave={(l) => l.vigente.codigo}
+            atributos={(l) => ({ 'data-codigo': l.vigente.codigo })}
+            aoTocar={(l) => ctx.ir({ nome: 'prancha-base', ...alvoDaFolha(l.vigente) })}
+            colunas={[
+              {
+                titulo: 'Prancha',
+                valor: (l) => (
+                  <span class="pj-resumo-item">
+                    <b>{l.vigente.codigo}</b>
+                    <span class="discreto">{l.vigente.titulo || '–'}</span>
+                  </span>
+                ),
+              },
+              { titulo: 'Vigente', valor: (l) => rotuloRev(l.vigente.fase, l.vigente.revisao) },
+              { titulo: 'Data', valor: (l) => dataBR(l.vigente.data) || null, numero: true },
+              { titulo: 'Em campo', valor: (l) => l.emCampo || null, numero: true },
+              { titulo: 'Escritório', valor: (l) => (l.escritorio ? rotuloRev(l.escritorio.fase, l.escritorio.revisao) : null) },
+              {
+                titulo: 'Status',
+                valor: (l) =>
+                  l.desatualizadas > 0 ? (
+                    <EtiquetaStatus status="nc">{plural(l.desatualizadas, 'desatualizada', 'desatualizadas')}</EtiquetaStatus>
+                  ) : l.escritorioAtrasado ? (
+                    <EtiquetaStatus status="pendente">escritório</EtiquetaStatus>
+                  ) : l.emCampo > 0 ? (
+                    <EtiquetaStatus status="liberado">Em dia</EtiquetaStatus>
+                  ) : null,
+              },
+            ]}
+          />
+        )}
         {filtradas.length > quantas && (
           <button type="button" class="pj-pequeno" onClick={() => setQuantas(quantas + PAGINA * 5)}>
             Mostrar mais ({filtradas.length - quantas})
@@ -261,7 +278,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
           const c = x.copia
           return [seloDe(x).texto, c.disciplinaNome, c.codigo, c.titulo, rotuloDaCopia(c), c.empresa, c.colaborador, (c.entrega ? dataBR(c.entrega) : c.entregaTexto) + (c.app?.assinaturaId ? ' (assinada)' : ''), c.devolucao ? dataBR(c.devolucao) : '']
         }),
-        vazio: 'Nenhuma entrega.',
+        vazio: '–',
       },
     ],
     deitada: true,
@@ -269,7 +286,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
 
   return (
     <main class="tela pj-painel">
-      <CabecalhoBase ctx={ctx} aba="entregas" aoSair={aoSair} base={base} temCruzamento={!!resumo} />
+      <CabecalhoBase ctx={ctx} aba="copias" aoSair={aoSair} base={base} temCruzamento={!!resumo} />
       <section class="pj-bloco">
         <h2>Entregas de cópias</h2>
         <div class="pj-baixar">
@@ -297,7 +314,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
             { v: 'todas', rotulo: 'Todas', n: achadas.length },
           ]}
         />
-        {filtradas.length === 0 && <p class="discreto">Nenhuma entrega.</p>}
+        {filtradas.length === 0 && <p class="discreto">Sem entregas</p>}
         <ul class="pj-lista-painel" data-testid="lista-entregas">
           {filtradas.slice(0, quantas).map((x) => {
             const c = x.copia
@@ -321,7 +338,7 @@ export function TelaEntregasBase({ ctx, aoSair, filtroInicial, buscaInicial }: {
                     {motivoDaTroca(x) && !x.foraDeUso ? ` · ${motivoDaTroca(x)}` : ''}{' '}
                     {c.app?.assinaturaId && (
                       <span class="pj-selo ok" data-testid="entrega-assinada">
-                        ✍ assinada
+                        assinada
                       </span>
                     )}
                   </div>

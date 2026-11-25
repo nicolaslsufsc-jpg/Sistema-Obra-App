@@ -155,7 +155,7 @@ function ListaResultados({ sessao }: { sessao: Sessao }) {
   return (
     <div ref={caixa} class="ifc-resultados" onScroll={(e) => setTopo((e.target as HTMLDivElement).scrollTop)} data-testid="ifc-resultados">
       {total === 0 ? (
-        <p class="ifc-nada">Nenhuma peça com estes filtros. Tire um filtro ou troque a palavra.</p>
+        <p class="ifc-nada">Sem peças com estes filtros</p>
       ) : (
         <div style={{ height: `${total * ALTURA_LINHA}px`, position: 'relative' }}>{itens}</div>
       )}

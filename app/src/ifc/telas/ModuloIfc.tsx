@@ -189,7 +189,7 @@ export function LeitorIfc({ aoSair, obraIfc, modelosDrive }: Pick<PropsModuloIfc
         {vazio && !erroVisor && (
           <div class="ifc-vazio" data-testid="ifc-importar">
             <h1>Importe aqui seu IFC</h1>
-            <p>Escolha um ou mais arquivos .ifc do projeto (ou arraste para cá). Eles aparecem um por cima do outro, com busca e cortes. Tudo fica só neste aparelho.</p>
+            <p>Um ou mais arquivos .ifc (ou arraste para cá). Ficam só neste aparelho.</p>
             <button type="button" class="ifc-botao ifc-botao-forte" onClick={escolher}>
               <IcAbrir />
               Importar IFC

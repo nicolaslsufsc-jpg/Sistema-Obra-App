@@ -14,6 +14,7 @@ import './exportar_pdf.css'
 const CHAVE_NOMES = 'fvs_nomes'
 
 export function Folha({ folha, obra, quem, quando }: { folha: FolhaPdf; obra: Pick<ObraLocal, 'codigo' | 'nome' | 'empresa'>; quem: string; quando: Date }) {
+  if (folha.propria) return <article class={`sf-folha sf-propria${folha.deitada ? ' sf-deitada' : ''}`}>{folha.propria}</article>
   return (
     <article class={`sf-folha${folha.deitada ? ' sf-deitada' : ''}`}>
       <header class="sf-cab">

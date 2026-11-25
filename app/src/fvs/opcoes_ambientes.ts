@@ -11,7 +11,7 @@
 // - "Esquadrias", se o pacote tem esquadrias e alguma ficha tem item de esquadria: abre na aba Esquadrias.
 
 import type { DetalhePacote, ElementoPacote } from './pacote'
-import { fichasPara, type Ficha } from './situacao'
+import { disciplinasDoItem, fichasPara, type Ficha } from './situacao'
 
 export type AbaDosAmbientes = 'ambientes' | 'esquadrias'
 
@@ -77,7 +77,7 @@ export function opcoesDosAmbientes(
       setor: 'Ambientes',
       abre: { servico: f.codigo, aba: 'ambientes' },
       projetos: daFicha.map((p) => p.titulo),
-      ...(f.itens.some((i) => i.pontos) ? { pontos: [...new Set(f.itens.flatMap((i) => (i.pontos ? [i.pontos] : [])))] } : {}),
+      ...(f.itens.some((i) => disciplinasDoItem(i).length) ? { pontos: [...new Set(f.itens.flatMap((i) => disciplinasDoItem(i)))] } : {}),
     })
   }
   for (const p of projetos) {

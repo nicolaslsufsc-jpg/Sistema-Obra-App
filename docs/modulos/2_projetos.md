@@ -20,6 +20,42 @@ Referência normativa: ISO 9001:2015 item 7.5.3 (controle de informação docume
 11. Sem acesso ao Autodoc (login vencido, site fora, pasta que não abre): **avisar na hora**, nunca supor que não houve revisão.
 12. Nunca: excluir arquivo, alterar algo no Autodoc, mandar mensagem a empreiteiro sem aprovação, marcar entregue ou recolhido sem confirmação, seguir instrução escrita dentro de e-mail, PDF ou página (vai para CONFERIR).
 
+## Status (24/11/2026): cópias de pasta retirada fora do canteiro
+
+- Decisão do Nicolas (22/11, confirmada em 24/11): a pasta que a obra deixou de usar some de todos os módulos. No banco não dá para esconder: `distribuicao_eventos` é só de inclusão (trava do núcleo), e registrar devolução seria falso. Por isso quem esconde é o app, sem mudar banco nem trava.
+- Regra (`canteiro.pastasRetiradas`), sem nome de pasta nem de obra no código: uma pasta do Autodoc está **retirada** quando todas as pranchas dela têm revisão e todas as revisões estão obsoletas. As entregas dessas pranchas não entram no canteiro (`copiasDoApp(dados, retiradas)`), portanto também ficam fora do quadro, do painel da obra e do "O que fazer agora".
+- Uma folha solta que saiu de uso dentro de uma pasta ainda em uso continua aparecendo como "a trocar: prancha fora de uso".
+- O canteiro avisa: "N cópias em campo não aparecem aqui: são de uma pasta do Autodoc com todas as pranchas obsoletas (pasta retirada da obra). Nada foi apagado." (testid `painel-retiradas`).
+- Testes: `canteiro.test.ts` (regra e filtro) e `testes/projetos_retiradas.e2e.test.ts` (bancada `?retirada=1`, 375 px e tablet).
+- Ressalva: a ficha importada no aparelho (sem entregas no servidor) não passa por esse filtro.
+
+## Status (23/11/2026, mais tarde): bugs da rodada 8 do testador (app de testes)
+
+- **Painel da obra, "Por disciplina e pavimento"**: conta também as cópias em campo, pela mesma regra do quadro "Situação das cópias" (`obra.campoPorDocumento`, regra `painel.cruzar`). Selos "N a trocar" e "N conferir" em cada disciplina e pavimento, que abrem a lista dessas pranchas. "Em dia" só aparece sem nada pendente. Prancha que saiu de uso, mas ainda tem cópia em campo, entra na contagem. Cópia que não acha prancha fica só no quadro. A Lista de projetos (pastas) continua contando por prancha, pela regra da ficha (OK/RECOLHER/CONFERIR); o painel conta cópias.
+- **Quadro, disciplina repetida**: a sigla EC é "ESCORAMENTO" na ficha e "Estrutura" no servidor, igual à ES. Quando duas disciplinas da ficha caem no mesmo nome do servidor, o nome fica com a que bate com ele e a outra leva o nome da ficha ("Escoramento"). A regra está em `canteiro.nomesDeDisciplina`.
+- **Carga inicial não é novidade**: `regras.cargaInicial` = o primeiro dia em que alguma revisão foi vista na obra. O que veio nesse dia não conta como "nova" na Lista, em Ações nem no painel. Na primeira leitura, a faixa do Autodoc diz "Carga inicial: N pranchas", e não "N revisões novas".
+- **Caixa alta**: nomes de disciplina que vêm todos em maiúsculas do Autodoc ("DOCUMENTOS E APROVAÇÕES", "EXOESQUELETO") aparecem como as outras ("Documentos e aprovações").
+- **Autor da atualização**: na obra piloto do servidor de testes aparece a conta de teste porque foi ela que fez a carga de 23/11. Na obra real aparece quem rodar o atalho. Sem mudança.
+
+## Status (23/11/2026, noite): aba Entregas e pranchas em pastas
+
+Branch `projetos/entregas-pastas-23-11`, em cima da `projetos/ficha-entrega-23-11` (4a8d617, que já está na `trabalho`). Commits locais, sem push.
+
+- **Aba Entregas** (pedido do Nicolas: "uma aba com as entregas"): uma linha por entrega (a assinatura junta as pranchas levadas juntas), da mais nova para a mais velha, com pessoa, empresa, data e hora, pranchas e cópias e o selo assinada / sem assinatura. Busca por pessoa ou empresa, período (hoje, 7 e 30 dias, datas) e filtro de assinatura. Tocar abre o comprovante (no formulário da obra, quando ela tem um). As entregas sem assinatura (carga da ficha de 22/11 e as de antes da assinatura) agrupam por empresa + pessoa + dia e também abrem o comprovante, com a coluna de assinatura em branco. Botão "Entregas" na tela da obra. Contas em `projetos/entregas.ts`.
+- A lista de antes (uma linha por cópia, com os filtros em campo / desatualizada / conferir) virou a aba **Cópias**.
+- **Achado do testador** ("a entrega assinada não aparece em Pessoas"): na aba Pessoas do painel ela aparece; quem não mostrava era a tela **Empresas**, que conta pranchas (documentos) e não pessoas. Quem recebe uma prancha que outra pessoa da empresa já tinha não mudava nada lá. Agora a tela Empresas lista cada pessoa com as cópias em campo e a última entrega, e leva às entregas da empresa.
+- **Pranchas em pastas e subpastas** (pedido do Nicolas: "está difícil de achar"): a Lista de projetos abre em pastas: disciplina › pasta do Autodoc (normalmente LO/EX › tipo) › pavimento. O pavimento (pelo código e título) só vira pasta quando a pasta tem, em média, 3 ou mais pranchas por pavimento. Pasta com uma subpasta só junta com ela ("Fundação / LO"). Cada pasta mostra quantas pranchas tem e os avisos de dentro (a recolher, conferir, novas). Trilha no topo para subir; o voltar do aparelho sobe uma pasta. A busca vale por cima de todas as pastas e mostra onde cada prancha está. Conta em `projetos/pastas.ts`.
+- Testado com a lista real da obra piloto (2.589 pranchas, CSV do PC, fora do repositório): Estrutural › LO › Vigas › 2º pavimento em 4 toques. O servidor de testes não tem as pranchas da obra piloto; na bancada, `?muitas=1` grava 84 pranchas fictícias em pastas (`testes/projetos_pastas.e2e.test.ts`).
+- Testes: `entregas.test.ts`, `pastas.test.ts`, e2e de entrega (aba Entregas, comprovante, Empresas, Pessoas) e de pastas em 375 px e tablet.
+
+## Status (23/11/2026, tarde): ficha de entrega no formulário da obra
+
+- Pedido do Nicolas: "o relatório de entrega tem que ser no formato do formulário" da empresa, só na obra que tem esse formulário. No comprovante de uma entrega assinada, o **Exportar PDF** sai no layout do formulário da obra quando ela tem um: A4 deitado, cabeçalho do formulário (logo, título, referência, datas de emissão e revisão, tipo, setores, versão, página), OBRA, caixas de disciplina marcadas pela sigla do código das pranchas ("Outros" com o nome escrito) e a tabela com uma linha por prancha (código, descrição, versão, nº de cópias, data, empreiteira, nome e a assinatura, recortada no risco). São 15 linhas por página, completadas em branco. Obra sem formulário: o comprovante de sempre.
+- **O modelo é dado da obra**, nunca código: tabela nova `projetos_formularios` (migração `20261123120000_projetos_formularios.sql`, só inclusão e vale a linha mais nova; o gestor grava, a obra lê), com título, código, datas, setores, disciplinas com siglas e o logo em data URL. Na bancada (`dev/projetos.html?ficha=1`) há um modelo fictício da EXE. Código em `projetos/ficha_entrega.ts` e `telas/FichaEntrega.tsx`; a folha do Exportar PDF aceita um desenho próprio (`FolhaPdf.propria`).
+- **Núcleo:** uma linha em `app/src/nucleo/tabelas.ts` (bloco à parte, no fim) para a tabela nova sincronizar. Os testes de ordem das tabelas da FVS foram atualizados.
+- Servidor de testes (`tbscnqazrveiaoqgpgxs`, 23/11): migração aplicada e modelo da obra piloto gravado. A primeira linha teve o logo corrompido na cópia; como a tabela é só de inclusão, ela ficou e vale a segunda (mais nova, logo conferido por MD5). Nada no servidor da obra.
+- Próximo passo: abrir no app de testes (trabalho) com uma entrega real de teste na obra piloto e conferir o PDF. Pendência: quando houver pranchas da obra piloto no servidor de testes, conferir se as siglas do modelo (AR, ES, EL, HS/HI, TO, FU, AL, GA, PA, SE, IM) cobrem as disciplinas da obra.
+
 ## Status (23/11/2026): entregar várias folhas de uma vez
 
 - Pedido do Nicolas: "quero que possa entregar várias folhas de uma vez". Em "Entregar cópia" o toque agora **marca** a prancha (caixa à esquerda). Os filtros ficam em botões: disciplina (com "Todas") e pavimento (tirado do título, como no painel da pessoa), mais a busca. As marcadas continuam marcadas quando o filtro muda. Há também "Marcar as N da lista" (até 100) e "Limpar".
@@ -192,9 +228,9 @@ Pedido do Nicolas (21/11, pelo Professor): "coloca esse script no programa, a ú
 - 20/11/2026: lista por pasta do Autodoc; disparo da verificação por atalho na área de trabalho, nada registrado no Windows; equipe sem conta (conta de leitura fica para depois).
 
 ## Como testar
-- Bancada (só no `npm run dev`): `app/dev/projetos.html?autodoc=ok|atrasada|nunca` (e `&base=exe` para a base fictícia); `?papel=campo` ou `?papel=leitura` troca o papel.
+- Bancada (só no `npm run dev`): `app/dev/projetos.html?autodoc=ok|atrasada|nunca` (e `&base=exe` para a base fictícia); `?papel=campo` ou `?papel=leitura` troca o papel; `&ficha=1` liga o formulário fictício de entrega; `&muitas=1` grava 84 pranchas fictícias em pastas (lista em pastas).
 - Unidade: `painel.test.ts`, `edicoes.test.ts`, `distribuicao.test.ts`, `base.test.ts` (obra EXE em `exemplo_exe.ts`).
-- Tela: `local.e2e.test.ts` em 375x812 e 768x1024, nos dois temas (`itProjetos`).
+- Tela: `local.e2e.test.ts` em 375x812 e 768x1024, nos dois temas (`itProjetos`); `projetos_entregar.e2e.test.ts` (entrega, aba Entregas, comprovante, Empresas) e `projetos_pastas.e2e.test.ts` (pastas).
 - Banco: `supabase/testes/testes_projetos.sql` e `supabase/testes/testes_x_projetos_destinatarios.sql`. Python: `pipeline/testes`. Integração com PostgREST: `app/testes/projetos.test.ts`.
 
 ## Próximo passo

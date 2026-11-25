@@ -116,6 +116,32 @@ class TestLeitura(unittest.TestCase):
         self.assertEqual(len(r["eventos"]), 3)
         self.assertTrue(all(e["elemento_id"] == "el-p27" for e in r["eventos"]))
 
+    def test_com_locais_a_verificacao_da_laje_vira_registro_no_local(self):
+        h = leitura.montar_leitura("EXE", dados(), {f["codigo"]: f for f in FICHAS}, PAVIMENTOS, ELEMENTOS, {PILAR}, com_locais=True)
+        laje = [e for e in h["eventos"] if e["ficha_campo_id"] == ic.novo_id("EXE", "ficha_campo", 2)]
+        self.assertEqual([(e["origem_id"], e["item"], e["resultado"], e["elemento_id"]) for e in laje], [("200", 1, "C", None)])
+        self.assertEqual(laje[0]["local_id"], ic.novo_id("EXE", "local", 11))
+        r = pl.linhas_para_enviar(h, FICHAS, PAVIMENTOS, ELEMENTOS)
+        f = {x["construpoint_id"]: x for x in r["fichas"]}
+        self.assertEqual(f[2]["ficha_id"], "f-laje")  # a tela do local mostra os itens da ficha modelo
+        self.assertIsNone(f[2]["elemento_id"])
+        no_local = [e for e in r["eventos"] if e.get("local_id")]
+        self.assertEqual(len(no_local), 1)
+        self.assertEqual((no_local[0]["ficha_id"], no_local[0]["item"]), ("f-laje", 1))
+        self.assertNotIn("elemento_id", no_local[0])  # um só entre elemento, área, barra e local
+        self.assertEqual(len(r["eventos"]), 4)
+
+    def test_com_locais_ficha_modelo_fora_do_servidor_fica_de_fora(self):
+        h = leitura.montar_leitura("EXE", dados(), {PILAR: FICHAS[0]}, PAVIMENTOS, ELEMENTOS, {PILAR}, com_locais=True)
+        r = pl.linhas_para_enviar(h, FICHAS[:1], PAVIMENTOS, ELEMENTOS)
+        self.assertFalse([e for e in r["eventos"] if e.get("local_id")])
+        self.assertIsNone({x["construpoint_id"]: x for x in r["fichas"]}[2]["ficha_id"])
+
+    def test_com_locais_recusa_o_servidor_da_obra(self):
+        self.assertTrue(pl.servidor_da_obra("https://abc.supabase.co/", "https://abc.supabase.co"))
+        self.assertFalse(pl.servidor_da_obra("https://teste.supabase.co", "https://abc.supabase.co"))
+        self.assertEqual(pl.main(["pasta-que-nao-existe", "--obra", "EXE", "--com-locais", "--empresa-autorizou"]), 1)
+
     def test_importacao_tem_id_fixo(self):
         a = pl.linha_importacao("EXE", "2026-11-21T12:00:00Z", {"locais": 4})
         b = pl.linha_importacao("EXE", "2026-11-21T12:00:00Z", {"locais": 4})

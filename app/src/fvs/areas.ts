@@ -238,6 +238,8 @@ export function resumoDasAreas(
   fichaPorId: (id: string) => Ficha | undefined,
   eventosDe: (id: string) => readonly EventoFvs[],
   escalaDe?: (plantaId: string | null) => unknown,
+  /** área numa concretagem cadastrada (concretadaDe): verde só com ela (achado #2, 24/11) */
+  concretada?: (areaId: string) => boolean | undefined,
 ): ResumoDasAreas {
   const r: ResumoDasAreas = { total: 0, paraConcretar: 0, liberadas: 0, comR: 0, m2Liberados: 0, m2: 0 }
   for (const a of areas) {
@@ -245,7 +247,7 @@ export function resumoDasAreas(
     const m2 = metrosQuadrados(a.contorno, escalaDe?.(a.planta_id))
     r.m2 += m2
     const ficha = fichaPorId(a.ficha_id)
-    const s = ficha ? situacaoDaPeca(ficha, eventosDe(a.id)) : 'nada'
+    const s = ficha ? situacaoDaPeca(ficha, eventosDe(a.id), undefined, concretada?.(a.id)) : 'nada'
     if (s === 'concretagem') r.paraConcretar++
     if (s === 'liberado') r.liberadas++
     if (s === 'reprovado') r.comR++

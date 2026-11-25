@@ -3,6 +3,7 @@
 // Situação da obra: uma linha por peça e ficha, para o escritório filtrar. Quem fica pendente também
 // aparece: a pergunta do dia é justamente o que falta.
 
+import { concretadaDe } from './concretada'
 import { nomeDaPeca } from './comodos'
 import { textoDaMetragem } from './areas'
 import { daFichaAberta, fichaDaPeca, fichaNaPeca, fichasPara, maisNovo, percentualConforme, ROTULO_SITUACAO as ROTULO, situacaoDaPeca, ultimosPorItem, type EventoFvs, type Ficha, type FichaCampo } from './situacao'
@@ -26,6 +27,8 @@ const NOME_TIPO: Record<string, string> = { P: 'Pilar', V: 'Viga', L: 'Laje', A:
 const ordemNatural = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' })
 
 export interface EntradaDaSituacao {
+  /** pilares, vigas e áreas de laje numa concretagem cadastrada (concretada.ts): verde só com ela */
+  concretadas?: ReadonlySet<string>
   pecas: Iterable<{ id: string; tipo: string; nome: string; secao?: string | null; pavimento_id: string }>
   pavimentos: ReadonlyArray<{ id: string; nome: string }>
   fichas: readonly Ficha[]
@@ -93,7 +96,7 @@ export function linhasDaSituacao(d: EntradaDaSituacao): LinhaDaSituacao[] {
         ...base,
         ficha: ficha ? ficha.codigo : (aberta?.ficha_codigo ?? ''),
         // ficha modelo que não está no app: vale o status do sistema oficial, na coluna ao lado
-        situacao: ficha ? ROTULO[situacaoDaPeca(ficha, daFicha)] : aberta ? '' : ROTULO.nada,
+        situacao: ficha ? ROTULO[situacaoDaPeca(ficha, daFicha, undefined, concretadaDe(d.concretadas, peca.id, peca.tipo))] : aberta ? '' : ROTULO.nada,
         a: contar('C'),
         r: contar('NC'),
         na: contar('NA'),

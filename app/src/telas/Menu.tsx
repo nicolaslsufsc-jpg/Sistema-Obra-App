@@ -22,6 +22,7 @@ import { IconeInstalar, IconeModulo } from './icones'
 import { aoMudarAppInstalado, appInstalado } from './instalado'
 import { PlantasSemInternet } from './PlantasSemInternet'
 import type { PacoteLocalizado } from '../nucleo/pacote_obra'
+import { Ajuda } from './Ajuda'
 
 export function Menu({
   usuario,
@@ -375,7 +376,7 @@ function Aparelho({ obraId, versaoDados }: { obraId: string; versaoDados: number
         <section data-testid="pavimentos-obra">
           <h3>Pavimentos baixados ({pavimentos.length})</h3>
           {pavimentos.length === 0 ? (
-            <p class="discreto">Nenhum pavimento baixado ainda.</p>
+            <p class="discreto">Sem pavimentos baixados</p>
           ) : (
             <ul class="lista-pavimentos">
               {pavimentos.map((p) => (
@@ -410,8 +411,8 @@ function AvisoDadosDesprotegidos() {
   return (
     <section class="barra atencao" data-testid="aviso-protecao">
       <p>
-        <strong>Instale o app para não perder marcações.</strong> Sem instalar, o navegador pode apagar os dados deste aparelho quando faltar espaço,
-        inclusive o que ainda não foi enviado.
+        <strong>Instale o app para não perder marcações.</strong>
+        <Ajuda>Sem instalar, o navegador pode apagar os dados deste aparelho quando faltar espaço, inclusive o que ainda não foi enviado.</Ajuda>
       </p>
     </section>
   )

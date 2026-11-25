@@ -114,8 +114,11 @@ export function faixaAutodoc(estado: EstadoAutodoc | null, agora = new Date()): 
   if (!u) {
     return { tipo: 'nunca', titulo: 'O Autodoc ainda não foi puxado para esta obra', detalhe: `Rode o atalho "${ATALHO}" no PC.` }
   }
-  const novidades =
-    u.revisoesNovas || u.documentosNovos
+  // a primeira leitura da obra é a carga inicial: o que veio nela não é novidade (testador, 23/11/2026)
+  const primeira = estado.anterior === null
+  const novidades = primeira
+    ? `Carga inicial: ${plural(u.documentosNovos, 'prancha', 'pranchas')}. Nada conta como revisão nova até a próxima atualização.`
+    : u.revisoesNovas || u.documentosNovos
       ? [u.revisoesNovas ? plural(u.revisoesNovas, 'revisão nova', 'revisões novas') : '', u.documentosNovos ? plural(u.documentosNovos, 'documento novo', 'documentos novos') : '']
           .filter(Boolean)
           .join(' · ')

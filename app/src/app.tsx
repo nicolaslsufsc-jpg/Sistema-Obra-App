@@ -1,7 +1,7 @@
 // Casca do app. Com a pasta da obra ao lado (dados_obra/): abre direto na obra, sem login, no modo
 // sem conta. Sem ela: entrar (e-mail e código) -> escolher obra -> menu de módulos.
 // Abre direto do banco do aparelho, sem esperar a internet.
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { conta, sincronizador } from './nucleo/servicos'
 import { pedirArmazenamentoPersistente } from './nucleo/aparelho'
 import type { ObraLocal, UsuarioLocal } from './nucleo/conta'
@@ -28,6 +28,8 @@ import { ConfirmarPacote } from './telas/ConfirmarPacote'
 import { banco } from './nucleo/servicos'
 import { moduloPorId, type IdModulo } from './modulos'
 import { esquecerModulo, lembrarModulo, moduloGuardado } from './telas/ultimo_modulo'
+import { CascaPc, ExperimentarPc, PaginaPcSobDemanda, type DestinoPc } from './pc/CascaPc'
+import { usarVersaoPc, type PaginaPc } from './pc/versao_pc'
 
 type Tela =
   | { nome: 'carregando' }
@@ -40,6 +42,8 @@ type Tela =
   | { nome: 'menu'; usuario: UsuarioLocal; obra: ObraLocal }
   | { nome: 'pessoas'; usuario: UsuarioLocal; obra: ObraLocal }
   | { nome: 'modulo'; modulo: IdModulo; usuario: UsuarioLocal; obra: ObraLocal }
+  /** só na versão PC (pc/): painel da obra, relatórios, pranchas e PDFs */
+  | { nome: 'pc'; pagina: PaginaPc; usuario: UsuarioLocal; obra: ObraLocal }
 
 /** Tela de quem já entrou: menu da última obra, ou lista de obras. */
 async function telaDoUsuario(usuario: UsuarioLocal): Promise<Tela> {
@@ -204,7 +208,7 @@ export function App() {
     // `tela: id do módulo`); sai para o menu quando o histórico volta para antes da entrada.
     const aoVoltar = (e: PopStateEvent) =>
       setTela((t) => {
-        if (!(t.nome === 'pessoas' || (t.nome === 'modulo' && e.state?.tela !== t.modulo))) return t
+        if (!(t.nome === 'pessoas' || (t.nome === 'modulo' && e.state?.tela !== t.modulo) || (t.nome === 'pc' && e.state?.tela !== `pc:${t.pagina}`))) return t
         esquecerModulo() // de volta ao menu: reabrir o app abre no menu
         return { nome: 'menu', usuario: t.usuario, obra: t.obra }
       })
@@ -219,14 +223,14 @@ export function App() {
 
   // Modo sem conta: enquanto uma obra está aberta (menu ou módulo), cada registro novo grava o
   // .obra na pasta escolhida (se houver). Fica na casca para valer dentro dos módulos também.
-  const aberta = tela.nome === 'menu' || tela.nome === 'modulo' || tela.nome === 'pessoas' ? { usuario: tela.usuario, obra: tela.obra } : null
+  const aberta = tela.nome === 'menu' || tela.nome === 'modulo' || tela.nome === 'pessoas' || tela.nome === 'pc' ? { usuario: tela.usuario, obra: tela.obra } : null
   useEffect(() => {
     if (!local || !aberta) return
     return ligarSalvamentoAutomatico(banco, () => aberta)
   }, [local, aberta?.obra.id, aberta?.usuario.id])
 
-  const usuario = tela.nome === 'obras' || tela.nome === 'menu' || tela.nome === 'modulo' ? tela.usuario : null
-  const obraNome = tela.nome === 'menu' || tela.nome === 'modulo' ? tela.obra.codigo : null
+  const usuario = tela.nome === 'obras' || tela.nome === 'menu' || tela.nome === 'modulo' || tela.nome === 'pc' ? tela.usuario : null
+  const obraNome = tela.nome === 'menu' || tela.nome === 'modulo' || tela.nome === 'pc' ? tela.obra.codigo : null
   const aoPerderObra = useCallback(() => {
     esquecerModulo()
     if (usuario) setTela({ nome: 'obras', usuario, aviso: `Seu acesso à obra ${obraNome} foi retirado.` })
@@ -252,6 +256,54 @@ export function App() {
     }
   }
 
+  const pc = usarVersaoPc()
+  // Versão PC desligada (ou janela estreitada) numa página do PC: volta ao início.
+  useEffect(() => {
+    if (!pc.ativa && tela.nome === 'pc') setTela({ nome: 'menu', usuario: tela.usuario, obra: tela.obra })
+  }, [pc.ativa, tela.nome])
+
+  /**
+   * Navegação pela barra lateral do PC. O histórico fica sempre "início + uma tela": de uma tela para
+   * outra troca a de cima (replaceState), e o voltar do navegador leva ao início, como no celular.
+   */
+  const irNoPc = (d: DestinoPc) => {
+    if (tela.nome !== 'menu' && tela.nome !== 'modulo' && tela.nome !== 'pc') return
+    const { usuario: u, obra: o } = tela
+    const noInicio = tela.nome === 'menu'
+    if (d.tipo === 'inicio') {
+      if (noInicio) return
+      esquecerModulo()
+      const marca = tela.nome === 'modulo' ? tela.modulo : `pc:${tela.pagina}`
+      if (history.state?.tela === marca) history.back() // o popstate volta ao início
+      else setTela({ nome: 'menu', usuario: u, obra: o })
+      return
+    }
+    if (d.tipo === 'modulo' && !moduloPorId(d.id)?.Tela) return
+    const marca = d.tipo === 'modulo' ? d.id : `pc:${d.pagina}`
+    if (noInicio) history.pushState({ tela: marca }, '')
+    else history.replaceState({ tela: marca }, '')
+    if (d.tipo === 'modulo') {
+      lembrarModulo(o.id, d.id)
+      setTela({ nome: 'modulo', modulo: d.id, usuario: u, obra: o })
+    } else {
+      esquecerModulo()
+      setTela({ nome: 'pc', pagina: d.pagina, usuario: u, obra: o })
+    }
+  }
+
+  // A versão PC abre no Avanço da obra (a tela do escritório): ao ligar e a cada vez que o app abre nela.
+  // Só uma vez por abertura, para o "Menu da obra" da barra continuar levando ao menu.
+  const abriuNoAvanco = useRef(false)
+  useEffect(() => {
+    if (!pc.ativa) {
+      abriuNoAvanco.current = false
+      return
+    }
+    if (abriuNoAvanco.current || (tela.nome !== 'menu' && tela.nome !== 'modulo' && tela.nome !== 'pc')) return
+    abriuNoAvanco.current = true
+    if (tela.nome === 'menu') irNoPc({ tipo: 'pagina', pagina: 'painel' })
+  }, [pc.ativa, tela.nome])
+
   // Pacote (.zip) escolhido no aparelho: troca de obra ou pacote mais antigo pedem confirmação antes.
   const escolherPacote = async (pacote: PacoteLocalizado, voltar: Tela) => {
     esquecerModulo()
@@ -259,6 +311,7 @@ export function App() {
     setTela(precisaConfirmar(comparacao) ? { nome: 'confirmar_pacote', pacote, comparacao, voltar } : { nome: 'preparando', pacote })
   }
 
+  const conteudo = (() => {
   switch (tela.nome) {
     case 'carregando':
       return <main class="tela tela-estreita">Carregando…</main>
@@ -392,5 +445,30 @@ export function App() {
           }}
         />
       )
+    case 'pc':
+      return <PaginaPcSobDemanda key={`${tela.pagina}:${tela.obra.id}`} pagina={tela.pagina} obra={tela.obra} usuario={tela.usuario} aoIr={irNoPc} aoPerderObra={aoPerderObra} />
   }
+  })()
+
+  // Versão PC (proposta de 23/11/2026, docs/modulos/6_frontend.md): em tela larga com mouse e ligada pela
+  // pessoa, o início, os módulos e as páginas do PC ganham a barra lateral. Fora disso, nada muda.
+  if (tela.nome === 'menu' || tela.nome === 'modulo' || tela.nome === 'pc') {
+    if (pc.ativa) {
+      const atual: DestinoPc = tela.nome === 'modulo' ? { tipo: 'modulo', id: tela.modulo } : tela.nome === 'pc' ? { tipo: 'pagina', pagina: tela.pagina } : { tipo: 'inicio' }
+      return (
+        <CascaPc obra={tela.obra} semConta={local} atual={atual} aoIr={irNoPc} aoDesligar={pc.desligar}>
+          {conteudo}
+        </CascaPc>
+      )
+    }
+    if (pc.serve && tela.nome === 'menu') {
+      return (
+        <>
+          {conteudo}
+          <ExperimentarPc aoLigar={pc.ligar} />
+        </>
+      )
+    }
+  }
+  return conteudo
 }

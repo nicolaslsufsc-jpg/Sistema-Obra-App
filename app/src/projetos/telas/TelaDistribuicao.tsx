@@ -11,6 +11,7 @@ import type { Contexto } from './ModuloProjetos'
 import { CabecalhoBase, tocavel, usarBase } from './baseComum'
 import { Campo, dataBR, plural } from './comum'
 import { alvoDaFolha, ondeDaCopia } from './TelaPranchaBase'
+import { Ajuda } from '../../telas/Ajuda'
 
 const pessoa = (empresa: string, colaborador: string) => (colaborador ? `${empresa} · ${colaborador}` : `${empresa} (qualquer pessoa)`)
 
@@ -32,7 +33,7 @@ export function TelaAEntregar({ ctx, aoSair }: { ctx: Contexto; aoSair: () => vo
         <h2>A entregar</h2>
         {!regras.some((r) => r.ativo) ? (
           <p class="discreto" data-testid="a-entregar-sem-lista">
-            Ainda não há lista de distribuição. Monte na aba Distribuição: quem recebe cada disciplina ou pasta.
+            Sem lista de distribuição. Monte na aba Distribuição.
           </p>
         ) : (
           <>
@@ -251,7 +252,7 @@ function NovaRegra({
             setPavimento('')
           }}
         >
-          <option value="">Escolha…</option>
+          <option value="">Escolher</option>
           {disciplinas.map((d) => (
             <option key={d}>{d}</option>
           ))}
@@ -451,7 +452,7 @@ function ImportarLista({
     <label class="pj-campo">
       <span>Importar lista (.csv)</span>
       <input type="file" accept=".csv,text/csv" data-testid="arquivo-lista" onChange={(e) => ler(e.currentTarget.files?.[0])} />
-      <span class="discreto">Colunas: disciplina, pasta, pavimento (opcional), empresa, colaborador, copias, ativo. Confira antes: a lista sugerida sai de quem recebeu cada pasta nos últimos 90 dias.</span>
+      <Ajuda>Colunas: disciplina, pasta, pavimento (opcional), empresa, colaborador, copias, ativo. Confira antes: a lista sugerida sai de quem recebeu cada pasta nos últimos 90 dias.</Ajuda>
       {erro && (
         <span class="erro" role="alert">
           {erro}

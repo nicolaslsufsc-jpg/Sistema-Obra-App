@@ -1,0 +1,62 @@
+/* Campo de arquivo como botão (BotaoArquivo.tsx). Cores e tamanhos só pelas variáveis de tema.css. */
+.so-arquivo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin: 0.35rem 0;
+  min-width: 0;
+}
+.so-arquivo-botao {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--primaria-claro);
+  border-radius: var(--raio-max);
+  background: transparent;
+  color: var(--primaria-claro);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.so-arquivo-botao.principal {
+  background: var(--primaria);
+  border-color: var(--primaria);
+  color: var(--primaria-texto);
+}
+.so-arquivo-botao.desativado {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.so-arquivo-botao:focus-within {
+  outline: 2px solid var(--primaria);
+  outline-offset: 2px;
+}
+.so-arquivo-botao:active {
+  filter: brightness(0.92);
+}
+/* o campo do navegador fica dentro do botão, sem aparecer */
+.so-arquivo-botao .so-arquivo-campo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  pointer-events: none;
+}
+.so-arquivo-nome {
+  min-width: 0;
+  font-size: var(--fs-texto);
+  color: var(--discreto);
+  overflow-wrap: anywhere;
+}

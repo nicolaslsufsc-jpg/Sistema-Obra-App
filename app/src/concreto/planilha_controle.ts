@@ -13,8 +13,9 @@
 
 import type { ArquivosXlsx } from './xlsx'
 import { desescaparXml, escaparXml, gravarTexto, letrasDaColuna, separarCelula, serialDoExcel, texto } from './xlsx'
+import { itemDaLista, itemNoComeco, listasDasColunas, localSemPavimento, pavimentoDeFundacao } from './planilha_listas'
 
-export type CampoDaLinha = 'data' | 'nota_fiscal' | 'volume' | 'tipo' | 'setor' | 'pavimento' | 'fck_7' | 'fck_28' | 'observacao'
+export type CampoDaLinha = 'data' | 'nota_fiscal' | 'volume' | 'tipo' | 'setor' | 'pavimento' | 'fck_7' | 'fck_28' | 'observacao' | 'fornecedor'
 
 export interface LayoutPlanilha {
   /** nome da aba com a tabela de rastreamento */
@@ -32,7 +33,7 @@ export interface LayoutPlanilha {
 
 export const LAYOUT_PADRAO: LayoutPlanilha = {
   aba: 'Rastreamento',
-  colunas: { data: 'A', nota_fiscal: 'B', volume: 'C', tipo: 'D', setor: 'E', pavimento: 'F', fck_7: 'J', fck_28: 'K', observacao: 'S' },
+  colunas: { data: 'A', nota_fiscal: 'B', volume: 'C', tipo: 'D', setor: 'E', pavimento: 'F', fck_7: 'J', fck_28: 'K', fornecedor: 'R', observacao: 'S' },
   semResultado: '-',
   tipos: { P: 'Pilar', V: 'Vigas', L: 'Laje', VL: 'Lajes e Vigas', PV: 'Pilar, viga e laje', PL: 'Pilar, viga e laje', PVL: 'Pilar, viga e laje', outro: 'Outro' },
 }
@@ -72,6 +73,9 @@ export interface LinhaControle {
   fck_7: number | null
   fck_28: number | null
   observacao: string | null
+  fornecedor: string | null
+  /** caminhão só de fundação (estaca, bloco): o pavimento vira o item de fundações da lista do modelo */
+  fundacao: boolean
   /** na ordem de EXTRAS */
   extras: Valor[]
 }
@@ -117,11 +121,17 @@ const hora = (iso: string | null): string | null => {
 
 const ordemNatural = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' })
 
+/** Rótulo de fundação quando o modelo da obra não traz um. */
+const TIPOS_FUNDACAO: Readonly<Record<string, string>> = { S: 'Estaca', K: 'Bloco', SK: 'Estaca e bloco' }
+
 /** Tipo de elemento pelas peças: só pilar = P, viga e laje = VL... Sem peça = "outro". */
 export function tipoDoCaminhao(pecas: readonly { tipo: string }[], layout: LayoutPlanilha): string {
   const tem = new Set(pecas.map((p) => p.tipo))
-  const chave = ['P', 'V', 'L'].filter((t) => tem.has(t)).join('')
-  return layout.tipos[chave] ?? layout.tipos.outro ?? ''
+  const estrutura = ['P', 'V', 'L'].filter((t) => tem.has(t)).join('')
+  const fundacao = ['S', 'K'].filter((t) => tem.has(t)).join('')
+  // fundações (22/11): caminhão só de estaca e/ou bloco; o modelo da obra pode não ter esses nomes
+  if (fundacao && !estrutura) return layout.tipos[fundacao] ?? TIPOS_FUNDACAO[fundacao]
+  return layout.tipos[estrutura + fundacao] ?? layout.tipos[estrutura] ?? layout.tipos.outro ?? ''
 }
 
 function textoDasPecas(pecas: CaminhaoDaPlanilha['pecas']): string {
@@ -156,6 +166,8 @@ export function linhaDoCaminhao(conc: ConcretagemDaPlanilha, c: CaminhaoDaPlanil
     fck_7: exemplar(c.resultados, 7),
     fck_28: exemplar(c.resultados, 28),
     observacao: c.observacao,
+    fornecedor: conc.fornecedor,
+    fundacao: c.pecas.length > 0 && c.pecas.every((p) => p.tipo === 'S' || p.tipo === 'K'),
     extras: [
       c.sequencia,
       textoDasPecas(c.pecas) || null,
@@ -346,6 +358,31 @@ export function preencherModelo(arquivos: ArquivosXlsx, linhas: readonly LinhaCo
   const colExtras = Number.isFinite(extrasAntigos) ? extrasAntigos : maiorColuna + 1
   const estiloTexto = estiloDe.get(separarCelula(`${layout.colunas.observacao ?? 'A'}1`).col) ?? null
 
+  // listas suspensas do modelo (tipo, local, pavimento, empreiteira): o texto da linha vira o item da lista
+  const listas = listasDasColunas(arquivos, layout.aba)
+  const listaDe = (campo: CampoDaLinha) => {
+    const letra = layout.colunas[campo]
+    return letra ? listas.get(separarCelula(`${letra}1`).col) : undefined
+  }
+  const pavimentoDe = (l: LinhaControle): string => {
+    const lista = listaDe('pavimento')
+    if (l.fundacao) {
+      const f = pavimentoDeFundacao(lista)
+      if (f) return f
+    }
+    // o local escrito pela obra começa pelo pavimento da lista ("Fundações RESIDENCIAL 1"): vale ele
+    return itemNoComeco(l.setor, lista) ?? itemDaLista(l.pavimento, lista) ?? rotuloDoModelo(l.pavimento, doModelo)
+  }
+
+  // local: o item que aparece no texto; senão "pavimento + resto" ("Fundações RESIDENCIAL 1" → "FUNDAÇÃO-RESIDENCIAL 1");
+  // senão o texto do app sem o pavimento na frente
+  const setorDe = (l: LinhaControle): string => {
+    const lista = listaDe('setor')
+    const pav = pavimentoDe(l)
+    const resto = localSemPavimento(l.setor, l.pavimento, pav)
+    return itemDaLista(l.setor, lista) ?? itemDaLista(`${pav} ${resto}`, lista) ?? rotuloDoModelo(resto, doModelo)
+  }
+
   const valorDe = (l: LinhaControle, campo: CampoDaLinha): Valor => {
     switch (campo) {
       case 'data':
@@ -355,11 +392,13 @@ export function preencherModelo(arquivos: ArquivosXlsx, linhas: readonly LinhaCo
       case 'fck_28':
         return l.fck_28 ?? layout.semResultado
       case 'tipo':
-        return rotuloDoModelo(l.tipo, doModelo)
+        return itemDaLista(l.tipo, listaDe('tipo'), { palavra: true }) ?? rotuloDoModelo(l.tipo, doModelo)
       case 'setor':
-        return rotuloDoModelo(l.setor, doModelo)
+        return setorDe(l)
       case 'pavimento':
-        return rotuloDoModelo(l.pavimento, doModelo)
+        return pavimentoDe(l)
+      case 'fornecedor':
+        return l.fornecedor ? (itemDaLista(l.fornecedor, listaDe('fornecedor'), { contem: true }) ?? l.fornecedor) : null
       default:
         return l[campo]
     }

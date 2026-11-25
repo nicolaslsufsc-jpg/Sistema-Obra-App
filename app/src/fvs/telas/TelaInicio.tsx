@@ -4,6 +4,7 @@
 //   3. ao tocar na disciplina, as opções (Pilares, Vigas, Lajes, armadura de laje, furos...), cada uma abrindo a
 //      planta que já existe. Cada planta mostra se já está no aparelho (abre sem internet) ou o Baixar.
 // Os três níveis são esta mesma tela (o download continua ao trocar de nível); o voltar sobe um nível.
+import { concretadaDe } from '../concretada'
 import { resumoDasRegras } from '../regras_tela'
 import { contagemDoEscoramento, listaDoEscoramento } from '../escoramento'
 import { useEffect, useMemo, useState } from 'preact/hooks'
@@ -12,15 +13,16 @@ import { resumoDasAreas } from '../areas'
 import { baixarPlanta, ehDeAmbientes, ehDeArmadura, ehDeFuracao, ehDeVedacao, paraLancarDaObra, partesDoPilar, quemMarcou, registroNaFrente, relogioAntesDoPacote, relogioAtrasado, reprovacoesDaObra, situacaoDaObra, type DadosFvs, type Planta } from '../dados'
 import { dataHoraCompleta, hojeNoAparelho, mb } from '../formato'
 import { baixarTexto, planilhaDaSituacao } from '../planilha'
-import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, soDetalheGuardado, textoDoErroDeDownload } from '../pacote'
-import { manterNaLimpeza } from '../revisoes'
+import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho, removerPacotes, grupoDoAmbienteGuardado, semFichasGuardado, soDetalheGuardado, daGradeGuardado, fichaDeGradeGuardada, textoDoErroDeDownload } from '../pacote'
+import { avisoDasPlantas, manterNaLimpeza, textosDaRevisao } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, situacaoDaBarra, type CamadaDeBarras } from '../barras'
-import { disciplinaDePontos, fichaDosPontos, textoDoAvancoDosPontos } from '../pontos'
+import { disciplinaDePontos, fichaDosPontos, fichasDoPonto, textoDoAvancoDosPontos } from '../pontos'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { avancoDosFuros, ehDeCamadaDeFuros, furoDeOutraPlanta, temFuracaoUnica, textoDoAvancoDosFuros } from '../furos_laje'
 import { IconeDoItem } from './icones'
-import { disciplinasDoPavimento, ehOpcaoDeAcabamentos, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
+import { andamentoPorApartamento, categoriaDoAcabamento, categoriasPresentes, ehDeAcabamento, textoDoAndamento, valeNoAcabamento, type AndamentoDaFicha } from '../acabamentos'
+import { disciplinasDoPavimento, ehOpcaoDeAlvenaria, ehOpcaoDeInstalacoes, OPCOES_DA_FORMA } from '../navegacao'
 import { SEM_FILTRO } from '../reprovacoes'
 import { AvisoHora } from './AvisoHora'
 import { BotaoExportarPdf } from '../../telas/ExportarPdf'
@@ -33,8 +35,13 @@ import type { ContextoFvs, TelaFvs } from './ModuloFvs'
 import { filtrarListaAoAbrir } from './TelaReprovacoes'
 import { quantosLocais } from '../locais'
 import '../../telas/cabecalho.css'
+import { Ajuda } from '../../telas/Ajuda'
 
 const OBRA_INTEIRA = 'obra-inteira'
+/** filtro por acabamento no menu do pavimento (sessão 5, 24/11/2026): a escolha, guardada na sessão */
+const CHAVE_DO_ACABAMENTO = 'fvs-acabamento-escolhido'
+const TODOS_OS_ACABAMENTOS = 'todos'
+const CHAVE_DA_FICHA_DO_APTO = 'fvs-acabamento-ficha-do-apto'
 
 /**
  * Contas da obra inteira (totais, reprovações, para lançar), guardadas junto dos dados: voltar ao início ou
@@ -150,6 +157,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
     const guardado = noAparelho?.get(p.id)
     // revisão nova publicada e ainda não baixada: a anterior continua abrindo
     const antiga = !guardado && noAparelho ? dados.anterioresDe.get(p.id)?.find((a) => noAparelho.has(a.id)) : undefined
+    // mesma revisão com id novo (prancha publicada de novo): "Planta atualizada", não "Revisão nova"
+    const textos = antiga ? textosDaRevisao(p, antiga) : undefined
     const tamanho = tamanhoDe(p)
     return (
       <li key={p.id}>
@@ -160,7 +169,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               {/* planta de ambientes: o número de ambientes já está no resumo acima (o da folha soma as esquadrias) */}
               {ehDeAmbientes(p) ? p.prancha : `${p.prancha} · ${p.elementos} ${ehDeVedacao(p) ? 'paredes' : p.disciplina in SECAO_DE_INSTALACOES ? 'pontos' : p.disciplina === 'furacao' ? (p.elementos === 1 ? 'furo' : 'furos') : 'peças'}`}
             </span>
-            {antiga && <span class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</span>}
+            {textos && <span class="fv-txt-rev" data-testid="fvs-aviso-revisao">{textos.aviso}</span>}
           </span>
           {noAparelho === null ? (
             // ainda lendo o que está no aparelho: não oferece baixar o que pode já estar aqui
@@ -173,9 +182,9 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
             </button>
           ) : (
             <span class="fv-trecho-acoes">
-              {antiga && (
+              {textos && (
                 <button type="button" class="fv-abrir" onClick={() => ir({ nome: 'planta', plantaId: p.id })}>
-                  Abrir {antiga.revisao}
+                  {textos.abrir}
                 </button>
               )}
               <button
@@ -185,7 +194,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                 onClick={() => baixar([p])}
                 title={semRede ? 'Precisa de internet para baixar' : ''}
               >
-                {baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `Baixar ${antiga ? `${p.revisao} ` : ''}${tamanho ? mb(tamanho) : ''}`}
+                {baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `${textos ? textos.baixar : 'Baixar'} ${tamanho ? mb(tamanho) : ''}`.trim()}
               </button>
             </span>
           )}
@@ -203,8 +212,9 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
     const guardado = noAparelho?.get(p.id)
     const antiga = !guardado && noAparelho ? dados.anterioresDe.get(p.id)?.find((a) => noAparelho.has(a.id)) : undefined
     const abre = !!guardado || !!antiga
+    const textos = antiga ? textosDaRevisao(p, antiga) : undefined
     const tamanho = tamanhoDe(p)
-    const acao = noAparelho === null ? '…' : abre ? (antiga ? `Abrir ${antiga.revisao}` : 'Abrir') : baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `Baixar ${tamanho ? mb(tamanho) : ''}`
+    const acao = noAparelho === null ? '…' : abre ? (textos ? textos.abrir : 'Abrir') : baixando?.plantaId === p.id ? `Baixando ${baixando.pct}%` : `Baixar ${tamanho ? mb(tamanho).replace(' ', ' ') : ''}`
     return (
       <button
         type="button"
@@ -221,7 +231,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         <span class="fv-bt-texto">
           <b>{o.titulo}</b>
           {o.sub && <small>{o.sub}</small>}
-          {antiga && <small class="fv-txt-rev">Revisão nova: no aparelho ainda está a {antiga.revisao}</small>}
+          {textos && <small class="fv-txt-rev">{textos.aviso}</small>}
         </span>
         <span class={abre ? 'fv-bt-acao' : 'fv-bt-acao fv-bt-baixar'}>{acao}</span>
       </button>
@@ -269,7 +279,13 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   const chaveDosResumos = noAparelho ? 'resumos|' + [...noAparelho.keys()].sort().join(',') : 'resumos'
   const resumos = useMemo(() => conta(dados, chaveDosResumos, () => {
     const eventosDe = (id: string) => dados.eventosDe.get(id) ?? []
-    const campo = { fichasDe: (id: string) => dados.fichasCampoDe.get(id) ?? [], ficha: (id: string) => dados.fichaPorId.get(id), partesDe: partesDoPilar }
+    const campo = {
+      fichasDe: (id: string) => dados.fichasCampoDe.get(id) ?? [],
+      ficha: (id: string) => dados.fichaPorId.get(id),
+      partesDe: partesDoPilar,
+      // pilar, viga e laje: verde só numa concretagem cadastrada (achado #2, 24/11)
+      concretada: (id: string, tipo: string) => concretadaDe(dados.concretadas, id, tipo),
+    }
     const locaisDe = new Map<string, Array<{ id: string; tipo: string }>>()
     for (const p of dados.pecaPorId.values()) {
       // área de laje tem resumo próprio: não é peça da forma
@@ -288,9 +304,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           pv.id,
           {
             r: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo),
-            ra: resumoDosAmbientes(locais, dados.fichas, eventosDe),
+            // quadrado da escavação (planta de fundação, 24/11) é local "A" mas não é cômodo: fora dos ambientes
+            ra: resumoDosAmbientes(locais.filter((l) => !daGradeGuardado(l.id)), dados.fichas.filter((f) => !fichaDeGradeGuardada(f.codigo)), eventosDe, (id, codigo) => !semFichasGuardado(id)?.includes(codigo)),
             rm: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo, 'M'),
-            lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe),
+            rk: resumoDaEstrutura(locais, dados.fichas, eventosDe, campo, 'K'),
+            lajes: resumoDasAreas(dados.areasDe.get(pv.id) ?? [], campo.ficha, eventosDe, undefined, (id) => campo.concretada(id, 'L')),
           },
         ] as const
       }),
@@ -333,7 +351,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         const pac = await abrirPacoteOuAnterior(p.id, (dados.anterioresDe.get(p.id) ?? []).map((a) => a.id)).catch(() => null)
         if (!pac?.manifest.pontos) continue
         const a = { ok: 0, errados: 0, total: 0 }
-        for (const id of Object.keys(pac.manifest.pontos)) {
+        // só os pontos que marcam algum item de ficha (pelo tipo e pelo ambiente, 23/11/2026) contam
+        const fa = fichasPara('A', dados.fichas)
+        const fl = fichasPara('L', dados.fichas)
+        for (const [id, pt] of Object.entries(pac.manifest.pontos)) {
+          if (!fichasDoPonto(fa, pt, fl, (pt.ambiente && semFichasGuardado(pt.ambiente)) || []).length) continue
           a.total++
           const s = situacaoDaBarra(dados.eventosDe.get(id) ?? [])
           if (s === 'liberado') a.ok++
@@ -390,6 +412,83 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
       vivo = false
     }
   }, [formasAbertas.map((p) => p.id).join(','), noAparelho, dados])
+
+  // Acabamentos por cômodo (sessão 5, 24/11/2026): na disciplina Acabamentos, um filtro por acabamento (reboco,
+  // piso, pintura, drywall) em vez de tudo junto, e o andamento por apartamento ("Apto 305: Reboco Interno 3 de 8").
+  // A escolha fica guardada na sessão do navegador (volta igual ao sair da planta).
+  const [acabamento, setAcabamento] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(CHAVE_DO_ACABAMENTO) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const escolherAcabamento = (id: string) => {
+    setAcabamento(id)
+    try {
+      sessionStorage.setItem(CHAVE_DO_ACABAMENTO, id)
+    } catch {
+      // sem armazenamento (aba anônima): vale só enquanto a tela está aberta
+    }
+  }
+  const fichaDoCodigo = useMemo(() => new Map(fichasPara('A', dados.fichas).map((f) => [f.codigo, f])), [dados])
+  /** a categoria vem do título da ficha (o título da opção pode trazer o nome de um projeto); a opção de projeto
+   * ("Impermeabilização") e a de esquadrias vão pelo próprio título, não pela ficha em que abrem */
+  const tituloDaOpcao = (op: OpcaoDosAmbientes) => (op.id.startsWith('amb:ficha:') && fichaDoCodigo.get(op.abre.servico)?.titulo) || op.titulo
+  const acabamentosAbertos = !!discAberta && discAberta.id !== 'alvenaria' && discAberta.id !== 'instalacoes' && discAberta.plantas.some(ehDeAmbientes)
+  const opcoesDeAcabamento = acabamentosAbertos ? discAberta!.plantas.filter(ehDeAmbientes).flatMap((p) => (opcoesAmb.get(p.id) ?? []).filter((op) => ehDeAcabamento(op, fichaDeGradeGuardada))) : []
+  const categoriasAcab = categoriasPresentes(opcoesDeAcabamento.map(tituloDaOpcao))
+  // a escolha guardada pode não existir neste pavimento: fica a primeira (reboco, se houver)
+  const acabEscolhido = acabamento === TODOS_OS_ACABAMENTOS || categoriasAcab.some((c) => c.id === acabamento) ? acabamento : categoriasAcab[0]?.id ?? TODOS_OS_ACABAMENTOS
+  const daCategoria = (op: OpcaoDosAmbientes) => acabEscolhido === TODOS_OS_ACABAMENTOS || categoriaDoAcabamento(tituloDaOpcao(op)).id === acabEscolhido
+  const fichasDoAcab =
+    acabEscolhido === TODOS_OS_ACABAMENTOS
+      ? []
+      : fichasPara('A', dados.fichas).filter((f) => opcoesDeAcabamento.some((op) => op.abre.servico === f.codigo) && categoriaDoAcabamento(f.titulo).id === acabEscolhido)
+  const chaveDoAcab = fichasDoAcab.map((f) => f.id).join(',')
+  // acabamento com várias fichas (piso: cerâmico, contrapiso, vinílico...): por apartamento, uma ficha por vez
+  // guardada como o acabamento: abrir a planta e voltar mantém a ficha escolhida
+  const [fichaDoApto, setFichaDoAptoNoEstado] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(CHAVE_DA_FICHA_DO_APTO) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const setFichaDoApto = (id: string) => {
+    setFichaDoAptoNoEstado(id)
+    try {
+      sessionStorage.setItem(CHAVE_DA_FICHA_DO_APTO, id)
+    } catch {
+      // sem armazenamento: vale só enquanto a tela está aberta
+    }
+  }
+  const fichaDoAptoVale = fichasDoAcab.find((f) => f.id === fichaDoApto) ?? fichasDoAcab[0]
+  const porApartamento = useMemo(() => {
+    if (!pvAberto || !chaveDoAcab) return []
+    const ambientes = [...dados.pecaPorId.values()].filter((p) => p.pavimento_id === pvAberto.id && p.tipo === 'A' && !dados.areaPorId.has(p.id))
+    return andamentoPorApartamento(
+      ambientes,
+      fichasDoAcab,
+      (id) => dados.eventosDe.get(id) ?? [],
+      grupoDoAmbienteGuardado,
+      valeNoAcabamento(daGradeGuardado, fichaDeGradeGuardada, semFichasGuardado),
+      (id) => dados.fichaPorId.get(id),
+    )
+    // chaveDosResumos: ler os pacotes traz o apartamento e o "não se aplica" de cada cômodo
+  }, [dados, pvAberto?.id, chaveDoAcab, chaveDosResumos])
+  /** soma do pavimento por ficha do acabamento escolhido (conta também a que ninguém começou: "0 de 120") */
+  const totaisDoAcab = fichasDoAcab
+    .map((ficha) =>
+      porApartamento.reduce<AndamentoDaFicha>(
+        (t, l) => {
+          const f = l.fichas.find((x) => x.ficha.id === ficha.id)
+          return f ? { ficha, liberados: t.liberados + f.liberados, comR: t.comR + f.comR, total: t.total + f.total } : t
+        },
+        { ficha, liberados: 0, comR: 0, total: 0 },
+      ),
+    )
+    .filter((t) => t.total > 0)
 
   // no aparelho: a planta ou a revisão anterior dela, que é o que abre até a nova chegar
   const pacoteDe = (p: Planta) => (noAparelho ? noAparelho.get(p.id) ?? (dados.anterioresDe.get(p.id) ?? []).map((a) => noAparelho.get(a.id)).find(Boolean) : undefined)
@@ -511,19 +610,67 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           {ambientes.length > 0 && discAberta.id !== 'alvenaria' && discAberta.id !== 'instalacoes' && (
             <div data-testid="fvs-ambientes">
               <h3 class="fv-disciplina">Ambientes</h3>
-              {resumoAmb.servicos.length === 0 ? (
+              {categoriasAcab.length > 1 && (
+                <div class="fv-filtro-acab" role="group" aria-label="Filtrar por acabamento" data-testid="fvs-filtro-acabamento">
+                  {[...categoriasAcab, { id: TODOS_OS_ACABAMENTOS, nome: 'Todos' }].map((c) => (
+                    <button key={c.id} type="button" class={`fv-chip-acab${acabEscolhido === c.id ? ' on' : ''}`} aria-pressed={acabEscolhido === c.id} data-categoria={c.id} onClick={() => escolherAcabamento(c.id)}>
+                      {c.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {categoriasAcab.length > 1 && acabEscolhido !== TODOS_OS_ACABAMENTOS && totaisDoAcab.length > 0 ? (
+                <ul class="fv-servicos" data-testid="fvs-resumo-acabamento">
+                  {totaisDoAcab.map((s) => (
+                    <li key={s.ficha.id}>
+                      <b>{s.ficha.titulo}:</b> {s.liberados} de {s.total} liberados
+                      {s.comR > 0 && <span class="fv-txt-r"> · {s.comR} com NC</span>}
+                    </li>
+                  ))}
+                </ul>
+              ) : resumoAmb.servicos.length === 0 ? (
                 <p class="discreto">{resumoAmb.total} ambientes · nenhuma ficha começada</p>
               ) : (
                 <ul class="fv-servicos">
                   {resumoAmb.servicos.map((s) => (
                     <li key={s.ficha.id}>
-                      <b>{s.ficha.titulo}:</b> {s.liberados} de {resumoAmb.total} liberados
+                      <b>{s.ficha.titulo}:</b> {s.liberados} de {s.total} liberados
                       {s.comR > 0 && <span class="fv-txt-r"> · {s.comR} com NC</span>}
                     </li>
                   ))}
                 </ul>
               )}
-              {opcoesDeAmbientes(ambientes, ehOpcaoDeAcabamentos)}
+              {opcoesDeAmbientes(ambientes, (op) => ehDeAcabamento(op, fichaDeGradeGuardada) && daCategoria(op))}
+              {porApartamento.length > 0 && (
+                <details class="fv-por-apto" open data-testid="fvs-por-apartamento">
+                  <summary>Por apartamento</summary>
+                  {fichasDoAcab.length > 1 && (
+                    <label class="fv-apto-ficha-escolha">
+                      <span>Ficha</span>
+                      <select value={fichaDoAptoVale?.id} onChange={(e) => setFichaDoApto((e.target as HTMLSelectElement).value)} data-testid="fvs-ficha-apartamento">
+                        {fichasDoAcab.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.titulo}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <ul>
+                    {porApartamento.flatMap((l) => {
+                      const f = l.fichas.find((x) => x.ficha.id === fichaDoAptoVale?.id)
+                      if (!f) return []
+                      const classe = f.comR > 0 ? 'fv-txt-r' : f.liberados === f.total ? 'fv-apto-ok' : undefined
+                      return [
+                        <li key={l.grupo} data-testid="fvs-apartamento">
+                          <b>{l.grupo}:</b> <span class={classe}>{textoDoAndamento(f)}</span>
+                        </li>,
+                      ]
+                    })}
+                  </ul>
+                </details>
+              )}
+              {acabEscolhido === TODOS_OS_ACABAMENTOS && categoriasAcab.length > 1 && <p class="discreto">Escolha um acabamento para ver o andamento por apartamento.</p>}
               <p class="fv-subgrupo">Planta com todos os ambientes</p>
               <div class="fv-grade-armadura">{ambientes.map((p) => plantaNaLista(p, ambientes.length > 1 ? p.trecho : 'Todos os ambientes', p.prancha, 'ambientes'))}</div>
             </div>
@@ -535,7 +682,10 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
               const as = ps.map((p) => avancoDosPontos.get(p.id))
               const a = as.every(Boolean) ? as.reduce<{ ok: number; errados: number; total: number }>((t, x) => ({ ok: t.ok + x!.ok, errados: t.errados + x!.errados, total: t.total + x!.total }), { ok: 0, errados: 0, total: 0 }) : undefined
               const n = ps.reduce((t, p) => t + p.elementos, 0)
-              return `${a?.total ? textoDoAvancoDosPontos(a) : `${n} ${disc in SECAO_DE_INSTALACOES ? 'pontos' : 'locais'}`} · ${ps[0].prancha}`
+              // planta de pontos sem ficha (o preventivo, decisão do Nicolas de 21/11): diz que é só consulta, em vez
+              // de um "0 de 5 OK" que nunca anda (rodada 9, 24/11)
+              const consulta = disc in SECAO_DE_INSTALACOES && !ps.some((p) => pontosAbertos.some((q) => q.id === p.id))
+              return `${a?.total ? textoDoAvancoDosPontos(a) : `${n} ${disc in SECAO_DE_INSTALACOES ? (n === 1 ? 'ponto' : 'pontos') : 'locais'}${consulta ? ' · só consulta' : ''}`} · ${ps[0].prancha}`
             }
             return (
               <div key={disc} data-testid="fvs-secao-outra">
@@ -561,7 +711,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
   if (pvAberto) {
     const pv = pvAberto
     const plantas = plantasDoPv
-    const { r, ra, rm } = resumos.get(pv.id)!
+    const { r, ra, rm, rk } = resumos.get(pv.id)!
     const faltam = noAparelho ? plantas.filter((p) => !noAparelho.has(p.id)) : []
     const baixandoAqui = baixando?.pavimentoId === pv.id ? baixando : null
     const guardadas = plantas.filter((p) => pacoteDe(p))
@@ -574,12 +724,16 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         const partes = [ps.some((p) => p.disciplina === 'estrutura') && 'Pilares, vigas e lajes', ps.some(ehDeArmadura) && 'armadura de laje', ps.some(ehDeFuracao) && 'furos'].filter(Boolean)
         return { tem: partes.join(', '), andamento: r.total > 0 ? `${r.liberadas} de ${r.total} peças liberadas${r.comR > 0 ? ` · ${r.comR} com NC` : ''}` : null }
       }
+      if (d.id === 'fundacao') {
+        return { tem: 'Blocos de fundação', andamento: rk.total > 0 ? `${rk.liberadas} de ${rk.total} blocos liberados${rk.comR > 0 ? ` · ${rk.comR} com NC` : ''}` : null }
+      }
       if (d.id === 'alvenaria') {
         const partes = [ps.some(ehDeVedacao) ? 'Modulação de paredes' : '', ...ops(ehOpcaoDeAlvenaria)].filter(Boolean)
         return { tem: partes.join(', '), andamento: rm.total > 0 ? `${rm.liberadas} de ${rm.total} paredes liberadas` : null }
       }
       if (d.id === 'acabamentos') {
-        const partes = ops(ehOpcaoDeAcabamentos)
+        // as categorias (Reboco, Piso e revestimento, Pintura...), não a lista de todas as fichas
+        const partes = categoriasPresentes(ps.filter(ehDeAmbientes).flatMap((p) => (opcoesAmb.get(p.id) ?? []).filter((op) => ehDeAcabamento(op, fichaDeGradeGuardada)).map(tituloDaOpcao))).map((c) => c.nome)
         return { tem: partes.length ? partes.join(', ') : `${ra.total} ambientes`, andamento: null }
       }
       // na ordem do menu (hidráulica, esgoto, elétrico, preventivo, SPDA), e "por ambiente" no fim
@@ -595,6 +749,7 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         <div class="fv-grade-armadura fv-grade-disciplinas">
           {disciplinas.map((d) => {
             const { tem, andamento } = descricao(d)
+            const avisoRev = noAparelho ? avisoDasPlantas(d.plantas, dados.anterioresDe, noAparelho) : null
             return (
               <button
                 type="button"
@@ -609,6 +764,11 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                   <b>{d.nome}</b>
                   {tem && <small>{tem}</small>}
                   {andamento && <small class="fv-txt-andamento">{andamento}</small>}
+                  {avisoRev && (
+                    <small class="fv-txt-rev" data-testid="fvs-aviso-revisao-disciplina">
+                      {avisoRev}
+                    </small>
+                  )}
                 </span>
                 <span class="fv-seta" aria-hidden="true">
                   ›
@@ -764,12 +924,16 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         </button>
       )}
       {dados.fichas.length === 0 && (
-        <p class="aviso">Esta obra ainda não tem fichas (PVS). Quem cuida do cadastro publica pelo PC (pipeline/fvs/publicar_fichas.py).</p>
+        <p class="aviso so-com-ajuda">
+          Sem fichas (PVS)
+          <Ajuda>Quem cuida do cadastro da obra publica as fichas pelo computador.</Ajuda>
+        </p>
       )}
 
       {comPlanta.length === 0 && (
-        <p class="discreto">
-          Nenhuma planta publicada nesta obra ainda. As plantas são publicadas pelo PC (pipeline/fvs/publicar_planta.py).
+        <p class="discreto so-com-ajuda">
+          Sem plantas publicadas
+          <Ajuda>Quem cuida do cadastro da obra publica as plantas pelo computador.</Ajuda>
         </p>
       )}
 
@@ -781,6 +945,8 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
           const { r, lajes } = resumos.get(pv.id)!
           const guardadas = plantas.filter((p) => pacoteDe(p)).length
           const baixandoAqui = baixando?.pavimentoId === pv.id
+          // revisão nova ou planta atualizada: aparece já aqui, antes de entrar no pavimento (rodada 9, 24/11)
+          const avisoRev = noAparelho ? avisoDasPlantas(plantas, dados.anterioresDe, noAparelho) : null
           return (
             <button type="button" key={pv.id} class="cartao fv-pavimento fv-bt-pavimento" data-testid="fvs-pavimento" onClick={() => ir({ nome: 'pavimento', pavimentoId: pv.id })}>
               <span class="fv-bt-texto">
@@ -800,7 +966,13 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
                   </span>
                 )}
                 <small class="fv-no-aparelho">
-                  {baixandoAqui ? 'Baixando…' : guardadas === plantas.length ? 'No aparelho' : guardadas > 0 ? `${guardadas} de ${plantas.length} plantas no aparelho` : 'Ainda não baixado'}
+                  {baixandoAqui ? 'Baixando…' : guardadas === plantas.length ? (avisoRev ? '' : 'No aparelho') : guardadas > 0 ? `${guardadas} de ${plantas.length} plantas no aparelho` : 'Ainda não baixado'}
+                  {!baixandoAqui && avisoRev && (
+                    <span class="fv-txt-rev" data-testid="fvs-aviso-revisao-pavimento">
+                      {guardadas === plantas.length ? '' : ' · '}
+                      {avisoRev}
+                    </span>
+                  )}
                 </small>
               </span>
               <span class="fv-seta" aria-hidden="true">

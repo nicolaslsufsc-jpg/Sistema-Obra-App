@@ -40,6 +40,7 @@ DISCIPLINAS = {
     "hidro": "Água fria e quente",
     "sanitario": "Esgoto e pluvial",
     "eletrico": "Caixas, quadros e eletrodutos",
+    "preventivo": "Preventivo",
     "spda": "SPDA",
 }
 
@@ -61,9 +62,21 @@ TIPOS_DE_PONTO = {
     "haste": "Haste de aterramento",
     "conector": "Conector de aterramento",
     "eletroduto": "Eletroduto",
+    "hidrante": "Hidrante",
+    "extintor": "Extintor",
+    "sprinkler": "Sprinkler",
+    "detector": "Detector",
+    "iluminacao_emergencia": "Iluminação de emergência",
+    "alarme": "Alarme",
+    "sinalizacao": "Sinalização",
+    # 5.1 a 5.3 da lista de conferências (23/11): tubo suspenso (linha), coluna/prumada (tubo vertical, ponto)
+    # e caixa de tomada ou interruptor na parede
+    "tubo": "Tubo",
+    "coluna": "Coluna (prumada)",
+    "caixa_parede": "Caixa de parede",
 }
 # Tipos que vão na planta como linha (com "linha" além de "ponto").
-TIPOS_DE_LINHA = ("eletroduto",)
+TIPOS_DE_LINHA = ("eletroduto", "tubo")
 # Trecho mais curto que isto na planta (cm) é vertical: fica fora (ver acima).
 LINHA_MINIMA_CM = 5.0
 
@@ -77,7 +90,9 @@ CLASSES = ("IfcSanitaryTerminal", "IfcWasteTerminal", "IfcValve", "IfcFlowTermin
            # elétrica e SPDA (IFC4 e IFC2x3; suposição até ver os IFC reais)
            "IfcJunctionBox", "IfcElectricDistributionBoard", "IfcElectricDistributionPoint", "IfcLightFixture",
            "IfcOutlet", "IfcFlowFitting", "IfcProtectiveDevice", "IfcCableSegment", "IfcCableCarrierSegment",
-           "IfcFlowSegment", "IfcDiscreteAccessory", "IfcMember")
+           "IfcFlowSegment", "IfcDiscreteAccessory", "IfcMember",
+           # preventivo (23/11): detector, sirene e acionador vêm como IfcDistributionControlElement no IFC2x3
+           "IfcDistributionControlElement", "IfcAlarm", "IfcSensor", "IfcFireSuppressionTerminal")
 # Trecho de tubo, cabo ou eletroduto: só serve como ponto na descida do SPDA (vertical: na planta, um ponto).
 SEGMENTOS = ("IfcCableSegment", "IfcCableCarrierSegment", "IfcFlowSegment", "IfcMember")
 # conexões (joelho, tê, luva, adaptador): não são ponto de conferência em disciplina nenhuma
@@ -105,6 +120,9 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
         if re.search(r"ELETRODUTO|CONDUITE|CONDUIT", n) or classe == "IfcCableCarrierSegment":
             return "eletroduto"
         return None
+    if disciplina in ("hidro", "sanitario") and classe in SEGMENTOS:
+        # 5.1 (23/11): o tubo de água ou de esgoto. Em pé vira coluna (prumada, um ponto); deitado, linha (ler_ifc)
+        return "tubo_segmento" if re.search(r"\bPIPE\b|\bTUBO|TUBULA|\bPVC\b|\bPPR\b|\bCPVC\b", n) else None
     if classe in SEGMENTOS and disciplina != "spda":
         return None
     if disciplina == "eletrico":
@@ -118,6 +136,13 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
         # Revit (21/11): a caixa 4x2/4x4 da tomada de teto ou de piso fica na laje
         if re.search(r"TOMADAS? DE (TETO|PISO)", n):
             return "caixa_passagem"
+        # 24/11 (achado do 10): o "módulo ... não listável" é parte do conjunto, no mesmo lugar dele; sai, e
+        # fica só o conjunto como a caixa (no 2º: de 2440 caixas, 509 grupos empilhados, para 1396 e nenhum)
+        if re.search(r"N[AÃ]O LISTAV", n):
+            return None
+        # 5.3 (23/11): a caixa da tomada ou do interruptor na parede (alvenaria ou drywall)
+        if re.search(r"\bTOMADA|INTERRUPTOR|PULSADOR|\bDIMMER\b", n):
+            return "caixa_parede"
         return None
     if disciplina == "spda":
         if classe in CONEXOES:
@@ -134,6 +159,29 @@ def classificar(disciplina: str, classe: str, nome: str) -> str | None:
             return "haste"
         if "DESCIDA" in n:
             return "descida"
+        return None
+    if disciplina == "preventivo":
+        # IFC real do preventivo (23/11): o mesmo modelo traz o gás (medidor, aquecedor, cilindro, registro): fica fora.
+        # Sem PES nem PVS: a planta é só para conferir no local. A tubulação fica fora por enquanto.
+        if re.search(r"\bPLACA\b|SINALIZ|FOTOLUMINESCENTE", n):
+            return "sinalizacao"
+        # o nome vem junto do ObjectType: a mangueira é peça do abrigo do hidrante (o hidrante já conta)
+        if n.startswith("PCI MANGUEIRA"):
+            return None
+        if "HIDRANTE" in n:  # "HIDRANTE TAMPA VIDRO - 30 m": antes da regra do vidro
+            return "hidrante"
+        if re.search(r"\bGAS\b|AQUECEDOR|CHAMINE|MEDIDOR|CILINDRO|INTERFONE|GRELHA|\bVIDRO\b", n):
+            return None
+        if "EXTINTOR" in n:
+            return "extintor"
+        if re.search(r"SPRINKLER|CHUVEIRO AUTOMATICO|BICO DE SPRINKLER", n):
+            return "sprinkler"
+        if "DETECTOR" in n:
+            return "detector"
+        if re.search(r"EMERGENCIA|AUTONOMAS? COM FAROIS|BLOCO AUTONOMO", n):
+            return "iluminacao_emergencia"
+        if re.search(r"SIRENE|ACIONADOR|ALARME|BOTOEIRA", n):
+            return "alarme"
         return None
     if disciplina == "sanitario":
         # acessório da caixa (prolongamento) e nicho de parede não são ponto
@@ -237,11 +285,14 @@ def _linha_do_segmento(el, m, cm_por_unidade: float) -> list[list[float]] | None
 
 
 DESCIDA_MINIMA_CM = 50.0  # trecho com menos altura que isto não é descida
+# 5.1 (23/11): a coluna (prumada) é o tubo em pé que, somando os trechos no mesmo lugar, tem pelo menos isto de
+# altura no pavimento. O trecho curto em pé é a descida até o aparelho, na parede (5.2): fica fora.
+COLUNA_MINIMA_CM = 250.0
 
 
-def _vertical(el, m, cm_por_unidade: float) -> tuple[float, float] | None:
+def _vertical(el, m, cm_por_unidade: float, com_altura: bool = False) -> tuple | None:
     """(x, y) em cm do trecho que sobe (corpo extrudado com mais de DESCIDA_MINIMA_CM de altura e quase nada na
-    planta); None se não sobe."""
+    planta); None se não sobe. com_altura: (x, y, z de baixo, z de cima)."""
     import numpy as np
 
     for r in (el.Representation.Representations if el.Representation else ()):
@@ -255,7 +306,8 @@ def _vertical(el, m, cm_por_unidade: float) -> tuple[float, float] | None:
                 dz = abs(float(b[2] - a[2])) * cm_por_unidade
                 dh = float(np.hypot(b[0] - a[0], b[1] - a[1])) * cm_por_unidade
                 if dz >= DESCIDA_MINIMA_CM and dh < LINHA_MINIMA_CM * 4:
-                    return float(a[0]) * cm_por_unidade, float(a[1]) * cm_por_unidade
+                    xy = (float(a[0]) * cm_por_unidade, float(a[1]) * cm_por_unidade)
+                    return (*xy, *sorted((float(a[2]) * cm_por_unidade, float(b[2]) * cm_por_unidade))) if com_altura else xy
                 return None
     return None
 
@@ -317,6 +369,7 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
     lugares: set[tuple] = set()
     tags: set[str] = set()
     saida = []
+    colunas: dict[tuple, dict] = {}  # lugar -> coluna (5.1): os trechos em pé somados
     for classe in CLASSES:
         try:
             objetos = f.by_type(classe)
@@ -332,11 +385,13 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
             if not faixa and not any(mesmo_nivel(_nivel_do(el, ue.get_psets(el)), n) for n in niveis):
                 continue
             m = up.get_local_placement(el.ObjectPlacement)
-            if faixa and disciplina == "eletrico":
+            if faixa and disciplina == "eletrico" and tipo != "caixa_parede":
                 if not faixa[2] - LAJE_ABAIXO_CM <= float(m[2, 3]) * cm_por_unidade <= faixa[2] + LAJE_ACIMA_CM:
                     continue  # fora da laje deste pavimento
             elif faixa:
-                if not faixa[0] <= float(m[2, 3]) * cm_por_unidade < faixa[1]:
+                # preventivo (IFC real, 23/11): o objeto vem uns 9 m acima do nível que o contém; vale a altura do nível.
+                # A caixa de parede do elétrico também (IFC real: uns 15 m acima do andar)
+                if disciplina != "preventivo" and tipo != "caixa_parede" and not faixa[0] <= float(m[2, 3]) * cm_por_unidade < faixa[1]:
                     continue  # de outro pavimento
                 cont = ue.get_container(el)
                 if cont is not None and cont.is_a("IfcBuildingStorey") and cont.ObjectPlacement and abs(
@@ -348,7 +403,18 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
                 if not xy:
                     continue  # trecho horizontal ou inclinado: malha, não descida
                 tipo = "descida"
-            nome = "Descida" if el.is_a() in SEGMENTOS and tipo == "descida" else (el.Name or "").split(":")[0].strip()
+            elif tipo == "tubo_segmento":
+                # 5.1 (23/11): o tubo em pé é a coluna (prumada), um ponto; o deitado é linha, como o eletroduto
+                v = _vertical(el, m, cm_por_unidade, com_altura=True)
+                if v:
+                    lugar = (round(v[0] / 10), round(v[1] / 10))
+                    lo, hi = v[2], v[3]
+                    c = colunas.setdefault(lugar, {"modelo_id": str(el.Tag or el.GlobalId), "tipo": "coluna", "nome": "Coluna",
+                                                   "x": v[0], "y": v[1], "_z": [lo, hi], "_id": str(el.GlobalId)})
+                    c["_z"] = [min(c["_z"][0], lo), max(c["_z"][1], hi)]
+                    continue
+                tipo = "tubo"
+            nome = "Descida" if el.is_a() in SEGMENTOS and tipo == "descida" else "Coluna" if tipo == "coluna" else (el.Name or "").split(":")[0].strip()
             item = {"modelo_id": str(el.Tag or el.GlobalId), "tipo": tipo, "nome": nome,
                     "x": xy[0], "y": xy[1]}
             if tipo in TIPOS_DE_LINHA:
@@ -356,7 +422,7 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
                 if not linha:
                     continue
                 item.update({"linha": linha, "x": (linha[0][0] + linha[1][0]) / 2, "y": (linha[0][1] + linha[1][1]) / 2})
-            if tipo == "descida":  # a descida vem em trechos, um em cima do outro: um ponto por lugar na planta
+            if tipo in ("descida", "coluna"):  # a descida e a coluna vem em trechos, um em cima do outro: um ponto por lugar na planta
                 lugar = (tipo, round(item["x"] / 10), round(item["y"] / 10))
             else:
                 lugar = (tipo, round(float(m[2, 3]) * cm_por_unidade), *(round(c) for p in item.get("linha") or [[item["x"], item["y"]]] for c in p))
@@ -367,6 +433,117 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
                 item["modelo_id"] = str(el.GlobalId)
             tags.add(item["modelo_id"])
             saida.append(item)
+    for c in colunas.values():
+        if c["_z"][1] - c["_z"][0] < COLUNA_MINIMA_CM:
+            continue  # descida curta até o aparelho
+        if c["modelo_id"] in tags:
+            c["modelo_id"] = c["_id"]
+        tags.add(c["modelo_id"])
+        saida.append({k: v for k, v in c.items() if not k.startswith("_")})
+    return saida
+
+
+AMBIENTE_PERTO_CM = 30.0  # o ponto na parede fica com o ambiente a menos disto
+
+
+def ambiente_dos_pontos(pontos: list[dict], geometrias: dict, metros_por_cm: float = 0.01) -> dict:
+    """Põe em cada ponto do modelo o ambiente onde ele cai ("ambiente": o nome do ambiente da planta de ambientes,
+    "201-03"). geometrias: {nome: polígono shapely do ambiente, nas coordenadas do modelo de arquitetura, em
+    metros}. Na obra piloto os modelos de instalações estão nas mesmas coordenadas da arquitetura (23/11: 415 de
+    546 pontos de água e esgoto do 2º dentro de um ambiente; os outros na parede). O ponto na parede fica com o
+    ambiente mais perto, até AMBIENTE_PERTO_CM. Devolve {com_ambiente, sem_ambiente}."""
+    from shapely.geometry import Point
+    from shapely.strtree import STRtree
+
+    nomes = list(geometrias)
+    geo = [geometrias[n] for n in nomes]
+    arvore = STRtree(geo) if geo else None
+    raio = AMBIENTE_PERTO_CM * metros_por_cm
+    com = 0
+    for p in pontos:
+        if arvore is None:
+            break
+        q = Point(p["x"] * metros_por_cm, p["y"] * metros_por_cm)
+        dentro = [i for i in arvore.query(q) if geo[i].contains(q)]
+        if not dentro:
+            perto = [(geo[i].distance(q), i) for i in arvore.query(q.buffer(raio))]
+            perto = [d for d in perto if d[0] <= raio]
+            dentro = [min(perto)[1]] if perto else []
+        if dentro:
+            p["ambiente"] = nomes[dentro[0]]
+            com += 1
+    return {"com_ambiente": com, "sem_ambiente": len(pontos) - com}
+
+
+# Nome do Revit em inglês -> nome para o encarregado (pedido do 10, 23/11)
+NOMES_EM_INGLES = ((r"^CONDUIT\b", "Eletroduto"), (r"^PIPE\b|^FLEX PIPE\b", "Tubo"), (r"^CABLE TRAY\b", "Eletrocalha"))
+
+
+def nome_para_a_pessoa(nome: str, tipo: str) -> str:
+    """O nome que aparece no toque: sem o prefixo do Revit (HID_, SAN_, PCI_, SPDA_, "x.", "z_NAO_USAR_"), sem o
+    número colado no fim ("Azul1") e em português quando o Revit deu o nome em inglês."""
+    n = (nome or "").strip()
+    n = re.sub(r"^(?:[xz][._](?:NAO_USAR_|Aninhada_|Aninhanda_)?)?(?:HID|SAN|PCI|SPDA|ELE|EL|AN)_+", "", n, flags=re.I)
+    n = re.sub(r"(?<=[A-Za-z])\d+$", "", n.replace("_", " ")).strip()
+    for padrao, pt in NOMES_EM_INGLES:
+        if re.search(padrao, _sem_acento(n)):
+            return pt
+    return n or TIPOS_DE_PONTO[tipo]
+
+
+# Água (pedido do 10, 23/11): pontos a menos disto, um do outro, viram um ponto só (registros e misturador do
+# mesmo banheiro); o nome diz o que tem nele.
+JUNTAR_AGUA_CM = 20.0
+PRIORIDADE = ("ponto_agua", "hidrometro", "registro")
+
+
+def juntar_proximos(dentro: dict, raio_cm: float, pt_por_cm: float) -> dict:
+    """Junta os pontos (já na folha) a menos de raio_cm uns dos outros. O ponto que fica é o de menor id do grupo
+    (estável entre gerações); o tipo é o mais importante do grupo; o nome conta os itens ("2 Válvula Esfera, ...")."""
+    ids = sorted(dentro)
+    lim = raio_cm * pt_por_cm
+    pai = {i: i for i in ids}
+
+    def raiz(i):
+        while pai[i] != i:
+            pai[i] = pai[pai[i]]
+            i = pai[i]
+        return i
+
+    grade: dict[tuple, list[str]] = {}
+    for i in ids:
+        x, y = dentro[i]["ponto"]
+        grade.setdefault((int(x // lim), int(y // lim)), []).append(i)
+    for i in ids:
+        x, y = dentro[i]["ponto"]
+        gx, gy = int(x // lim), int(y // lim)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for j in grade.get((gx + dx, gy + dy), ()):
+                    # só os pontos do banheiro (registro, misturador, hidrômetro); a coluna e o tubo ficam sozinhos
+                    if j > i and dentro[i]["tipo"] in PRIORIDADE and dentro[j]["tipo"] in PRIORIDADE:
+                        a, b = dentro[i]["ponto"], dentro[j]["ponto"]
+                        if ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 < lim:
+                            pai[raiz(j)] = raiz(i)
+    grupos: dict[str, list[str]] = {}
+    for i in ids:
+        grupos.setdefault(raiz(i), []).append(i)
+    saida = {}
+    for chefe, membros in grupos.items():
+        if len(membros) == 1:
+            saida[chefe] = dentro[chefe]
+            continue
+        regs = [dentro[m] for m in membros]
+        tipo = min((r["tipo"] for r in regs), key=lambda t: PRIORIDADE.index(t) if t in PRIORIDADE else len(PRIORIDADE))
+        contagem: dict[str, int] = {}
+        for r in regs:
+            contagem[r["nome"]] = contagem.get(r["nome"], 0) + 1
+        nome = ", ".join(f"{q} {n}" if q > 1 else n for n, q in sorted(contagem.items(), key=lambda x: (-x[1], x[0])))
+        xs = [r["ponto"][0] for r in regs]
+        ys = [r["ponto"][1] for r in regs]
+        saida[chefe] = {**dentro[chefe], "tipo": tipo, "nome": nome,
+                        "ponto": [round(sum(xs) / len(xs), 2), round(sum(ys) / len(ys), 2)],
+                        "modelo_id": ",".join(sorted(r["modelo_id"] for r in regs))}
     return saida
 
 
@@ -388,10 +565,14 @@ def pontos_na_folha(pontos: list[dict], enc: dict, disciplina: str, largura: flo
             fora.append({"modelo_id": p["modelo_id"], "tipo": p["tipo"], "nome": p["nome"]})
             continue
         reg = {"disciplina": disciplina, "tipo": p["tipo"], "ponto": [round(x, 2), round(y, 2)],
-               "nome": p["nome"] or TIPOS_DE_PONTO[p["tipo"]], "modelo_id": p["modelo_id"]}
+               "nome": nome_para_a_pessoa(p["nome"], p["tipo"]), "modelo_id": p["modelo_id"]}
+        if p.get("ambiente"):
+            reg["ambiente"] = p["ambiente"]
         if linha:
             reg["linha"] = [[round(a, 2), round(b, 2)] for a, b in linha]
         dentro[id_do_ponto(obra, pavimento, disciplina, p["modelo_id"])] = reg
+    if disciplina == "hidro":
+        dentro = juntar_proximos(dentro, JUNTAR_AGUA_CM, PT_POR_CM)
     return dentro, fora
 
 
@@ -422,11 +603,14 @@ def resumo(pontos: dict, fora: list[dict]) -> dict:
 # A descida do SPDA corre no pilar: a que fica mais longe que isto do contorno de um pilar vai para "a conferir"
 # (encaixe errado, descida pela fachada ou pilar fora da forma).
 DESCIDA_LONGE_CM = 30.0
+FORA_DA_ESTRUTURA_CM = 200.0
 PT_POR_CM = 72 / 2.54 / 50  # folha na escala 1:50
 
 
 def a_conferir(pontos: dict, pecas: list[dict]) -> dict:
-    """O que a pessoa confere na obra, além do toque: descidas longe de pilar."""
+    """O que a pessoa confere na obra, além do toque: descidas longe de pilar. A descida ou o conector a mais de
+    FORA_DA_ESTRUTURA_CM de qualquer pilar sai da planta (muda pontos): no 2º da obra piloto eram 11 numa
+    diagonal em área vazia, fora das pranchas (achado do 10, 23/11). Fica na lista, para conferir."""
     caixas = []
     for p in pecas:
         if p.get("tipo") == "P":
@@ -435,12 +619,17 @@ def a_conferir(pontos: dict, pecas: list[dict]) -> dict:
                     xs, ys = [q[0] for q in poly], [q[1] for q in poly]
                     caixas.append((min(xs), min(ys), max(xs), max(ys)))
     lim = DESCIDA_LONGE_CM * PT_POR_CM
-    longe = []
-    for pid, p in pontos.items():
-        if p["tipo"] != "descida" or not caixas:
+    fora_lim = FORA_DA_ESTRUTURA_CM * PT_POR_CM
+    longe, fora = [], []
+    for pid, p in list(pontos.items()):
+        if p["tipo"] not in ("descida", "conector") or not caixas:
             continue
         x, y = p["ponto"]
         d = min(((max(c[0] - x, 0, x - c[2]) ** 2 + max(c[1] - y, 0, y - c[3]) ** 2) ** 0.5) for c in caixas)
-        if d > lim:
-            longe.append({"id": pid, "modelo_id": p["modelo_id"], "distancia_cm": round(d / PT_POR_CM)})
-    return {"descida_longe_de_pilar": longe}
+        item = {"id": pid, "tipo": p["tipo"], "modelo_id": p["modelo_id"], "distancia_cm": round(d / PT_POR_CM)}
+        if d > fora_lim:
+            fora.append(item)
+            del pontos[pid]
+        elif d > lim and p["tipo"] == "descida":
+            longe.append(item)
+    return {"descida_longe_de_pilar": longe, "fora_da_estrutura": fora}

@@ -1,0 +1,139 @@
+{
+ "_leia": "Áreas de laje desenhadas no app (obra EXE inventada), nas coordenadas da planta do pavimento. O esperado: os pilares e as vigas com o centro dentro, pelos centros do índice. Lido pelo pipeline e pelo app.",
+ "areas": [
+  {
+   "id": "a1",
+   "pavimento": "1º Pavimento",
+   "nome": "Laje 1",
+   "contorno": [
+    [
+     50,
+     50
+    ],
+    [
+     450,
+     50
+    ],
+    [
+     450,
+     350
+    ],
+    [
+     50,
+     350
+    ]
+   ]
+  },
+  {
+   "id": "a2",
+   "pavimento": "1º Pavimento",
+   "nome": "Laje 2",
+   "contorno": [
+    [
+     380,
+     80
+    ],
+    [
+     720,
+     80
+    ],
+    [
+     720,
+     520
+    ],
+    [
+     380,
+     520
+    ]
+   ]
+  },
+  {
+   "id": "a3",
+   "pavimento": "1º pavimento ",
+   "nome": "Laje em L",
+   "contorno": [
+    [
+     60,
+     60
+    ],
+    [
+     460,
+     60
+    ],
+    [
+     460,
+     140
+    ],
+    [
+     140,
+     140
+    ],
+    [
+     140,
+     560
+    ],
+    [
+     60,
+     560
+    ]
+   ]
+  },
+  {
+   "id": "a4",
+   "pavimento": "2º Pavimento",
+   "nome": "Laje 1",
+   "contorno": [
+    [
+     0,
+     0
+    ],
+    [
+     500,
+     0
+    ],
+    [
+     500,
+     200
+    ],
+    [
+     0,
+     200
+    ]
+   ]
+  },
+  {
+   "id": "a5",
+   "pavimento": "Cobertura",
+   "nome": "Laje sem centros",
+   "contorno": [
+    [
+     0,
+     0
+    ],
+    [
+     500,
+     0
+    ],
+    [
+     500,
+     200
+    ]
+   ]
+  },
+  {
+   "id": "a6",
+   "pavimento": "1º Pavimento",
+   "nome": "Laje de 2 pontos",
+   "contorno": [
+    [
+     0,
+     0
+    ],
+    [
+     500,
+     500
+    ]
+   ]
+  }
+ ]
+}

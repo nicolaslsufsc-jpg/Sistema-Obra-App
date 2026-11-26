@@ -141,9 +141,25 @@ export function somarDias(data: string, dias: number): string {
   return dataLocal(new Date(a, m - 1, d + dias))
 }
 
-/** Revisão "nova": apareceu na lista do Autodoc nos últimos `dias` dias e não está obsoleta. */
-export function revisaoNova(r: Linha, hoje: string, dias = 7): boolean {
-  return !r.apagado && !r.obsoleta && String(r.vista_em) >= somarDias(hoje, -dias)
+/**
+ * Revisão "nova": apareceu na lista do Autodoc nos últimos `dias` dias e não está obsoleta. `carga` = o dia da
+ * carga inicial da obra (ver cargaInicial): o que já veio nela não é novidade (testador, 23/11/2026).
+ */
+export function revisaoNova(r: Linha, hoje: string, dias = 7, carga?: string | null): boolean {
+  const vista = String(r.vista_em)
+  if (carga && vista <= carga) return false
+  return !r.apagado && !r.obsoleta && vista >= somarDias(hoje, -dias)
+}
+
+/** O dia da carga inicial da obra: o primeiro dia em que alguma revisão foi vista. Sem revisão, null. */
+export function cargaInicial(revs: readonly Linha[]): string | null {
+  let primeira: string | null = null
+  for (const r of revs) {
+    if (r.apagado || !r.vista_em) continue
+    const v = String(r.vista_em).slice(0, 10)
+    if (primeira === null || v < primeira) primeira = v
+  }
+  return primeira
 }
 
 /** Para busca: minúsculas e sem acentos. */

@@ -35,6 +35,20 @@ class TestPublicarHistorico(unittest.TestCase):
     def historico(self):
         return json.loads(HISTORICO.read_text(encoding="utf-8"))
 
+    def test_pilar_com_letra_liga_pelo_numero(self):
+        """Achado 4 (24/11): "P184" de fora é o "P184a" do servidor; par do 2º sem saber o só de detalhe: o mais curto, com aviso."""
+        pavs = [{"id": "pav-2", "nome": "2º Pavimento"}]
+        elementos = [{"id": "s184a", "pavimento_id": "pav-2", "tipo": "P", "nome": "P184a"},
+                     {"id": "s102a", "pavimento_id": "pav-2", "tipo": "P", "nome": "P102a"},
+                     {"id": "s102aa", "pavimento_id": "pav-2", "tipo": "P", "nome": "P102aa"}]
+        ficha = lambda i, nome: {"id": i, "codigo": i, "ficha_codigo": PILAR, "pavimento": "2º Pavimento", "tipo": "P", "nome": nome}
+        h = {"fichas_campo": [ficha("a", "P184"), ficha("b", "P102"), ficha("c", "P102aa"), ficha("d", "P18")], "eventos": []}
+        r = ph.resolver(h, self.FICHAS, pavs, elementos)
+        self.assertEqual([f["elemento_id"] for f in r["fichas"]], ["s184a", "s102a", "s102aa", None])
+        self.assertEqual(len(r["avisos"]), 1)
+        self.assertIn("P102A, P102AA", r["avisos"][0])
+        self.assertEqual(r["fora"], {"ficha com peça que não está no servidor (publique a planta)": 1})
+
     def test_troca_nomes_pelos_ids_do_servidor_e_mantem_data_e_nome(self):
         r = ph.resolver(self.historico(), self.FICHAS, self.PAVS, self.ELEMENTOS)
         por_codigo = {f["codigo"]: f for f in r["fichas"]}

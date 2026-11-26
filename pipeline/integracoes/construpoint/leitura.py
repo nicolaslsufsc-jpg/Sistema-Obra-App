@@ -9,8 +9,9 @@ Lê a pasta de uma leitura já salva no PC (fora do repositório). NÃO acessa o
 Regras (docs/02_CONTRATO_NUCLEO.md, "Dados lidos de um sistema oficial"):
 - Todo local de lá vira uma linha de locais_sistema (id fixo, calculado do id de lá).
 - Toda ficha aberta vira fvs_fichas_campo com local_id; a que é pilar ou viga da planta ganha também elemento_id.
-- O item verificado só vira registro (fvs_eventos) quando a ficha tem peça na planta. Os demais ficam só nas
-  contagens da ficha: nenhuma verificação só com local_id é publicada até a tela da FVS saber mostrar.
+- O item verificado vira registro (fvs_eventos) quando a ficha tem peça na planta. Com com_locais=True (tela
+  "Locais fora da planta" da FVS, 21/11), vira registro também na ficha que só tem local: o registro leva
+  local_id no lugar de elemento_id. Sem a opção, esses ficam só nas contagens da ficha.
 - As fichas modelo do servidor não mudam: o registro é ligado ao item da ficha vigente pelo texto do item.
 
 Só biblioteca padrão: testado em pipeline/integracoes/construpoint/testes/test_construpoint_leitura.py.
@@ -129,11 +130,13 @@ def pecas_do_servidor(pavimentos: list[dict], elementos: list[dict]) -> dict[str
 
 
 def montar_leitura(obra: str, dados: dict, fichas_servidor: dict[str, dict], pavimentos: list[dict],
-                   elementos: list[dict], fichas_com_peca: set[str]) -> dict:
-    """Tudo o que a leitura publica: locais, fichas de campo (com local_id e datas) e registros com peça."""
+                   elementos: list[dict], fichas_com_peca: set[str], com_locais: bool = False) -> dict:
+    """Tudo o que a leitura publica: locais, fichas de campo (com local_id e datas) e registros com peça
+    (com com_locais, também os registros das fichas que só têm local, com local_id)."""
     itens = indice_de_itens(fichas_servidor)
     verificacoes, inspecoes, itens_por_ficha, avisos = para_montar(dados, itens)
-    h = ic.montar(obra, verificacoes, inspecoes, itens_por_ficha, pecas_do_servidor(pavimentos, elementos), fichas_com_peca)
+    h = ic.montar(obra, verificacoes, inspecoes, itens_por_ficha, pecas_do_servidor(pavimentos, elementos), fichas_com_peca,
+                 com_locais=com_locais)
     por_cp = {f["Id"]: f for f in inspecoes}
     elemento_do_local: dict[int, str] = {}
     for f in h["fichas_campo"]:
@@ -149,6 +152,18 @@ def montar_leitura(obra: str, dados: dict, fichas_servidor: dict[str, dict], pav
     for f in h["fichas_campo"]:
         if f["local_id"] not in ids_locais:
             f["local_id"], sem_local = None, sem_local + 1
+    local_da_ficha = {f["id"]: f["local_id"] for f in h["fichas_campo"] if not f["elemento_id"]}
+    sem_onde = 0
+    eventos = []
+    for e in h["eventos"]:
+        if e["elemento_id"] is None:
+            e["local_id"] = local_da_ficha.get(e["ficha_campo_id"])
+            if e["local_id"] is None:  # ficha sem peça e sem local: não tem onde mostrar
+                sem_onde += 1
+                continue
+        eventos.append(e)
+    h["eventos"] = eventos
+    h["resumo"]["registros_sem_peca_nem_local"] = sem_onde
     h["locais"] = locais
     h["resumo"].update({"locais": len(locais), "fichas_sem_local": sem_local, **avisos})
     return h

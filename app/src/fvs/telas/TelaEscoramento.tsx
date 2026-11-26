@@ -1,8 +1,10 @@
 // Escoramento e desforma por pavimento (item 3.6 da lista de conferências, 21/11/2026). Só aviso: o app
 // não impede marcar antes do prazo (decisão do Nicolas de 18/11); quem decide é a obra. A conta é a mesma
 // do selo do prazo no painel da peça (prazos.ts), aqui reunida para o pavimento inteiro (escoramento.ts).
-import { useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import { contagemDoEscoramento, listaDoEscoramento, textoDaLinha, type LinhaDoEscoramento } from '../escoramento'
+import { apoiosDaObra, avisosPorResidencial, situacaoDoAviso, textoDoQueFalta, TITULO_DO_GRUPO, type ApoiosDaPeca } from '../escoramento_residencial'
+import { estruturaNoAparelho } from '../pacote'
 import type { Prazo } from '../regras'
 import { usarIrAtePeca } from './IrAtePeca'
 import type { ContextoFvs } from './ModuloFvs'
@@ -22,6 +24,23 @@ export function TelaEscoramento({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
   // a data muda à meia-noite: a tela usa a hora em que foi aberta
   const [agora] = useState(() => new Date())
   const lista = useMemo(() => listaDoEscoramento(dados, agora), [dados, agora])
+  // avisos por residencial (3.8, 23/11): viga e laje entram pelos pilares que as apoiam, lidos das plantas
+  // guardadas no aparelho; até a leitura terminar, só os pilares
+  const comResidenciais = !!dados.regras.residenciais?.length && dados.regras.prazos.length > 0
+  const [apoios, setApoios] = useState<ReadonlyMap<string, ApoiosDaPeca>>(() => new Map())
+  useEffect(() => {
+    if (!comResidenciais) return
+    let vivo = true
+    estruturaNoAparelho()
+      .then((plantas) => {
+        if (vivo) setApoios(apoiosDaObra(plantas, dados.pecaPorId, [...dados.areaPorId.values()]))
+      })
+      .catch((e) => console.error('FVS: leitura das plantas para o escoramento', e))
+    return () => {
+      vivo = false
+    }
+  }, [comResidenciais, dados])
+  const avisos = useMemo(() => (comResidenciais ? avisosPorResidencial(dados, apoios, agora) : []), [comResidenciais, dados, apoios, agora])
   const total = contagemDoEscoramento(lista)
   const [pavimentoId, setPavimentoId] = useState('')
   const visiveis = pavimentoId ? lista.filter((pv) => pv.pavimentoId === pavimentoId) : lista
@@ -55,6 +74,26 @@ export function TelaEscoramento({ ctx, aviso }: { ctx: ContextoFvs; aviso: strin
         <p class="erro" role="alert">
           {erro}
         </p>
+      )}
+      {avisos.length > 0 && (
+        <section class="cartao fv-esc-pavimento fv-esc-residenciais" data-testid="fvs-esc-residenciais">
+          <h2>Por residencial</h2>
+          <ul class="fv-esc-avisos">
+            {avisos.map((a) => (
+              <li key={a.chave} class={`fv-esc-aviso${a.pode ? ' pode' : ''}`} data-testid="fvs-esc-aviso">
+                <b>
+                  {a.residencial} · {a.pavimento}
+                </b>
+                <span class="fv-esc-aviso-grupo">{TITULO_DO_GRUPO[a.grupo]}</span>
+                <span class={`fv-rep-res ${a.pode ? 'r-ok' : 'fv-esc-espera'}`} data-testid="fvs-esc-aviso-situacao">
+                  {situacaoDoAviso(a, agora)}
+                </span>
+                {a.faltam.length > 0 && <span class="discreto fv-esc-falta">{textoDoQueFalta(a)}</span>}
+              </li>
+            ))}
+          </ul>
+          <p class="discreto">Viga e laje entram pelos pilares que as apoiam, nas plantas baixadas neste aparelho. Peça na divisa conta nos dois residenciais.</p>
+        </section>
       )}
       {!dados.regras.prazos.length ? (
         <p class="discreto" data-testid="fvs-esc-sem-regras">

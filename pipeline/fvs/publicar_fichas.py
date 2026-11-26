@@ -24,13 +24,16 @@ Aceita três formatos de arquivo:
      "esquadrias": true (opcional, só em ficha de ambiente, um ou mais por ficha): item de vão ou esquadria
      ("eixos e vãos", "requadros", "recorte na porta"), que as esquadrias do ambiente marcam, uma a uma.
      "pontos": "hidro", "sanitario", "eletrico" ou "spda" (opcional, só em ficha de ambiente): o item que os pontos de instalação
-     daquela disciplina marcam na planta dela, um a um (pipeline/fvs/instalacoes.py, 20/11/2026).
+     daquela disciplina marcam na planta dela, um a um (pipeline/fvs/instalacoes.py, 20/11/2026). Desde 23/11
+     também uma lista (["hidro", "sanitario"]) e, junto, "pontos_tipos": ["tubo", "coluna"] (opcional): só os
+     pontos desses tipos marcam o item (5.1 a 5.3: duas fichas da mesma disciplina no mesmo ambiente).
   2. o do HTML legado (exemplo: pipeline/legado/itens_fvs.exemplo.json): {"P": {"codigo", "titulo", "itens": [...]}, "V": {...}}
      (as marcas "parte", "furos", "barras", "concretagem", "rastreio_concreto", "instalacao", "esquadrias" e "pontos" passam como no formato 1)
   3. o de um sistema oficial, quando o galho dele está em pipeline/integracoes/ (docs/modulos/integracoes.md):
      o galho reconhece o arquivo e converte para o formato 1.
 
-Ficha que já existe na obra com o mesmo código e revisão fica como está (não duplica).
+Ficha que já existe na obra com o mesmo código e revisão fica como está (não duplica). Com --trocar-itens (só
+fora do servidor da obra, 23/11), os itens dela são trocados pelos do arquivo quando mudaram (as marcas novas).
 O conteúdo das fichas é da empresa: o arquivo fica fora do repositório. No repositório, só o exemplo fictício.
 """
 
@@ -56,12 +59,15 @@ from exportar_obra import CHAVE_PADRAO, URL_PADRAO, ErroExportacao, Supabase  # 
 # ("codigo" e "titulo" em cada tipo). Nada da empresa fica fixo aqui.
 TIPOS_LEGADO = ("P", "V")
 # P pilar, V viga, L laje, A ambiente (ficha por ambiente: alvenaria, reboco, pintura...), M parede (modulação:
-# a ficha de alvenaria por parede, vedacao.py)
-TIPOS = ("P", "V", "L", "A", "M")
+# a ficha de alvenaria por parede, vedacao.py), K bloco de fundação (planta de locação, blocos.py; migração
+# 20261123180000_fvs_aplica_a_k.sql)
+TIPOS = ("P", "V", "L", "A", "M", "K", "S")  # S estaca (20261124100000_fvs_aplica_a_s.sql)
 # partes do pilar que um item pode ter (as mesmas do pacote da planta: pacote.TIPOS_DE_PARTE)
 PARTES = ("consolo", "capitel")
 # disciplinas dos pontos de instalações (as mesmas do pacote: pacote.DISCIPLINAS_DE_PONTOS; instalacoes.py)
-DISCIPLINAS_DOS_PONTOS = ("hidro", "sanitario", "eletrico", "spda")
+DISCIPLINAS_DOS_PONTOS = ("hidro", "sanitario", "eletrico", "preventivo", "spda")
+# tipos de ponto que um item pode pedir ("pontos_tipos"; os mesmos do pacote: pacote.TIPOS_DE_PONTO)
+from pacote import TIPOS_DE_PONTO  # noqa: E402
 
 
 
@@ -94,7 +100,8 @@ def de_legado(dados: dict) -> list[dict]:
                   **({"rastreio_concreto": i["rastreio_concreto"]} if i.get("rastreio_concreto") is not None else {}),
                   **({"instalacao": i["instalacao"]} if i.get("instalacao") is not None else {}),
                   **({"esquadrias": i["esquadrias"]} if i.get("esquadrias") is not None else {}),
-                  **({"pontos": i["pontos"]} if i.get("pontos") is not None else {})}
+                  **({"pontos": i["pontos"]} if i.get("pontos") is not None else {}),
+                  **({"pontos_tipos": i["pontos_tipos"]} if i.get("pontos_tipos") is not None else {})}
                  for i in dados[tipo]["itens"]]
         fichas.append({"codigo": codigo, "titulo": titulo, "revisao": "0", "tipo_modelo": "ESTRUTURA",
                        "aplica_a": [tipo], "itens": itens, "origem": "legado"})
@@ -143,13 +150,32 @@ def normalizar(dados, aplica_a_padrao: list[str] | None = None) -> list[dict]:
         for i in f["itens"]:
             disc = i.get("pontos")
             if disc is None:
+                if i.get("pontos_tipos") is not None:
+                    raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "pontos_tipos" só junto com "pontos"')
                 continue
-            if disc not in DISCIPLINAS_DOS_PONTOS:
+            # 23/11 (5.1 a 5.3): uma disciplina ou uma lista (["hidro", "sanitario"]: o item vale para as duas)
+            discs = disc if isinstance(disc, list) else [disc]
+            tipos = i.get("pontos_tipos")
+            if tipos is not None and (not isinstance(tipos, list) or not tipos or not set(tipos) <= set(TIPOS_DE_PONTO)):
+                raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "pontos_tipos" é uma lista de tipos de ponto '
+                                 f'({", ".join(TIPOS_DE_PONTO)})')
+            if not discs or not all(isinstance(d, str) and d in DISCIPLINAS_DOS_PONTOS for d in discs):
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "pontos" só aceita {", ".join(DISCIPLINAS_DOS_PONTOS)} (os pontos que marcam o item)')
             if f["aplica_a"] != ["A"]:
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: item dos pontos de instalação só em ficha de ambiente ("aplica_a": ["A"])')
             if i.get("furos") or i.get("barras") or i.get("parte") or i.get("esquadrias"):
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: o item dos pontos não pode ser também de furos, barras, parte ou esquadrias')
+        # um tipo de ponto da mesma disciplina só marca um item da ficha (pedido do 10, 23/11); item sem
+        # "pontos_tipos" vale para todos os tipos da disciplina
+        vistos_pontos: dict[str, set | None] = {}
+        for i in f["itens"]:
+            if i.get("pontos") is None:
+                continue
+            tipos = set(i["pontos_tipos"]) if i.get("pontos_tipos") else None
+            for d in (i["pontos"] if isinstance(i["pontos"], list) else [i["pontos"]]):
+                if d in vistos_pontos and (tipos is None or vistos_pontos[d] is None or tipos & vistos_pontos[d]):
+                    raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: o mesmo tipo de ponto de {d} já marca outro item da ficha')
+                vistos_pontos[d] = None if tipos is None or vistos_pontos.get(d, set()) is None else vistos_pontos.get(d, set()) | tipos
         for i in f["itens"]:
             if i.get("concretagem") is not None and not isinstance(i["concretagem"], bool):
                 raise ErroFichas(f'{f["codigo"]} item {i.get("n")}: "concretagem" só aceita true ou false (a etapa da concretagem)')
@@ -221,6 +247,23 @@ def publicar(srv, obra: dict, fichas: list[dict]) -> int:
     return len(faltam)
 
 
+def trocar_itens(srv, obra: dict, fichas: list[dict]) -> int:
+    """Troca os itens das fichas que já estão na obra (mesmo código e revisão) quando mudaram. Devolve quantas."""
+    por_chave = {(e["codigo"], e["revisao"]): e for e in srv.obter("fichas_modelo", {"obra_id": f"eq.{obra['id']}"})
+                 if not e.get("apagado")}
+    trocadas = 0
+    for f in fichas:
+        e = por_chave.get((f["codigo"], str(f.get("revisao") or "0")))
+        if e is None or e.get("itens") == f["itens"]:
+            continue
+        if [i["n"] for i in e["itens"]] != [i["n"] for i in f["itens"]]:
+            raise ErroFichas(f'{f["codigo"]}: os itens do arquivo não têm os mesmos números dos da obra; não troco '
+                             "(os registros apontam para o número do item)")
+        srv.sb.json("PATCH", f"/rest/v1/fichas_modelo?id=eq.{e['id']}", {"itens": f["itens"]}, {"Prefer": "return=representation"})
+        trocadas += 1
+    return trocadas
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Publica fichas (PVS) numa obra.")
     ap.add_argument("obra")
@@ -228,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--so-conferir", action="store_true")
     ap.add_argument("--aplica-a", metavar="TIPOS", help="para as fichas do arquivo que não dizem a que se aplicam: "
                     "P, V, L ou A (ambiente); mais de um separado por vírgula")
+    ap.add_argument("--trocar-itens", action="store_true",
+                    help="fora do servidor da obra: troca os itens das fichas que já existem quando mudaram")
     ap.add_argument("--email")
     ap.add_argument("--url", default=URL_PADRAO)
     ap.add_argument("--chave", default=CHAVE_PADRAO)
@@ -243,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
                 print("  sem item de armadura pelas barras (\"barras\": true): as barras de laje ficam só para ver na planta")
         if args.so_conferir:
             return 0
+        if args.trocar_itens and args.url.rstrip("/") == URL_PADRAO.rstrip("/"):
+            raise ErroFichas("--trocar-itens não vale no servidor da obra (só no de testes)")
         import sessao_local
         from publicar_planta import Servidor, entrar
 
@@ -252,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
         obra = srv.obra(args.obra.upper())
         entraram = publicar(srv, obra, fichas)
         print(f"{entraram} ficha(s) nova(s) publicada(s); {len(fichas) - entraram} já estavam na obra.")
+        if args.trocar_itens:
+            print(f"{trocar_itens(srv, obra, fichas)} ficha(s) com os itens trocados.")
     except (ErroFichas, ErroExportacao) as e:
         print(f"PROBLEMA: {e}")
         return 1

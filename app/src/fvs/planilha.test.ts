@@ -193,7 +193,24 @@ describe('planilha de reprovações', () => {
   it('reinspecionada traz o resultado, a data e quem', () => {
     const re = { ...r, aberta: false, reinspecao: { resultado: 'C', quando: '2026-11-06T15:00:00.000Z', quem: 'Pessoa Dois' } }
     const [, linha] = planilhaDeReprovacoes([re], () => '3º', () => '', 'Sistema Exemplo').slice(1).split('\r\n')
-    expect(linha.endsWith(';Reinspecionada;C;06/11/2026;Pessoa Dois')).toBe(true)
+    expect(linha.endsWith(';Reinspecionada;C;06/11/2026;Pessoa Dois;;;;;;;')).toBe(true)
+  })
+
+  it('tratativa (25/11): quem resolve, prazo, causa, casos parecidos, concessão e eficácia no fim da linha', () => {
+    const tratativa = {
+      responsavel: 'Empreiteiro Exemplo',
+      prazo: '2026-12-01',
+      causa: 'outro' as const,
+      causa_obs: 'Chuva',
+      casos_parecidos: 'P2',
+      concessao: true,
+      concessao_por: 'Engenheiro',
+      eficacia: null,
+      eficacia_obs: null,
+    }
+    const [cab, linha] = planilhaDeReprovacoes([{ ...r, aberta: false, concessao: true, tratativa }], () => '3º', () => '').slice(1).split('\r\n')
+    expect(cab.endsWith(';Quem resolve;Prazo;Causa;Casos parecidos;Concessão;Quem decidiu;Eficácia')).toBe(true)
+    expect(linha.endsWith(';Concessão;;;;Empreiteiro Exemplo;01/12/2026;Outro (Chuva);P2;Sim;Engenheiro;')).toBe(true)
   })
 })
 

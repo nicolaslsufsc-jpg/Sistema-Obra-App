@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import { createServer, type ViteDevServer } from 'vite'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Page = any
@@ -195,6 +196,130 @@ suite('Projetos: entregar cópia com toque (bancada, Chromium)', () => {
       await p.goto(url)
       await p.getByTestId('obra-em-campo').waitFor()
       await expect.poll(async () => Number(await p.getByTestId('obra-em-campo').innerText())).toBe(emCampoAntes + 6)
+
+      // 7. aba Entregas (23/11): a entrega é UMA linha (3 pranchas, 6 cópias, assinada), a mais nova em cima
+      await p.getByTestId('obra-entregas').tap()
+      await p.getByTestId('entrega-linha').first().waitFor()
+      const primeira = p.getByTestId('entrega-linha').first()
+      expect(await primeira.innerText()).toMatch(/Pessoa Nova[\s\S]*Empreiteira Alfa[\s\S]*3 pranchas \(6 cópias\)[\s\S]*assinada/)
+      // as entregas antigas, sem assinatura, também aparecem
+      expect(await p.getByTestId('entregas-lista').getByText('sem assinatura').count()).toBeGreaterThan(0)
+      // busca por pessoa e filtro de data
+      await p.getByPlaceholder('Buscar pessoa ou empresa').fill('pessoa nova')
+      expect(await p.getByTestId('entrega-linha').count()).toBe(1)
+      await p.getByPlaceholder('Buscar pessoa ou empresa').fill('')
+      await p.getByTestId('entregas-periodo').getByRole('button', { name: 'Hoje' }).tap()
+      expect(await p.getByTestId('entrega-linha').count()).toBe(1)
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('4-entregas')
+      // tocar abre o comprovante, com as 3 pranchas e a assinatura
+      await p.getByTestId('entrega-linha').first().tap()
+      await p.getByTestId('comprovante-pranchas').waitFor()
+      expect(await p.getByTestId('comprovante-pranchas').locator('li').count()).toBe(6)
+      await p.getByTestId('comprovante-assinatura').waitFor()
+      // entrega antiga sem assinatura: abre também, com o aviso
+      await p.goBack()
+      await p.getByTestId('entregas-periodo').getByRole('button', { name: 'Tudo' }).tap()
+      await p.getByTestId('entrega-linha').filter({ hasText: 'sem assinatura' }).first().tap()
+      await p.getByTestId('comprovante-sem-assinatura').waitFor()
+      expect(await p.getByTestId('comprovante-pranchas').locator('li').count()).toBeGreaterThan(0)
+
+      // 8. a pessoa nova aparece na tela Empresas (achado do testador, 23/11)
+      await p.goto(url)
+      await p.getByTestId('obra-canteiro').tap()
+      await p.locator('.pj-abas').getByRole('button', { name: 'Empresas', exact: true }).tap()
+      await p.getByRole('button', { name: /^Empresas/ }).tap()
+      await p.getByTestId('empresa-pessoas').first().waitFor()
+      expect(await p.getByTestId('empresa-pessoas').allInnerTexts()).toContainEqual(expect.stringContaining('Pessoa Nova · 6 cópias em campo'))
+      expect(await estouro()).toBeLessThanOrEqual(0)
+      await print('5-empresas')
+      // e na aba Pessoas
+      await p.goBack()
+      await p.goBack()
+      await p.locator('.pj-abas').getByRole('button', { name: 'Pessoas', exact: true }).tap()
+      await p.getByPlaceholder('Buscar empresa ou pessoa').fill('pessoa nova')
+      expect(await p.getByTestId('pessoas-empresas').innerText()).toContain('Pessoa Nova')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
+  // Ficha no formato do formulário da obra (23/11): só com o modelo da obra (?ficha=1, fictício)
+  for (const [nome, largura, altura] of [
+    ['celular', 375, 812],
+    ['tablet', 768, 1024],
+  ] as const) {
+    it(`${nome} ${largura}x${altura}: com o formulário da obra, o PDF da entrega sai no formato dele`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: true, isMobile: largura < 700 })
+      await contexto.addInitScript(() => {
+        const w = window as any
+        w.__folhas = []
+        window.print = () => {
+          const f = document.querySelector('.so-folha-pdf')
+          w.__folhas.push({ texto: (f?.textContent ?? '').replace(/\s+/g, ' '), so: document.body.classList.contains('so-imprimindo') })
+        }
+      })
+      const p = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      p.on('dialog', (d: any) => d.accept())
+      await p.goto(`${url}&ficha=1`)
+      // SO_FICHA_MODELO=<arquivo .json fora do repositório>: troca o modelo fictício por um de verdade (para comparar)
+      let referencia = 'EXE-FOR-001'
+      if (process.env.SO_FICHA_MODELO) {
+        const modelo = JSON.parse(readFileSync(process.env.SO_FICHA_MODELO, 'utf8'))
+        referencia = modelo.referencia
+        await p.getByTestId('obra-entregar').waitFor() // a bancada já gravou o modelo fictício
+        await p.evaluate(`(async () => {
+          const { banco } = await import('/src/nucleo/servicos.ts')
+          const r = await banco.registros.get(['projetos_formularios', 'f0000000-0000-0000-0000-000000000001'])
+          r.linha.modelo = JSON.parse(${JSON.stringify(JSON.stringify(modelo))})
+          await banco.registros.put(r)
+        })()`)
+        await p.reload()
+      }
+      await p.getByTestId('obra-entregar').tap()
+      await p.getByTestId('entregar-disciplina').filter({ hasText: 'Estrutura' }).tap()
+      const linhas = p.getByTestId('entregar-prancha')
+      await linhas.first().waitFor()
+      await linhas.nth(0).tap()
+      await linhas.nth(1).tap()
+      await p.getByTestId('entregar-seguir').tap()
+      await p.getByTestId('entrega-empresa').filter({ hasText: 'Empreiteira Alfa' }).tap()
+      await p.getByTestId('entrega-nome').fill('Pessoa da Ficha')
+      await p.getByTestId('entrega-copias').fill('2')
+      await assinarComToque(contexto, p)
+      await p.getByRole('button', { name: /^Registrar entrega/ }).tap()
+      await p.getByTestId('comprovante').waitFor()
+      expect(await p.getByTestId('comprovante-modelo').innerText()).toContain(referencia)
+      expect(await p.getByTestId('projetos-pdf-comprovante').count()).toBe(0)
+      const bt = p.getByTestId('projetos-pdf-ficha')
+      await expect.poll(() => bt.isEnabled()).toBe(true)
+      expect((await bt.boundingBox()).height).toBeGreaterThanOrEqual(44)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await bt.tap()
+      await p.waitForFunction(() => (window as any).__folhas.length > 0)
+      const f = await p.evaluate(() => (window as any).__folhas.at(-1))
+      expect(f.so).toBe(true)
+      for (const t of ['CÓDIGO DA PRANCHA', referencia, 'OBRA: Bancada dos Projetos', 'CÓDIGO DA PRANCHA', 'Nº DE CÓPIAS', 'ASSINATURA', 'Página:1/1']) expect(f.texto).toContain(t)
+      // uma linha por prancha (as 2 cópias viram "2"), com o nome, a empreiteira e a assinatura
+      const fl = p.getByTestId('ficha-entrega-linha')
+      expect(await fl.count()).toBe(2)
+      const l0 = await fl.first().locator('td').allInnerTexts()
+      expect(l0[0]).toMatch(/^TST\.ES\./)
+      expect(l0[3]).toBe('2')
+      expect(l0[5]).toBe('Empreiteira Alfa')
+      expect(l0[6]).toBe('Pessoa da Ficha')
+      expect(await fl.locator('td.fe-ass img').count()).toBe(2)
+      // a caixa da disciplina marcada, as outras não; o formulário tem 15 linhas por página
+      expect(await p.locator('[data-testid=ficha-entrega-disciplinas] .fe-caixa[data-marcada=sim]').allInnerTexts()).toEqual(['( X ) Estrutural'])
+      expect(await p.locator('.fe-tabela tbody tr').count()).toBe(15)
+      if (PRINTS) {
+        await p.emulateMedia({ media: 'print' })
+        await p.screenshot({ path: path.join(PRINTS, `projetos-ficha-${nome}.png`), fullPage: true })
+        await p.emulateMedia({ media: null })
+        if (nome === 'tablet') await p.pdf({ path: path.join(PRINTS, 'projetos-ficha-entrega.pdf'), preferCSSPageSize: true, printBackground: true })
+      }
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)

@@ -88,6 +88,14 @@ export function TelaLancamento({ ctx, sistema, aviso }: { ctx: ContextoFvs; sist
                     <b>
                       {l.item}. {l.itemTitulo}
                     </b>
+                    {l.soDoApp && (
+                      <>
+                        <br />
+                        <span class="fv-so-do-app" data-testid="fvs-lan-so-do-app">
+                          Só do app (não vai para o {sistema.nome})
+                        </span>
+                      </>
+                    )}
                     <br />
                     <span class="discreto">
                       {rotuloRodada(l.rodada)} · {quando(l.quando)} · {l.quem}

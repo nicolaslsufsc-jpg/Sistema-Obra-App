@@ -33,7 +33,7 @@ export function sobDemanda(
       return (
         <main class="tela tela-estreita">
           <p class="erro">Não foi possível abrir {nome} neste aparelho.</p>
-          <p>Isso costuma acontecer logo depois de uma versão nova do app. Nada do que você registrou foi perdido.</p>
+          <p>Nada do que foi registrado se perdeu.</p>
           <div class="acoes">
             <button type="button" class="principal" onClick={() => location.reload()}>
               Recarregar o app

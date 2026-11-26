@@ -51,6 +51,7 @@ class TestPartes(unittest.TestCase):
         self.assertEqual(ic.peca_do_local("Torre \\ 2° Pavimento \\ Residencial D - Vigas \\ V144"), ("2º Pavimento", "V", "V144"))
         self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 4 \\ Pilares \\ p216"), ("Mezanino", "P", "P216"))
         self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 6 \\ Pilares \\ p326a"), ("Mezanino", "P", "P326A"))
+        self.assertEqual(ic.peca_do_local("Torre \\ 2° Pavimento \\ Pilares \\ P102aa"), ("2º Pavimento", "P", "P102AA"))
         self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 1 \\ Pilares \\ P9O"), ("Mezanino", "P", "P90"))  # letra O no lugar de zero
         for sem_peca in ("Térreo Comercial", "Pilotis \\ Trecho 1", "Infra estrutura \\ Residencial 1 \\ BL129", "Pilotis \\ Trecho 1 \\ ETE \\ PAREDE 1",
                          "Infra estrutura \\ Residencial 1 \\ Bloco P81"):
@@ -175,3 +176,55 @@ class TestArquivos(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPilarComLetra(unittest.TestCase):
+    """Achado 4 da lista de campo (24/11): "P184" no Construpoint é o "P184a" no app. Pares do 2º (P102a e
+    P102aa): fica o que não é só de detalhe no pacote; sem pacote, o nome mais curto, com aviso."""
+
+    PECAS_2 = {"2º Pavimento": {"P": {"P184A": "id-p184a", "P102A": "id-p102a", "P102AA": "id-p102aa", "P50": "id-p50",
+                                      "P505": "id-p505"}}}
+    LOCAL = "Torre \\ 2° Pavimento \\ Pilares \\ {}"
+
+    def montar(self, nome, so_detalhe=None):
+        return ic.montar("EXE", [], [ficha(1, self.LOCAL.format(nome))], ITENS, self.PECAS_2, FICHAS_DO_APP, so_detalhe=so_detalhe)
+
+    def test_pilar_sem_letra_liga_no_unico_com_letra(self):
+        h = self.montar("P184", so_detalhe={"2º Pavimento": set()})
+        f = h["fichas_campo"][0]
+        self.assertEqual((f["elemento_id"], f["nome"]), ("id-p184a", "P184A"))
+        self.assertEqual(h["resumo"]["pilares_ligados_pelo_numero"], 1)
+        self.assertEqual(h["pendencias"], [])
+
+    def test_par_do_2o_fica_o_que_nao_e_so_detalhe(self):
+        h = self.montar("P102", so_detalhe={"2º Pavimento": {"P102A"}})
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102aa")
+        self.assertEqual(h["pendencias"], [])
+        h = self.montar("P102", so_detalhe={"2º Pavimento": {"P102AA"}})
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102a")
+
+    def test_par_sem_pacote_fica_o_mais_curto_e_avisa(self):
+        h = self.montar("P102")
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102a")
+        (p,) = h["pendencias"]
+        self.assertIn("pilar ligado pelo número", p["motivo"])
+        self.assertIn("P102A, P102AA", p["local"])
+
+    def test_nome_exato_ganha_e_numero_diferente_nao_liga(self):
+        h = self.montar("P102AA")
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102aa")
+        self.assertEqual(h["resumo"]["pilares_ligados_pelo_numero"], 0)
+        h = self.montar("P5")  # P50 e P505 têm outro número: não liga
+        self.assertIsNone(h["fichas_campo"][0]["elemento_id"])
+        self.assertEqual(h["pendencias"][0]["motivo"], "peça não está na planta do pavimento")
+
+    def test_ler_pecas_traz_os_so_detalhe_do_pacote(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sub = pathlib.Path(tmp) / "EXE_2"
+            sub.mkdir()
+            (sub / "relatorio.json").write_text(json.dumps({"pavimento": "2º Pavimento", "so_detalhe": ["P102a"],
+                "pecas": [{"tipo": "P", "nome": "P102a", "id": "a"}, {"tipo": "P", "nome": "P102aa", "id": "aa"}]}), encoding="utf-8")
+            so = {}
+            pecas = ic.ler_pecas(pathlib.Path(tmp), so)
+        self.assertEqual(so, {"2º Pavimento": {"P102A"}})
+        self.assertEqual(pecas["2º Pavimento"]["P"], {"P102A": "a", "P102AA": "aa"})

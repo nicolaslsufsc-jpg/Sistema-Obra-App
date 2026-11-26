@@ -28,7 +28,7 @@ Usuário sem linha em `acessos` (e que não é admin) não vê nada. `perfis.pap
 - `pavimentos` (obra_id, nome, ordem). `ordem` cresce de baixo para cima. Nome único por obra.
 - `setores` (obra_id, pavimento_id opcional, nome_projeto ex. "Trecho 2", nome_construpoint ex. "B/C", disciplina ex. "estrutura").
   - Liga o trecho da prancha ao setor do Construpoint. De-para da obra piloto ainda não definido: `nome_construpoint` fica vazio até lá.
-- `elementos` (obra_id, pavimento_id, tipo P/V/L/A/F/E/M: pilar, viga, laje, ambiente, furo de viga, esquadria, parede de modulação; nome, secao). Único por (pavimento_id, tipo, nome) entre os não apagados.
+- `elementos` (obra_id, pavimento_id, tipo P/V/L/A/F/E/M/S/K: pilar, viga, laje, ambiente, furo de viga, esquadria, parede de modulação, estaca, bloco de fundação; nome, secao). Único por (pavimento_id, tipo, nome) entre os não apagados.
   - Pilar que aparece em dois trechos é um elemento só.
   - `nome` sem espaço: "V46", não "V 46". O leitor de prancha normaliza antes de gravar.
 - `arquivos` (obra_id, caminho, nome_original, hash SHA-256 hex, tamanho em bytes, tipo MIME). Quem criou e quando: `usuario_id` e `criado_em_servidor`.
@@ -106,6 +106,7 @@ const eventos = await sincronizador.linhas('fvs_eventos', obraId)
 - Tabela nova que precisa estar offline: acrescente em `app/src/nucleo/tabelas.ts` (ordem: pais antes dos filhos) e a lista do módulo em `BLOCOS_SINCRONIZADOS` no mesmo arquivo (o núcleo baixa primeiro, os módulos ao mesmo tempo; por isso tabela de módulo só aponta para o núcleo e para o próprio módulo) e chame `nucleo.preparar_tabela()` nela na migração do módulo.
 - `registrar()` preenche sozinho `id` (se não vier), `obra_id`, `usuario_id`, `dispositivo_id`, `criado_em_dispositivo` e `apagado`. Passar qualquer coluna do núcleo dá erro.
 - No aparelho, todas as tabelas ficam numa tabela local genérica (`registros`, chave tabela + id). Módulo novo não mexe no esquema do banco local.
+- `registrarVarios(tabela, obraId, usuarioId, listaDeCampos)` (24/11/2026, aprovado pelo Nicolas): o mesmo que chamar `registrar()` para cada um, na ordem, mas numa transação só no aparelho (entram todos ou nenhum). Registros, fila e sincronização iguais. Para lote grande (o "Confirmar OK em todos" da FVS manda partes de 500).
 - `registrar()` é só para inclusão com id novo. Não use para editar um registro existente: o servidor ignora id repetido.
 - A sincronização roda sozinha enquanto o app está aberto numa obra (`usarSincronizacao`): ao abrir, quando a internet volta, quando o app volta para a frente, a cada 5 min, e a cada 1 min se houver coisa na fila. As telas nunca esperam a rede.
 - Fila: uma por usuário, enviada em ordem. Erro de rede ou login vencido: para e tenta depois. Erro permanente (sem permissão, valor inválido): o item fica marcado com o motivo, a fila segue e a tela mostra a lista. Nada é apagado da fila sem chegar ao servidor.
@@ -149,7 +150,7 @@ import { ModuloFvs } from './fvs/telas/ModuloFvs'
 - A lista e a ordem das tabelas vêm de `public.tabelas_para_exportar()` (migração `20261103200000_nucleo_exportacao.sql`): quem é referenciado vem antes. Módulo novo entra sozinho na exportação, sem mexer no script.
 - Cada arquivo é conferido pelo SHA-256 e pelo tamanho de `arquivos`. Arquivo no armazenamento sem linha em `arquivos` também é baixado e aparece no manifesto como "sem registro".
 - As tabelas são lidas dos filhos para os pais: se a obra mudar durante a exportação, nunca entra um filho sem o pai, e o `restaurar.sql` continua válido.
-- `restaurar.sql` recria a obra num Postgres com as migrações do núcleo e dos módulos, mantendo as horas originais (gatilhos desligados durante a carga). Falha inteiro se a obra já existir no destino. Contas que já existiam no destino não mudam de papel nem ganham acessos. Impõe UTF-8 (`set client_encoding`), por causa do psql no Windows.
+- `restaurar.sql` recria a obra num Postgres com as migrações do núcleo e dos módulos, mantendo as horas originais (gatilhos desligados durante a carga). Falha inteiro se a obra já existir no destino. Contas que já existiam no destino não mudam de papel; recebem só o acesso que tinham na obra restaurada, como no backup (desde 25/11, para restaurar várias obras do mesmo backup). Impõe UTF-8 (`set client_encoding`), por causa do psql no Windows.
 - CSV para o Excel em português: `;`, vírgula decimal, horas no horário do PC, `sim`/`não`, apóstrofo antes de texto que começa com `=`, `+`, `-` ou `@`. Os valores originais ficam no JSON.
 - Login renovado sozinho (refresh token) em exportações longas; queda de conexão é tentada de novo 3 vezes; a pasta se chama `.incompleta` até terminar.
 - A saída nunca fica dentro de um repositório git, e nenhum caminho de arquivo sai da pasta de saída (defesa no script, além do formato imposto pelo banco).
@@ -201,7 +202,7 @@ nome de coluna. Migração `20261121130000_sistema_oficial_leitura.sql`, teste `
 6. Tela do módulo: preencher `Tela` na linha do módulo em `app/src/modulos.ts` (seção "Casca do app").
 
 ## Tabelas por módulo (cada sessão detalha a sua)
-- FVS: `plantas`, `geometrias`, `detalhes`, `elemento_detalhe`, `fichas_modelo`, `fvs_eventos`, `fvs_fotos`
+- FVS: `plantas`, `geometrias`, `detalhes`, `elemento_detalhe`, `fichas_modelo`, `fvs_eventos`, `fvs_fotos`, `fvs_tratativas` (tratativa de NC, desde 25/11/2026, migração `20261125150000_fvs_tratativas.sql`; o Nicolas aprovou criar)
 - Projetos: `documentos`, `revisoes`, `distribuicoes`
 - Concreto: `concretagens`, `caminhoes`, `caminhao_elementos`
 - Documentos: `doc_documentos` (desde 20/11/2026, migração `20261120150000_documentos.sql`; `docs_obra` era só o nome proposto)

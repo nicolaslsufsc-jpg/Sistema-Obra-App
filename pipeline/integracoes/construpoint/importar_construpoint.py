@@ -37,13 +37,16 @@ import uuid
 AQUI = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI))
 sys.path.insert(0, str(AQUI.parent))
+sys.path.append(str(AQUI.parent.parent / "fvs"))  # partes.py: pilar_pelo_numero
+
+from partes import pilar_pelo_numero  # noqa: E402
 
 ESPACO_DE_IDS = uuid.UUID("0c6f9a52-6a0b-4b7e-8f3d-2b9c7a4e1d10")
 # Horário de Brasília, sem horário de verão desde 2019. O app compara datas como texto em UTC.
 FUSO = dt.timezone(dt.timedelta(hours=-3))
 # C (conforme), NC (não conforme), NA (não aplicável). Até 08/11/2026 eram A e R; o app lê os dois.
 RESULTADO = {"Aprovado": "C", "Reprovado": "NC", "N/A": "NA"}
-RE_PECA = re.compile(r"^([PV])(\d+[A-Z]?)$")
+RE_PECA = re.compile(r"^([PV])(\d+[A-Z]{0,2})$")  # duas letras: P102aa, par do 2º
 RE_O_NO_LUGAR_DE_ZERO = re.compile(r"^([PV]\d+)O$")
 
 
@@ -109,11 +112,17 @@ def linhas_de(relatorio: dict) -> list[dict]:
 
 
 def montar(obra: str, verificacoes: list[dict], inspecoes: list[dict], itens_por_ficha: dict[str, list[str]],
-           pecas: dict[str, dict[str, dict[str, str]]], fichas_do_app: set[str]) -> dict:
+           pecas: dict[str, dict[str, dict[str, str]]], fichas_do_app: set[str], com_locais: bool = False,
+           so_detalhe: dict[str, set[str]] | None = None) -> dict:
     """pecas: {pavimento: {tipo: {NOME EM MAIÚSCULAS: elementos.id}}}.
-    fichas_do_app: códigos das fichas cadastradas (só elas viram registros marcáveis na planta)."""
+    so_detalhe: {pavimento: NOMES dos pilares só de detalhe}, do pacote; None sem pacote (peças do servidor).
+    Pilar com letra: "P184" no Construpoint é o "P184a" do app (partes.pilar_pelo_numero).
+    fichas_do_app: códigos das fichas cadastradas (só elas viram registros marcáveis na planta).
+    com_locais: o item verificado vira registro também quando a ficha não tem peça (o registro fica com
+    elemento_id vazio e quem chama põe o local_id: leitura.py)."""
     numero_do_item = {cod: {texto_do_item(t): i for i, t in enumerate(itens, 1)} for cod, itens in itens_por_ficha.items()}
     pendencias: list[dict] = []
+    pelo_numero = 0
     fichas: dict[int, dict] = {}
     for f in inspecoes:
         local = f["Location"]
@@ -140,7 +149,16 @@ def montar(obra: str, verificacoes: list[dict], inspecoes: list[dict], itens_por
             motivo = "local não é uma peça"
         else:
             pavimento, tipo, nome = peca
-            eid = pecas.get(pavimento, {}).get(tipo, {}).get(nome)
+            do_tipo = pecas.get(pavimento, {}).get(tipo, {})
+            eid = do_tipo.get(nome)
+            if eid is None and tipo == "P":
+                achado, aviso = pilar_pelo_numero(nome, do_tipo, None if so_detalhe is None else so_detalhe.get(pavimento, set()))
+                if achado is not None:
+                    nome, eid = achado, do_tipo[achado]
+                    pelo_numero += 1
+                if aviso:
+                    pendencias.append({"motivo": "pilar ligado pelo número, conferir qual do par", "local": f"{local} -> {nome} ({aviso})",
+                                       "ficha": f["_ficha_codigo"], "codigo": f["Code"], "status": f["Status"]})
             if eid is None:
                 motivo = "peça não está na planta do pavimento"
             else:
@@ -166,7 +184,7 @@ def montar(obra: str, verificacoes: list[dict], inspecoes: list[dict], itens_por
             continue
         vistos.add(v["InspectionChklId"])
         ficha[{"C": "qtd_a", "NC": "qtd_r", "NA": "qtd_na"}[resultado]] += 1
-        if ficha["elemento_id"] is None:
+        if ficha["elemento_id"] is None and not com_locais:
             continue
         item = numero_do_item.get(ficha["ficha_codigo"], {}).get(texto_do_item(v["Verificacoes"]))
         if item is None:
@@ -224,6 +242,7 @@ def montar(obra: str, verificacoes: list[dict], inspecoes: list[dict], itens_por
         "resumo": {
             "fichas": len(lista),
             "fichas_com_peca": sum(1 for f in lista if f["elemento_id"]),
+            "pilares_ligados_pelo_numero": pelo_numero,
             "verificacoes_lidas": len(vistos),
             "eventos_na_planta": len(eventos),
             "pecas_com_ficha_duplicada": len(duplicadas),
@@ -246,7 +265,8 @@ def ficha_combina(ficha: dict) -> bool:
     return esperada is None or ficha["ficha_codigo"] == esperada
 
 
-def ler_pecas(pasta: pathlib.Path) -> dict[str, dict[str, dict[str, str]]]:
+def ler_pecas(pasta: pathlib.Path, so_detalhe: dict[str, set[str]] | None = None) -> dict[str, dict[str, dict[str, str]]]:
+    """Peças dos pacotes. Se receber o dicionário so_detalhe, enche com os pilares só de detalhe de cada pavimento."""
     pecas: dict[str, dict[str, dict[str, str]]] = {}
     for sub in sorted(p for p in pasta.iterdir() if p.is_dir()):
         rel = sub / "relatorio.json"
@@ -254,6 +274,8 @@ def ler_pecas(pasta: pathlib.Path) -> dict[str, dict[str, dict[str, str]]]:
             d = json.loads(rel.read_text(encoding="utf-8"))
             for p in d.get("pecas", []):
                 pecas.setdefault(d["pavimento"], {}).setdefault(p["tipo"], {})[p["nome"].upper()] = p["id"]
+            if so_detalhe is not None:
+                so_detalhe.setdefault(d["pavimento"], set()).update(n.upper() for n in d.get("so_detalhe") or [])
     return pecas
 
 
@@ -279,8 +301,10 @@ def main(argv: list[str] | None = None) -> int:
         for f in ler("cp_fichas.json"):
             if f.get("itens"):
                 itens[f["codigo"]] = [i["texto"] for i in f["itens"]]
+        so_detalhe: dict[str, set[str]] = {}
+        pecas = ler_pecas(pathlib.Path(args.pacotes), so_detalhe)
         h = montar(args.obra, linhas_de(ler("cp_verificacoes.json")), linhas_de(ler("cp_inspecoes.json")), itens,
-                   ler_pecas(pathlib.Path(args.pacotes)), set(codigos))
+                   pecas, set(codigos), so_detalhe=so_detalhe)
     except (ErroImportacao, FileNotFoundError, KeyError) as e:
         print(f"PROBLEMA: {e}")
         return 1

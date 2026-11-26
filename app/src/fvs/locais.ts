@@ -45,8 +45,16 @@ export interface DadosDosLocais {
   fichaPorId: ReadonlyMap<string, Ficha>
 }
 
+/** Serviço = o modelo de ficha (cortina, parede aparente, blocos...), pelo código. */
+export interface Servico {
+  codigo: string
+  titulo: string
+}
+
 export interface LocalNaLista {
   local: LocalSistema
+  /** os serviços do local: os das fichas abertas e o das marcações só no app */
+  servicos: Servico[]
   /** fichas abertas no sistema oficial */
   fichas: number
   /** marcações (do sistema oficial e do app) */
@@ -86,12 +94,54 @@ export function gruposDeLocais(d: DadosDosLocais): GrupoDeLocais[] {
     if (!fichas && !registros) continue
     const pai = local.origem_pai_id ? porOrigem.get(`${local.sistema}|${local.origem_pai_id}`) : undefined
     const titulo = pai?.nome_completo ?? ''
-    grupos.set(titulo, [...(grupos.get(titulo) ?? []), { local, fichas, registros, situacao: situacaoDoLocalDoSistema(d, local.id) }])
+    grupos.set(titulo, [...(grupos.get(titulo) ?? []), { local, servicos: servicosDoLocal(d, local.id), fichas, registros, situacao: situacaoDoLocalDoSistema(d, local.id) }])
   }
   return [...grupos.entries()]
     .map(([titulo, locais]) => ({ titulo, locais: locais.sort((a, b) => ordemNatural.compare(a.local.nome, b.local.nome)) }))
     .sort((a, b) => ordemNatural.compare(a.titulo, b.titulo))
 }
+
+/** Os serviços de um local, sem repetir o código: das fichas abertas e das marcações feitas só no app. */
+export function servicosDoLocal(d: DadosDosLocais, localId: string): Servico[] {
+  const porCodigo = new Map<string, Servico>()
+  for (const f of d.fichasCampoDoLocal.get(localId) ?? []) {
+    const modelo = f.ficha_id ? d.fichaPorId.get(f.ficha_id) : undefined
+    const codigo = f.ficha_codigo ?? modelo?.codigo
+    if (codigo && !porCodigo.has(codigo)) porCodigo.set(codigo, { codigo, titulo: f.ficha_titulo ?? modelo?.titulo ?? codigo })
+  }
+  for (const e of d.eventosDe.get(localId) ?? []) {
+    const modelo = d.fichaPorId.get(e.ficha_id)
+    if (modelo && !porCodigo.has(modelo.codigo)) porCodigo.set(modelo.codigo, { codigo: modelo.codigo, titulo: modelo.titulo })
+  }
+  return [...porCodigo.values()]
+}
+
+export interface ServicoNaLista extends Servico {
+  /** quantos locais da lista têm esse serviço */
+  locais: number
+}
+
+/** Os serviços da lista, do que tem mais locais para o que tem menos (empate: pelo código). */
+export function servicosDaLista(grupos: readonly GrupoDeLocais[]): ServicoNaLista[] {
+  const porCodigo = new Map<string, ServicoNaLista>()
+  for (const g of grupos)
+    for (const l of g.locais)
+      for (const s of l.servicos) {
+        const ja = porCodigo.get(s.codigo)
+        if (ja) ja.locais++
+        else porCodigo.set(s.codigo, { ...s, locais: 1 })
+      }
+  return [...porCodigo.values()].sort((a, b) => b.locais - a.locais || ordemNatural.compare(a.codigo, b.codigo))
+}
+
+/** Só os locais de um serviço (código da ficha); sem código, todos. */
+export function filtrarPorServico(grupos: readonly GrupoDeLocais[], codigo: string | null | undefined): GrupoDeLocais[] {
+  if (!codigo) return [...grupos]
+  return grupos.map((g) => ({ ...g, locais: g.locais.filter((l) => l.servicos.some((s) => s.codigo === codigo)) })).filter((g) => g.locais.length > 0)
+}
+
+/** Nome curto do serviço para o botão: sem o "Supraestrutura - " que várias fichas repetem. */
+export const nomeCurtoDoServico = (titulo: string): string => titulo.replace(/^supraestrutura\s*[-–]\s*/i, '').trim() || titulo
 
 /** Quantos locais a lista mostra: na obra piloto são dezenas, não milhares (só os com ficha ou marcação). */
 export function quantosLocais(d: DadosDosLocais): number {

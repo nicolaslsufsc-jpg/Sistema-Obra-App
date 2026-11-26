@@ -4,7 +4,7 @@ import { banco } from '../nucleo/servicos'
 import type { Linha } from '../nucleo/banco_local'
 import { BLOCOS_SINCRONIZADOS, TABELAS_SINCRONIZADAS } from '../nucleo/tabelas'
 import { carregar, comRegistros, localDoRegistro, observar, tocarItem, voltarItem, type DadosFvs } from './dados'
-import { filtrarGrupos, gruposDeLocais, quantosLocais } from './locais'
+import { filtrarGrupos, filtrarPorServico, gruposDeLocais, nomeCurtoDoServico, quantosLocais, servicosDaLista, servicosDoLocal } from './locais'
 import type { Ficha } from './situacao'
 
 // Obra fictícia EXE: fundação com dois blocos e uma cortina, todos fora da planta (locais_sistema).
@@ -29,6 +29,15 @@ const BLOCO: Ficha = {
   ],
 }
 
+const CORTINA_F: Ficha = {
+  id: 'e0000000-0000-0000-0000-0000000010f2',
+  codigo: 'EXE-PVS-CORTINA',
+  titulo: 'Cortina de contenção',
+  revisao: '0',
+  aplica_a: [],
+  itens: [{ n: 1, etapa: 'INÍCIO', titulo: 'Escavação do trecho' }],
+}
+
 const nucleo = { usuario_id: 'u', dispositivo_id: 'd', criado_em_dispositivo: '2026-11-21T10:00:00Z', apagado: false }
 function linha(tabela: string, id: string, campos: Record<string, unknown>) {
   return { tabela, id, obra_id: OBRA, linha: { id, obra_id: OBRA, ...nucleo, ...campos } as unknown as Linha, pendente: 0 as const }
@@ -42,6 +51,7 @@ const evento = (id: string, campos: Record<string, unknown>) => linha('fvs_event
 async function semear() {
   await banco.registros.bulkPut([
     linha('fichas_modelo', BLOCO.id, { codigo: BLOCO.codigo, titulo: BLOCO.titulo, revisao: '0', aplica_a: [], itens: BLOCO.itens }),
+    linha('fichas_modelo', CORTINA_F.id, { codigo: CORTINA_F.codigo, titulo: CORTINA_F.titulo, revisao: '0', aplica_a: [], itens: CORTINA_F.itens }),
     local(RAIZ, '1', null, 'Obra Exemplo', 'Obra Exemplo'),
     local(FUNDACAO, '10', '1', 'Fundação', 'Obra Exemplo / Fundação'),
     local(B10, '110', '10', 'Bloco B10', 'Obra Exemplo / Fundação / Bloco B10'),
@@ -51,7 +61,7 @@ async function semear() {
     // local que também é peça da planta: as fichas aparecem na peça, não na lista
     local(PILAR, '140', '1', 'P1', 'Obra Exemplo / P1', { elemento_id: 'pe1' }),
     fichaAberta('e0000000-0000-0000-0000-00000000fc01', { local_id: B2, local_construpoint: 'Fundação / Bloco B2' }),
-    fichaAberta('e0000000-0000-0000-0000-00000000fc02', { local_id: CORTINA, local_construpoint: 'Cortina trecho 1' }),
+    fichaAberta('e0000000-0000-0000-0000-00000000fc02', { local_id: CORTINA, local_construpoint: 'Cortina trecho 1', ficha_id: CORTINA_F.id, ficha_codigo: CORTINA_F.codigo, ficha_titulo: CORTINA_F.titulo }),
     // ficha sem local do sistema (histórico do pacote, sem conta): continua na lista "sem peça"
     fichaAberta('e0000000-0000-0000-0000-00000000fc03', { local_construpoint: 'Laje do térreo' }),
     // ficha num local que ainda não chegou ao aparelho: também continua na lista "sem peça"
@@ -66,7 +76,9 @@ describe('locais fora da planta (locais_sistema, 21/11)', () => {
   it('o aparelho baixa locais_sistema e importacoes num bloco à parte, no fim', () => {
     expect(TABELAS_SINCRONIZADAS).toContain('locais_sistema')
     expect(TABELAS_SINCRONIZADAS.indexOf('locais_sistema')).toBeGreaterThan(TABELAS_SINCRONIZADAS.indexOf('fvs_eventos'))
-    expect(BLOCOS_SINCRONIZADOS[BLOCOS_SINCRONIZADOS.length - 1]).toEqual(['locais_sistema', 'importacoes'])
+    // num bloco só deles; desde 23/11 os redesenhos e o formulário da obra vêm depois, cada um no seu bloco
+    expect(BLOCOS_SINCRONIZADOS).toContainEqual(['locais_sistema', 'importacoes'])
+    expect(BLOCOS_SINCRONIZADOS.slice(-3)).toEqual([['fvs_redesenhos'], ['projetos_formularios'], ['fvs_tratativas']])
   })
 
   it('carregar separa as fichas por local do sistema e deixa as outras na lista sem peça', async () => {
@@ -97,6 +109,22 @@ describe('locais fora da planta (locais_sistema, 21/11)', () => {
     expect(filtrarGrupos(g, 'fundacao').flatMap((x) => x.locais.map((l) => l.local.nome))).toEqual(['Bloco B2', 'Bloco B10'])
     expect(filtrarGrupos(g, 'b10').flatMap((x) => x.locais.map((l) => l.local.nome))).toEqual(['Bloco B10'])
     expect(filtrarGrupos(g, '  ')).toHaveLength(2)
+  })
+
+  it('serviços da lista (23/11): escolher a cortina mostra só os trechos dela', async () => {
+    const d = await carregar(OBRA)
+    const g = gruposDeLocais(d)
+    // o B10 só tem marcação do app: o serviço vem da ficha em que ela foi feita
+    expect(servicosDoLocal(d, B10)).toEqual([{ codigo: BLOCO.codigo, titulo: BLOCO.titulo }])
+    expect(servicosDaLista(g).map((x) => [x.codigo, x.locais])).toEqual([
+      [BLOCO.codigo, 2],
+      [CORTINA_F.codigo, 1],
+    ])
+    expect(filtrarPorServico(g, CORTINA_F.codigo).flatMap((x) => x.locais.map((l) => l.local.nome))).toEqual(['Cortina trecho 1'])
+    expect(filtrarPorServico(g, BLOCO.codigo).flatMap((x) => x.locais.map((l) => l.local.nome))).toEqual(['Bloco B2', 'Bloco B10'])
+    expect(filtrarPorServico(g, '')).toHaveLength(2)
+    expect(nomeCurtoDoServico('Supraestrutura - Parede Concreto Aparente')).toBe('Parede Concreto Aparente')
+    expect(nomeCurtoDoServico('Cortina de Contenção')).toBe('Cortina de Contenção')
   })
 
   it('a marcação num local do sistema vai em local_id, sem planta, e a tela lê como as outras', async () => {

@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact'
 import type { Linha } from '../../nucleo/banco_local'
 import { ROTULO_SITUACAO, rotulo, type NomeSituacao } from '../regras'
 import { Cabecalho } from '../../telas/Cabecalho'
+import { EtiquetaStatus, type ColunaTabela, type Status } from '../../telas/Tabela'
 
 export function dataBR(data: string | null | undefined): string {
   if (!data) return ''
@@ -65,3 +66,35 @@ export function Mensagem({ texto, tipo = 'ok' }: { texto: string; tipo?: 'ok' | 
     </div>
   )
 }
+
+
+/** Uma linha da tabela de resumo (no lugar dos cartões com número grande, guia de estilo 23/11/2026). */
+export interface LinhaResumoObra {
+  id: string
+  rotulo: string
+  /** data-testid do número (os testes leem o número por ele) */
+  testid?: string
+  testidRotulo?: string
+  /** número, ou "–" quando não se aplica */
+  n: number | string
+  nota: string
+  status: Status
+  abrir: () => void
+}
+
+const TEXTO_STATUS: Record<Status, string> = { liberado: 'Em dia', pendente: 'Pendente', nc: 'Atrasado', 'sem-dado': 'Sem dado' }
+
+export const COLUNAS_RESUMO: ColunaTabela<LinhaResumoObra>[] = [
+  {
+    titulo: 'Item',
+    valor: (l) => (
+      <span class="pj-resumo-item">
+        <b data-testid={l.testidRotulo}>{l.rotulo}</b>
+        <span class="discreto">{l.nota}</span>
+      </span>
+    ),
+  },
+  { titulo: 'Quant.', valor: (l) => <span data-testid={l.testid}>{l.n}</span>, numero: true },
+  { titulo: 'Status', valor: (l) => <EtiquetaStatus status={l.status}>{TEXTO_STATUS[l.status]}</EtiquetaStatus> },
+]
+

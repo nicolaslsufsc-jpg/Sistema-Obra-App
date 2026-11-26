@@ -4,10 +4,11 @@ import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
 import { sincronizador } from '../nucleo/servicos'
 import { dataLocal, piorSituacao, situacaoDasIdades, type IdadeCP, type ResultadoCP, type SituacaoCP } from './cps'
-import { idDaLaje, lajeDoTrecho, nomeNaTela, nomeNoBanco } from './lajes'
+import { idDaLaje, lajeDoTrecho, nomeNoBanco } from './lajes'
 import { estadoDasPecas, type EstadoPeca, type MudancaPeca } from './pecas'
 import { montarRastreioDasLajes } from './rastreio'
 import { chavesDasPlantas } from './plantas_equivalentes'
+import { nomeDaPeca } from './tipos_peca'
 import { areasVigentes, type LinhaDeArea } from '../fvs/areas'
 import { camposDeCorrecao, vigentes, type Corrigivel, type Vigente } from './vigentes'
 
@@ -188,7 +189,8 @@ export async function carregar(obraId: string): Promise<DadosConcreto> {
     pavimento_id: String(e.pavimento_id),
     tipo: String(e.tipo),
     // laje de trecho: "Laje_Trecho_2" no banco, "Laje do Trecho 2" nas telas (lajes.ts)
-    nome: nomeNaTela(String(e.tipo), String(e.nome)),
+    // estaca e bloco (fundações, 22/11): "Estaca E-P72.A", "Bloco BL-P36" (tipos_peca.ts)
+    nome: nomeDaPeca(String(e.tipo), String(e.nome)),
     secao: (e.secao as string | null) ?? null,
   }))
   const registrosPecasDe = agrupar(regsPecas, (r) => String(r.caminhao_id))

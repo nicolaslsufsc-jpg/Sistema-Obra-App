@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { abrirXlsx, texto } from '../concreto/xlsx'
-import { copiasDoCanteiro, nomeSemCaixaAlta, nomesDeDisciplina, copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
+import { copiasDoCanteiro, pastasRetiradas, nomeSemCaixaAlta, nomesDeDisciplina, copiasDoApp, LINHA_APP, escritorioDasFolhas, folhaDoArquivo, lerIndiceEscritorio, pastaCurta, resumoPorEmpresa, situacaoFicha, vigentesDoServidor } from './canteiro'
 import type { Linha } from '../nucleo/banco_local'
 import type { Documento } from './dados'
 import { DISTRIBUICAO_EXE, VIGENTES_EXE } from './exemplo_exe'
@@ -151,6 +151,51 @@ describe('exportar como a ficha v2 (.xlsx)', () => {
   })
 })
 
+describe('pastas retiradas do Autodoc (24/11)', () => {
+  const obs = (id: string) => rev('EX', '00', { id, obsoleta: true })
+  const viva = (id: string) => rev('LO', '01', { id })
+  // pasta A: tudo obsoleto (retirada); pasta B: uma folha obsoleta e outra viva (em uso); sem pasta: nunca
+  const docs = [
+    doc('a1', 'EXE.FR.001.FURAXXXXXX', { pasta_autodoc: 'X/PROJETOS/Furação/Antiga/' }),
+    doc('a2', 'EXE.FR.002.FURAYYYYYY', { pasta_autodoc: 'X/PROJETOS/Furação/Antiga/' }),
+    doc('b1', 'EXE.FR.010.FURAZZZZZZ', { pasta_autodoc: 'X/PROJETOS/Furação/Atual/' }),
+    doc('b2', 'EXE.FR.011.FURAWWWWWW', { pasta_autodoc: 'X/PROJETOS/Furação/Atual/' }),
+    doc('s1', 'EXE.FR.020.SEMPASTAXX'),
+    doc('c1', 'EXE.FR.030.SEMREVXXXX', { pasta_autodoc: 'X/PROJETOS/Furação/Nova/' }),
+  ]
+  const revisoesDe = new Map<string, Linha[]>([
+    ['a1', [obs('ra1')]],
+    ['a2', [obs('ra2'), { ...obs('ra2b'), apagado: true } as Linha]],
+    ['b1', [obs('rb1')]],
+    ['b2', [viva('rb2')]],
+    ['s1', [obs('rs1')]],
+  ])
+
+  it('só a pasta com todas as pranchas obsoletas; sem revisão ou sem pasta não conta', () => {
+    expect([...pastasRetiradas({ documentos: docs, revisoesDe })]).toEqual(['X/PROJETOS/Furação/Antiga/'])
+  })
+
+  it('as cópias da pasta retirada saem do canteiro; a folha solta fora de uso continua', () => {
+    const revs = [...revisoesDe.values()].flat()
+    const ev = (id: string, documento_id: string, revisao_id: string) =>
+      ({ id, tipo: 'entrega', documento_id, revisao_id, empresa_id: 'e1', colaborador: '', data_evento: '2026-11-01', criado_em_dispositivo: `2026-11-01T10:00:0${id.length}Z` }) as unknown as Linha
+    const dados = {
+      eventos: [ev('1', 'a1', 'ra1'), ev('22', 'a2', 'ra2'), ev('333', 'b1', 'rb1'), ev('4444', 'b2', 'rb2')],
+      documentoPorId: new Map(docs.map((d) => [d.id, d])),
+      revisaoPorId: new Map(revs.map((r) => [String(r.id), r])),
+      vigentes: new Map([['b2', revisoesDe.get('b2')![0]]]),
+      empresaPorId: new Map([['e1', { id: 'e1', nome: 'Empreiteira Alfa', contato: null, ativa: true }]]),
+    }
+    expect(copiasDoApp(dados).map((c) => c.app?.documentoId)).toEqual(['a1', 'a2', 'b1', 'b2'])
+    const ret = pastasRetiradas({ documentos: docs, revisoesDe })
+    const c = copiasDoApp(dados, ret)
+    expect(c.map((x) => [x.app?.documentoId, !!x.app?.foraDeUso])).toEqual([
+      ['b1', true],
+      ['b2', false],
+    ])
+  })
+})
+
 describe('entregas do app no canteiro (21/11)', () => {
   const d1 = doc('d1', 'EXE.ES.100.FORPILOTIS')
   const lo01 = rev('LO', '01', { id: 'lo01', cadastrada_em_autodoc: '2026-10-22T10:00:00Z' })
@@ -256,6 +301,11 @@ describe('acabamentos do quadro (22/11)', () => {
     expect(nomeSemCaixaAlta('FUNDAÇÃO')).toBe('Fundação')
     expect(nomeSemCaixaAlta('SPDA')).toBe('SPDA')
     expect(nomeSemCaixaAlta('Estrutura')).toBe('Estrutura')
+  })
+  it('duas disciplinas da ficha com o mesmo nome no servidor não aparecem iguais (ES e EC são "Estrutura")', () => {
+    const nomes = nomesDeDisciplina([doc('e1', 'EXE.ES.100.FORPILOTIS', { disciplina: 'Estrutura' }), doc('c1', 'EXE.EC.1005.ESCVPILOXX', { disciplina: 'Estrutura' })])
+    expect(nomes.get('ESTRUTURAL')).toBe('Estrutura')
+    expect(nomes.get('ESCORAMENTO')).toBe('Escoramento')
   })
   it('a revisão da cópia do servidor mostra a fase; a da ficha fica como a planilha escreve', () => {
     expect(rotuloDaCopia({ fase: 'EX', revisao: 0, app: { entregaId: 'a', documentoId: 'd', assinaturaId: null, fase: 'EX' } })).toBe('EX R00')

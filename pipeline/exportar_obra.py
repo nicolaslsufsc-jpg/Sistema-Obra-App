@@ -39,6 +39,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 URL_PADRAO = "https://zktsuwxgvvyufuihkndj.supabase.co"  # projeto em São Paulo (04/11/2026)
 # Chave pública (publishable): o acesso é controlado pelas regras do banco. Não é segredo.
@@ -139,6 +140,16 @@ class Supabase:
                 raise ErroExportacao("Código errado ou vencido 3 vezes. Rode de novo para receber outro código.")
             print(f"Código errado ou vencido. Tente de novo ({restantes} tentativa(s) restante(s)).")
         raise ErroExportacao("Código errado ou vencido.")
+
+    def entrar_com_senha(self, email: str, senha: str) -> dict:
+        """Login por senha (a conta de teste do servidor de TESTES, 24/11/2026). A senha não é guardada nem impressa."""
+        status, bruto = self.pedir("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": senha},
+                                   autenticar=False)
+        if status >= 400:
+            raise ErroExportacao(traduzir_erro_login(status, bruto))
+        sessao = json.loads(bruto)
+        self._guardar_sessao(sessao)
+        return sessao["user"]
 
     # --- pedidos ---------------------------------------------------------------
     def pedir(self, metodo: str, caminho: str, corpo=None, cabecalhos: dict | None = None, autenticar: bool = True):
@@ -436,6 +447,19 @@ def literal_json(dados, marca: str) -> str:
     return f"{marca}{texto}{marca}"
 
 
+# Tabelas da obra que não vão para os aparelhos (fora de nucleo.tabelas_sincronizadas), mas entram no backup.
+TABELAS_FORA_DA_SINCRONIZACAO = [
+    "public.projetos_pedidos_atualizacao",
+    # Tabelas novas que ainda não estão no registro do núcleo; a ordem segue as chaves (pais antes).
+    "public.fvs_redesenhos",
+    "public.fvs_tratativas",
+    "public.projetos_formularios",
+    "public.recebimento_usos",
+]
+# Colunas que apontam para uma pessoa (perfis): a conta tem de voltar junto.
+COLUNAS_DE_PESSOA = ("usuario_id", "pedido_por")
+
+
 def montar_sql(
     obra: dict,
     tabelas: list[tuple[str, list[dict]]],
@@ -447,29 +471,47 @@ def montar_sql(
 
     Usa jsonb_populate_recordset: o próprio Postgres converte cada campo para o tipo da coluna.
     Os gatilhos ficam desligados durante a carga para manter as horas originais do servidor.
-    Contas que já existiam no destino não mudam de papel nem ganham acessos.
+    Contas que já existiam no destino não mudam de papel; recebem só o acesso que tinham nesta obra
+    (o mesmo do backup, nada além: a obra é nova no destino).
     """
     marca = f"$so_{secrets.token_hex(6)}$"
+    email_de = {p["id"]: (p.get("email") or "").strip().lower() or None for p in perfis}
+    contas = [{"id": i, "email": email_de.get(i)} for i in pessoas]
     partes = [
         "-- Restauração da obra " + obra["codigo"] + " (Sistema Obra, formato " + str(FORMATO) + ")",
         "-- Aplicar com psql num banco que já tenha as migrações de supabase/migrations/.",
         "-- Falha (e não grava nada) se a obra já existir no banco de destino.",
-        "-- Contas que já existiam no destino ficam como estão (papel e acessos por conta do admin de lá).",
+        "-- Contas que já existiam no destino mantêm o papel; recebem só o acesso que tinham nesta obra.",
         "set client_encoding = 'UTF8';",
         "",
         "begin;",
         "",
-        "-- Pessoas citadas nos registros. Num banco novo, cria a conta sem e-mail só para manter as",
-        "-- referências; nome e papel vêm do perfil exportado. Quem não veio na exportação fica como",
-        "-- 'pessoa não exportada'. Só contas criadas aqui recebem papel e acessos.",
+        "-- Pessoas citadas nos registros. Num banco novo, cria a conta com o e-mail de login (quando a",
+        "-- exportação foi feita pelo admin) para a pessoa entrar de novo na mesma conta; e-mail que já",
+        "-- é de outra conta no destino fica de fora. Nome e papel vêm do perfil exportado. Quem não veio",
+        "-- na exportação fica como 'pessoa não exportada'. Só contas criadas aqui recebem papel.",
         "create temp table so_novas (id uuid primary key) on commit drop;",
+        "create temp table so_contas on commit drop as",
+        f"  select * from jsonb_to_recordset({literal_json(contas, marca)}::jsonb) as c(id uuid, email text);",
         "with novas as (",
-        "  insert into auth.users (id)",
-        f"  select p::uuid from jsonb_array_elements_text({literal_json(pessoas, marca)}::jsonb) p",
+        "  insert into auth.users (id, email)",
+        "  select c.id, case when not exists (select 1 from auth.users u where lower(u.email::text) = lower(c.email)) then c.email end",
+        "  from so_contas c",
         "  on conflict (id) do nothing",
         "  returning id",
         ")",
         "insert into so_novas select id from novas;",
+        "-- Conta que já existia no destino sem e-mail (restaurada antes, sem ele): religa.",
+        "update auth.users u set email = c.email from so_contas c",
+        "where u.id = c.id and u.email is null and c.email is not null",
+        "  and not exists (select 1 from auth.users o where lower(o.email::text) = lower(c.email));",
+        "-- No Supabase de verdade, a conta criada à mão precisa destes campos para o login por código achar.",
+        "do $so_auth$ begin",
+        "  if exists (select 1 from information_schema.columns where table_schema = 'auth' and table_name = 'users' and column_name = 'instance_id') then",
+        "    update auth.users set instance_id = '00000000-0000-0000-0000-000000000000', aud = 'authenticated', role = 'authenticated'",
+        "    where id in (select id from so_novas) and instance_id is null;",
+        "  end if;",
+        "end $so_auth$;",
         "insert into public.perfis (id, nome)",
         f"select p::uuid, 'pessoa não exportada' from jsonb_array_elements_text({literal_json(pessoas, marca)}::jsonb) p",
         "on conflict (id) do update set nome = excluded.nome",
@@ -501,9 +543,11 @@ def montar_sql(
     partes += [f"alter table {tabela} enable trigger user;" for tabela, _ in tabelas]
     partes.append("")
     partes += [
+        "-- Os acessos desta obra, como estavam no backup, para todas as pessoas, inclusive conta que já",
+        "-- existia (por exemplo, criada pela obra restaurada antes, do mesmo backup). Só desta obra.",
         "insert into public.acessos",
         f"select * from jsonb_populate_recordset(null::public.acessos, {literal_json(acessos, marca)}::jsonb) a",
-        "where a.usuario_id in (select id from so_novas)",
+        f"where a.obra_id = '{uuid.UUID(str(obra['id']))}'::uuid",
         "on conflict (usuario_id, obra_id) do nothing;",
         "",
         "commit;",
@@ -529,7 +573,7 @@ O que tem aqui
   Comando:
       psql "URL_DO_BANCO" -v ON_ERROR_STOP=1 -f restaurar.sql
   Falha inteiro se a obra já existir no destino. Contas que já existiam no destino não mudam
-  de papel nem ganham acessos (fica por conta do admin de lá).
+  de papel; recebem só o acesso que tinham nesta obra (o do backup).
   Os arquivos voltam para o armazenamento no mesmo caminho: {{obra_id}}/... (arquivos/ = {obra_id}/).
 
 Conferência
@@ -576,6 +620,10 @@ def exportar(args, situacao: dict, sb: "Supabase | None" = None, usuario: dict |
     if papel not in ("admin", "gestor"):
         avisos.append(f"Exportado com papel '{papel}': a lista de acessos sai só com o seu próprio acesso.")
     ordem = sb.tabelas_para_exportar()  # antes de criar a pasta: se faltar a migração, nada fica no Drive
+    for extra in TABELAS_FORA_DA_SINCRONIZACAO:
+        status, _ = sb.pedir("GET", f"/rest/v1/{extra.split('.')[-1]}?select=id&limit=1")
+        if status != 404 and all(i["tabela"] != extra for i in ordem):  # 404 = o servidor ainda não tem a tabela
+            ordem.append({"tabela": extra})
 
     final = pasta_de_saida(base, obra["codigo"], dt.date.today())
     saida = final.with_name(final.name + ".incompleta")
@@ -599,13 +647,26 @@ def exportar(args, situacao: dict, sb: "Supabase | None" = None, usuario: dict |
 
     pessoas = {obra.get("criado_por")} | {a["usuario_id"] for a in acessos}
     for _, linhas in tabelas:
-        pessoas |= {l.get("usuario_id") for l in linhas}
+        pessoas |= {l.get(c) for l in linhas for c in COLUNAS_DE_PESSOA}
     pessoas.discard(None)
     lista = sorted(pessoas)
     perfis: list[dict] = []
     for i in range(0, len(lista), 100):
         perfis += sb.json("GET", f"/rest/v1/perfis?select=*&id=in.({','.join(lista[i:i + 100])})")
     contagem["public.perfis"] = len(perfis)
+    if papel == "admin":
+        emails: dict[str, str] = {}
+        for funcao in ("pessoas_da_obra", "contas_sem_acesso"):
+            for p in sb.json("POST", f"/rest/v1/rpc/{funcao}", {"p_obra_id": obra_id}) or []:
+                if p.get("email"):
+                    emails[p["usuario_id"]] = p["email"]
+        for p in perfis:
+            p["email"] = emails.get(p["id"])
+        sem = sum(1 for p in perfis if not p["email"])
+        if sem:
+            avisos.append(f"{sem} pessoa(s) sem e-mail na exportação: num servidor novo, entram como conta nova.")
+    else:
+        avisos.append("Exportado sem ser admin: as contas voltam sem e-mail de login.")
     if len(perfis) < len(pessoas):
         avisos.append(f"{len(pessoas) - len(perfis)} pessoa(s) citada(s) sem perfil visível para o seu login.")
 

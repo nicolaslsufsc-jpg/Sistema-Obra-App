@@ -1,6 +1,7 @@
 // Folha padrão do "Exportar PDF" (frente 06, 21/11/2026): cabeçalho com a obra, a data e quem gerou, e
 // tabelas legíveis em A4. Cada módulo só monta os dados (FolhaPdf); o desenho e a impressão ficam em
 // ExportarPdf.tsx. O PDF sai pelo Imprimir do navegador ("Salvar como PDF"), sem biblioteca.
+import type { VNode } from 'preact'
 import { EMAIL_SEM_CONTA } from '../nucleo/local'
 
 export type Celula = string | number | null | undefined
@@ -31,6 +32,11 @@ export interface FolhaPdf {
   imagens?: readonly { legenda: string; src: string }[]
   /** deitada para tabela larga; o padrão é em pé */
   deitada?: boolean
+  /**
+   * Desenho próprio no lugar da folha padrão (ex.: o formulário da obra para a entrega de cópias, 23/11).
+   * Vem no lugar de cabeçalho, tabelas e rodapé; o título acima continua dando o nome do arquivo.
+   */
+  propria?: VNode
 }
 
 /** Quem gerou: o nome da pessoa (quando o aparelho sabe), o e-mail, ou o aparelho no modo sem conta. */

@@ -4,9 +4,9 @@
 // itens com o último resultado e, para quem pode marcar, C, NC e NA (o registro vai em local_id).
 import { useMemo, useRef, useState } from 'preact/hooks'
 import type { Linha } from '../../nucleo/banco_local'
-import { ligarDepoisDe, observar, podeRegistrar, prazoDoItemNaPeca, quemMarcou, textoDoErroDeGravacao, tocarItem, type Contexto } from '../dados'
+import { ligarDepoisDe, observar, podeRegistrar, prazoDoItemNaPeca, quemMarcou, registrarTratativa, textoDoErroDeGravacao, tocarItem, type Contexto } from '../dados'
 import { dia, quando } from '../formato'
-import { filtrarGrupos, gruposDeLocais } from '../locais'
+import { filtrarGrupos, filtrarPorServico, gruposDeLocais, nomeCurtoDoServico, servicosDaLista } from '../locais'
 import { observacaoDoPrazo, perguntaDoPrazo, seloDoPrazo } from '../prazos'
 import {
   daFichaAberta,
@@ -26,15 +26,26 @@ import {
 } from '../situacao'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import { CampoNc } from './CampoNc'
+import { CampoTratativa } from './CampoTratativa'
+import { eventoDaTratativa, repetiuNoLocal, responsaveisDaObra, tratativaDaRodada, type CamposDaTratativa } from '../tratativas'
 import type { ContextoFvs } from './ModuloFvs'
 import '../../telas/cabecalho.css'
 
-export function TelaLocais({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) {
+export function TelaLocais({ ctx, aviso, servicoInicial }: { ctx: ContextoFvs; aviso: string; servicoInicial?: string }) {
   const { dados, voltar, ir, sistema } = ctx
   const [busca, setBusca] = useState('')
   const grupos = useMemo(() => gruposDeLocais(dados), [dados])
-  const vistos = filtrarGrupos(grupos, busca)
   const total = grupos.reduce((n, g) => n + g.locais.length, 0)
+  // serviço (23/11/2026): cortina, parede aparente, blocos... escolhido antes do local; o local abre nessa ficha
+  const servicos = useMemo(() => servicosDaLista(grupos), [grupos])
+  const [servico, setServico] = useState(servicoInicial ?? '')
+  const ativo = servicos.some((x) => x.codigo === servico) ? servico : ''
+  const escolher = (codigo: string) => {
+    setServico(codigo)
+    // o voltar do local cai de novo neste serviço
+    if (history.state?.tela === 'fvs') history.replaceState({ ...history.state, fvs: { nome: 'locais', ...(codigo ? { servico: codigo } : {}) } }, '')
+  }
+  const vistos = filtrarGrupos(filtrarPorServico(grupos, ativo), busca)
 
   return (
     <main class="tela fv-inicio fv-locais">
@@ -51,20 +62,32 @@ export function TelaLocais({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
       </header>
       {aviso && <p class="aviso">{aviso}</p>}
       {total === 0 ? (
-        <p data-testid="fvs-locais-vazio">Nenhum local fora da planta tem ficha ou marcação nesta obra.</p>
+        <p data-testid="fvs-locais-vazio">Sem locais fora da planta</p>
       ) : (
         <>
+          {servicos.length > 1 && (
+            <div class="fv-locais-servicos" role="group" aria-label="Serviço" data-testid="fvs-locais-servicos">
+              <button type="button" class={ativo ? '' : 'on'} aria-pressed={!ativo} onClick={() => escolher('')}>
+                Todos <span class="fv-n">{total}</span>
+              </button>
+              {servicos.map((x) => (
+                <button type="button" key={x.codigo} title={`${x.codigo} · ${x.titulo}`} class={ativo === x.codigo ? 'on' : ''} aria-pressed={ativo === x.codigo} onClick={() => escolher(ativo === x.codigo ? '' : x.codigo)}>
+                  {nomeCurtoDoServico(x.titulo)} <span class="fv-n">{x.locais}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {total > 8 && (
             <input type="search" class="fv-locais-busca" placeholder="Buscar local" aria-label="Buscar local" value={busca} onInput={(e) => setBusca((e.target as HTMLInputElement).value)} />
           )}
-          {vistos.length === 0 && <p class="discreto">Nenhum local com esse nome.</p>}
+          {vistos.length === 0 && <p class="discreto">Sem locais com esse nome</p>}
           {vistos.map((g) => (
             <section key={g.titulo} class="fv-locais-grupo" data-testid="fvs-locais-grupo">
               {g.titulo && <h2>{g.titulo}</h2>}
               <ul class="lista">
                 {g.locais.map((l) => (
                   <li key={l.local.id}>
-                    <button type="button" class="fv-local-linha" data-testid="fvs-local" onClick={() => ir({ nome: 'local', localId: l.local.id })}>
+                    <button type="button" class="fv-local-linha" data-testid="fvs-local" onClick={() => ir({ nome: 'local', localId: l.local.id, ...(ativo ? { servico: ativo } : {}) })}>
                       <span class="fv-local-nome">
                         <strong>{l.local.nome}</strong>
                         <span class="discreto">
@@ -72,6 +95,7 @@ export function TelaLocais({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
                           {l.fichas > 0 && l.registros > 0 && ' · '}
                           {l.registros > 0 && `${l.registros === 1 ? '1 marcação' : `${l.registros} marcações`}`}
                           {l.local.apagado_no_sistema && ' · apagado no sistema'}
+                          {!ativo && servicos.length > 1 && l.servicos.length > 0 && ` · ${l.servicos.map((x) => nomeCurtoDoServico(x.titulo)).join(', ')}`}
                         </span>
                       </span>
                       <span class={`fv-sit s-${l.situacao}`}>{ROTULO_SITUACAO[l.situacao]}</span>
@@ -87,7 +111,7 @@ export function TelaLocais({ ctx, aviso }: { ctx: ContextoFvs; aviso: string }) 
   )
 }
 
-export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: string; aviso: string }) {
+export function TelaLocal({ ctx, localId, servico, aviso }: { ctx: ContextoFvs; localId: string; servico?: string; aviso: string }) {
   const { dados, voltar, props, registrados, recarregar } = ctx
   const local = dados.localPorId.get(localId)
   const pode = podeRegistrar(props.obra.papel)
@@ -103,11 +127,13 @@ export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: 
   const soNoApp = eventos.filter((e) => !e.ficha_campo_id)
   const fichaDoApp = soNoApp.length ? fichaPorId(soNoApp[0].ficha_id) : undefined
   const opcoes: FichaCampo[] = ordenarFichasAbertas([...abertas, ...(fichaDoApp ? [fichaSoNoApp(fichaDoApp)] : [])], fichaPorId, eventos)
-  const [idAberta, setIdAberta] = useState<string | null>(null)
+  // vindo de um serviço da lista: abre na ficha dele (o local pode ter fichas de outros serviços)
+  const codigoDe = (o: FichaCampo) => o.ficha_codigo ?? (o.ficha_id ? fichaPorId(o.ficha_id)?.codigo : undefined)
+  const [idAberta, setIdAberta] = useState<string | null>(() => (servico ? (opcoes.find((o) => codigoDe(o) === servico)?.id ?? null) : null))
   const aberta = opcoes.find((o) => o.id === idAberta) ?? opcoes[0]
   // sem ficha nenhuma no local (só pode acontecer com o local aberto pelo link): a pessoa escolhe a ficha
-  const [fichaEscolhida, setFichaEscolhida] = useState<string>('')
   const vigentes = useMemo(() => fichasVigentes(dados.fichas), [dados.fichas])
+  const [fichaEscolhida, setFichaEscolhida] = useState<string>(() => (servico ? (vigentes.find((f) => f.codigo === servico)?.id ?? '') : ''))
   const ficha = aberta ? (aberta.ficha_id ? fichaPorId(aberta.ficha_id) : undefined) : fichaPorId(fichaEscolhida)
   const trilha = aberta && aberta.id !== SO_NO_APP ? aberta.id : null
 
@@ -129,6 +155,8 @@ export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: 
   const doItem = (evs: readonly EventoFvs[], f: Ficha) => daFichaAberta(evs, trilha).filter((e) => e.ficha_id === f.id)
   const ultimos = ficha ? ultimosPorItem(doItem(eventos, ficha)) : new Map<number, EventoFvs>()
   const nomeDe = (e: EventoFvs) => quemMarcou(e, dados, props.usuario.id)
+  // depois do "local não encontrado": sem hook aqui (a conta é pequena)
+  const responsaveis = responsaveisDaObra(dados.tratativasDe)
 
   /** Uma gravação depois da outra; cada uma vê o que a anterior gravou (como no painel da planta). */
   const executar = (passo: (evs: readonly EventoFvs[]) => Promise<Linha[]>) => {
@@ -240,7 +268,16 @@ export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: 
           {ficha.itens.map((it) => {
             const v = ultimos.get(it.n)
             const reprovado = v?.resultado === 'NC'
-            const passadas = reprovacoesDoItem(historico(doItem(eventos, ficha), it.n)).filter((x) => !reprovado || x.rodada !== v?.rodada)
+            const todas = reprovacoesDoItem(historico(doItem(eventos, ficha), it.n))
+            const passadas = todas.filter((x) => !reprovado || x.rodada !== v?.rodada)
+            // tratativa (25/11): da rodada do NC aberto ou, depois da reinspeção C, da última rodada com NC
+            const ultimaNc = todas[todas.length - 1]
+            const daTratativa = reprovado ? todas.find((x) => x.rodada === v?.rodada) : v?.resultado === 'C' && ultimaNc && ultimaNc.rodada < v.rodada ? ultimaNc : undefined
+            const tratativa = daTratativa ? tratativaDaRodada(dados.tratativasDe, daTratativa.eventos) : null
+            const salvarTratativa = (campos: CamposDaTratativa) => {
+              const alvo = daTratativa && eventoDaTratativa(daTratativa.eventos, tratativa)
+              if (alvo) executar(async () => [await registrarTratativa(c, alvo, campos)])
+            }
             const prazo = v?.resultado === 'C' ? null : prazoDoItemNaPeca(dados, ficha, doItem(eventos, ficha), it.n)
             return (
               <div class="fv-item" key={it.n} data-item={it.n}>
@@ -275,6 +312,25 @@ export function TelaLocal({ ctx, localId, aviso }: { ctx: ContextoFvs; localId: 
                   {reprovado && v && (
                     <div class="fv-nc" data-testid="fvs-local-nc">
                       <CampoNc inicial={v.observacao ?? ''} pode={pode} salvar={(t) => salvarNc(ficha, it.n, t)} />
+                      {tratativa?.concessao && (
+                        <div class="fv-concessao" data-testid="fvs-concessao">
+                          Aceito sob concessão por {tratativa.concessao_por}
+                        </div>
+                      )}
+                      <CampoTratativa
+                        atual={tratativa}
+                        pode={pode}
+                        aberta
+                        reinspecionada={false}
+                        repetido={repetiuNoLocal(todas.length)}
+                        sugestoes={responsaveis}
+                        salvar={salvarTratativa}
+                      />
+                    </div>
+                  )}
+                  {!reprovado && daTratativa && tratativa && (
+                    <div class="fv-nc fv-nc-fechada">
+                      <CampoTratativa atual={tratativa} pode={pode} aberta={false} reinspecionada salvar={salvarTratativa} />
                     </div>
                   )}
                 </div>

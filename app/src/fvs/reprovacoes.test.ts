@@ -13,6 +13,7 @@ import {
   type Reprovacao,
 } from './reprovacoes'
 import type { EventoFvs, Ficha, FichaCampo } from './situacao'
+import { agruparTratativas } from './tratativas'
 
 const ficha: Ficha = {
   id: 'f1',
@@ -61,6 +62,28 @@ function lista(eventos: EventoFvs[], extra: Partial<EntradaDaLista> = {}): Repro
 }
 
 describe('lista de reprovações', () => {
+  it('tratativa (25/11): vale a da rodada; aceito sob concessão sai dos abertos sem reinspeção', () => {
+    const r1 = ev('p1', 2, 'NC', 1)
+    const r2 = ev('p1', 2, 'NC', 1, { observacao: 'Fora de prumo' })
+    const tratativasDe = agruparTratativas([
+      { id: 't1', evento_nc_id: r1.id, responsavel: 'Empreiteiro Exemplo', prazo: '2026-12-01', criado_em_dispositivo: '2026-10-02T10:00:00Z' },
+    ])
+    const [aberta] = lista([r1, r2], { tratativasDe })
+    expect(aberta.aberta).toBe(true)
+    expect(aberta.tratativa?.responsavel).toBe('Empreiteiro Exemplo')
+    expect(aberta.eventosNc).toEqual([r1.id, r2.id])
+    expect(textoDaLista([aberta], 'NC', () => '3º')).toContain('Quem resolve: Empreiteiro Exemplo')
+
+    const comConcessao = agruparTratativas([
+      { id: 't1', evento_nc_id: r1.id, responsavel: 'A', criado_em_dispositivo: '2026-10-02T10:00:00Z' },
+      { id: 't2', evento_nc_id: r2.id, responsavel: 'A', concessao: true, concessao_por: 'Engenheiro', criado_em_dispositivo: '2026-10-02T11:00:00Z' },
+    ])
+    const [fechada] = lista([r1, r2], { tratativasDe: comConcessao })
+    expect([fechada.aberta, fechada.concessao, fechada.reinspecao]).toEqual([false, true, null])
+    expect(rotuloDaReprovacao(fechada)).toBe('NC V01 · concessão')
+    expect(filtrarReprovacoes([fechada], SEM_FILTRO, () => null)).toEqual([])
+  })
+
   it('item com NC no último registro está aberto, com o texto, quem marcou e quando', () => {
     const r = ev('p1', 2, 'NC', 1, { observacao: 'Fora de prumo', verificado_por: 'Pessoa Um' })
     const [linha, ...resto] = lista([ev('p1', 1, 'C'), r])

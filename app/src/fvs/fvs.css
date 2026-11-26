@@ -315,6 +315,28 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+/* barras juntas (24/11): qual barra do grupo está errada, um botão por barra, com dedo de folga */
+.fv-nc-qual {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fv-nc-qual span {
+  width: 100%;
+  font-weight: 600;
+}
+.fv-planta .fv-nc-qual button {
+  min-height: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.fv-planta .fv-nc-qual button.on {
+  background: var(--erro-fundo);
+  border-color: var(--erro);
+  color: var(--erro);
+  font-weight: 700;
+}
 .fv-planta .fv-caixa-acoes button.on {
   background: var(--primaria, var(--fundo-1f4e79));
   border-color: var(--primaria-claro, var(--borda-1f4e79));
@@ -612,6 +634,16 @@
 .fv-txt-concretar {
   color: var(--texto-1565c0);
   font-weight: 600;
+}
+/* quadrado azul do contador (a cor da peça liberada para concretar na planta): só aparece no aperto,
+   quando "p/ concretar" e "com NC" dividem a 2ª linha (.com-dois, até 900 px) */
+.fv-q-azul {
+  display: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 3px;
+  border-radius: 2px;
+  background: #1565c0;
 }
 .fv-corpo {
   overflow-y: auto;
@@ -933,6 +965,131 @@
   font-size: 14px;
   background: var(--fundo-ffffff);
 }
+/* tratativa do NC (25/11): quem resolve, prazo (só avisa), causa, concessão, eficácia. Em coluna no celular. */
+.fv-nc-fechada {
+  background: var(--fundo-f1f1ee);
+}
+.fv-trat {
+  margin-top: 8px;
+  border-top: 1px solid var(--fv-ln2);
+  padding-top: 6px;
+}
+.fv-trat summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.fv-trat-resumo {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--texto-5b5d61);
+  overflow-wrap: anywhere;
+}
+.fv-trat-resumo.atrasado {
+  color: var(--fv-nc);
+  font-weight: 600;
+}
+.fv-nc .fv-trat-campo {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fv-nc-fechada .fv-trat {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+.fv-trat-campo input[type='text'],
+.fv-trat-campo input[type='date'] {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 16px;
+  font-weight: 400;
+  background: var(--fundo-ffffff);
+  color: inherit;
+  box-sizing: border-box;
+}
+.fv-trat-causas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+.fv-trat-causas button {
+  min-height: 44px;
+  border: 1px solid var(--fv-ln2);
+  border-radius: 8px;
+  background: var(--fundo-ffffff);
+  font-size: 14px;
+  color: inherit;
+}
+.fv-trat-causas button.sel {
+  border-color: var(--primaria, var(--fundo-1f4e79));
+  background: var(--primaria, var(--fundo-1f4e79));
+  color: var(--texto-ffffff);
+  font-weight: 600;
+}
+.fv-nc .fv-trat-caixa {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  font-weight: 400;
+}
+.fv-trat-caixa input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.fv-trat-prazo {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--fundo-fff4d6);
+  color: var(--texto-7a4500);
+}
+.fv-trat-prazo.p-atrasado {
+  background: var(--fv-nc);
+  color: var(--texto-ffffff);
+}
+.fv-trat-falta,
+.fv-trat-acao {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-7a4500);
+}
+.fv-concessao {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+@media (min-width: 768px) {
+  .fv-trat-causas {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.fv-redesenho {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--fv-ln2);
+}
 .fv-nc-acoes {
   display: flex;
   gap: 8px;
@@ -1155,6 +1312,15 @@
   color: var(--primaria-claro, var(--primaria));
   border: 2px solid var(--primaria-claro, var(--primaria));
 }
+/* celular (23/11, pacotes reais): "Baixar 6,1 MB" numa linha deixava ~80 px para o título e o código da
+   prancha, que quebravam palavra por palavra; o tamanho desce para a segunda linha do botão */
+@media (max-width: 700px) {
+  .fv-bt-acao.fv-bt-baixar {
+    max-width: 6.5em;
+    text-align: center;
+    line-height: 1.2;
+  }
+}
 .fv-sem-peca summary {
   cursor: pointer;
   min-height: 44px;
@@ -1239,6 +1405,25 @@
 }
 .fv-rep.fv-busca-linha.s-liberado {
   border-left-color: var(--borda-21751a);
+}
+
+/* ficha única (23/11): item marcado no app que ainda não está no sistema oficial, num tom mais claro */
+.fv-item.so-app .fv-bt button.on {
+  border-style: dashed;
+  opacity: 0.72;
+}
+.fv-so-app {
+  font-style: italic;
+}
+/* item só do app (consolo, capitel, 24/11): não existe no sistema oficial; a equipe não deve procurá-lo lá */
+.fv-so-do-app {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border: 1px dashed var(--texto-5b5d61);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--texto-5b5d61);
 }
 
 /* item que a lista de reprovações mandou olhar */
@@ -1366,6 +1551,19 @@
 }
 .fv-rep.fechada .fv-rep-obs {
   background: var(--fundo-f1f1ee);
+}
+.fv-rep-trat {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.fv-rep-trat.atrasado {
+  color: var(--fv-nc);
+  font-weight: 600;
+}
+.fv-rep-acao {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-7a4500);
 }
 .fv-rep-dup {
   font-size: 0.8rem;
@@ -1558,6 +1756,14 @@
     right: 0;
   }
 }
+/* tablet deitado (1024 px): com "p/ concretar" e "com NC" juntos (24/11), o contador numa linha só espremia
+   a etapa ("Etapas" cortado com a fonte larga); quem cede é o contador, que quebra em duas linhas */
+@media (min-width: 901px) and (max-width: 1199px) {
+  .fv-prog {
+    white-space: normal;
+    min-width: 0;
+  }
+}
 @media (max-width: 900px) {
   /* tablet em pé: o título não pode ser espremido até sumir ("Planta inteira" saía uma letra por
      linha, 14/11); quem cede é o contador, que quebra em duas linhas */
@@ -1569,6 +1775,48 @@
   .fv-prog {
     white-space: normal;
     min-width: 0;
+  }
+  /* contador em 2 linhas no máximo (24/11): "0/24 liberados" na 1ª; na 2ª, "1 p/ concretar" ou "1 com NC".
+     Com os dois juntos não cabe por extenso (85 px no celular): a 2ª vira "■ 1 · 1 NC", o quadrado azul
+     da peça na planta; as palavras ficam fora da vista, mas no texto (leitor de tela) */
+  .fv-prog .fv-prog-lib {
+    display: block;
+  }
+  .fv-prog .fv-txt-concretar,
+  .fv-prog .fv-link-r {
+    white-space: nowrap;
+  }
+  .fv-prog .fv-sep {
+    display: none;
+  }
+  .fv-prog.com-dois .fv-sep-nc {
+    display: inline;
+  }
+  .fv-prog.com-dois .fv-q-azul {
+    display: inline-block;
+  }
+  .fv-prog.com-dois .fv-longo {
+    font-size: 0;
+  }
+  /* tablet em pé (a linha do topo é flex): o contador não encolhe abaixo das duas linhas dele; sem isto
+     ele ficava com 50 px e ia a 5 linhas. Quem cede são a etapa e as abas */
+  @media (min-width: 701px) {
+    .fv-prog {
+      flex-shrink: 0;
+    }
+    .fv-prog .fv-prog-lib {
+      white-space: nowrap;
+    }
+    /* com "Pincel" e "Por item" no topo (25/11), em 768 com a fonte larga do Linux o "Por item" saía
+       25 px para fora da tela: os dois botões e o espaço entre os blocos ficam mais justos */
+    .fv-topo {
+      gap: 6px;
+    }
+    .fv-bpincel,
+    .fv-bitem {
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
   }
   .fv-etapa {
     max-width: 120px;
@@ -1729,12 +1977,6 @@
     font-size: 11px;
     margin: 0;
     white-space: normal;
-  }
-  .fv-prog .fv-txt-concretar {
-    display: block;
-  }
-  .fv-prog .fv-txt-concretar .fv-sep {
-    display: none;
   }
   .fv-bpincel {
     grid-column: 10 / 13;
@@ -2136,6 +2378,31 @@
   --fv-ln: var(--borda-d8d8d3);
   --fv-ln2: var(--borda-c4c4be);
 }
+/* serviços da lista de locais (23/11): cortina, parede aparente, blocos... */
+.fv-locais-servicos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+.fv-locais-servicos button {
+  min-height: 40px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  white-space: normal;
+  text-align: left;
+}
+.fv-locais-servicos button.on {
+  border: 2px solid var(--borda-6a1b9a);
+  background: var(--fundo-f6edfa);
+  font-weight: 600;
+}
+.fv-locais-servicos .fv-n {
+  margin-left: 4px;
+  color: var(--fv-na);
+  font-weight: 400;
+}
 .fv-locais-busca {
   width: 100%;
   min-height: 44px;
@@ -2237,6 +2504,36 @@
 .fv-rep-res.fv-esc-espera {
   color: var(--texto-7a4500);
 }
+/* avisos por residencial (3.8, 23/11): o que já pode em cima, com a borda verde */
+.fv-esc-avisos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fv-esc-aviso {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--borda, #d0d0d0);
+  border-left: 4px solid var(--borda-c27800);
+  border-radius: 6px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.fv-esc-aviso.pode {
+  border-left-color: var(--ok-borda);
+}
+.fv-esc-aviso .fv-rep-res {
+  white-space: normal;
+}
+.fv-esc-aviso-grupo,
+.fv-esc-falta {
+  font-size: 14px;
+}
 /* cabeçalho comum dentro da FVS (22/11/2026): sempre numa linha, a seta no canto esquerdo. O topo do
    Escoramento ficava em coluna abaixo de 700 px e, com o "align-self: center" da seta do cabeçalho comum
    (telas/cabecalho.css), a seta ia para o meio da tela em 375 px (CI do pacote 8). Esta regra ganha de
@@ -2244,4 +2541,79 @@
 header.so-cabecalho.fv-topo-inicio {
   flex-direction: row;
   align-items: center;
+}
+
+/* Acabamentos por cômodo (sessão 5, 24/11/2026): filtro por acabamento e andamento por apartamento */
+.fv-filtro-acab {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.fv-chip-acab {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--borda, var(--borda-c9d2da));
+  border-radius: 22px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.fv-chip-acab.on {
+  border-color: var(--texto);
+  box-shadow: 0 0 0 2px var(--texto) inset;
+  font-weight: 600;
+}
+.fv-por-apto {
+  margin: 8px 0;
+  font-size: 0.85rem;
+}
+.fv-por-apto summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+/* o display: flex tira a seta do navegador: põe a mesma de volta (▸ fechada, ▾ aberta), como nas listas
+   com a seta nativa (rodada 9 do testador, 24/11/2026) */
+.fv-por-apto summary::-webkit-details-marker {
+  display: none;
+}
+.fv-por-apto summary::before {
+  content: '▸';
+  width: 1em;
+  flex: none;
+  text-align: center;
+}
+.fv-por-apto[open] summary::before {
+  content: '▾';
+}
+.fv-apto-ficha-escolha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+.fv-apto-ficha-escolha select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  font: inherit;
+}
+.fv-por-apto ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fv-por-apto li {
+  padding: 6px 0;
+  border-top: 1px solid var(--borda, var(--borda-c9d2da));
+  overflow-wrap: anywhere;
+}
+.fv-apto-ok {
+  color: var(--fv-ok);
 }

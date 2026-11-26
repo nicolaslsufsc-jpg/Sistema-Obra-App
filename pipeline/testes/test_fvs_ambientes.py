@@ -292,6 +292,26 @@ class TestPacoteComAmbiente(unittest.TestCase):
             with self.assertRaises(publicar_planta.ErroPublicacao):
                 publicar_planta.ler_config(base / "pav.json")
 
+    def test_config_de_ambientes_da_prancha_sem_ifc(self):
+        # 25/11: "fonte": "pdf" (mezanino, térreo, pilotis): não pede IFC, e a tabela ficha × cômodo vale
+        # sem a tabela de nomes (os nomes saem da própria prancha)
+        with tempfile.TemporaryDirectory() as d:
+            base = pathlib.Path(d)
+            (base / "planta.pdf").write_bytes(b"x")
+            (base / "fichas.json").write_text("{}", encoding="utf-8")
+            cfg = {"obra": "exe", "pavimento": "Mezanino",
+                   "ambientes": {"fonte": "pdf", "prancha": "planta.pdf", "escala": 200, "fichas_por_comodo": "fichas.json"}}
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            lido = publicar_planta.ler_config(base / "pav.json")
+            self.assertEqual(pathlib.Path(lido["ambientes"]["prancha"]).name, "planta.pdf")
+            self.assertNotIn("ifc", lido["ambientes"])
+            self.assertEqual(pathlib.Path(lido["ambientes"]["fichas_por_comodo"]).name, "fichas.json")
+            # do IFC, a tabela ficha × cômodo continua pedindo os nomes
+            cfg["ambientes"] = {"ifc": "planta.pdf", "andar": "3", "prancha": "planta.pdf", "fichas_por_comodo": "fichas.json"}
+            (base / "pav.json").write_text(json.dumps(cfg), encoding="utf-8")
+            with self.assertRaises(publicar_planta.ErroPublicacao):
+                publicar_planta.ler_config(base / "pav.json")
+
 
 class TestFichasDeAmbiente(unittest.TestCase):
     ITENS = [{"n": 1, "etapa": "MARCAÇÃO", "titulo": "Primeira fiada"}]

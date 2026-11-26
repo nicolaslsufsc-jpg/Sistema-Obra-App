@@ -212,7 +212,7 @@ export function TelaRelatorio({ ctx, raiz }: { ctx: Contexto; raiz: string }) {
 
       <section class="cartao" data-testid="andamento">
         <h2 class="sem-topo">Andamento</h2>
-        {andamentos.length === 0 && <p class="discreto">Nenhum andamento registrado.</p>}
+        {andamentos.length === 0 && <p class="discreto">Sem andamentos</p>}
         {andamentos.length > 0 && (
           <ul class="rl-andamentos">
             {andamentos.map((a) => (

@@ -81,7 +81,7 @@ export function IfcsDaObraLista({ lista, podeEnviar, online, aoEnviar }: PropsIf
     <section class="ifc-da-obra-lista" aria-label="IFCs da obra" data-testid="ifcs-da-obra">
       <h2>IFCs da obra</h2>
       {lista.itens.length === 0 ? (
-        <p class="ifc-discreto">Nenhum IFC enviado para esta obra ainda.</p>
+        <p class="ifc-discreto">Sem IFC enviado</p>
       ) : (
         <ul class="ifc-lista-limpa">
           {lista.itens.map((item) => (

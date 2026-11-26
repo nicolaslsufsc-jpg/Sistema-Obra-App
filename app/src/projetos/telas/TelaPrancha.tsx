@@ -3,6 +3,7 @@ import { escritorioAtualizado, podeGerir, podeRegistrar, registrarEscritorio } f
 import type { Contexto } from './ModuloProjetos'
 import { dataBR, horaBR, rotuloRevisao, Selo, SeloSituacao, Topo } from './comum'
 import { linkSeguro } from '../../nucleo/links'
+import { Icone } from '../../telas/icones'
 
 export function TelaPrancha({ ctx, documentoId }: { ctx: Contexto; documentoId: string }) {
   const { dados, obra, usuario, ir, voltar, recarregar, avisar } = ctx
@@ -59,7 +60,7 @@ export function TelaPrancha({ ctx, documentoId }: { ctx: Contexto; documentoId: 
         </dl>
         {linkSeguro(doc.link_pasta) && (
           <a class="pj-link" href={linkSeguro(doc.link_pasta)!} target="_blank" rel="noopener noreferrer">
-            Abrir a pasta no sistema de projetos ↗
+            Abrir a pasta no sistema de projetos <Icone id="fora" />
           </a>
         )}
       </section>
@@ -78,7 +79,7 @@ export function TelaPrancha({ ctx, documentoId }: { ctx: Contexto; documentoId: 
       <section class="pj-secao">
         <h2>Em campo</h2>
         {sits.length === 0 ? (
-          <p class="pj-vazio">Nenhuma entrega registrada para esta prancha.</p>
+          <p class="pj-vazio">Sem entregas</p>
         ) : (
           <ul class="pj-historico" data-testid="em-campo">
             {sits.map((s) => {
@@ -97,7 +98,7 @@ export function TelaPrancha({ ctx, documentoId }: { ctx: Contexto; documentoId: 
                     .filter((e) => e.assinatura_id)
                     .map((e) => (
                       <button key={e.id} type="button" class="pj-pequeno" data-testid="entrega-assinada" onClick={() => ctx.ir({ nome: 'comprovante', assinaturaId: String(e.assinatura_id) })}>
-                        ✍ assinada · comprovante
+                        assinada · comprovante
                       </button>
                     ))}
                 </li>
@@ -139,7 +140,7 @@ export function TelaPrancha({ ctx, documentoId }: { ctx: Contexto; documentoId: 
               </span>
             </li>
           ))}
-          {revisoes.length === 0 && <li class="pj-vazio">Nenhuma revisão conhecida.</li>}
+          {revisoes.length === 0 && <li class="pj-vazio">–</li>}
         </ul>
       </section>
     </main>

@@ -162,7 +162,7 @@ function JanelaReporte(p: Props & { aoFechar: () => void }) {
             Fechar
           </button>
         </header>
-        <p class="discreto">Conte o que aconteceu e, se puder, junte um print (tire o print do aparelho antes de tocar aqui) ou uma foto.</p>
+        <p class="discreto">Conte o que aconteceu. Pode juntar um print ou uma foto.</p>
 
         <label class="rp-campo">
           <span>O que aconteceu?</span>
@@ -240,7 +240,7 @@ function JanelaReporte(p: Props & { aoFechar: () => void }) {
 
         <h3>Guardados neste aparelho ({guardados.length})</h3>
         {guardados.length === 0 ? (
-          <p class="discreto">Nenhum.</p>
+          <p class="discreto">–</p>
         ) : (
           <>
             <ul class="rp-lista" data-testid="reportes-guardados">

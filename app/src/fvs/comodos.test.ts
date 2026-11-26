@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { casaComodo, textoDoComodo } from './busca'
-import { comodoGuardado, fichaValeNoLocal, lembrarComodo, nomeComComodo, nomeDaPeca } from './comodos'
+import { ambientesSemTipo, comodoGuardado, fichaValeNoLocal, lembrarComodo, nomeComComodo, nomeDaPeca } from './comodos'
 import { listarReprovacoes } from './reprovacoes'
 
 describe('nome do cômodo do ambiente', () => {
@@ -55,5 +55,27 @@ describe('ficha × tipo de cômodo', () => {
     expect(fichaValeNoLocal(suite, undefined)).toBe(true)
     expect(fichaValeNoLocal({ tipo: 'A' }, 'EXE-024')).toBe(true)
     expect(fichaValeNoLocal({ tipo: 'P', sem_fichas: ['EXE-024'] }, 'EXE-024')).toBe(true)
+  })
+})
+
+describe('cômodo sem tipo (25/11/2026)', () => {
+  const A = (grupo: string, comodo?: string, sem_fichas?: string[]) => ({ tipo: 'A', grupo, ...(comodo ? { comodo } : {}), ...(sem_fichas ? { sem_fichas } : {}) })
+
+  it('sem nome num apartamento em que os outros cômodos têm nome, numa planta com a tabela', () => {
+    const el = {
+      s: A('Apto 201', 'Suíte 01', ['EXE-024']),
+      x: A('Apto 201'),
+      y: A('Apto 202'), // apartamento sem nenhum nome: como antes
+      z: A('Apto 202'),
+      ac: A('Área comum', 'Escada'),
+      q: { tipo: 'A', grupo: 'Apto 201', grade: 'escavacao' },
+      p: { tipo: 'P', grupo: 'Apto 201' },
+    }
+    expect([...ambientesSemTipo(el)]).toEqual(['x'])
+  })
+
+  it('planta sem a tabela (nenhum sem_fichas) ou sem manifest: ninguém é sem tipo', () => {
+    expect(ambientesSemTipo({ s: A('Apto 201', 'Suíte 01'), x: A('Apto 201') }).size).toBe(0)
+    expect(ambientesSemTipo(undefined).size).toBe(0)
   })
 })

@@ -1,0 +1,59 @@
+/* "?" da ajuda curta (Ajuda.tsx). Cores e tamanhos só pelas variáveis de tema.css. */
+.so-ajuda {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+.so-ajuda > .so-ajuda-botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: transparent;
+  color: var(--discreto);
+  font-size: var(--fs-texto);
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+}
+.so-ajuda > .so-ajuda-botao:focus-visible {
+  outline: 2px solid var(--primaria);
+  outline-offset: 2px;
+}
+.so-ajuda.aberta > .so-ajuda-botao {
+  background: var(--cor-selecionado);
+  color: var(--cor-selecionado-texto);
+}
+.so-ajuda-texto {
+  display: block;
+  margin: 0.4rem 0 0;
+  padding: 0.5rem 0.7rem;
+  max-width: 32rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font-size: var(--fs-texto);
+  font-weight: 400;
+}
+/* linha curta com o "?" ao lado */
+.so-com-ajuda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.2rem;
+}
+.so-com-ajuda > .so-ajuda {
+  margin-left: 0;
+}
+.so-com-ajuda > .so-ajuda.aberta {
+  flex-basis: 100%;
+}
+
+.so-ajuda-texto[hidden] {
+  display: none;
+}

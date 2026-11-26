@@ -13,7 +13,9 @@ describe('concretagem de exemplo', () => {
     // o exemplo vem com barras invertidas (parece caminho de arquivo): mostra com travessão
     expect(nomeDaConcretagem({ local_descricao: 'Pilotis \\ Trecho 1 \\ Pilares', exemplo: true })).toBe('EXEMPLO · Pilotis – Trecho 1 – Pilares')
     // o local de verdade fica como a pessoa digitou
-    expect(nomeDaConcretagem({ local_descricao: 'Pilotis \\ Trecho 1' })).toBe('Pilotis \\ Trecho 1')
+    expect(nomeDaConcretagem({ local_descricao: 'Pilotis \\ Trecho 1' })).toBe('Pilotis – Trecho 1')
+    expect(nomeDaConcretagem({ local_descricao: 'Torre \\ 2° Pavimento \\ Residencial D' })).toBe('Torre – 2° Pavimento – Residencial D')
+    expect(nomeDaConcretagem({ local_descricao: 'Laje do 3º pavimento' })).toBe('Laje do 3º pavimento')
     expect(nomeDaConcretagem({ local_descricao: '', exemplo: false })).toBe('sem local')
   })
 })

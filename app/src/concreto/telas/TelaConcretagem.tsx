@@ -36,7 +36,7 @@ export function TelaConcretagem({ ctx, raiz }: { ctx: Contexto; raiz: string }) 
       <Topo titulo={`${dataBR(c.data)} · ${nomeDaConcretagem(c)}`} sub={`${pav?.nome ?? ''} · Concreto`} aoVoltar={voltar} />
       {c.exemplo && (
         <p class="aviso" role="note">
-          Concretagem de EXEMPLO, para a apresentação. Não é concretagem real da obra: fornecedor, código e notas fiscais não valem para a obra.
+          Concretagem de EXEMPLO. Não é concretagem real da obra.
         </p>
       )}
 
@@ -90,7 +90,7 @@ export function TelaConcretagem({ ctx, raiz }: { ctx: Contexto; raiz: string }) 
         </button>
       )}
       {cams.length === 0 ? (
-        <p class="discreto">Nenhum caminhão registrado.</p>
+        <p class="discreto">Sem caminhões</p>
       ) : (
         <ul class="lista">
           {cams.map((x) => {

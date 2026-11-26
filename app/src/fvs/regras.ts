@@ -32,9 +32,41 @@ export interface Ligacao {
   entre?: 'area'
 }
 
+/**
+ * Um trecho da obra para os avisos de escoramento (23/11/2026, item 3.8): os pilares dele, pelo nome. Viga e
+ * laje entram pelos pilares que as apoiam (escoramento_residencial.ts). Com `pavimento` (o nome dele), a
+ * lista vale só ali e passa na frente da lista sem pavimento.
+ */
+export interface Residencial {
+  nome: string
+  pilares: string[]
+  pavimento?: string
+}
+
+/**
+ * Unidade de conferência de uma ficha (ideia 14, 25/11/2026), escolhida na montagem da obra (Nova obra).
+ * peca / parede / ambiente: um toque marca um local. trecho / area / pavimento: um toque marca todos os
+ * locais do grupo, num lote (marcarLote). O registro fica sempre no local: trocar a unidade no meio da obra
+ * (outra entrada da mesma ficha com `desde` mais novo) não apaga nem muda o que já foi registrado.
+ */
+export type Unidade = 'peca' | 'parede' | 'ambiente' | 'trecho' | 'area' | 'pavimento'
+export interface UnidadeDaFicha {
+  id: string
+  /** código da ficha (sobrevive à revisão nova dela) */
+  ficha: string
+  unidade: Unidade
+  /** a partir de quando vale (AAAA-MM-DD) */
+  desde: string
+}
+const UNIDADES: readonly Unidade[] = ['peca', 'parede', 'ambiente', 'trecho', 'area', 'pavimento']
+
 export interface RegrasFvs {
   prazos: Prazo[]
   ligacoes: Ligacao[]
+  /** como cada ficha é conferida (vazio: como sempre, um local por toque) */
+  unidades?: UnidadeDaFicha[]
+  /** trechos da obra para o aviso "tal residencial de tal pavimento pode desescorar" (vazio: sem o aviso) */
+  residenciais?: Residencial[]
   /** entradas do arquivo deixadas de fora por formato errado (a tela das regras mostra) */
   fora?: number
 }
@@ -77,9 +109,38 @@ function lerLigacao(v: unknown): Ligacao | null {
   return { id: l.id, de, para, ...(l.entre === 'area' ? { entre: 'area' as const } : {}) }
 }
 
+function lerResidencial(v: unknown): Residencial | null {
+  const r = v as Record<string, unknown> | null
+  if (!r || typeof r !== 'object' || !texto(r.nome) || !Array.isArray(r.pilares) || r.pilares.length > 5000) return null
+  const pilares = [...new Set(r.pilares.filter(texto).map((n) => n.trim()))]
+  if (!pilares.length) return null
+  return { nome: r.nome.trim(), pilares, ...(texto(r.pavimento) ? { pavimento: r.pavimento.trim() } : {}) }
+}
+
+function lerUnidade(v: unknown): UnidadeDaFicha | null {
+  const u = v as Record<string, unknown> | null
+  if (!u || typeof u !== 'object' || !texto(u.id) || !texto(u.ficha) || !UNIDADES.includes(u.unidade as Unidade)) return null
+  if (typeof u.desde !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(u.desde)) return null
+  return { id: u.id, ficha: u.ficha.trim(), unidade: u.unidade as Unidade, desde: u.desde }
+}
+
+/**
+ * A unidade de conferência da ficha num dia (AAAA-MM-DD; padrão: hoje): a entrada mais nova com `desde` até
+ * esse dia. Sem entrada: null (a tela segue como sempre). As entradas anteriores dizem como os registros
+ * antigos foram feitos (historicoDeUnidades).
+ */
+export function unidadeDe(regras: RegrasFvs, ficha: string, dia = new Date().toISOString().slice(0, 10)): Unidade | null {
+  return historicoDeUnidades(regras, ficha).filter((u) => u.desde <= dia).at(-1)?.unidade ?? null
+}
+
+/** As unidades que a ficha já teve, da mais antiga para a mais nova (para o aviso "conferido por ambiente até DD/MM"). */
+export function historicoDeUnidades(regras: RegrasFvs, ficha: string): UnidadeDaFicha[] {
+  return (regras.unidades ?? []).filter((u) => u.ficha === ficha.trim()).sort((a, b) => (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0))
+}
+
 /** As regras de um objeto `regras` (o jsonb da tabela ou o config_fvs.json). Entrada torta fica de fora. */
 export function lerRegras(regras: unknown): RegrasFvs {
-  const r = regras as { prazos?: unknown; ligacoes?: unknown } | null
+  const r = regras as { prazos?: unknown; ligacoes?: unknown; residenciais?: unknown; unidades?: unknown } | null
   if (!r || typeof r !== 'object') return SEM_REGRAS
   const unicos = <T extends { id: string }>(l: T[]) => {
     const vistos = new Set<string>()
@@ -87,10 +148,16 @@ export function lerRegras(regras: unknown): RegrasFvs {
   }
   const prazos = Array.isArray(r.prazos) ? unicos(r.prazos.map(lerPrazo).filter((p): p is Prazo => !!p)) : []
   const ligacoes = Array.isArray(r.ligacoes) ? unicos(r.ligacoes.map(lerLigacao).filter((l): l is Ligacao => !!l)) : []
-  const total = (Array.isArray(r.prazos) ? r.prazos.length : 0) + (Array.isArray(r.ligacoes) ? r.ligacoes.length : 0)
-  const fora = total - prazos.length - ligacoes.length
-  if (!prazos.length && !ligacoes.length && !fora) return SEM_REGRAS
-  return { prazos, ligacoes, ...(fora ? { fora } : {}) }
+  const residenciais = Array.isArray(r.residenciais) ? r.residenciais.map(lerResidencial).filter((x): x is Residencial => !!x) : []
+  const unidades = Array.isArray(r.unidades) ? unicos(r.unidades.slice(0, 5000).map(lerUnidade).filter((x): x is UnidadeDaFicha => !!x)) : []
+  const total =
+    (Array.isArray(r.prazos) ? r.prazos.length : 0) +
+    (Array.isArray(r.ligacoes) ? r.ligacoes.length : 0) +
+    (Array.isArray(r.residenciais) ? r.residenciais.length : 0) +
+    (Array.isArray(r.unidades) ? r.unidades.length : 0)
+  const fora = total - prazos.length - ligacoes.length - residenciais.length - unidades.length
+  if (!prazos.length && !ligacoes.length && !residenciais.length && !unidades.length && !fora) return SEM_REGRAS
+  return { prazos, ligacoes, ...(residenciais.length ? { residenciais } : {}), ...(unidades.length ? { unidades } : {}), ...(fora ? { fora } : {}) }
 }
 
 interface LinhaDeRegras {

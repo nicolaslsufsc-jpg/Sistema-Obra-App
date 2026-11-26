@@ -18,6 +18,11 @@ O nome do cômodo vem, opcional, de uma tabela por apartamento-tipo digitada uma
 ler_tabela_de_nomes). Ele vai no campo "comodo" do local; o "nome" (e o id) continua o número.
 Sala e cozinha sem parede entre elas ficam um ambiente só (decisão do Nicolas, 18/11).
 
+Pavimento sem IFC (térreo comercial, pilotis, mezanino): "fonte": "pdf" tira as salas e os nomes só da
+prancha (ambientes_pdf.py), sem apartamento e sem esquadrias; "recorte": [x0, y0, x1, y1] em pontos lê só a planta;
+"unidades": "CASA [0-9]+" faz de cada casa da prancha geral (só o nome, sem área) um ambiente inteiro ("UN-01");
+"espacos": "ESTACIONAMENTO" faz do espaço livre em volta do nome (sem área na prancha) um cômodo só ("EA-01").
+
 No pavimento.json (ver publicar_planta.py):
   "ambientes": {"ifc": "...TORRESEMMO-R03.ifc", "andar": "3", "prancha": "...036.3PAVTOXXXX-R03.pdf", "escala": 200,
                 "nomes": "nomes_dos_comodos.json", "esquadrias": true, "fichas_por_comodo": "fichas_por_comodo.json"}
@@ -608,6 +613,8 @@ def base_da_planta(cfg: dict) -> dict:
     from shapely import wkt
     from shapely.geometry import Point
 
+    if cfg.get("fonte") == "pdf":
+        return base_do_pdf(cfg)
     for campo in ("ifc", "andar", "prancha"):
         if not cfg.get(campo):
             raise ErroAmbientes(f"falta \"{campo}\" em \"ambientes\" no pavimento.json")
@@ -634,6 +641,44 @@ def base_da_planta(cfg: dict) -> dict:
             "para_prancha": para_prancha, "para_modelo": para_modelo, "aptos": aptos, "nomeados": nomeados}
 
 
+def base_do_pdf(cfg: dict) -> dict:
+    """base_da_planta para pavimento sem IFC ("fonte": "pdf"): salas e nomes tirados só da prancha
+    (ambientes_pdf.py). Sem apartamento (tudo área comum) e sem portas; o cômodo vem do texto da sala."""
+    import pymupdf as fitz
+    from shapely import wkt
+
+    import ambientes_pdf
+
+    if not cfg.get("prancha"):
+        raise ErroAmbientes("falta \"prancha\" em \"ambientes\" no pavimento.json")
+    escala = float(cfg.get("escala") or 200)
+    page = fitz.open(cfg["prancha"])[0]
+    try:
+        dados = ambientes_pdf.extrair_do_pdf(page, escala, tuple(cfg["recorte"]) if cfg.get("recorte") else None,
+                                             cfg.get("unidades"), cfg.get("espacos"))
+    except ambientes_pdf.ErroAmbientesPdf as e:
+        raise ErroAmbientes(f"prancha sem IFC: {e}") from e
+    ambientes = [wkt.loads(a) for a in dados["ambientes"]]
+    ppm = ambientes_pdf.pt_por_m(escala)
+    # metros do modelo = ponto / ppm (y para cima): a conversão para a prancha não desloca nada
+    t = {"pt_por_m": ppm, "x0": 0.0, "y1": 0.0, "dx_pt": 0.0, "dy_pt": 0.0, "coincidencia": 1.0}
+    # as unidades inteiras ("unidades": "CASA [0-9]+") ficam depois e com nome próprio ("UN-01"), para os "AC-xx"
+    # não mudarem de número quando elas entram; o grupo é o nome da unidade, como um apartamento
+    unidades = list(dados.get("unidades") or [])
+    espacos = list(dados.get("espacos") or [])  # estacionamento: "EA-01", área comum, também depois dos "AC-xx"
+    comuns = [i for i in range(len(ambientes)) if i not in set(unidades) | set(espacos)]
+    nomeados = [dict(a, indice=comuns[a["indice"]]) for a in nomear([ambientes[i] for i in comuns], {})]
+    for k, i in enumerate(unidades, 1):
+        nomeados.append({"indice": i, "nome": f"UN-{k:02d}", "grupo": dados["comodos"][i], "area": ambientes[i].area})
+    for k, i in enumerate(espacos, 1):
+        nomeados.append({"indice": i, "nome": f"EA-{k:02d}", "grupo": "Área comum", "area": ambientes[i].area})
+    comodos = {a["nome"]: dados["comodos"][a["indice"]] for a in nomeados if dados["comodos"][a["indice"]]}
+    return {"page": page, "t": t, "escala": escala, "paredes": wkt.loads(dados["paredes"]), "ambientes": ambientes,
+            "portas": [], "para_prancha": lambda x, y: [round(x * ppm, 2), round(-y * ppm, 2)],
+            "para_modelo": lambda px, py: (px / ppm, -py / ppm), "aptos": {}, "nomeados": nomeados,
+            "comodos_do_pdf": comodos, "avisos_do_pdf": dados["avisos"]}
+
+
 def ler_planta(cfg: dict, base: dict | None = None) -> dict:
     """Planta de ambientes no mesmo formato de estrutura.ler_forma (para publicar_planta.montar_trecho).
     base: o de base_da_planta(cfg), se já calculado (a planta de modulação usa o mesmo)."""
@@ -643,7 +688,7 @@ def ler_planta(cfg: dict, base: dict | None = None) -> dict:
     b = base or base_da_planta(cfg)
     page, t, escala, paredes, ambientes, portas = b["page"], b["t"], b["escala"], b["paredes"], b["ambientes"], b["portas"]
     para_prancha, aptos, nomeados = b["para_prancha"], b["aptos"], b["nomeados"]
-    comodos, resumo_nomes = ({}, None)
+    comodos, resumo_nomes = (dict(b.get("comodos_do_pdf") or {}), None)
     if cfg.get("nomes"):
         comodos, resumo_nomes = nomes_dos_comodos(nomeados, aptos, ler_tabela_de_nomes(cfg["nomes"]), ambientes)
     pecas = []
@@ -712,6 +757,7 @@ def ler_planta(cfg: dict, base: dict | None = None) -> dict:
                    "tipos": {n: a["tipo"] for n, a in sorted(aptos.items())},
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
                    **({"nomes": resumo_nomes} if resumo_nomes else {}),
+                   **({"avisos_do_pdf": b["avisos_do_pdf"]} if b.get("avisos_do_pdf") else {}),
                    **({"fichas_por_comodo": rel_fichas} if rel_fichas else {}),
                    **({"esquadrias": rel_esquadrias} if rel_esquadrias else {}),
                    **({"modulacao": rel_modulacao} if rel_modulacao else {}),

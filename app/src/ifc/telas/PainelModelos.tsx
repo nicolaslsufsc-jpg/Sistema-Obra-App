@@ -5,6 +5,7 @@ import { qtdTriangulos } from '../motor/tipos'
 import { ajusteEhNeutro } from '../motor/alinhamento'
 import type { ModeloAberto, Sessao } from '../sessao'
 import { IcAbrir, IcAlinhar, IcBaixar, IcFechar, IcLixo, IcOlho, IcOlhoFechado } from './icones'
+import { Ajuda } from '../../telas/Ajuda'
 
 export function numero(n: number): string {
   return n.toLocaleString('pt-BR')
@@ -113,7 +114,10 @@ function CartaoModelo({ sessao, m }: { sessao: Sessao; m: ModeloAberto }) {
 
       {alinhar && tem && (
         <div class="ifc-alinhar">
-          <p>Quando os arquivos não vêm na mesma coordenada, um cai longe do outro. Marque o mesmo ponto nos dois (um canto de pilar, por exemplo).</p>
+          <p class="so-com-ajuda">
+            Marque o mesmo ponto nos dois arquivos.
+            <Ajuda>Quando os arquivos não vêm na mesma coordenada, um cai longe do outro. Marque o mesmo ponto nos dois (um canto de pilar, por exemplo).</Ajuda>
+          </p>
           <div class="ifc-acoes">
             <button type="button" class="ifc-botao ifc-botao-forte" onClick={() => sessao.iniciarAlinhamento(m.chave)}>
               Marcar pontos

@@ -6,6 +6,10 @@ import {
   barrasDaArea,
   barraTocada,
   camadasDoPacote,
+  corremJuntas,
+  gruposDeBarras,
+  JUNTAS_CM,
+  pontosDeCm,
   itemDasBarras,
   observacaoDaBarra,
   observacaoDasErradas,
@@ -87,9 +91,9 @@ describe('toque na barra', () => {
   }
 
   it('pega a mais perto dentro da margem, só da camada ativa', () => {
-    expect(barraTocada([50, 2], paralelas, 'longitudinal_inferior', 6, 1)).toEqual({ id: 'b1' })
-    expect(barraTocada([50, 8], paralelas, 'longitudinal_inferior', 6, 1)).toEqual({ id: 'b2' })
-    expect(barraTocada([50, 1], paralelas, 'transversal_inferior', 6, 1)).toEqual({ id: 'outra' })
+    expect(barraTocada([50, 2], paralelas, 'longitudinal_inferior', 6, 1)).toEqual({ id: 'b1', grupo: ['b1'] })
+    expect(barraTocada([50, 8], paralelas, 'longitudinal_inferior', 6, 1)).toEqual({ id: 'b2', grupo: ['b2'] })
+    expect(barraTocada([50, 1], paralelas, 'transversal_inferior', 6, 1)).toEqual({ id: 'outra', grupo: ['outra'] })
   })
 
   it('longe de tudo não pega nada', () => {
@@ -98,6 +102,72 @@ describe('toque na barra', () => {
 
   it('no meio de duas barras não escolhe: pede zoom', () => {
     expect(barraTocada([50, 5], paralelas, 'longitudinal_inferior', 6, 1)).toEqual({ ambiguo: true })
+  })
+})
+
+// Achado #5 da lista de campo (24/11), o Nicolas: "se tem duas barras muito próximas, elas são juntas. Então a
+// pessoa dá um clique e já confira as duas. Se o negócio ficar dando zoom, tá só perdendo tempo."
+describe('barras juntas', () => {
+  // 1:50: 7 cm de obra = 3,97 pontos da folha
+  const tol = pontosDeCm(JUNTAS_CM, 50)
+  const L = 'longitudinal_inferior' as const
+
+  it('7 cm de obra em pontos da folha, pela escala da prancha', () => {
+    expect(tol).toBeCloseTo(3.97, 2)
+    expect(pontosDeCm(7, 25)).toBeCloseTo(2 * tol, 6)
+  })
+
+  it('correm juntas: perto em pelo menos 60% do comprimento da mais curta', () => {
+    expect(corremJuntas([[0, 0], [100, 0]], [[0, 3], [100, 3]], tol)).toBe(true)
+    // longe demais (8 cm)
+    expect(corremJuntas([[0, 0], [100, 0]], [[0, 4.6], [100, 4.6]], tol)).toBe(false)
+    // a curta inteira ao lado da longa (emenda por traspasse): juntas
+    expect(corremJuntas([[40, 2], [70, 2]], [[0, 0], [200, 0]], tol)).toBe(true)
+    // só se cruzam numa ponta (40% do comprimento): não
+    expect(corremJuntas([[0, 2], [100, 2]], [[60, 0], [300, 0]], tol)).toBe(false)
+    // em cruz: não
+    expect(corremJuntas([[0, 50], [100, 50]], [[50, 0], [50, 100]], tol)).toBe(false)
+  })
+
+  it('grupos por camada, transitivos; barra sozinha fica de fora', () => {
+    const barras: Record<string, BarraPacote> = {
+      a: { camada: L, linha: [[0, 0], [100, 0]] },
+      b: { camada: L, linha: [[0, 3], [100, 3]] },
+      c: { camada: L, linha: [[0, 6], [100, 6]] },
+      longe: { camada: L, linha: [[0, 30], [100, 30]] },
+      outra_camada: { camada: 'transversal_inferior', linha: [[0, 1], [100, 1]] },
+    }
+    const g = gruposDeBarras(barras, tol)
+    expect(g.get('a')).toEqual(['a', 'b', 'c'])
+    expect(g.get('c')).toBe(g.get('a'))
+    expect(g.has('longe')).toBe(false)
+    expect(g.has('outra_camada')).toBe(false)
+  })
+
+  it('o toque pega o grupo inteiro, sem pedir zoom; outra barra perto, fora do grupo, ainda pede', () => {
+    const barras: Record<string, BarraPacote> = {
+      b1: { camada: L, linha: [[0, 0], [100, 0]] },
+      b2: { camada: L, linha: [[0, 3], [100, 3]] },
+      solta: { camada: L, linha: [[0, 11], [30, 11]] },
+    }
+    const g = gruposDeBarras(barras, tol)
+    expect(barraTocada([50, 1.5], barras, L, 6, 1, g)).toEqual({ id: 'b1', grupo: ['b1', 'b2'] })
+    // sem os grupos, o mesmo toque pedia zoom (como antes)
+    expect(barraTocada([50, 1.5], barras, L, 6, 1)).toEqual({ ambiguo: true })
+    // entre o grupo e uma barra solta, a 7 de cada uma: pede zoom
+    expect(barraTocada([20, 7], barras, L, 6, 1, g)).toEqual({ ambiguo: true })
+  })
+
+  it('muitas barras: a varredura não compara todas com todas e acha os pares', () => {
+    const barras: Record<string, BarraPacote> = {}
+    for (let i = 0; i < 2000; i++) {
+      const y = Math.floor(i / 2) * 20 + (i % 2) * 2 // pares a 2 pontos, 20 entre os pares
+      barras[`b${String(i).padStart(4, '0')}`] = { camada: L, linha: [[0, y], [400, y]] }
+    }
+    const t0 = performance.now()
+    const g = gruposDeBarras(barras, tol)
+    expect(performance.now() - t0).toBeLessThan(2000)
+    expect(new Set(g.values()).size).toBe(1000)
   })
 })
 

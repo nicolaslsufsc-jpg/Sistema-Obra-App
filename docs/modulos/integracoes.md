@@ -21,8 +21,24 @@ sem chave secreta, ids fixos (rodar de novo não duplica), trava `--empresa-auto
 - Grava: `locais_sistema` (todos os locais de lá), `fvs_fichas_campo` (todas as fichas, com `local_id`,
   `agendada_em`, `reinspecao_em`, `medicao`; peça quando é pilar ou viga da planta), `fvs_eventos` (só itens de
   fichas com peça) e uma linha em `importacoes`.
-- **Não grava verificação só com `local_id`** (regra do contrato v1.7): ficam nas contagens da ficha até a tela
-  da FVS saber mostrar. Quando a tela estiver pronta, é só tirar essa trava em `leitura.py`.
+- **Pilar com letra (24/11, achado 4 da lista de campo):** "P184" lá é o "P184a" no app. Sem o nome exato,
+  procura pelo número (`partes.pilar_pelo_numero`, mesma `base_do_nome` do capitel), no `montar` do
+  `importar_construpoint.py` e no `resolver` do `publicar_historico.py`. Par do 2º (P102a e P102aa): fica o que
+  não é `so_detalhe` no pacote; sem pacote (peças lidas do servidor, que não guarda isso), o nome mais curto
+  (empate: ordem alfabética, P103a antes de P103b), com aviso na pendência ou em "conferir". O nome de lá
+  aceita até duas letras (P102aa). Ficha que já está no servidor sem peça **não muda** ao rodar de novo
+  (gravar ignora o id que já existe): ligar essas pede uma correção à parte, com o "pode" do Nicolas.
+- **Verificação só com `local_id`** (regra do contrato v1.7): sem opção, fica só nas contagens da ficha.
+  Com `--com-locais` (23/11, item 5.1; a tela "Locais fora da planta" da FVS já mostra), vira registro com
+  `local_id` e a ficha de campo ganha `ficha_id` (a ficha modelo vigente do mesmo código), para a tela do local
+  mostrar os itens. Ficha modelo que não está no servidor: o registro fica de fora (contado em "fora").
+  **Por enquanto `--com-locais` recusa o servidor da obra**: só grava no de testes (`--url`), até o Nicolas liberar.
+- **Servidor de testes, 23/11:** a obra piloto de lá só tinha os pavimentos (sem planta e sem fichas modelo).
+  Entraram, pela ferramenta SQL do Supabase, as 6 fichas modelo do servidor da obra que têm verificação fora da
+  planta (012.1, 012.2, 012.3, 012.4, 012.6, 050), 4 montadas do modelo do Construpoint (007.1 blocos, 006.2
+  cortina, 012.5 parede aparente, 0054 contenção; `aplica_a` = M só lá, porque o banco exige um tipo), as
+  146 fichas de campo que no servidor da obra não têm peça, os locais delas (com os pais) e os 2.989 registros.
+  Os ids são os mesmos que o publicador calcula (uuid v5), então publicar de novo não duplica.
 - **Não mexe nas fichas modelo do servidor**: as da obra piloto foram montadas pelas frentes da FVS (marcas de
   laje, partes, furos). O registro é ligado ao item da ficha vigente pelo texto do item (sem acento, caixa e
   pontuação). Publicar os modelos de lá por cima trocaria a ficha vigente (revisão maior ganha).

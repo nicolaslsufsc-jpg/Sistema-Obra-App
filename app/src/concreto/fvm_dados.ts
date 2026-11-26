@@ -26,6 +26,7 @@ const COLUNAS_RECEBIMENTO = [
   'material_codigo', 'material_nome', 'unidade', 'data', 'fornecedor', 'nota_fiscal', 'lote', 'quantidade',
   'itens', 'documentos', 'fotos', 'situacao', 'motivo', 'observacao', 'liberado_por', 'liberado_em',
 ] as const
+const COLUNAS_USO = ['recebimento_id', 'pavimento_id', 'elemento_id', 'local_texto', 'quantidade', 'data', 'observacao'] as const
 
 export type MaterialNoAparelho = Vigente<Corrigivel> & MaterialControlado
 
@@ -55,14 +56,31 @@ export type Recebimento = Vigente<Corrigivel> & {
   liberado_em: string | null
 }
 
+/** Onde parte de um recebimento foi usada (recebimento_id = raiz do recebimento). */
+export type UsoDoLote = Vigente<Corrigivel> & {
+  recebimento_id: string
+  pavimento_id: string
+  elemento_id: string | null
+  local_texto: string | null
+  quantidade: number | null
+  data: string
+  observacao: string | null
+}
+
 export interface DadosFvm {
   materiais: MaterialNoAparelho[]
   /** retidos primeiro, depois do mais novo para o mais antigo */
   recebimentos: Recebimento[]
+  /** usos vigentes, do mais novo para o mais antigo */
+  usos: UsoDoLote[]
 }
 
 export async function carregarFvm(obraId: string): Promise<DadosFvm> {
-  const [mat, rec] = await Promise.all([sincronizador.linhas('materiais_controlados', obraId), sincronizador.linhas('recebimentos', obraId)])
+  const [mat, rec, uso] = await Promise.all([
+    sincronizador.linhas('materiais_controlados', obraId),
+    sincronizador.linhas('recebimentos', obraId),
+    sincronizador.linhas('recebimento_usos', obraId),
+  ])
   const materiais = vigentes(mat as Corrigivel[])
     .map(
       (m) =>
@@ -87,7 +105,19 @@ export async function carregarFvm(obraId: string): Promise<DadosFvm> {
         fotos: (r.fotos as string[]) ?? [],
       }) as Recebimento,
   )
-  return { materiais, recebimentos: ordenarRecebimentos(recebimentos) }
+  const usos = vigentes(uso as Corrigivel[])
+    .map(
+      (u) =>
+        ({
+          ...u,
+          elemento_id: (u.elemento_id as string | null) ?? null,
+          local_texto: (u.local_texto as string | null) ?? null,
+          quantidade: u.quantidade === null || u.quantidade === undefined ? null : Number(u.quantidade),
+          observacao: (u.observacao as string | null) ?? null,
+        }) as UsoDoLote,
+    )
+    .sort((a, b) => b.data.localeCompare(a.data) || b.criado_em_dispositivo.localeCompare(a.criado_em_dispositivo))
+  return { materiais, recebimentos: ordenarRecebimentos(recebimentos), usos }
 }
 
 /** Grava a lista importada: inclui o novo, corrige o que mudou, cancela o que saiu. Devolve o resumo. */
@@ -108,7 +138,27 @@ export async function importarLista(
   return { incluidos: d.incluir.length, corrigidos: d.corrigir.length, cancelados: d.cancelar.length }
 }
 
-export type NovoRecebimento = Omit<Recebimento, keyof Vigente<Corrigivel> | 'liberado_por' | 'liberado_em'>
+/**
+ * Editor do gestor: material novo vira linha nova; material que já existe vira correção (substitui_id),
+ * como na importação. Se nada mudou, não grava nada e devolve null.
+ */
+export async function salvarMaterial(
+  obraId: string,
+  usuarioId: string,
+  novo: MaterialControlado,
+  atual: MaterialNoAparelho | null,
+): Promise<{ id: string } | null> {
+  if (!atual) return sincronizador.registrar('materiais_controlados', obraId, usuarioId, camposDoMaterial(novo))
+  if (JSON.stringify(camposDoMaterial(novo)) === JSON.stringify(camposDoMaterial(atual))) return null
+  return sincronizador.registrar('materiais_controlados', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_MATERIAL, camposDoMaterial(novo)))
+}
+
+/** Tira o material da lista (os recebimentos dele continuam, com a cópia do nome e dos itens). */
+export function retirarMaterial(obraId: string, usuarioId: string, atual: MaterialNoAparelho) {
+  return sincronizador.registrar('materiais_controlados', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_MATERIAL, { cancelado: true }))
+}
+
+export type NovoRecebimento =Omit<Recebimento, keyof Vigente<Corrigivel> | 'liberado_por' | 'liberado_em'>
 
 export function registrarRecebimento(obraId: string, usuarioId: string, r: NovoRecebimento) {
   return sincronizador.registrar('recebimentos', obraId, usuarioId, { ...r, liberado_por: null, liberado_em: null })
@@ -132,6 +182,18 @@ export function decidirRetido(
 
 export function cancelarRecebimento(obraId: string, usuarioId: string, atual: Recebimento) {
   return sincronizador.registrar('recebimentos', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_RECEBIMENTO, { cancelado: true }))
+}
+
+export type NovoUso = Omit<UsoDoLote, keyof Vigente<Corrigivel>>
+
+/** Marca onde parte do lote foi usada (linha nova em recebimento_usos). */
+export function registrarUso(obraId: string, usuarioId: string, u: NovoUso) {
+  return sincronizador.registrar('recebimento_usos', obraId, usuarioId, { ...u })
+}
+
+/** Desfaz um uso marcado por engano: correção cancelada, como no resto do Concreto. */
+export function desfazerUso(obraId: string, usuarioId: string, atual: UsoDoLote) {
+  return sincronizador.registrar('recebimento_usos', obraId, usuarioId, camposDeCorrecao(atual, COLUNAS_USO, { cancelado: true }))
 }
 
 export const ACEITAR_FOTO = 'image/jpeg,image/png,image/webp'

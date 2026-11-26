@@ -82,8 +82,9 @@ describe('folha da FVS', () => {
     expect(fichas.colunas[0]).toBe('Tipo')
     expect(fichas.linhas[1].slice(0, 6)).toEqual(['Pilar', 'P2 (20x40)', 'FVS.01', 'Reprovado', 3, 1])
     expect(fichas.linhas[0][8]).toBe('75%')
-    expect(ncs.linhas[0]).toEqual(['Pilar P2', 'FVS.01', '4. Prumo', 'Corrigir o prumo', 'V01', expect.stringMatching(/^20\/11\/2026 /), 'Ana', 'Aberta'])
-    expect(ncs.linhas[1][7]).toMatch(/^Reinspecionada \(C\) em 21\/11\/2026 .* por Bia$/)
+    // tratativa (25/11): coluna depois do "O que fazer", vazia sem tratativa
+    expect(ncs.linhas[0]).toEqual(['Pilar P2', 'FVS.01', '4. Prumo', 'Corrigir o prumo', '', 'V01', expect.stringMatching(/^20\/11\/2026 /), 'Ana', 'Aberta'])
+    expect(ncs.linhas[1][8]).toMatch(/^Reinspecionada \(C\) em 21\/11\/2026 .* por Bia$/)
   })
 
   it('obra inteira: coluna do pavimento nas duas tabelas', () => {

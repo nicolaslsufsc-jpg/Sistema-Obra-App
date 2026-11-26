@@ -60,7 +60,7 @@ import re
 FORMATO = 1
 # P pilar, V viga, L laje, A ambiente (planta de arquitetura; pipeline/fvs/ambientes.py), F furo de viga
 # (furos.py), E esquadria do ambiente (esquadrias.py)
-TIPOS = ("P", "V", "L", "A", "F", "E", "M")
+TIPOS = ("P", "V", "L", "A", "F", "E", "M", "K", "S")  # K bloco, S estaca de fundação (planta de locação, blocos.py)
 # Partes do pilar concretadas com a laje (pipeline/fvs/partes.py): itens na ficha do pilar, toque próprio na planta.
 TIPOS_DE_PARTE = ("consolo", "capitel")
 CAMPOS_DO_FURO = ("forma", "diametro", "largura", "altura", "topo", "fundo", "espessura", "laje", "disciplinas", "modelo_id",
@@ -74,9 +74,12 @@ CAMADAS_DE_BARRAS = ("transversal_superior", "transversal_inferior", "longitudin
 CAMPOS_DA_BARRA = ("posicao", "texto", "bitola", "comprimento", "quantidade", "espacamento", "prancha")
 # Pontos de instalações (pipeline/fvs/instalacoes.py): sobreposição da planta da disciplina, como as barras
 # (não são peças em "elementos"; a ficha fica no ambiente).
-DISCIPLINAS_DE_PONTOS = ("hidro", "sanitario", "eletrico", "spda")
+DISCIPLINAS_DE_PONTOS = ("hidro", "sanitario", "eletrico", "preventivo", "spda")
 TIPOS_DE_PONTO = ("ponto_agua", "registro", "hidrometro", "ralo", "caixa_sifonada", "caixa", "ponto_esgoto",
-                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste", "conector", "eletroduto")
+                  "caixa_passagem", "ponto_luz", "quadro", "captor", "descida", "caixa_inspecao", "haste", "conector", "eletroduto",
+                  "hidrante", "extintor", "sprinkler", "detector", "iluminacao_emergencia", "alarme", "sinalizacao",
+                  # 5.1 a 5.3 da lista de conferências (23/11): tubo (linha), coluna (prumada) e caixa de parede
+                  "tubo", "coluna", "caixa_parede")
 # Chave de detalhe vira nome de pedaço: só letras, números, _ e -.
 CHAVE_SEGURA = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 RE_TILE = re.compile(r"^-?\d+/\d+/\d+$")
@@ -176,6 +179,11 @@ def montar(
             if not isinstance(e["sem_fichas"], list) or not all(isinstance(c, str) and c for c in e["sem_fichas"]):
                 raise ErroPacote(f"{e.get('nome')}: \"sem_fichas\" tem que ser uma lista de códigos de ficha")
             reg["sem_fichas"] = sorted(set(e["sem_fichas"]))
+        if e.get("grade"):
+            # quadrado da grade de escavação (ambiente) e viga baldrame (bloco) da planta de fundação (blocos.py, 24/11/2026)
+            if (e["tipo"], e["grade"]) not in (("A", "escavacao"), ("K", "baldrame")):
+                raise ErroPacote(f"{e.get('nome')}: \"grade\" só vale em ambiente (\"escavacao\") ou em bloco (\"baldrame\")")
+            reg["grade"] = e["grade"]
         if e.get("projetos"):
             if e["tipo"] != "A":
                 raise ErroPacote(f"{e.get('nome')}: só ambiente tem projetos")
@@ -275,6 +283,8 @@ def montar(
                "nome": str(p.get("nome") or "")}
         if p.get("modelo_id"):
             reg["modelo_id"] = str(p["modelo_id"])
+        if p.get("ambiente"):  # 23/11 (5.1 a 5.3): o nome do ambiente da planta de ambientes onde o ponto cai
+            reg["ambiente"] = str(p["ambiente"])
         if p.get("linha") is not None:
             linha = [[round(float(x), 2), round(float(y), 2)] for x, y in p["linha"]]
             if len(linha) < 2:
@@ -307,6 +317,11 @@ def montar(
         # forma de pavimento com a armadura de laje em plantas próprias (pipeline/fvs/armadura_laje.py): as
         # barras ficam aqui para o item da área de laje, mas o app não mostra a aba Barras nesta planta
         manifest["camadas_separadas"] = True
+    if cabecalho.get("fichas_da_grade") is not None:
+        # planta de fundação com grade de escavação: só essas fichas valem nos quadrados (blocos.py, 24/11/2026)
+        if not isinstance(cabecalho["fichas_da_grade"], list) or not all(isinstance(c, str) and c for c in cabecalho["fichas_da_grade"]):
+            raise ErroPacote("\"fichas_da_grade\" tem que ser uma lista de códigos de ficha")
+        manifest["fichas_da_grade"] = list(cabecalho["fichas_da_grade"])
     if cabecalho.get("furos_separados"):
         # forma de pavimento com os furos na planta de furação (pipeline/fvs/furacao_fundo.py): os furos
         # ficam aqui para o item de furação da viga, mas o app não os mostra nesta planta

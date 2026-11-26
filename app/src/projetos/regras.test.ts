@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Linha } from '../nucleo/banco_local'
-import { escritorioPorDocumento, normalizar, revisaoNova, rotulo, situacoes, vigentePorDocumento } from './regras'
+import { cargaInicial, escritorioPorDocumento, normalizar, revisaoNova, rotulo, situacoes, vigentePorDocumento } from './regras'
 
 let n = 0
 function linha(campos: Record<string, unknown>): Linha {
@@ -112,6 +112,11 @@ describe('revisão nova e busca', () => {
     expect(revisaoNova(rev('d1', 'LO', '02', { vista_em: '2026-10-28' }), '2026-11-04')).toBe(true)
     expect(revisaoNova(rev('d1', 'LO', '02', { vista_em: '2026-10-27' }), '2026-11-04')).toBe(false)
     expect(revisaoNova(rev('d1', 'LO', '02', { vista_em: '2026-11-03', obsoleta: true }), '2026-11-04')).toBe(false)
+    // o que veio na carga inicial da obra não é novidade (testador, 23/11)
+    expect(revisaoNova(rev('d1', 'LO', '02', { vista_em: '2026-11-03' }), '2026-11-04', 7, '2026-11-03')).toBe(false)
+    expect(revisaoNova(rev('d1', 'LO', '03', { vista_em: '2026-11-04' }), '2026-11-04', 7, '2026-11-03')).toBe(true)
+    expect(cargaInicial([rev('d1', 'LO', '02', { vista_em: '2026-11-03' }), rev('d2', 'LO', '00', { vista_em: '2026-10-30' }), rev('d3', 'LO', '00', { vista_em: '2026-10-01', apagado: true })])).toBe('2026-10-30')
+    expect(cargaInicial([])).toBeNull()
   })
   it('normalizar ignora maiúsculas e acentos', () => {
     expect(normalizar('Fôrma do PILOTIS – Ãrea')).toBe('forma do pilotis – area')

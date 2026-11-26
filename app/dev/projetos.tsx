@@ -124,6 +124,18 @@ async function semear() {
   evento({ tipo: 'entrega', empresa_id: E.gama, documento_id: D[5], revisao_id: R['5:EX02'], data_evento: dia(48), criado_em_dispositivo: hora(48) }) // CONFERIR (sem vigente)
   evento({ tipo: 'entrega', empresa_id: E.gama, colaborador: 'Carlos', documento_id: D[4], revisao_id: R['4:EX04'], data_evento: dia(14), criado_em_dispositivo: hora(14) }) // OK
 
+  // ?retirada=1: uma pasta do Autodoc com todas as pranchas obsoletas (pasta retirada da obra, 24/11/2026) e
+  // duas cópias em campo dela: não aparecem no canteiro
+  if (new URLSearchParams(location.search).get('retirada') === '1') {
+    for (const [i, numero, nome] of [[1, '090', 'ANTIGAXXXA'], [2, '091', 'ANTIGAXXXB']] as const) {
+      const id = uuid('d0000009', i)
+      const rid = uuid('a0000009', i)
+      por('documentos', { id, codigo: `TST.FR.${numero}.${nome}`, disciplina_sigla: 'FR', disciplina: 'Furação', numero, nome_curto: nome, titulo: `FURAÇÃO DE PASTA ANTIGA ${i}`, pasta_autodoc: '129 - TST (Obra de Teste)/PROJETOS/Furação/Pasta Antiga/', link_pasta: null })
+      por('revisoes', { id: rid, documento_id: id, fase: 'EX', numero: '00', titulo: `FURAÇÃO DE PASTA ANTIGA ${i}`, status_autodoc: 'Aprovado', obsoleta: true, data_obsoleta: hora(3), cadastrada_em_autodoc: hora(70), cadastrada_por: 'projetos@exemplo.test', atualizada_em_autodoc: hora(70), extensoes: 'pdf', vista_em: dia(70) })
+      evento({ tipo: 'entrega', empresa_id: E.alfa, colaborador: 'João', documento_id: id, revisao_id: rid, data_evento: dia(60), criado_em_dispositivo: hora(60) })
+    }
+  }
+
   await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.linha.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
 }
 
@@ -203,7 +215,85 @@ function servidorFalsoDePedidos() {
 }
 servidorFalsoDePedidos()
 
-Promise.all([semear(), semearAutodoc(), semearBase()]).then(() => {
+// ?muitas=1: mais 84 pranchas fictícias em pastas do Autodoc (LO/Vigas, LO/Pilares, LO/Laje, EX/Formas),
+// para ver a lista em pastas e subpastas com volume de obra (23/11). Sem o parâmetro, elas saem.
+async function semearMuitas() {
+  const PAVS = ['PILOTIS', 'MEZANINO', '2º PAVIMENTO TIPO', '3º PAVIMENTO TIPO', '4º PAVIMENTO TIPO', 'COBERTURA']
+  const TIPOS: Array<[string, string, string, number]> = [
+    ['LO/Vigas', 'VIG', 'DETALHAMENTO DAS VIGAS D', 5],
+    ['LO/Pilares', 'PIL', 'DETALHAMENTO DOS PILARES D', 3],
+    ['LO/Laje', 'LAJ', 'ARMAÇÃO DA LAJE D', 3],
+    ['EX/Formas', 'FOR', 'PLANTA DE FORMA D', 3],
+  ]
+  const linhas: Array<{ tabela: string; id: string; linha: Record<string, unknown> & { id: string } }> = []
+  const base = { obra_id: OBRA, usuario_id: usuario.id, dispositivo_id: '00000000-0000-0000-0000-000000000000', criado_em_dispositivo: hora(20), apagado: false }
+  let n = 0
+  for (const [pasta, sigla, titulo, qtd] of TIPOS)
+    for (const pav of PAVS)
+      for (let i = 1; i <= qtd; i++) {
+        n++
+        const id = uuid('d1000000', n)
+        const curto = `${sigla}${pav.replace(/\D/g, '') || pav.slice(0, 3)}${i}`
+        const fase = pasta.slice(0, 2)
+        const numero = String(300 + n)
+        linhas.push({ tabela: 'documentos', id, linha: { ...base, id, codigo: `TST.ES.${fase}.${numero}.${curto}`, disciplina_sigla: 'ES', disciplina: 'Estrutura', numero, nome_curto: curto, titulo: `${titulo}O ${pav} - ${i}`, pasta_autodoc: pasta, link_pasta: null } })
+        const rid = uuid('a1000000', n)
+        linhas.push({ tabela: 'revisoes', id: rid, linha: { ...base, id: rid, documento_id: id, fase, numero: '00', titulo: `${titulo}O ${pav}`, status_autodoc: 'Aprovado', obsoleta: false, data_obsoleta: null, cadastrada_em_autodoc: hora(21), cadastrada_por: 'projetos@exemplo.test', atualizada_em_autodoc: hora(21), extensoes: 'pdf', vista_em: dia(n % 9 === 0 ? 1 : 20) } })
+      }
+  if (new URLSearchParams(location.search).get('muitas') !== '1') {
+    await banco.registros.bulkDelete(linhas.map((l) => [l.tabela, l.id]) as never).catch(() => undefined)
+    return
+  }
+  if (await banco.registros.get(['documentos', linhas[0].id] as never)) return
+  await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
+}
+
+// ?ficha=1: a obra tem o formulário próprio de entrega (modelo fictício, como viria de projetos_formularios)
+async function semearFicha() {
+  const id = uuid('f0000000', 1)
+  if (new URLSearchParams(location.search).get('ficha') !== '1') {
+    await banco.registros.delete(['projetos_formularios', id] as never).catch(() => undefined)
+    return
+  }
+  if (await banco.registros.get(['projetos_formularios', id] as never)) return
+  const linha = {
+    id,
+    obra_id: OBRA,
+    tipo: 'entrega',
+    modelo: {
+      titulo: ['LISTA MESTRA DE PROJETOS –', 'CONTROLE DE DISTRIBUIÇÃO DE PROJETOS NO CANTEIRO'],
+      referencia: 'EXE-FOR-001',
+      emissao: '01/01/2026',
+      revisao: '01/01/2026',
+      versao: '00',
+      tipo: 'FORMULÁRIO',
+      setores: 'ENGENHARIA',
+      empresa: 'Construtora Exemplo',
+      disciplinas: [
+        { nome: 'Arquitetônico', siglas: ['AR'] },
+        { nome: 'Estrutural', siglas: ['ES'] },
+        { nome: 'Elétrico', siglas: ['EL'] },
+        { nome: 'Hidrossanitário', siglas: ['HS', 'HI'] },
+        { nome: 'Topográfico', siglas: ['TO'] },
+        { nome: 'Fundações', siglas: ['FU'] },
+        { nome: 'Alvenaria', siglas: ['AL'] },
+        { nome: 'Gás', siglas: ['GA'] },
+        { nome: 'Paisagismo', siglas: ['PA'] },
+        { nome: 'Segurança', siglas: ['SE'] },
+        { nome: 'Impermeabilização', siglas: ['IM'] },
+        { nome: 'Outros', siglas: [], outros: true },
+      ],
+      linhas_por_pagina: 15,
+    },
+    usuario_id: usuario.id,
+    dispositivo_id: '00000000-0000-0000-0000-000000000000',
+    criado_em_dispositivo: hora(1),
+    apagado: false,
+  }
+  await banco.registros.put({ tabela: 'projetos_formularios', id, obra_id: OBRA, linha: linha as never, pendente: 0 as const })
+}
+
+Promise.all([semear(), semearAutodoc(), semearBase(), semearFicha(), semearMuitas()]).then(() => {
   history.replaceState({ tela: 'projetos' }, '')
   render(<ModuloProjetos usuario={usuario} obra={obra} aoSair={() => location.reload()} aoPerderObra={() => {}} />, document.getElementById('app')!)
 })

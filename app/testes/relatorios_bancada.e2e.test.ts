@@ -410,7 +410,7 @@ suite('Relatórios na bancada (Chrome)', () => {
     await p.getByRole('button', { name: /Voltar/ }).click()
     await porTeste(p, 'contagem-relatorios').getByText('1 relatório, 0 em aberto.').waitFor()
     await porTeste(p, 'filtro-situacao').getByRole('button', { name: 'Aberto' }).click()
-    await p.getByText('Nenhum relatório com este filtro.').waitFor()
+    await p.getByText('Sem relatórios com este filtro').waitFor()
     await porTeste(p, 'filtro-situacao').getByRole('button', { name: 'Resolvido' }).click()
     await porTeste(p, 'lista-relatorios').getByText('Vistoria de limpeza').waitFor()
     await conferirTela(p, 'lista de relatórios')

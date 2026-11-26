@@ -7,7 +7,8 @@ Pedido do Nicolas (21/11/2026): "um backup do programa pode ser físico, pode se
 ## O que entra no backup
 
 `pipeline/backup_semanal.py` junta num arquivo `backup_AAAA-MM-DD_HHMM.zip` todas as obras que o login guardado vê. Cada obra é exportada pelo `pipeline/exportar_obra.py` (o mesmo da exportação manual), com:
-- `dados/*.json` e `dados/*.csv`: todas as linhas de cada tabela da obra, como estão no servidor (o CSV abre no Excel);
+- `dados/*.json` e `dados/*.csv`: todas as linhas de cada tabela da obra, como estão no servidor (o CSV abre no Excel), inclusive `projetos_pedidos_atualizacao`, que não vai para os aparelhos (desde 25/11);
+- em `dados/perfis.json`, o e-mail de login de cada pessoa (desde 25/11; só quando quem exporta é o admin, como no backup). Vem das funções da tela "Pessoas da obra", sem chave secreta e sem migração. O backup fica fora do repositório, mas agora tem os e-mails da equipe: guardar a pasta como dado pessoal;
 - `arquivos/...`: fotos, plantas e pacotes da obra no armazenamento, conferidos pelo SHA-256;
 - `restaurar.sql`: recria a obra num Postgres com as migrações do repositório;
 - `manifesto.json` e `LEIAME.txt`: contagens, quem exportou e quando.
@@ -90,12 +91,13 @@ Primeiro ensaio, 25/11/2026, com o backup de 23/11 (309 MB): restaurou e conferi
 1. Criar o projeto novo no Supabase e aplicar as migrações (`supabase/README.md`).
 2. Abrir o zip; para cada obra, rodar o `restaurar.sql` no editor SQL (o `LEIAME.txt` de cada obra explica). Depois de todas as obras, rodar `convites/restaurar_convites.sql` (se houver).
 3. Subir a pasta `arquivos/` de cada obra para o armazenamento `obras`, no mesmo caminho.
-4. Antes de alguém entrar: as contas voltam pelo `restaurar.sql` com nome e papel, mas **sem e-mail** (o e-mail de login fica na parte de contas do Supabase, que o backup não lê). É preciso pôr o e-mail de cada pessoa na conta restaurada (no editor SQL, `update auth.users set email = ... where id = ...`; quem é quem está em `dados/perfis.json`). Se a pessoa entrar antes, nasce uma conta nova, sem papel e sem acesso, e os registros antigos ficam na conta sem e-mail.
+4. As contas voltam pelo `restaurar.sql` com nome, papel e o e-mail de login (backup de 25/11 em diante): a pessoa entra com o mesmo e-mail e cai na conta antiga, com os registros e os acessos. Ainda não ensaiado num Supabase de verdade (o login por código do Supabase pode pedir mais campos na conta criada à mão; o `restaurar.sql` já preenche `instance_id`, `aud` e `role`): ensaiar no servidor de testes antes de precisar.
+   - Backup anterior a 25/11, ou feito sem ser admin: as contas voltam **sem e-mail**. Antes de alguém entrar, pôr o e-mail na conta restaurada (no editor SQL, `update auth.users set email = ... where id = ...`; quem é quem está em `dados/perfis.json`). Se a pessoa entrar antes, nasce uma conta nova, sem papel e sem acesso. O relatório do ensaio diz quantas contas voltaram sem e-mail.
+   - E-mail que já é de outra conta no servidor novo não é religado (a conta restaurada fica sem e-mail).
 
 ## Limites (o que este backup não faz)
 
 - Cópia no Google Drive: depende do Google Drive para computador ligado e com espaço (cada backup tem uns 260 MB; 8 dão uns 2 GB). Se o Drive parar de sincronizar, a pasta do PC continua, mas a cópia na nuvem fica para trás: olhar de vez em quando no drive.google.com se o último zip chegou.
 - Não guarda o que está só nos aparelhos e ainda não sincronizou (a fila de cada celular).
 - O que foi marcado como apagado no app continua no backup (nada é apagado de fato no servidor).
-- Contas: o e-mail de login de cada pessoa não vem (ver o passo 4 de "Restaurar de verdade"). Achado no ensaio de 25/11.
-- A tabela `projetos_pedidos_atualizacao` (pedidos de "atualizar do Autodoc" do módulo Projetos) não entra: ela não está na lista de tabelas sincronizadas que a exportação segue. Achado no ensaio de 25/11.
+- Os dois achados do ensaio de 25/11 (contas sem e-mail e `projetos_pedidos_atualizacao` fora do backup) foram corrigidos no mesmo dia, sem migração (ok do Nicolas: "blz pode os 3"). Valem do primeiro backup depois do merge em diante: os backups anteriores continuam sem as duas coisas.

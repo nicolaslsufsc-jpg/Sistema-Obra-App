@@ -249,9 +249,14 @@ suite('exportação de obra', () => {
       expect(gestor[0].papel).toBe('usuario')
       const { rows: acessoGestor } = await novo.query('select count(*)::int as n from public.acessos where usuario_id = $1', [USUARIOS.gestor.id])
       expect(acessoGestor[0].n).toBe(0)
-      // Sem a chave secreta, a exportação não vê e-mails: as contas novas voltam sem e-mail.
-      const { rows: contas } = await novo.query('select count(*)::int as n from auth.users where email is not null')
-      expect(contas[0].n).toBe(1)
+      // Exportado pelo admin: as contas novas voltam com o e-mail de login (lido pelas funções da tela
+      // Pessoas da obra), para a pessoa entrar de novo na mesma conta. A que já existia fica como estava.
+      const { rows: emailAdmin } = await novo.query('select email::text from auth.users where id = $1', [admin.id])
+      expect(emailAdmin[0].email).toBe(admin.email)
+      const { rows: emailCampo } = await novo.query('select email::text from auth.users where id = $1', [campo.id])
+      expect(emailCampo[0].email).toBe(campo.email)
+      const { rows: emailGestor } = await novo.query('select email::text from auth.users where id = $1', [USUARIOS.gestor.id])
+      expect(emailGestor[0].email).toBe('gestor@outra.local')
       // Rodar de novo no mesmo banco falha inteiro (obra já existe) e não mistura dados.
       expect(() => psql(nome, path.join(pasta, 'restaurar.sql'))).toThrow()
     } finally {

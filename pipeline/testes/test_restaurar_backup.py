@@ -91,7 +91,7 @@ class TestRestauracaoInteira(unittest.TestCase):
         self.assertEqual(problemas, [], texto)
         self.assertIn("=== Obra EXE ===", texto)
         self.assertIn("Todas as tabelas batem", texto)
-        self.assertIn("O e-mail de login NÃO vem no backup", texto)
+        self.assertIn("1 conta(s) SEM e-mail", texto)  # a obra fictícia vem sem e-mail (como um backup antigo)
         # um arquivo registrado que não veio no zip é apontado
         conn = self.banco.conectar()
         try:
@@ -103,6 +103,36 @@ class TestRestauracaoInteira(unittest.TestCase):
         linhas, problemas = rb.conferir(self.banco, pasta_zip, self.zip)
         self.assertIn(f"  FALTA no backup: {OBRA}/fvs/sumiu.jpg", linhas)
         self.assertEqual(problemas, ["EXE: 1 arquivo(s) faltando e 0 diferente(s)"])
+
+    def test_conta_volta_com_o_email_e_os_pedidos_do_projetos_entram(self):
+        pasta = next(self.zip.parent.parent.glob("export/*/"))
+        obra = {"id": OBRA, "codigo": "EXE", "nome": "Obra Exemplo", "empresa": None, "criado_por": None,
+                "criado_em_servidor": "2026-11-21T09:00:00+00:00", "atualizado_em": "2026-11-21T09:00:00+00:00", "apagado": False}
+        perfis = [{"id": PESSOA, "nome": "Pessoa", "papel": "admin", "criado_em": "2026-11-21T09:00:00+00:00",
+                   "atualizado_em": "2026-11-21T09:00:00+00:00", "email": "Pessoa@Exemplo.test"}]
+        pedido = {"id": "d0000000-0000-0000-0000-000000000001", "obra_id": OBRA, "pedido_por": PESSOA,
+                  "criado_em": "2026-11-21T10:00:00+00:00", "estado": "pronto", "iniciado_em": "2026-11-21T10:01:00+00:00",
+                  "concluido_em": "2026-11-21T10:05:00+00:00", "resumo": {"baixadas": 2}, "erro": None}
+        (pasta / "restaurar.sql").write_text(rb.exp.montar_sql(obra, [("public.projetos_pedidos_atualizacao", [pedido])], [], perfis, [PESSOA]), encoding="utf-8")
+        (pasta / "dados" / "perfis.json").write_text(json.dumps(perfis), encoding="utf-8")
+        (pasta / "dados" / "projetos_pedidos_atualizacao.json").write_text(json.dumps([pedido]), encoding="utf-8")
+        (pasta / "manifesto.json").write_text(json.dumps({"obra": {"id": OBRA, "codigo": "EXE", "nome": "Obra Exemplo"},
+                                                          "linhas": {"public.obras": 1, "public.projetos_pedidos_atualizacao": 1, "public.perfis": 1}}), encoding="utf-8")
+        with zipfile.ZipFile(self.zip, "w") as z:
+            for arq in pasta.rglob("*"):
+                z.write(arq, arq.relative_to(pasta.parent).as_posix())
+        pasta_zip = self._restaurar()
+        linhas, problemas = rb.conferir(self.banco, pasta_zip, self.zip)
+        self.assertEqual(problemas, [], "\n".join(linhas))
+        self.assertIn("1 conta(s) voltaram (1 administrador(es), 0 acesso(s) a obra), 1 com o e-mail de login.", linhas)
+        conn = self.banco.conectar()
+        try:
+            self.assertEqual(conn.execute("select email::text from auth.users where id = %s", [PESSOA]).fetchone()[0], "pessoa@exemplo.test")
+            # o gatilho do pedido (que troca pedido_por pela pessoa logada) fica desligado na carga
+            self.assertEqual(str(conn.execute("select pedido_por from public.projetos_pedidos_atualizacao").fetchone()[0]), PESSOA)
+        finally:
+            conn.close()
+        self.assertFalse(any("projetos_pedidos_atualizacao" in l for l in linhas if l.startswith("  - ")))
 
     def test_servidor_local_responde_como_o_supabase(self):
         pasta_zip = self._restaurar()

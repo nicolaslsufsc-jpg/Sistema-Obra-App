@@ -333,14 +333,12 @@ def _contas(conn) -> list[str]:
     total, sem_email = conn.execute("select count(*), count(*) filter (where email is null) from auth.users").fetchone()
     admins = conn.execute("select count(*) from public.perfis where papel = 'admin'").fetchone()[0]
     acessos = conn.execute("select count(*) from public.acessos").fetchone()[0]
-    return [
-        "=== Contas ===",
-        f"{total} conta(s) voltaram ({admins} administrador(es), {acessos} acesso(s) a obra), {sem_email} sem e-mail.",
-        "O e-mail de login NÃO vem no backup (fica na parte de contas do Supabase, que a exportação não lê).",
-        "Num servidor novo, cada pessoa precisa ter o e-mail religado à conta restaurada antes de entrar;",
-        "se entrar antes disso, nasce uma conta nova, sem papel e sem acesso (ver o guia, 'Restaurar de verdade').",
-        "",
-    ]
+    saida = ["=== Contas ===",
+             f"{total} conta(s) voltaram ({admins} administrador(es), {acessos} acesso(s) a obra), {total - sem_email} com o e-mail de login."]
+    if sem_email:
+        saida += [f"{sem_email} conta(s) SEM e-mail (backup antigo, ou feito sem ser admin): num servidor novo, pôr o e-mail",
+                  "na conta antes de a pessoa entrar; senão nasce uma conta nova, sem papel e sem acesso (guia, 'Restaurar de verdade')."]
+    return saida + [""]
 
 
 # ---------------------------------------------------------------------------

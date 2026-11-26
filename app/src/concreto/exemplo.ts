@@ -33,7 +33,7 @@ export function localLegivel(local: string): string {
 
 /** Nome da concretagem nas listas e títulos: "EXEMPLO · Pilotis – Trecho 1 – Pilares". */
 export function nomeDaConcretagem(c: { local_descricao: string; exemplo?: boolean }): string {
-  // Desde 23/11 vale para todas: o local que veio do Construpoint ("Pilotis \ Trecho 2 \ Vigas") aparecia com as
+  // Desde 23/11 vale para todas: o local que veio do sistema oficial ("Pilotis \ Trecho 2 \ Vigas") aparecia com as
   // barras na lista e no laudo (bug do testador). Só a tela muda; o dado gravado fica como veio.
   const local = localLegivel(c.local_descricao || 'sem local')
   return c.exemplo ? `${ROTULO_EXEMPLO} · ${local}` : local

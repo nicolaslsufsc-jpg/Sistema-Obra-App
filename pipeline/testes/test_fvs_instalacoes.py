@@ -10,6 +10,10 @@ import sys
 import tempfile
 import unittest
 
+import importlib.util as _iu
+
+_FALTA = [m for m in ('shapely', 'numpy') if _iu.find_spec(m) is None]
+
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "pipeline" / "fvs"))
 
@@ -609,6 +613,7 @@ class TestContaDeTeste(unittest.TestCase):
             self.assertIsNone(publicar_planta.conta_de_teste("https://testeexe.supabase.co", pathlib.Path(d) / "nao_existe"))
 
 
+@unittest.skipIf(_FALTA, "precisa de shapely, numpy, PIL ou pymupdf")
 class TestAmbienteDosPontos(unittest.TestCase):
     def test_dentro_na_parede_e_longe(self):
         from shapely.geometry import box
@@ -646,6 +651,7 @@ class TestListasIguais(unittest.TestCase):
         self.assertIn("--so-instalacoes", saida.getvalue())
 
 
+@unittest.skipIf(_FALTA, "precisa de shapely, numpy, PIL ou pymupdf")
 class TestAmbientesDoPacote(unittest.TestCase):
     """25/11: pavimento sem IFC de arquitetura: as salas vêm do pacote da planta de ambientes do PDF."""
 

@@ -7,6 +7,12 @@ import sys
 import tempfile
 import unittest
 
+import importlib.util as _iu
+
+_FALTA = [m for m in ('pymupdf',) if _iu.find_spec(m) is None]
+if _FALTA:  # no GitHub os scripts rodam sem essas bibliotecas
+    raise unittest.SkipTest("precisa de " + ", ".join(_FALTA))
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "demo"))
 
 import pymupdf  # noqa: E402

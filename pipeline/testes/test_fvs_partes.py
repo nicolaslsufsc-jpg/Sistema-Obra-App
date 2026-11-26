@@ -8,6 +8,10 @@ import pathlib
 import sys
 import unittest
 
+import importlib.util as _iu
+
+_FALTA = [m for m in ('PIL', 'pymupdf', 'numpy') if _iu.find_spec(m) is None]
+
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "pipeline" / "fvs"))
 
@@ -257,6 +261,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@unittest.skipIf(_FALTA, "precisa de shapely, numpy, PIL ou pymupdf")
 class TestRecorteDoMacico(unittest.TestCase):
     """24/11 (campo, P66 do 3º): o maciço tem 2 a 4 desenhos (um por sentido das barras) embaixo e à direita do
     título; o recorte junta todos, sem pegar os do título vizinho nem o selo. Prancha sintética da obra EXE."""

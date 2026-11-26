@@ -114,6 +114,10 @@ class TestLeitura(unittest.TestCase):
         with Pasta(p) as d:
             self.assertIn("L1", [pc["nome"] for pc in cp.ler_pacote(d)["plantas"][0]["pecas"]])
 
+    def test_nome_de_peca_com_espaco(self):
+        self.recusa(lambda p: p["plantas"][0]["pecas"][0].update(nome="V 1"))
+        self.recusa(lambda p: p["elementos"].append({"pavimento": p["elementos"][0]["pavimento"], "tipo": "S", "nome": "E 9"}))
+
     def test_pavimento_inexistente(self):
         self.recusa(lambda p: p["elementos"].append({"pavimento": "Cobertura", "tipo": "S", "nome": "E2"}))
 
@@ -154,6 +158,19 @@ class TestMontagem(unittest.TestCase):
         self.assertEqual(areas[0]["planta_ref"], f"{setor}@R03")
         origens = {(e["origem"], e["fracao"]) for e in self.c.linhas["caminhao_elementos"]}
         self.assertEqual(origens, {("manual", None), ("desenho", 1)})
+
+    def test_rotulo_e_caixa_no_manifest(self):
+        """O app enquadra pela caixa [x0, y0, x1, y1]; um ponto só deixava a planta em branco (NaN no Leaflet)."""
+        man = next(json.loads(v) for k, v in self.c.arquivos.items() if k.endswith("manifest.json"))
+        self.assertTrue(man["elementos"])
+        for e in man["elementos"].values():
+            self.assertEqual(len(e["rotulo"]), 4, e["nome"])
+
+    def test_caixa_do_rotulo(self):
+        poly = [[[10, 20], [50, 20], [50, 80], [10, 80]]]
+        self.assertEqual(cp.caixa_do_rotulo({"polys": poly, "rotulo": [100, 50]}), [86, 45, 114, 55])
+        self.assertEqual(cp.caixa_do_rotulo({"polys": poly, "rotulo": [1, 2, 3, 4]}), [1, 2, 3, 4])
+        self.assertEqual(cp.caixa_do_rotulo({"polys": poly}), [10, 20, 50, 80])
 
     def test_revisao_antiga_obsoleta(self):
         revs = sorted(self.c.linhas["revisoes"], key=lambda r: r["numero"])

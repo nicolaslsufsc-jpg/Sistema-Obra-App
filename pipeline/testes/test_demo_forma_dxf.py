@@ -59,6 +59,12 @@ def forma(destino: pathlib.Path, unidades: int = 5, giro: float = 0.0) -> None:
     hl.paths.add_polyline_path([(900 * k, 100 * k), (1100 * k, 100 * k), (1100 * k, 400 * k), (900 * k, 400 * k)], is_closed=True)
     texto("L2", 1000, 250, c["laje_rotulo"])
     texto("h=10", 1000, 236, c["laje_rotulo"])
+    hl = msp.add_hatch(dxfattribs={"layer": "A-_FLOR----_E"})  # L3: outra laje hachurada, 100 cm depois da L2
+    hl.paths.add_polyline_path([(1200 * k, 100 * k), (1400 * k, 100 * k), (1400 * k, 400 * k), (1200 * k, 400 * k)], is_closed=True)
+    texto("L3", 1300, 250, c["laje_rotulo"])
+    texto("h=10", 1300, 236, c["laje_rotulo"])
+    texto("VP7", 1085, 200, c["viga_rotulo"], rot=90)  # VP7: só o vão entre a L2 e a L3, rótulo em cima da L2
+    texto("100/60", 1085, 260, c["viga_rotulo"], rot=90)
     linha((100, 600), (500, 600))  # VP1: viga protendida de 100 cm, mais larga que a busca normal
     linha((100, 700), (500, 700))
     texto("VP1", 250, 645, c["viga_rotulo"])
@@ -76,6 +82,39 @@ def forma(destino: pathlib.Path, unidades: int = 5, giro: float = 0.0) -> None:
                        dxfattribs={"layer": c["pilar_contorno"]})  # P4: polilinha fechada
     texto("P4", 790, 960, c["pilar_rotulo"])
     linha((0, 50), (700, 50), c["ignorar"][0])  # cota: não é face de viga
+    linha((100, 1100), (500, 1100))  # VP3: viga-faixa de 240 cm
+    linha((100, 1340), (500, 1340))
+    texto("VP3", 250, 1130, c["viga_rotulo"])  # rótulo perto de uma face, como no desenho real
+    texto("240/80", 300, 1130, c["viga_rotulo"])
+    linha((100, 1500), (500, 1500))  # outra V1, com outra seção (no térreo real há duas VP1 diferentes)
+    linha((100, 1530), (500, 1530))
+    texto("V1", 250, 1533, c["viga_rotulo"])
+    texto("30/60", 280, 1533, c["viga_rotulo"])
+    linha((620, 300), (720, 300))  # outro vão da V2 (mesma largura, outra altura): continua sendo a V2
+    linha((620, 320), (720, 320))
+    texto("V2", 650, 323, c["viga_rotulo"])
+    texto("20/60", 680, 323, c["viga_rotulo"])
+    import math as _m
+    for i in range(6):  # V5: viga curva desenhada em 6 pedaços retos hachurados (cordas), rótulo em 3 deles
+        a0, a1 = _m.radians(30 + 20 * i), _m.radians(50 + 20 * i)
+        pts = [(2500 + r * _m.cos(a), r * _m.sin(a)) for r, a in ((500, a0), (520, a0), (520, a1), (500, a1))]
+        hp = msp.add_hatch(dxfattribs={"layer": "S-_STRL----_A"})
+        hp.paths.add_polyline_path([(x * k, y * k) for x, y in pts], is_closed=True)
+        if i % 2 == 0:
+            am = (a0 + a1) / 2
+            texto("V5", 2500 + 545 * _m.cos(am), 545 * _m.sin(am), c["viga_rotulo"], rot=_m.degrees(am) - 90)
+    texto("20/50", 2500 + 575 * _m.cos(_m.radians(40)), 575 * _m.sin(_m.radians(40)), c["viga_rotulo"], rot=-50)
+    hp = msp.add_hatch(dxfattribs={"layer": "S-_STRL----_A"})  # V6: viga reta hachurada que chega em T na V5
+    hp.paths.add_polyline_path([(2490 * k, 200 * k), (2510 * k, 200 * k), (2510 * k, 500 * k), (2490 * k, 500 * k)], is_closed=True)
+    texto("V6", 2515, 330, c["viga_rotulo"], rot=90)
+    texto("20/40", 2515, 370, c["viga_rotulo"], rot=90)
+    # VP2: viga curva desenhada só como hachura (arco de 60 cm de largura), sem faces retas
+    fora_ = [(1500 + 460 * _m.cos(_m.radians(a)), 1500 + 460 * _m.sin(_m.radians(a))) for a in range(0, 91, 5)]
+    dentro_ = [(1500 + 400 * _m.cos(_m.radians(a)), 1500 + 400 * _m.sin(_m.radians(a))) for a in range(90, -1, -5)]
+    hv = msp.add_hatch(dxfattribs={"layer": "S-_STRL----_A"})
+    hv.paths.add_polyline_path([(x * k, y * k) for x, y in fora_ + dentro_], is_closed=True)
+    texto("VP2", 1500 + 430 * _m.cos(_m.radians(45)) - 15, 1500 + 430 * _m.sin(_m.radians(45)) - 5, c["viga_rotulo"])
+    texto("60/60", 1500 + 430 * _m.cos(_m.radians(45)) + 20, 1500 + 430 * _m.sin(_m.radians(45)) - 5, c["viga_rotulo"])
     if giro:  # prédio girado no desenho (comum em projeto exportado do Revit)
         import math
         for e in msp:
@@ -147,15 +186,61 @@ class TestFormaDxf(unittest.TestCase):
         ys = [y for _, y in p["polys"][0]]
         self.assertAlmostEqual(max(ys) - min(ys), 100 / CM, delta=0.5)
 
+    def test_duas_vigas_com_o_mesmo_nome(self):
+        p = self.pecas(self.ler())
+        self.assertEqual(p["V1"]["secao"], "20x45")
+        self.assertEqual(p["V1(30x60)"]["secao"], "30x60")
+        ys = [y for _, y in p["V1(30x60)"]["polys"][0]]
+        self.assertAlmostEqual(max(ys) - min(ys), 30 / CM, delta=0.5)
+        self.assertNotIn("V2(20x60)", p)  # mesma largura: outro vão da mesma viga
+        self.assertEqual(len(p["V2"]["polys"]), 2)
+
+    @unittest.skipIf(_iu.find_spec("shapely") is None, "precisa de shapely")
+    def test_viga_curva_em_pedacos(self):
+        p = self.pecas(self.ler())
+        v5 = p["V5"]["polys"]
+        self.assertEqual(len(v5), 1)  # os 6 pedaços viram um contorno só
+        xs = [x for x, _ in v5[0]]
+        corda = 2 * 520 * 0.866  # de 30° a 150°, no raio de fora
+        self.assertAlmostEqual(max(xs) - min(xs), corda / CM, delta=1.0)
+        v6 = p["V6"]["polys"][0]  # a reta em T continua sendo só ela
+        ys = [y for _, y in v6]
+        self.assertAlmostEqual(max(ys) - min(ys), 300 / CM, delta=1.0)
+
+    @unittest.skipIf(_iu.find_spec("shapely") is None, "precisa de shapely")
+    def test_viga_no_vao_entre_lajes(self):
+        r = self.ler()
+        p = self.pecas(r)["VP7"]
+        self.assertEqual(p["secao"], "100x60")
+        xs = [x for x, _ in p["polys"][0]]
+        ys = [y for _, y in p["polys"][0]]
+        x0 = r["extensao"][0]
+        self.assertAlmostEqual(min(xs), (1100 - x0) / CM, delta=1.0)
+        self.assertAlmostEqual(max(xs) - min(xs), 100 / CM, delta=1.0)
+        self.assertAlmostEqual(max(ys) - min(ys), 300 / CM, delta=2.0)
+
+    def test_viga_faixa_de_240(self):
+        p = self.pecas(self.ler())["VP3"]
+        ys = [y for _, y in p["polys"][0]]
+        self.assertAlmostEqual(max(ys) - min(ys), 240 / CM, delta=0.5)
+
+    @unittest.skipIf(_iu.find_spec("shapely") is None, "precisa de shapely")
+    def test_viga_curva_em_hachura(self):
+        p = self.pecas(self.ler())["VP2"]
+        self.assertEqual(p["secao"], "60x60")
+        xs = [x for x, _ in p["polys"][0]]
+        self.assertGreater(len(p["polys"][0]), 10)  # o arco, não um retângulo
+        self.assertAlmostEqual(max(xs) - min(xs), 460 / CM, delta=1.0)
+
     def test_largura_da_busca(self):
         self.assertEqual(forma_dxf.largura_da_busca(""), forma_dxf.estrutura.LARGURA_NORMAL)
         self.assertEqual(forma_dxf.largura_da_busca("20x45"), forma_dxf.estrutura.LARGURA_NORMAL)
         self.assertGreater(forma_dxf.largura_da_busca("120x60"), 120 / CM)
-        self.assertEqual(forma_dxf.largura_da_busca("900x20"), forma_dxf.largura_da_busca("150x20"))
+        self.assertEqual(forma_dxf.largura_da_busca("900x20"), forma_dxf.largura_da_busca("300x20"))
 
     def test_laje_rotulo_e_espessura(self):
         r = self.ler()
-        self.assertEqual([(l["nome"], l["secao"]) for l in r["lajes"]], [("L1", "h12"), ("L2", "h10")])
+        self.assertEqual([(l["nome"], l["secao"]) for l in r["lajes"]], [("L1", "h12"), ("L2", "h10"), ("L3", "h10")])
         self.assertNotIn("L1", self.pecas(r))
 
     @unittest.skipIf(_iu.find_spec("shapely") is None, "precisa de shapely")
@@ -189,7 +274,7 @@ class TestFormaDxf(unittest.TestCase):
             forma(arq, giro=21)
             r = forma_dxf.ler_forma(arq)
         p = self.pecas(r)
-        self.assertEqual({"P1", "P2", "P3", "P4", "PD1", "V1", "V2", "VP1"}, set(p))
+        self.assertEqual({"P1", "P2", "P3", "P4", "PD1", "V1", "V1(30x60)", "V2", "V5", "V6", "VP1", "VP2", "VP3", "VP7"}, set(p))
         import math
         (a, b, c_, _d) = p["V1"]["polys"][0]
         largura = math.hypot(c_[0] - b[0], c_[1] - b[1])
@@ -219,7 +304,7 @@ class TestFormaDxf(unittest.TestCase):
             arq = pathlib.Path(d) / "forma.dxf"
             forma(arq)
             r = forma_dxf.ler_forma(arq, {"pilar_contorno": "OUTRA"})
-        self.assertEqual({p["nome"] for p in r["pecas"]}, {"V1", "V2", "VP1"})
+        self.assertEqual({p["nome"] for p in r["pecas"]}, {"V1", "V1(30x60)", "V2", "V5", "V6", "VP1", "VP2", "VP3", "VP7"})
         self.assertIn("P1", r["sem_contorno"])
 
 

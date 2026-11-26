@@ -48,21 +48,21 @@ class TestNomes(unittest.TestCase):
         self.assertEqual(partes.nomes_do_consolo("P81"), [])
 
     def test_macico(self):
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P65)"), ["P65"])
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P78a/78aa)"), ["P78a", "P78aa"])
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P67 - P102/102a - P123 -  P124)"), ["P67", "P102", "P102a", "P123", "P124"])
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P9)"), ["P9"])
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P7a/7aa)"), ["P7a", "P7aa"])
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P1 - P2/2a - P3 -  P4)"), ["P1", "P2", "P2a", "P3", "P4"])
         # o PDF às vezes traz o Ç trocado por outro caractere
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACI�O NO PILAR (P32 - P33 -P34)"), ["P32", "P33", "P34"])
-        self.assertEqual(partes.nomes_do_macico("12xMACIÇO (P32)"), [])
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACI\ufffdO NO PILAR (P5 - P6 -P7)"), ["P5", "P6", "P7"])
+        self.assertEqual(partes.nomes_do_macico("12xMACIÇO (P5)"), [])
         self.assertEqual(partes.nomes_do_macico("LAJE DO 2º PAVTO TIPO - MACIÇOS"), [])
-        # 24/11 (campo, P67 do 3º): dois títulos no mesmo bloco de texto; os dois entram
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P69 - P122) ARMADURA DO MACIÇO NO PILAR (P67 - P123)"),
-                         ["P69", "P122", "P67", "P123"])
-        # o traço que falta entre dois nomes ("P200 P213") não derruba os dois
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P186 - P200 P213 - P252)"), ["P186", "P200", "P213", "P252"])
-        # o bloco da prancha do 3º com dois títulos, um por linha (LISTA DE CAMPO #3: o P85a e o P78aa se perdiam)
-        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P85a)\nARMADURA DO MACIÇO NO PILAR (P78aa)\n"),
-                         ["P85a", "P78aa"])
+        # 24/11 (achado de campo): dois títulos no mesmo bloco de texto; os dois entram
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P11 - P12) ARMADURA DO MACIÇO NO PILAR (P13 - P14)"),
+                         ["P11", "P12", "P13", "P14"])
+        # o traço que falta entre dois nomes ("P22 P23") não derruba os dois
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P21 - P22 P23 - P24)"), ["P21", "P22", "P23", "P24"])
+        # bloco da prancha com dois títulos, um por linha (achado de campo: os dois pilares se perdiam)
+        self.assertEqual(partes.nomes_do_macico("ARMADURA DO MACIÇO NO PILAR (P8a)\nARMADURA DO MACIÇO NO PILAR (P7aa)\n"),
+                         ["P8a", "P7aa"])
 
 
 class TestMacicoNaForma(unittest.TestCase):
@@ -87,8 +87,8 @@ class TestMacicoNaForma(unittest.TestCase):
 
     def test_folga_grande_e_macico_folga_pequena_nao(self):
         cub = self.cubetas_em_volta(1000, 1000, 1.2) + self.cubetas_em_volta(3000, 1000, 0.1)
-        pecas = [self.pilar("P64b", 1000, 1000), self.pilar("P20", 3000, 1000)]
-        self.assertEqual(partes.marcar_macico_na_forma(pecas, cub), ["P64b"])
+        pecas = [self.pilar("P1b", 1000, 1000), self.pilar("P20", 3000, 1000)]
+        self.assertEqual(partes.marcar_macico_na_forma(pecas, cub), ["P1b"])
         self.assertTrue(pecas[0].get("macico_na_forma"))
         self.assertNotIn("macico_na_forma", pecas[1])
 

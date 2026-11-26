@@ -65,6 +65,19 @@ ALVOS = ("pilares", "vigas_laje")
 # Leitura e conferência do pacote (sem rede)
 # ---------------------------------------------------------------------------
 
+def caixa_do_rotulo(pc: dict) -> list:
+    """O app usa o rótulo como caixa [x0, y0, x1, y1] (enquadrar e pôr o nome). O pacote pode trazer só o ponto [x, y]:
+    vira a caixa de 28 x 10 em volta dele, como os ambientes; sem rótulo, a caixa do contorno."""
+    r = pc.get("rotulo")
+    if r and len(r) == 4:
+        return [float(v) for v in r]
+    if r and len(r) == 2:
+        return [r[0] - 14, r[1] - 5, r[0] + 14, r[1] + 5]
+    xs = [x for poly in pc["polys"] for x, _ in poly]
+    ys = [y for poly in pc["polys"] for _, y in poly]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
 def _exigir(cond: bool, msg: str) -> None:
     if not cond:
         raise ErroCarga(f"pacote: {msg}")
@@ -98,9 +111,11 @@ def ler_pacote(pasta: pathlib.Path) -> dict:
         _exigir(pl["largura"] > 0 and pl["altura"] > 0, f"planta {k} sem tamanho")
         for pc in pl["pecas"]:
             _exigir(pc["tipo"] in ("P", "V", "L"), f"{pc['nome']}: na planta só P, V e L com desenho (S e K vão em \"elementos\")")
+            _exigir(bool(re.fullmatch(r"\S+", pc["nome"])), f"peça {pc['nome']!r}: nome sem espaço (regra do núcleo)")
             pecas.add((pl["pavimento"], pc["tipo"], pc["nome"]))
     for el in p.get("elementos") or []:
         _exigir(el["pavimento"] in nomes_pav, f"elemento em pavimento que não existe: {el['pavimento']}")
+        _exigir(bool(re.fullmatch(r"\S+", el["nome"])), f"elemento {el['nome']!r}: nome sem espaço (regra do núcleo)")
         _exigir(el["tipo"] in SEM_DESENHO, f"{el['nome']}: em \"elementos\" só {', '.join(SEM_DESENHO)}")
         k = (el["pavimento"], el["tipo"], el["nome"])
         _exigir(k not in pecas, f"peça repetida: {k}")
@@ -207,7 +222,7 @@ def montar(pacote_obra: dict, pasta: pathlib.Path, usuario: str, hoje: dt.date, 
         setor_id = c.linha("setores", f"{nome_pav}:{trecho}", {"pavimento_id": pav_id, "nome_projeto": trecho,
                                                               "disciplina": pl.get("disciplina", "estrutura")}, 60)
         pecas = [{"tipo": pc["tipo"], "nome": pc["nome"], "secao": pc.get("secao"), "polys": pc["polys"],
-                  "rotulo": pc.get("rotulo") or pc["polys"][0][0]} for pc in pl["pecas"]]
+                  "rotulo": caixa_do_rotulo(pc)} for pc in pl["pecas"]]
         for pc in pecas:
             k = (nome_pav, pc["tipo"], pc["nome"])
             if k not in elementos:

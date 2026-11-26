@@ -1,6 +1,6 @@
 // Pontos de instalações (frente INSTALAÇÕES, 20/11/2026). Ficha e pontos fictícios da obra EXE.
 import { describe, expect, it } from 'vitest'
-import { chaveDaEscolhaDoPonto, distanciaAoPonto, fichaDosPontos, fichasDoPonto, itemDosPontos, itemMarcaOPonto, nomeDoFiltroDePontos, nomeDoPonto, opcoesDoFiltroDePontos, pontosNoFiltro, pontosPorQuadrado, zoomDosPontos, PONTOS_PARA_JUNTAR, pontoTocado, resumoDosPontos, textoDoAvancoDosPontos, type PontoPacote } from './pontos'
+import { ambientesCalculados, chaveDaEscolhaDoPonto, distanciaAoPonto, fichaDosPontos, fichasDoPonto, itemDosPontos, itemMarcaOPonto, nomeDoFiltroDePontos, nomeDoPonto, opcoesDoFiltroDePontos, pontosNoFiltro, pontosPorQuadrado, zoomDosPontos, PONTOS_PARA_JUNTAR, pontoTocado, resumoDosPontos, textoDoAvancoDosPontos, type PontoPacote } from './pontos'
 import type { Ficha } from './situacao'
 
 const AMB: Ficha = {
@@ -119,6 +119,29 @@ describe('5.1 a 5.3: o item pelo tipo do ponto e pelo ambiente (23/11)', () => {
     expect(fichasDoPonto(todas, pt('eletrico', 'ponto_luz'), [])).toEqual([])
     // sem ficha de ambiente da disciplina: a de laje, como antes (21/11)
     expect(fichasDoPonto([ALV], pt('hidro', 'ponto_agua'), [LAJE])).toEqual([{ ficha: LAJE, item: 13 }])
+  })
+  it('fora de cômodo: o item da laje em todas as disciplinas (decisão do Nicolas, 25/11)', () => {
+    const LAJE = ficha('LAJE', [
+      { n: 12, etapa: 'INSTALAÇÕES', titulo: 'Esgoto', instalacao: 'esgoto' },
+      { n: 13, etapa: 'INSTALAÇÕES', titulo: 'AF/AQ', instalacao: 'agua' },
+      { n: 14, etapa: 'INSTALAÇÕES', titulo: 'Elétrica', instalacao: 'eletrica' },
+    ])
+    const fora = (disciplina: PontoPacote['disciplina'], tipo: PontoPacote['tipo']) => fichasDoPonto(todas, { disciplina, tipo }, [LAJE], [], true)
+    expect(fora('hidro', 'tubo')).toEqual([{ ficha: LAJE, item: 13 }])
+    expect(fora('sanitario', 'tubo')).toEqual([{ ficha: LAJE, item: 12 }])
+    expect(fora('eletrico', 'caixa_parede')).toEqual([{ ficha: LAJE, item: 14 }])
+    // SPDA de fachada (descida, captor): elétrica; preventivo: rede de água na água, o resto na elétrica
+    expect(fora('spda', 'descida')).toEqual([{ ficha: LAJE, item: 14 }])
+    expect(fora('preventivo', 'hidrante')).toEqual([{ ficha: LAJE, item: 13 }])
+    expect(fora('preventivo', 'sinalizacao')).toEqual([{ ficha: LAJE, item: 14 }])
+    // dentro de cômodo: como antes (ficha de ambiente)
+    expect(fichasDoPonto(todas, { disciplina: 'hidro', tipo: 'tubo', ambiente: 'a1' }, [LAJE], [], true)).toEqual([{ ficha: REDES, item: 10 }])
+    // pacote sem ambiente calculado (nenhum ponto com "ambiente"): nada muda
+    expect(fichasDoPonto(todas, { disciplina: 'hidro', tipo: 'tubo' }, [LAJE], [], false)).toEqual([{ ficha: REDES, item: 10 }])
+    expect(ambientesCalculados({ a: { ambiente: 'x' }, b: {} })).toBe(true)
+    expect(ambientesCalculados({ a: {}, b: {} })).toBe(false)
+    // ficha de laje sem o item: só consulta
+    expect(fichasDoPonto(todas, { disciplina: 'spda', tipo: 'captor' }, [], [], true)).toEqual([])
   })
   it('sem "pontos_tipos": qualquer tipo da disciplina (as fichas de antes seguem valendo)', () => {
     expect(fichasDoPonto([AMB], pt('sanitario', 'tubo'))).toEqual([{ ficha: AMB, item: 2 }])

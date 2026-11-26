@@ -19,6 +19,7 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                                    "detalhe": "P_P32"}},
                (ambiente: "tipo": "A", "nome": "303-04", "secao": "12,1 m²", "grupo": "Apto 303", opcional "comodo": "Suíte 01";
                 opcional "sem_fichas": ["EXE-024"] (fichas que não valem neste cômodo; ambientes.marcar_fichas_do_comodo);
+                opcional "pendencia": "nome" (recinto sem nome na prancha, o nome é provisório; ambientes_novos);
                 opcional "detalhe" (modulação) e "projetos": ["PP_Apto_303", "I_Apto_303"] (paginação, impermeabilização...;
                 pipeline/fvs/modulacao.py))
                (pilar com consolo ou capitel: "partes": [{"tipo": "consolo", "polys": [[[x, y], ...]], "detalhe": "C_CONSOLO_P32"}])
@@ -30,7 +31,7 @@ Formato do manifest (versão 1). Coordenadas em pontos do PDF, x para a direita,
                 "esquadria": {"codigo": "PM80", "classe": "porta", "outro_lado": "303-04"}, sem detalhe; pipeline/fvs/esquadrias.py)
   "detalhes": {"P_P32": {"titulo": "P32", "prancha": "EXE.ES.LO.285.PIL3PAVTIP-R00", "aco": true},
                "PP_Apto_303": {"titulo": "Paginação de piso · Apto 303", "prancha": "...", "aco": false,
-                               "fichas": ["PVS-024"]}},   (fichas, opcional: só nessas fichas o app mostra o recorte)
+                               "fichas": ["EXE-PVS-PISO"]}},   (fichas, opcional: só nessas fichas o app mostra o recorte)
   "barras": {"<id da barra>": {"camada": "longitudinal_inferior", "posicao": "N25", "texto": "N25 1ø10 C=850",
              "prancha": "EXE.ES.LO.466.LAJ2PAVTIP-R00", "linha": [[x, y], ...]}}   opcional (pipeline/fvs/barras_laje.py)
   "disciplina": "sanitario",   opcional: planta de instalações (pipeline/fvs/instalacoes.py), com os pontos dela;
@@ -179,6 +180,11 @@ def montar(
             if not isinstance(e["sem_fichas"], list) or not all(isinstance(c, str) and c for c in e["sem_fichas"]):
                 raise ErroPacote(f"{e.get('nome')}: \"sem_fichas\" tem que ser uma lista de códigos de ficha")
             reg["sem_fichas"] = sorted(set(e["sem_fichas"]))
+        if e.get("pendencia"):
+            # "nome": recinto que as instalações acharam sem nome na prancha ("Recinto sem nome N", 26/11/2026)
+            if e["tipo"] != "A" or e["pendencia"] != "nome":
+                raise ErroPacote(f"{e.get('nome')}: \"pendencia\" só vale em ambiente, e só \"nome\"")
+            reg["pendencia"] = "nome"
         if e.get("grade"):
             # quadrado da grade de escavação (ambiente) e viga baldrame (bloco) da planta de fundação (blocos.py, 24/11/2026)
             if (e["tipo"], e["grade"]) not in (("A", "escavacao"), ("K", "baldrame")):

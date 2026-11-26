@@ -90,7 +90,7 @@ export interface ItemFicha {
   pontos?: DisciplinaDoItem | readonly DisciplinaDoItem[]
   /**
    * Só estes tipos de ponto marcam o item (5.1 a 5.3, 23/11/2026): duas fichas marcam a mesma disciplina
-   * (trajeto de água na 010.4, altura dos pontos na 010.5). Sem a lista: todos os tipos da disciplina.
+   * (trajeto de água na EXE-PVS-14, altura dos pontos na EXE-PVS-15). Sem a lista: todos os tipos da disciplina.
    */
   pontos_tipos?: readonly string[]
   /**

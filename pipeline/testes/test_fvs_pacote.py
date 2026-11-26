@@ -62,6 +62,17 @@ class TestPacote(unittest.TestCase):
         with self.assertRaises(pacote.ErroPacote):  # lista de códigos
             pacote.montar(CAB, {}, {"a1": {**amb, "sem_fichas": "EXE-024"}}, {})
 
+    def test_recinto_com_nome_pendente(self):
+        # 26/11/2026: recinto que as instalações acharam sem nome na prancha ("Recinto sem nome N")
+        amb = {"tipo": "A", "nome": "Recinto sem nome 1", "secao": "6,96 m²", "rotulo": [0, 0, 1, 1], "polys": [], "pendencia": "nome"}
+        man, binario = pacote.montar(CAB, {}, {"a1": amb}, {})
+        m, _ = pacote.ler(man, binario)
+        self.assertEqual(m["elementos"]["a1"]["pendencia"], "nome")
+        with self.assertRaises(pacote.ErroPacote):  # só ambiente
+            pacote.montar(CAB, {}, {"p": {"tipo": "P", "nome": "P1", "rotulo": [0, 0, 1, 1], "polys": [], "pendencia": "nome"}}, {})
+        with self.assertRaises(pacote.ErroPacote):  # só "nome"
+            pacote.montar(CAB, {}, {"a1": {**amb, "pendencia": "outra"}}, {})
+
     def test_quadrado_da_escavacao_e_fichas_da_grade(self):
         # grade de escavação (blocos.py, 24/11/2026): o quadrado leva "grade" e o pacote "fichas_da_grade"
         esc = {"tipo": "A", "nome": "ESC-A1", "secao": "30,0 m²", "rotulo": [0, 0, 1, 1], "polys": [], "grade": "escavacao"}

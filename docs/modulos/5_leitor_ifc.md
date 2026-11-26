@@ -32,7 +32,7 @@ No celular ou tablet, na mesma rede: `npm run dev -- --host` e abrir `http://<ip
 - **Tudo no aparelho.** O IFC é lido no próprio navegador, numa thread separada. Nada sobe para o servidor. Por isso nenhuma tabela nova no banco, por enquanto.
 - **Modelo guardado (`.obra3d`).** Depois da primeira leitura, o modelo convertido fica na área privada do navegador (OPFS) e reabre em segundos. "Levar para outro aparelho" gera um arquivo comprimido: converte no PC e abre no tablet sem ler o IFC de novo. É o caminho previsto para IFC grande em celular.
 - **Categoria não vem só da classe IFC.** A torre da obra piloto exporta quase tudo como `IfcBuildingElementProxy` ou `IfcBuildingElementPart`. A categoria sai da classe, do nome da peça e do pai, da camada e do material, nessa ordem (`motor/categorias.ts`).
-- **Arquivo fora de coordenada: a pessoa decide.** O ARQ e o EST do outra obra ficam a 145 m um do outro. O app avisa e oferece marcar pontos (corrige deslocamento e giro), encaixar pelo centro (aproximado) ou deixar assim. Não move sozinho, para não esconder erro de projeto. O ajuste fica guardado por modelo no aparelho.
+- **Arquivo fora de coordenada: a pessoa decide.** O ARQ e o EST de outra obra ficam a mais de cem metros um do outro. O app avisa e oferece marcar pontos (corrige deslocamento e giro), encaixar pelo centro (aproximado) ou deixar assim. Não move sozinho, para não esconder erro de projeto. O ajuste fica guardado por modelo no aparelho.
 - **Sem IfcSpace e sem abertura no desenho:** os dois tapariam o modelo.
 
 ## Como está organizado (`app/src/ifc/`)
@@ -56,15 +56,15 @@ Medido em 06/11/2026 no PC do Nicolas (RTX 4070 Laptop), com IFCs de verdade for
 
 | Arquivo | Tamanho | Elementos | Triângulos | Primeira leitura | Reabrir guardado |
 |---|---|---|---|---|---|
-| outra obra EST | 12 MB | 1.079 | 81 mil | 2,6 s | não medido |
-| outra obra ARQ + EST juntos | 110 MB | 4.729 | 4,4 mi | 19 s | não medido |
-| obra piloto torre | 298 MB | 42.476 | 4,7 mi | 48 s | 1,5 s |
+| outra obra EST | ~10 MB | uns mil | dezenas de milhares | 2,6 s | não medido |
+| outra obra ARQ + EST juntos | ~100 MB | uns milhares | milhões | 19 s | não medido |
+| obra piloto torre, IFC grande | ~300 MB | dezenas de milhares | milhões | 48 s | 1,5 s |
 
-Na obra piloto, girar o modelo ficou a 60 quadros por segundo; a planta cortou 5.085 peças em cerca de 1 s.
+Na obra piloto, girar o modelo ficou a 60 quadros por segundo; a planta cortou uns milhares de peças em cerca de 1 s.
 
 ## O que ainda não foi testado
 
-- **Celular e tablet de verdade.** O layout foi conferido em 375 px e 1280 x 800, mas no Chrome do PC. Falta ver memória e fluidez num Android. A obra piloto guardada pesa 317 MB: é o teste que decide.
+- **Celular e tablet de verdade.** O layout foi conferido em 375 px e 1280 x 800, mas no Chrome do PC. Falta ver memória e fluidez num Android. A obra piloto guardada pesa uns 300 MB: é o teste que decide.
 - **DXF no AutoCAD.** O arquivo foi conferido por teste automático, não aberto no AutoCAD.
 - **Marcar pontos com o dedo.** Testado com toques simulados na amostra e por conta (giro e deslocamento). Falta alinhar de verdade o ARQ com o EST do outra obra, marcando cantos.
 
@@ -130,7 +130,7 @@ O Nicolas reativou o módulo e pediu para tirar do beta e otimizar ("arquivos gr
 
 | Modelo | Triângulos por quadro, antes | depois | Tempo da placa por quadro, antes | depois |
 |---|---|---|---|---|
-| torre da obra piloto (298 MB, 42.476 peças) | 8,4 mi | 4,8 mi (−43%) | 6,8 a 8,8 ms | 4,6 a 6,2 ms |
+| torre da obra piloto (IFC grande, ~300 MB) | 8,4 mi | 4,8 mi (−43%) | 6,8 a 8,8 ms | 4,6 a 6,2 ms |
 | um pavimento da obra piloto | 919 mil | 511 mil (−44%) | 1,5 a 1,8 ms | 1,1 a 1,4 ms |
 | torre a 50% de opacidade | 9,4 mi | 9,4 mi (igual, de propósito) | | |
 
@@ -155,7 +155,7 @@ Pedido do Nicolas: "deixa uma opção da pessoa baixar os IFCs dentro do app pra
 **Como funciona**
 - **Onde fica no servidor:** no bucket `obras` e na tabela `arquivos`, que já existem, pelo `registrarArquivo` do núcleo (módulo `ifc`, caminho `{obra}/ifc/{id}`).
 - **Tamanho:** o plano gratuito aceita no máximo 50 MB por arquivo. Por isso o IFC sobe comprimido (gzip) e cortado em partes de até 40 MB, com no máximo 10 partes.
-  - A torre da obra piloto (298 MB) vira 49 MB, em 2 partes.
+  - Um IFC grande (~300 MB) vira uns 50 MB, em 2 partes.
   - O `nome_original` de cada parte diz o envio e a parte, por exemplo "Torre.ifc (parte 1 de 2, envio 3f2a9c1e)".
 - **Quem envia:** gestor e admin, com conta, pelo botão "Enviar IFC para a obra" (Modelos, ou a tela inicial do IFC). As partes entram na fila e sobem na próxima sincronização.
 - **Quem baixa:** todos com conta. A lista "IFCs da obra" mostra nome, tamanho, data e "Baixar para usar offline" com a barra de progresso.
@@ -191,7 +191,7 @@ Pedido do Nicolas: "deixa uma opção da pessoa baixar os IFCs dentro do app pra
 O Nicolas confirmou no chat do Professor: "O menu, o leitor de FC entra no menu? Sim, entra." A linha do IFC em `app/src/modulos.ts` já estava sem `beta` e sem `foraDoMenu` desde 20/11. Hoje só os textos foram acertados: a bancada (`dev/ifc.html`), o comentário do teste e este arquivo. Conferido de novo em 375 px e no tablet: o menu mostra "IFC" sem selo e o leitor abre a amostra sem internet (`local.e2e`), e a bancada passa nos dois tamanhos (`ifc_bancada.e2e`).
 
 ## 21/11/2026: "Baixar modelo da obra" (Google Drive) (branch `ifc/drive`)
-Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baixar". Os IFCs da obra ficam numa pasta do Google Drive da obra e nunca vão para o servidor (de 9 MB a 1,6 GB).
+Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baixar". Os IFCs da obra ficam numa pasta do Google Drive da obra e nunca vão para o servidor (de poucos MB a mais de 1 GB).
 
 **Como funciona**
 - A lista de modelos é **dado da obra, fora do repositório**: um JSON pequeno (`modelos_drive.json`) com nome, disciplina, tamanho, situação e o id do arquivo no Drive de cada modelo, mais a pasta.
@@ -211,7 +211,7 @@ Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baix
 - Em `ifc_bancada.e2e`, um passo novo em 375 px e tablet: lista de exemplo, avisos de tamanho e Wi-Fi, link do Drive, carregar uma lista, importar e ver "neste aparelho".
 
 **Dado da obra piloto:**
-- A lista dos 7 modelos foi montada fora do repositório, em `modelos_drive.json`, na pasta de projetos da obra no PC do Nicolas.
+- A lista dos modelos foi montada fora do repositório, em `modelos_drive.json`, na pasta de projetos da obra no PC do Nicolas.
 - Ela tem o id da pasta e o id de cada arquivo. Os ids reais não entram no código nem nos testes; os testes usam ids fictícios.
 - Falta carregá-la no app pela conta de gestor da obra: Leitor de IFC → Modelos → "Carregar a lista de modelos (.json)". Uma vez só; depois desce para todos os aparelhos.
 - O Nicolas deixou a pasta como "qualquer pessoa com o link: leitor" em 21/11. Assim qualquer aparelho baixa sem entrar na conta Google.
@@ -221,10 +221,10 @@ Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baix
 **Teste real em 21/11** (fora do repositório, script no PC):
 - Bancada `dev/ifc.html?obra=exe` com a lista real da obra piloto.
 - Em tablet (1280×800) e celular (375×812):
-  - listou os 7 modelos, sem rolagem lateral;
-  - "Baixar" na Furação (10 MB) baixou do Drive de verdade em cerca de 2 s;
+  - listou os modelos, sem rolagem lateral;
+  - "Baixar" num modelo pequeno baixou do Drive de verdade em cerca de 2 s;
   - o arquivo baixado é igual ao da pasta de projetos (mesmo md5);
-  - "Importar IFC" abriu 3.747 elementos;
+  - "Importar IFC" abriu o modelo inteiro (uns milhares de elementos);
   - o item ficou "neste aparelho", com "Abrir";
   - sem erro na página.
 - O arquivo baixado foi apagado depois. Nada foi para o servidor.
@@ -241,7 +241,7 @@ Anotação de teste do Nicolas: "IFC - Ainda sem botão de puxar do drive e baix
 - `.obra3d` versão 2: os psets vão em pedaços de 2.000 (antes um JSON só passava do limite de texto do navegador nos modelos de ~1 GB e o "neste aparelho" falhava). Versão 1 continua abrindo.
 - Erro de memória ao abrir modelo grande no celular mostra mensagem clara (abrir no PC ou IFC por pavimento).
 - Tela vazia com barra curta: botão "Importar IFC" não some mais (`safe center`). Mensagem "lista carregada" não sai mais com cara de erro.
-- PC: os 7 modelos abriram. Celular: FR e AR abriram; o de 1,6 GB baixou e não abriu (memória). Tablet: lista e download ok, abertura interrompida.
-- Com o v2 o limite de texto saiu; nos modelos de 939 MB e 1,6 GB o navegador agora recusa por falta de espaço (QuotaExceededError). O modelo abre e o app avisa que não ficou guardado.
+- PC: todos os modelos abriram. Celular: FR e AR abriram; o maior (mais de 1 GB) baixou e não abriu (memória). Tablet: lista e download ok, abertura interrompida.
+- Com o v2 o limite de texto saiu; nos modelos de ~1 GB ou mais o navegador agora recusa por falta de espaço (QuotaExceededError). O modelo abre e o app avisa que não ficou guardado.
 - Testado no build local em 1280, 800x1280 (tablet) e 375 px: lista, download igual byte a byte, abertura e busca ok; sem rolagem lateral.
 - Pendente: ver se dá para guardar os modelos de ~1 GB (tamanho do .obra3d e cota real no celular); teste no site.

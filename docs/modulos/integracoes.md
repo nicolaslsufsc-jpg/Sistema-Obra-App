@@ -21,12 +21,12 @@ sem chave secreta, ids fixos (rodar de novo não duplica), trava `--empresa-auto
 - Grava: `locais_sistema` (todos os locais de lá), `fvs_fichas_campo` (todas as fichas, com `local_id`,
   `agendada_em`, `reinspecao_em`, `medicao`; peça quando é pilar ou viga da planta), `fvs_eventos` (só itens de
   fichas com peça) e uma linha em `importacoes`.
-- **Pilar com letra (24/11, achado 4 da lista de campo):** "P184" lá é o "P184a" no app. Sem o nome exato,
+- **Pilar com letra (24/11, achado 4 da lista de campo):** "P18" lá é o "P18a" no app (exemplo). Sem o nome exato,
   procura pelo número (`partes.pilar_pelo_numero`, mesma `base_do_nome` do capitel), no `montar` do
-  `importar_construpoint.py` e no `resolver` do `publicar_historico.py`. Par do 2º (P102a e P102aa): fica o que
+  `importar_construpoint.py` e no `resolver` do `publicar_historico.py`. Par no mesmo pavimento (P12a e P12aa, exemplo): fica o que
   não é `so_detalhe` no pacote; sem pacote (peças lidas do servidor, que não guarda isso), o nome mais curto
-  (empate: ordem alfabética, P103a antes de P103b), com aviso na pendência ou em "conferir". O nome de lá
-  aceita até duas letras (P102aa). Ficha que já está no servidor sem peça **não muda** ao rodar de novo
+  (empate: ordem alfabética, P13a antes de P13b), com aviso na pendência ou em "conferir". O nome de lá
+  aceita até duas letras (P12aa). Ficha que já está no servidor sem peça **não muda** ao rodar de novo
   (gravar ignora o id que já existe): ligar essas pede uma correção à parte, com o "pode" do Nicolas.
 - **Verificação só com `local_id`** (regra do contrato v1.7): sem opção, fica só nas contagens da ficha.
   Com `--com-locais` (23/11, item 5.1; a tela "Locais fora da planta" da FVS já mostra), vira registro com
@@ -34,17 +34,18 @@ sem chave secreta, ids fixos (rodar de novo não duplica), trava `--empresa-auto
   mostrar os itens. Ficha modelo que não está no servidor: o registro fica de fora (contado em "fora").
   **Por enquanto `--com-locais` recusa o servidor da obra**: só grava no de testes (`--url`), até o Nicolas liberar.
 - **Servidor de testes, 23/11:** a obra piloto de lá só tinha os pavimentos (sem planta e sem fichas modelo).
-  Entraram, pela ferramenta SQL do Supabase, as 6 fichas modelo do servidor da obra que têm verificação fora da
-  planta (012.1, 012.2, 012.3, 012.4, 012.6, 050), 4 montadas do modelo do Construpoint (007.1 blocos, 006.2
-  cortina, 012.5 parede aparente, 0054 contenção; `aplica_a` = M só lá, porque o banco exige um tipo), as
-  146 fichas de campo que no servidor da obra não têm peça, os locais delas (com os pais) e os 2.989 registros.
+  Entraram, pela ferramenta SQL do Supabase, as fichas modelo do servidor da obra que têm verificação fora da
+  planta, algumas montadas do modelo do Construpoint (blocos, cortina, parede aparente, contenção; `aplica_a` = M
+  só lá, porque o banco exige um tipo), as fichas de campo que no servidor da obra não têm peça, os locais delas
+  (com os pais) e os registros delas.
   Os ids são os mesmos que o publicador calcula (uuid v5), então publicar de novo não duplica.
 - **Não mexe nas fichas modelo do servidor**: as da obra piloto foram montadas pelas frentes da FVS (marcas de
   laje, partes, furos). O registro é ligado ao item da ficha vigente pelo texto do item (sem acento, caixa e
   pontuação). Publicar os modelos de lá por cima trocaria a ficha vigente (revisão maior ganha).
 - Concreto (rastreabilidade, caminhões) fica com a frente do Concreto, que cruza com a planta antes de publicar.
-- Obra piloto, 21/11: 4.228 locais, 1.486 fichas (1.340 com peça), 24.618 registros de 27.607 verificações
-  (os outros são de laje, bloco, cortina e ambientes); todos os itens acharam o item da ficha do servidor.
+- Obra piloto, 21/11, conferido: uns milhares de locais e de fichas (a maioria com peça); a maior parte das
+  verificações virou registro (as outras são de laje, bloco, cortina e ambientes); todos os itens acharam o item
+  da ficha do servidor.
   Os registros de teste que já estavam no servidor ficaram como estavam.
 - Testes: `testes/test_construpoint_leitura.py` (obra EXE, dados inventados).
 
@@ -88,7 +89,7 @@ diz um sistema cujo galho não veio nesta versão, o aviso diz o nome dele.
 Gerado com `exportar_bancada.py`, as mesmas entradas do pacote da demonstração, `--nome` com o nome completo
 e `--sistema-oficial construpoint`, numa pasta nova ao lado da entrega (`pacote_novo_com_sistema_oficial\`).
 Conferido: plantas, fichas e histórico iguais aos do pacote da demonstração; só o `indice.json` muda. Aberto
-nesta branch (375 px e tablet): lançamento, 125 peças com ficha duplicada e "Ficha no Construpoint"
+nesta branch (375 px e tablet): lançamento, as peças com ficha duplicada e "Ficha no Construpoint"
 aparecem, sem aviso e sem erro. **O pacote da demonstração não foi trocado: a troca é decisão do Nicolas.**
 
 ### Pendências
@@ -181,7 +182,7 @@ No `indice.json` do pacote (e, com servidor, numa linha da obra mais tarde) entr
 export interface SistemaOficial {
   id: string                 // "construpoint"
   nome: string               // "Construpoint", vai nos textos
-  dicaLocal?: string         // ex.: "Pilotis \ Trecho 2 \ Vigas"
+  dicaLocal?: string         // ex.: "Térreo \ Trecho 1 \ Vigas" (exemplo)
   dicaCodigoFicha?: string   // ex.: "FIC-0215"
 }
 export function sistemaDaObra(obra): SistemaOficial | null

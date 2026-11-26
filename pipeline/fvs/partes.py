@@ -166,9 +166,9 @@ def consolo_do_pilar(quads: list[list[list[float]]], pilar_polys, tamanho_max: f
 
 PONTOS_POR_METRO = 1 / (0.0254 / 72 * 50)  # planta 1:50
 RE_CAMADA_CUBETA = re.compile(r"^LJ_NERV", re.I)
-# FOLGA_MACICO: 0,55 e não 0,6 porque há maciço de verdade com folga menor que 0,6 num lado (no 3º
-# da obra piloto: P128a 0,56, P80a e P99a 0,58; o desenho arredonda). Falso aviso conhecido: a
-# moldura de uma abertura na laje também é lisa (o P64b e o P237 do 3º, 0,57 e 0,76 m), e não é maciço.
+# FOLGA_MACICO: 0,55 e não 0,6 porque há maciço de verdade com folga menor que 0,6 num lado (de 0,56 a
+# 0,58 nos casos conferidos; o desenho arredonda). Falso aviso conhecido: a
+# moldura de uma abertura na laje também é lisa (casos de 0,57 e 0,76 m), e não é maciço.
 FOLGA_MACICO = 0.55   # m
 ALCANCE_MACICO = 3.0  # m: cubeta mais longe que isso não conta (borda da laje, vão, poço)
 FAIXA_MACICO = 0.5    # m: a cubeta de um lado pode passar até meio metro do canto do pilar
@@ -492,10 +492,10 @@ def _juntar_perto(caixa, grupo: list, perto: float = PERTO_DO_MACICO):
     return caixa
 
 
-# FOLGA_DO_TITULO, em pontos: o desenho começa um pouco à esquerda do título (P251 do 3º, P65 do 4º). 25/11,
-# conferido em todas as pranchas de maciços do 2º, 3º e 4º da obra piloto: abaixo de ~41 o 1º desenho do P80a do
-# 4º (40,3 pt à esquerda) ia para o P62a; de 67 para cima o P83a do 3º levava 2 dos 4 desenhos do P198a. 52 fica
-# no meio; entre 41 e 65 nada muda nas 12 pranchas.
+# FOLGA_DO_TITULO, em pontos: o desenho começa um pouco à esquerda do título. 25/11, conferido nas pranchas de
+# maciços de três pavimentos: abaixo de ~41 o 1º desenho de um pilar (40,3 pt à esquerda) ia para o pilar
+# vizinho; de 67 para cima um pilar levava 2 dos 4 desenhos do outro. 52 fica
+# no meio; entre 41 e 65 nada muda nas pranchas conferidas.
 FOLGA_DO_TITULO = 52.0
 
 

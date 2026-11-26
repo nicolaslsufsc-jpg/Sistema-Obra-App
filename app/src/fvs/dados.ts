@@ -1093,10 +1093,14 @@ export async function refazerToquesDaObra(obraId: string, dados: DadosFvs, regis
       let feito: Linha | Linha[]
       if (t.tipo === 'lote') {
         const pecas = t.pecas.flatMap((p) => {
+          // lote do grupo da unidade de conferência (ideia 14): o local que ganhou ficha aberta do sistema
+          // oficial depois do toque fica de fora (a marcação dele é na ficha aberta)
+          if (t.itens && !p.fichaCampoId && (d.fichasCampoDe.get(p.id) ?? []).length) return []
           const ficha = fichaNaPeca(d.fichaPorId.get(p.fichaId), partesGuardadas(p.id))
           return ficha ? [{ id: p.id, ficha, eventos: daFichaAberta(d.eventosDe.get(p.id) ?? [], p.fichaCampoId) }] : []
         })
-        feito = await marcarLote(c, pecas, t.etapa, t.resultado, t.id)
+        const obs = t.obs ? new Map(pecas.flatMap((p) => Object.entries(t.obs!).map(([n, o]) => [`${p.id}#${n}`, o] as const))) : undefined
+        feito = await marcarLote(c, pecas, t.etapa, t.resultado, t.id, obs, t.itens ? new Set(t.itens) : undefined)
       } else {
         const ficha = d.fichaPorId.get(t.fichaId)
         if (!ficha) throw new Error('a ficha do toque não está mais no aparelho')

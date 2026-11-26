@@ -4,7 +4,7 @@ Mesma lógica da estrutura: a prancha vigente fica de fundo e cada local de insp
 tocável. Aqui a prancha é a de arquitetura do pavimento e o local é o ambiente (sala, suíte, banho...).
 
 De onde sai cada coisa:
-- contorno dos ambientes: do modelo IFC da arquitetura. O modelo da obra piloto não traz os cômodos prontos
+- contorno dos ambientes: do modelo IFC da arquitetura. O modelo pode não trazer os cômodos prontos
   (IfcSpace), mas traz paredes e portas: com as portas fechadas, cada espaço fechado entre paredes é
   um ambiente;
 - posição na prancha: as paredes do modelo são casadas com as paredes desenhadas no PDF (o desenho
@@ -679,6 +679,38 @@ def base_do_pdf(cfg: dict) -> dict:
             "comodos_do_pdf": comodos, "avisos_do_pdf": dados["avisos"]}
 
 
+def ler_ambientes_novos(caminho: str, ja: set[str]) -> list[dict]:
+    """Os elementos A de ambientes_novos.json (casas e recintos, publicar_planta.ambientes_novos_na_prancha), nas
+    coordenadas da prancha da planta. Nome repetido com um ambiente da planta: erro (o ponto iria para o outro)."""
+    import json
+    import pathlib
+
+    try:
+        lista = json.loads(pathlib.Path(caminho).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ErroAmbientes(f"ambientes_novos: não consegui ler {caminho} ({e})") from e
+    repetidos = sorted({a.get("nome") for a in lista} & ja)
+    if repetidos:
+        raise ErroAmbientes(f"ambientes_novos: nomes que a planta já tem: {', '.join(repetidos)}")
+    pecas = []
+    for a in lista:
+        if not a.get("nome") or not a.get("polys"):
+            raise ErroAmbientes(f"ambientes_novos: item sem nome ou sem contorno ({a.get('nome') or '?'})")
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+
+        g = unary_union([Polygon(p).buffer(0) for p in a["polys"] if len(p) >= 3])
+        cx, cy = g.representative_point().coords[0]
+        peca = {"tipo": "A", "nome": a["nome"], "secao": area_br(float(a.get("area_m2") or 0)), "grupo": a.get("grupo") or "Área comum",
+                "rotulo": [round(cx - 14, 2), round(cy - 5, 2), round(cx + 14, 2), round(cy + 5, 2)], "polys": a["polys"]}
+        if a.get("comodo"):
+            peca["comodo"] = a["comodo"]
+        if a.get("pendencia"):
+            peca["pendencia"] = a["pendencia"]
+        pecas.append(peca)
+    return pecas
+
+
 def ler_planta(cfg: dict, base: dict | None = None) -> dict:
     """Planta de ambientes no mesmo formato de estrutura.ler_forma (para publicar_planta.montar_trecho).
     base: o de base_da_planta(cfg), se já calculado (a planta de modulação usa o mesmo)."""
@@ -704,6 +736,13 @@ def ler_planta(cfg: dict, base: dict | None = None) -> dict:
         if a["nome"] in comodos:
             peca["comodo"] = comodos[a["nome"]]
         pecas.append(peca)
+    rel_novos = None
+    if cfg.get("ambientes_novos"):
+        # casas e recintos que as instalações acharam (publicar_planta, ambientes_novos.json, 26/11/2026): entram
+        # depois dos "AC-xx", com o nome que o ponto já leva; "Recinto sem nome N" é pendência para dar o nome
+        novos = ler_ambientes_novos(cfg["ambientes_novos"], {p["nome"] for p in pecas})
+        pecas.extend(novos)
+        rel_novos = {"ambientes": len(novos), "sem_nome": sorted(p["nome"] for p in novos if p.get("pendencia"))}
     rel_fichas = None
     if cfg.get("fichas_por_comodo"):
         # que ficha vale em que tipo de cômodo: dado da obra, fora do repositório (exemplo em fichas_por_comodo.exemplo.json)
@@ -758,6 +797,7 @@ def ler_planta(cfg: dict, base: dict | None = None) -> dict:
                    "modelo_de_nomes": modelo_da_tabela(nomeados, aptos, ambientes, ler_tabela_de_nomes(cfg["nomes"]) if cfg.get("nomes") else None),
                    **({"nomes": resumo_nomes} if resumo_nomes else {}),
                    **({"avisos_do_pdf": b["avisos_do_pdf"]} if b.get("avisos_do_pdf") else {}),
+                   **({"ambientes_novos": rel_novos} if rel_novos else {}),
                    **({"fichas_por_comodo": rel_fichas} if rel_fichas else {}),
                    **({"esquadrias": rel_esquadrias} if rel_esquadrias else {}),
                    **({"modulacao": rel_modulacao} if rel_modulacao else {}),

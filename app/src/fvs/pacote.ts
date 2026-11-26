@@ -63,6 +63,9 @@ export interface ElementoPacote {
   /** só ambiente: códigos das fichas que não valem neste cômodo (tabela ficha × tipo de cômodo da obra,
    *  pipeline/fvs/ambientes.py). Sem o campo, todas valem */
   sem_fichas?: string[]
+  /** só ambiente: "nome" = recinto que as instalações acharam sem nome na prancha ("Recinto sem nome N", 26/11/2026);
+   *  o nome é provisório, pendência para dar o nome */
+  pendencia?: 'nome'
   /** só ambiente: quadrado da grade de escavação da planta de fundação (item 1.2, 24/11/2026). Vale só a ficha de
    *  `fichas_da_grade` do pacote e fica fora do andamento dos ambientes */
   grade?: 'escavacao' | 'baldrame'

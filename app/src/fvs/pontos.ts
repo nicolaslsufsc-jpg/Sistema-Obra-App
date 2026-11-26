@@ -135,7 +135,7 @@ export function textoDoAvancoDosPontos(a: { ok: number; errados: number; total: 
 }
 
 /**
- * Planta com muitos pontos (23/11/2026, pacotes reais: 908 pontos elétricos no mezanino, 546 de água no 2º):
+ * Planta com muitos pontos (23/11/2026, pacotes reais com centenas de pontos por disciplina):
  * de longe as bolinhas viram manchas e o toque pega o ponto errado. Acima deste número de pontos (os do
  * filtro), longe aparece um número por quadrado, como nos furos (furos_laje.ts), e os pontos só de perto.
  */
@@ -152,7 +152,7 @@ const PX_ENTRE_PONTOS = 24
 export function zoomDosPontos(pontos: Readonly<Record<string, PontoPacote>> | undefined): number {
   const pts = Object.values(pontos ?? {}).map((p) => p.ponto)
   if (pts.length < 2) return -2
-  // vizinho mais próximo pela varredura em x (23/11: o elétrico do andar-tipo tem ~5.900 pontos, e comparar
+  // vizinho mais próximo pela varredura em x (23/11: o elétrico de um andar real tem milhares de pontos, e comparar
   // todos com todos travava a tela por quase 1 s no PC)
   const xs = [...pts].sort((a, b) => a[0] - b[0])
   const ds: number[] = []
@@ -287,13 +287,21 @@ export function itemMarcaOPonto(i: ItemFicha, p: Pick<PontoPacote, 'disciplina' 
  */
 export function fichasDoPonto(
   fichas: readonly Ficha[],
-  p: Pick<PontoPacote, 'disciplina' | 'tipo'>,
+  p: Pick<PontoPacote, 'disciplina' | 'tipo'> & { ambiente?: string },
   fichasDeLaje: readonly Ficha[] = [],
   semFichas: readonly string[] = [],
+  ambientesCalculados = false,
 ): Array<{ ficha: Ficha; item: number }> {
+  // fora de cômodo (jardim, deck, laje em volta da piscina, vazio; e o SPDA de fachada): o item da instalação na
+  // ficha de laje, em todas as disciplinas (decisão do Nicolas, 25/11/2026). Só na planta em que o pipeline
+  // calculou o ambiente dos pontos: sem nenhum ponto com ambiente, nada mudou (pacote antigo)
+  if (ambientesCalculados && !p.ambiente) {
+    const fl = fichaDosPontos([], p.disciplina, fichasDeLaje, p.tipo)
+    return fl ? [fl] : []
+  }
   const daDisciplina = fichas.filter((f) => itemDosPontos(f, p.disciplina))
   if (!daDisciplina.length) {
-    const fl = fichaDosPontos([], p.disciplina, fichasDeLaje)
+    const fl = fichaDosPontos([], p.disciplina, fichasDeLaje, p.tipo)
     return fl ? [fl] : []
   }
   const r: Array<{ ficha: Ficha; item: number }> = []
@@ -306,7 +314,7 @@ export function fichasDoPonto(
   // de parede do cômodo que tira as fichas de elétrica): volta para o item da instalação na ficha de laje, como em
   // 21/11 (decisão do Nicolas, 25/11: "volta para a laje"; a caixa de parede sem ficha, decisão do Professor, 25/11)
   if (!r.length && LAJE_SEM_ITEM_DE_AMBIENTE.has(p.disciplina)) {
-    const fl = fichaDosPontos([], p.disciplina, fichasDeLaje)
+    const fl = fichaDosPontos([], p.disciplina, fichasDeLaje, p.tipo)
     return fl ? [fl] : []
   }
   return r
@@ -315,11 +323,35 @@ export function fichasDoPonto(
 /** Disciplinas em que o tipo sem item de ficha de ambiente grava no item da ficha de laje (25/11/2026). */
 const LAJE_SEM_ITEM_DE_AMBIENTE: ReadonlySet<DisciplinaDePontos> = new Set(['eletrico'])
 
-/** O item da ficha de laje que é da instalação da disciplina (`"instalacao"` no item; o SPDA não tem). */
-const INSTALACAO_DA_DISCIPLINA: Partial<Record<DisciplinaDePontos, NonNullable<ItemFicha['instalacao']>>> = {
-  hidro: 'agua',
-  sanitario: 'esgoto',
-  eletrico: 'eletrica',
+/** A planta em que o pipeline calculou o ambiente dos pontos (algum ponto tem "ambiente"): ali, o ponto sem
+ *  ambiente está fora de cômodo e vai para o item da laje (25/11/2026). */
+export function ambientesCalculados(pontos: Readonly<Record<string, Pick<PontoPacote, 'ambiente'>>> | undefined): boolean {
+  return !!pontos && Object.values(pontos).some((q) => !!q.ambiente)
+}
+
+type InstalacaoDaLaje = NonNullable<ItemFicha['instalacao']>
+/** Tipos do preventivo que são rede de água (hidrante, sprinkler, tubulação): vão para o item de água da laje. */
+const PREVENTIVO_DE_AGUA: ReadonlySet<string> = new Set(['hidrante', 'sprinkler', 'tubo_incendio', 'tubo', 'registro', 'coluna'])
+
+/**
+ * Os itens da ficha de laje (`"instalacao"`) que servem à disciplina, na ordem de preferência. A ficha de laje só
+ * tem água, esgoto e elétrica. SPDA (captor, descida, conector) vai para a elétrica; preventivo: hidrante,
+ * sprinkler e tubulação para a água, o resto (sinalização, emergência, detector, alarme, extintor) para a
+ * elétrica. Decisão mais simples, anotada (26/11/2026): o Nicolas disse "item da laje" para todas as disciplinas,
+ * e a ficha não tem item de PPCI nem de SPDA.
+ */
+function instalacoesDaLaje(d: DisciplinaDePontos, tipo?: string): readonly InstalacaoDaLaje[] {
+  switch (d) {
+    case 'hidro':
+      return ['agua']
+    case 'sanitario':
+      return ['esgoto']
+    case 'eletrico':
+    case 'spda':
+      return ['eletrica']
+    case 'preventivo':
+      return tipo === undefined ? ['agua', 'eletrica'] : PREVENTIVO_DE_AGUA.has(tipo) ? ['agua'] : ['eletrica']
+  }
 }
 
 /**
@@ -331,17 +363,17 @@ export function fichaDosPontos(
   fichas: readonly Ficha[],
   disciplina: DisciplinaDePontos,
   fichasDeLaje: readonly Ficha[] = [],
+  tipo?: string,
 ): { ficha: Ficha; item: number } | undefined {
   for (const f of fichas) {
     const it = itemDosPontos(f, disciplina)
     if (it) return { ficha: f, item: it.n }
   }
-  const inst = INSTALACAO_DA_DISCIPLINA[disciplina]
-  if (!inst) return undefined
-  for (const f of fichasDeLaje) {
-    const it = f.itens.find((i) => i.instalacao === inst)
-    if (it) return { ficha: f, item: it.n }
-  }
+  for (const inst of instalacoesDaLaje(disciplina, tipo))
+    for (const f of fichasDeLaje) {
+      const it = f.itens.find((i) => i.instalacao === inst)
+      if (it) return { ficha: f, item: it.n }
+    }
   return undefined
 }
 

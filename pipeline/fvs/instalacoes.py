@@ -3,7 +3,7 @@ cada disciplina, numa planta própria do pavimento, como a armadura de laje (arm
 
 Escolha provisória (aprovada pelo Professor como suposição; a final é do Nicolas): o ponto NÃO é peça em
 "elementos". Vai no pacote da planta como sobreposição ("pontos", como as "barras"), com id fixo calculado
-da disciplina e do id do objeto no modelo. A ficha (PVS 010.x, lote por ambiente) fica no ambiente; o ponto
+da disciplina e do id do objeto no modelo. A ficha (EXE-PVS-1x, lote por ambiente) fica no ambiente; o ponto
 conferido alimenta o item dela. Alternativa, se o Nicolas preferir: tipo de peça novo "I" em elementos
 (precisa de migração do núcleo).
 
@@ -16,9 +16,9 @@ três saem do Revit do mesmo projeto). Conferir na tela: os pontos têm que cair
 
 Classificação dos pontos (suposição, ajustar com o IFC real): pela classe IFC e pelo nome do objeto.
 
-Elétrico e SPDA (20/11/2026, pedido do Professor): mesmo padrão. Elétrico = caixas na laje (PES 009.4: caixa
-de passagem, caixa octogonal do ponto de luz) e quadros (PVS 009.x). SPDA = captores (PVS 009.2.1), descidas e
-caixas de inspeção (PVS 009.2.2), hastes de aterramento. Sem os IFC reais, a classificação é SUPOSIÇÃO: nomes
+Elétrico e SPDA (20/11/2026, pedido do Professor): mesmo padrão. Elétrico = caixas na laje (EXE-PES-09: caixa
+de passagem, caixa octogonal do ponto de luz) e quadros (EXE-PVS-2x). SPDA = captores (EXE-PVS-31), descidas e
+caixas de inspeção (EXE-PVS-32), hastes de aterramento. Sem os IFC reais, a classificação é SUPOSIÇÃO: nomes
 usuais do Revit em português e as classes IFC de elétrica. O eletroduto é linha, não ponto: fica fora (a
 decidir se entra como linha, como as barras). A descida do SPDA, vertical, aparece na planta como ponto.
 
@@ -447,31 +447,44 @@ def ler_ifc(caminho: str, niveis: list[str], disciplina: str) -> list[dict]:
     return saida
 
 
-AMBIENTE_PERTO_CM = 30.0  # o ponto na parede fica com o ambiente a menos disto
+AMBIENTE_PERTO_CM = 60.0  # o ponto na parede fica com o ambiente a menos disto (30 até 25/11; 60 por decisão do Nicolas, 25/11)
+SHAFT_PERTO_CM = 100.0  # o ponto no shaft fica com o cômodo vizinho a menos disto (decisão do Nicolas, 25/11)
 
 
-def ambiente_dos_pontos(pontos: list[dict], geometrias: dict, metros_por_cm: float = 0.01) -> dict:
+def ambiente_dos_pontos(pontos: list[dict], geometrias: dict, metros_por_cm: float = 0.01,
+                      perto_cm: float = AMBIENTE_PERTO_CM, shafts: list | None = None, shaft_perto_cm: float = 0.0) -> dict:
     """Põe em cada ponto do modelo o ambiente onde ele cai ("ambiente": o nome do ambiente da planta de ambientes,
     "201-03"). geometrias: {nome: polígono shapely do ambiente, nas coordenadas do modelo de arquitetura, em
-    metros}. Na obra piloto os modelos de instalações estão nas mesmas coordenadas da arquitetura (23/11: 415 de
-    546 pontos de água e esgoto do 2º dentro de um ambiente; os outros na parede). O ponto na parede fica com o
-    ambiente mais perto, até AMBIENTE_PERTO_CM. Devolve {com_ambiente, sem_ambiente}."""
+    metros}. Os modelos de instalações estão nas mesmas coordenadas da arquitetura (23/11: a maior parte dos
+    pontos de água e esgoto cai dentro de um ambiente; os outros na parede). O ponto na parede fica com o
+    ambiente mais perto, até perto_cm (padrão AMBIENTE_PERTO_CM). Devolve {com_ambiente, sem_ambiente}.
+
+    Shaft (decisão do Nicolas, 25/11: "cômodo vizinho"): shafts = polígonos dos shafts da prancha
+    (recintos_da_prancha); o ponto dentro de um shaft fica com o cômodo mais perto até shaft_perto_cm (o
+    publicador usa SHAFT_PERTO_CM). Ponto dentro de dois ambientes (casa e sala do pacote se encostando): vale o
+    que vem primeiro em geometrias. Ponto na parede entre duas casas: a mais perto do ponto (o centro dele).
+    Ponto que não fica com ambiente nenhum vai para o item da laje (decisão de 25/11, todas as disciplinas)."""
     from shapely.geometry import Point
     from shapely.strtree import STRtree
 
     nomes = list(geometrias)
     geo = [geometrias[n] for n in nomes]
     arvore = STRtree(geo) if geo else None
-    raio = AMBIENTE_PERTO_CM * metros_por_cm
+    raio = perto_cm * metros_por_cm
+    raio_shaft = shaft_perto_cm * metros_por_cm
+    arv_shaft = STRtree(shafts) if shafts and raio_shaft > 0 else None
     com = 0
     for p in pontos:
         if arvore is None:
             break
         q = Point(p["x"] * metros_por_cm, p["y"] * metros_por_cm)
-        dentro = [i for i in arvore.query(q) if geo[i].contains(q)]
+        dentro = sorted(int(i) for i in arvore.query(q) if geo[i].contains(q))
         if not dentro:
-            perto = [(geo[i].distance(q), i) for i in arvore.query(q.buffer(raio))]
-            perto = [d for d in perto if d[0] <= raio]
+            r = raio
+            if arv_shaft is not None and any(shafts[i].contains(q) for i in arv_shaft.query(q)):
+                r = max(raio, raio_shaft)
+            perto = [(geo[i].distance(q), i) for i in arvore.query(q.buffer(r))]
+            perto = [d for d in perto if d[0] <= r]
             dentro = [min(perto)[1]] if perto else []
         if dentro:
             p["ambiente"] = nomes[dentro[0]]
@@ -504,6 +517,119 @@ def ambientes_do_pacote(manifest: dict, para_modelo) -> dict:
             saida[e["nome"]] = unary_union(partes)
     if not saida:
         raise ErroInstalacoes("o pacote de ambientes não tem nenhum ambiente (elemento A)")
+    return saida
+
+
+
+# Recintos da prancha (25/11): o vazio entre as paredes desenhadas, com os vãos de porta fechados
+SHAFT_MAX_M2 = 4.0  # recinto fechado menor que isto é shaft
+RECINTO_MAX_M2 = 3000.0  # maior que isto (ou encostado na borda da prancha) é área aberta, não cômodo
+VAO_DE_PORTA_PX = 5  # fechamento das paredes, em pixels de 10 cm (fecha vão de até ~1 m)
+COBERTO_MIN = 0.2  # recinto com menos disto da área dentro de ambientes do pacote é "sem ambiente"
+RECINTO_SEM_NOME = "Recinto sem nome"  # rótulo neutro: o Nicolas dá o nome (nunca inventar)
+
+
+def recintos_da_prancha(parede, k: float, t: dict, ambientes: dict) -> dict:
+    """Os recintos fechados da prancha, nas coordenadas do modelo (metros). parede: imagem booleana das
+    paredes (a "imagem" de ambientes.casar_com_a_prancha com com_imagem=True, > 0,5), k: pixel por ponto da
+    prancha, t: o casamento. ambientes: {nome: polígono} dos ambientes que já existem.
+    Devolve {"shafts": [polígonos < SHAFT_MAX_M2], "sem_ambiente": [polígonos de SHAFT_MAX_M2 a
+    RECINTO_MAX_M2 quase fora dos ambientes]}. Recinto encostado na borda da imagem é área aberta e não entra."""
+    import numpy as np
+    from scipy import ndimage as nd
+    from shapely.affinity import affine_transform
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+
+    ppm = t["pt_por_m"]
+    s = 1.0 / (k * ppm)  # metros por pixel
+    mapa = [s, 0, 0, -s, t["x0"] - t["dx_pt"] / ppm, t["y1"] + t["dy_pt"] / ppm]  # pixel -> metros do modelo
+    fechada = nd.binary_closing(np.asarray(parede, dtype=bool), structure=np.ones((3, 3), bool), iterations=VAO_DE_PORTA_PX)
+    rot, _ = nd.label(~fechada)
+    borda = set(np.unique(np.concatenate([rot[0], rot[-1], rot[:, 0], rot[:, -1]])).tolist())
+    tamanho = np.bincount(rot.ravel())
+    todos = unary_union(list(ambientes.values())) if ambientes else None
+    shafts, sem = [], []
+    for r, fatia in enumerate(nd.find_objects(rot), start=1):
+        area = tamanho[r] * s * s
+        if fatia is None or r in borda or area > RECINTO_MAX_M2:
+            continue
+        j0, i0 = fatia[0].start, fatia[1].start
+        caixas = []
+        for j, linha in enumerate(rot[fatia] == r):
+            d = np.diff(np.concatenate([[0], linha.astype(np.int8), [0]]))
+            for a, b in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)):
+                caixas.append(box(i0 + a, j0 + j, i0 + b, j0 + j + 1))
+        geo = affine_transform(unary_union(caixas), mapa)
+        if area < SHAFT_MAX_M2:
+            shafts.append(geo)
+        elif todos is None or geo.intersection(todos).area < COBERTO_MIN * geo.area:
+            sem.append(geo)
+    return {"shafts": shafts, "sem_ambiente": sem}
+
+
+def nomear_recintos(recintos: list, pontos: list[dict], textos: list | None = None, metros_por_cm: float = 0.01) -> dict:
+    """{nome: polígono} só dos recintos com algum ponto dentro, em ordem de cima para baixo e da esquerda para a
+    direita. O nome sai do texto da prancha dentro do recinto (textos: [(texto, x, y)] em metros do modelo,
+    textos_da_prancha); sem texto que sirva, "Recinto sem nome N", pendência para o Nicolas editar (decisão de
+    25/11). Nome repetido ganha " 2", " 3"."""
+    from shapely.geometry import Point
+    from shapely.strtree import STRtree
+
+    if not recintos:
+        return {}
+    arvore = STRtree(recintos)
+    usados = set()
+    for p in pontos:
+        q = Point(p["x"] * metros_por_cm, p["y"] * metros_por_cm)
+        usados.update(int(i) for i in arvore.query(q) if recintos[i].contains(q))
+    ordem = sorted(usados, key=lambda i: (-round(recintos[i].centroid.y), round(recintos[i].centroid.x)))
+    saida, sem_nome = {}, 0
+    for i in ordem:
+        nome = nome_pelo_texto(recintos[i], textos or [])
+        if not nome:
+            sem_nome += 1
+            nome = f"{RECINTO_SEM_NOME} {sem_nome}"
+        base, n = nome, 1
+        while nome in saida:
+            n += 1
+            nome = f"{base} {n}"
+        saida[nome] = recintos[i]
+    return saida
+
+
+RE_TEXTO_QUE_NAO_E_NOME = re.compile(
+    r"m²|m2\b|^\s*[AÁ]\s*[:=]|^[\s\d.,+\-=:%()/x]*$|^(PISO|FORRO|PAREDE|RODAP[EÉ]|TETO|H\s*=|N[IÍ]VEL|COTA|PD|P\.D|EL\.?)\b",
+    re.IGNORECASE)
+
+
+def nome_pelo_texto(recinto, textos: list) -> str | None:
+    """O nome do recinto pelo texto da prancha que cai dentro dele: a linha mais alta com pelo menos 3 letras que
+    não seja área, cota, nível ou acabamento. None se não houver."""
+    from shapely.geometry import Point
+
+    bons = [(y, x, s.strip()) for s, x, y in textos
+            if sum(ch.isalpha() for ch in s) >= 3 and not RE_TEXTO_QUE_NAO_E_NOME.search(s.strip())
+            and recinto.contains(Point(x, y))]
+    if not bons:
+        return None
+    return " ".join(max(bons)[2].split())
+
+
+def textos_da_prancha(page, para_modelo) -> list:
+    """[(texto, x, y)] de cada linha de texto da prancha, com o centro em metros do modelo."""
+    import pymupdf as fitz
+
+    M = page.rotation_matrix
+    saida = []
+    for b in page.get_text("dict")["blocks"]:
+        for linha in b.get("lines", []):
+            s = "".join(sp["text"] for sp in linha["spans"]).strip()
+            if not s:
+                continue
+            x0, y0, x1, y1 = linha["bbox"]
+            q = fitz.Point((x0 + x1) / 2, (y0 + y1) / 2) * M
+            saida.append((s, *para_modelo(q.x, q.y)))
     return saida
 
 
@@ -641,8 +767,8 @@ PT_POR_CM = 72 / 2.54 / 50  # folha na escala 1:50
 
 def a_conferir(pontos: dict, pecas: list[dict]) -> dict:
     """O que a pessoa confere na obra, além do toque: descidas longe de pilar. A descida ou o conector a mais de
-    FORA_DA_ESTRUTURA_CM de qualquer pilar sai da planta (muda pontos): no 2º da obra piloto eram 11 numa
-    diagonal em área vazia, fora das pranchas (achado do 10, 23/11). Fica na lista, para conferir."""
+    FORA_DA_ESTRUTURA_CM de qualquer pilar sai da planta (muda pontos): apareceram numa diagonal em área vazia,
+    fora das pranchas (achado do 10, 23/11). Fica na lista, para conferir."""
     caixas = []
     for p in pecas:
         if p.get("tipo") == "P":

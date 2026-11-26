@@ -211,7 +211,7 @@ nome de coluna. Migração `20261121130000_sistema_oficial_leitura.sql`, teste `
 - `plantas.revisao_id` aponta para `revisoes` (Projetos): planta nova nasce de revisão nova.
 - `fvs_eventos.planta_id` guarda contra qual revisão foi conferido.
 - `fvs_eventos` é de um local só: peça (`elemento_id`), área de laje (`area_id`) ou barra de laje (`barra_id`, desde 20/11/2026, migração `20261120140000_fvs_eventos_barra.sql`). A barra não vira peça em `elementos`:
-  1. são milhares por pavimento (2.236 no 2º da obra piloto, nas quatro camadas), e cada linha de `elementos` desceria para todo aparelho da obra;
+  1. são milhares por pavimento (nas quatro camadas), e cada linha de `elementos` desceria para todo aparelho da obra;
   2. a barra já mora no pacote da planta (manifest `barras`), com id fixo calculado da camada, da prancha e da posição;
   3. por isso `barra_id` não tem chave estrangeira e o registro da barra exige `planta_id` (essa sim conferida), como a ligação furo → área, que também fica no pacote.
 - `caminhao_elementos.elemento_id` liga concreto à mesma planta da FVS.

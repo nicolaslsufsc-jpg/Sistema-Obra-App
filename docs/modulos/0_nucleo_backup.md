@@ -84,7 +84,7 @@ Serve para saber se o backup presta e para olhar os dados de um backup antigo. T
 
 Outras opções: `--zip <arquivo>` (um backup específico); sem `--abrir`, só restaura e confere. Se o app não compilar porque falta instalar, rodar uma vez `npm install` dentro da pasta `app` da cópia `codigo`.
 
-Primeiro ensaio, 25/11/2026, com o backup de 23/11 (309 MB): restaurou e conferiu as 3 obras (65.346 linhas e 156 arquivos, nenhum faltando) e o app abriu a obra piloto com a FVS (planta e marcações) e o Concreto (concretagens e laudos). O que faltou está em "Limites".
+Primeiro ensaio, 25/11/2026, com o backup de 23/11: restaurou e conferiu todas as obras (todas as linhas e arquivos, nenhum faltando) e o app abriu a obra piloto com a FVS (planta e marcações) e o Concreto (concretagens e laudos). O que faltou está em "Limites".
 
 ## Restaurar de verdade (se o servidor se perder)
 
@@ -97,7 +97,7 @@ Primeiro ensaio, 25/11/2026, com o backup de 23/11 (309 MB): restaurou e conferi
 
 ## Limites (o que este backup não faz)
 
-- Cópia no Google Drive: depende do Google Drive para computador ligado e com espaço (cada backup tem uns 260 MB; 8 dão uns 2 GB). Se o Drive parar de sincronizar, a pasta do PC continua, mas a cópia na nuvem fica para trás: olhar de vez em quando no drive.google.com se o último zip chegou.
+- Cópia no Google Drive: depende do Google Drive para computador ligado e com espaço (cada backup tem algumas centenas de MB; 8 juntos chegam a alguns GB). Se o Drive parar de sincronizar, a pasta do PC continua, mas a cópia na nuvem fica para trás: olhar de vez em quando no drive.google.com se o último zip chegou.
 - Não guarda o que está só nos aparelhos e ainda não sincronizou (a fila de cada celular).
 - O que foi marcado como apagado no app continua no backup (nada é apagado de fato no servidor).
 - Os achados do ensaio de 25/11 (contas sem e-mail; `projetos_pedidos_atualizacao`, `fvs_redesenhos`, `fvs_tratativas`, `projetos_formularios` e `recebimento_usos` fora do backup) foram corrigidos no mesmo dia, sem migração (ok do Nicolas: "blz pode os 3"). Valem do primeiro backup depois do merge em diante: os backups anteriores continuam sem essas coisas.

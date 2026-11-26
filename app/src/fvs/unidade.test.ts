@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { lerRegras } from './regras'
-import { avisoDaUnidadeAnterior, ehDeGrupo, outrosDoGrupo, unidadeDeGrupo, type LocalDoGrupo } from './unidade'
+import { avisoDaUnidadeAnterior, ehDeGrupo, itensCDoLocal, observacoesDoLocal, outrosDoGrupo, unidadeDeGrupo, type LocalDoGrupo } from './unidade'
+import type { EventoFvs } from './situacao'
 
 const regras = lerRegras({
   unidades: [
@@ -63,5 +64,24 @@ describe('unidade de conferência nas telas (ideia 14)', () => {
     expect(avisoDaUnidadeAnterior(regras, 'EXE-PVS-01', ['2026-11-10T10:00:00Z'], '2026-11-26')).toBeNull()
     // antes de a troca valer, a tela ainda é a antiga: sem aviso
     expect(avisoDaUnidadeAnterior(regras, 'EXE-PVS-02', ['2026-11-20T13:00:00Z'], '2026-11-24')).toBeNull()
+  })
+
+  // revisão de 25/11 (QUAL-3): o pincel mandava ao grupo todos os itens da ficha
+  const ev = (item: number, resultado: string | null, criado: string, ficha = 'f1') =>
+    ({ id: `${ficha}-${item}-${criado}`, ficha_id: ficha, item, resultado, rodada: 1, criado_em_dispositivo: criado }) as unknown as EventoFvs
+
+  it('ao grupo vão só os itens que ficaram C no local tocado: NC e NA do local não viram C nos outros', () => {
+    const antes = [ev(1, 'C', '2026-11-20T10:00:00Z'), ev(2, 'NC', '2026-11-20T10:00:00Z'), ev(3, 'NA', '2026-11-20T10:00:00Z'), ev(9, 'C', '2026-11-20T10:00:00Z', 'f2')]
+    const doToque = [ev(4, 'C', '2026-11-25T21:00:00Z')]
+    // pedidos 1 a 5: 1 já era C, 4 virou C agora; 2 (NC), 3 (NA) e 5 (vazio, ficou de fora do toque) não vão
+    expect(itensCDoLocal('f1', [...antes, ...doToque], [1, 2, 3, 4, 5])).toEqual([1, 4])
+    // o item 2 reinspecionado para C conta; outra ficha não conta
+    expect(itensCDoLocal('f1', [...antes, ev(2, 'C', '2026-11-25T22:00:00Z')], [2, 9])).toEqual([2])
+  })
+
+  it('"Marcado antes do prazo" aceito no local vai, item por item, ao grupo', () => {
+    const prazo = new Map([['a1#2', 'Marcado antes do prazo (escoramento)'], ['a1#3', 'Marcado antes do prazo (reescoramento)'], ['a10#2', 'outro local']])
+    expect([...observacoesDoLocal('a1', prazo)]).toEqual([[2, 'Marcado antes do prazo (escoramento)'], [3, 'Marcado antes do prazo (reescoramento)']])
+    expect(observacoesDoLocal('a2', prazo).size).toBe(0)
   })
 })

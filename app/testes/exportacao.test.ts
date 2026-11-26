@@ -244,11 +244,12 @@ suite('exportação de obra', () => {
       expect(perfil[0]).toEqual({ nome: 'Admin', papel: 'admin' })
       const { rows: acessoCampo } = await novo.query('select papel from public.acessos where usuario_id = $1 and obra_id = $2', [campo.id, OBRA1])
       expect(acessoCampo[0].papel).toBe('campo')
-      // Conta que já existia: continua usuário comum e sem acesso.
+      // Conta que já existia: continua usuário comum e recebe só o acesso que tinha nesta obra.
       const { rows: gestor } = await novo.query('select papel from public.perfis where id = $1', [USUARIOS.gestor.id])
       expect(gestor[0].papel).toBe('usuario')
-      const { rows: acessoGestor } = await novo.query('select count(*)::int as n from public.acessos where usuario_id = $1', [USUARIOS.gestor.id])
-      expect(acessoGestor[0].n).toBe(0)
+      const consultaAcesso = 'select obra_id, papel from public.acessos where usuario_id = $1 order by obra_id'
+      const { rows: acessoGestorOrigem } = await sql.query(consultaAcesso.replace('order', 'and obra_id = $2 order'), [USUARIOS.gestor.id, OBRA1])
+      expect((await novo.query(consultaAcesso, [USUARIOS.gestor.id])).rows).toEqual(acessoGestorOrigem)
       // Exportado pelo admin: as contas novas voltam com o e-mail de login (lido pelas funções da tela
       // Pessoas da obra), para a pessoa entrar de novo na mesma conta. A que já existia fica como estava.
       const { rows: emailAdmin } = await novo.query('select email::text from auth.users where id = $1', [admin.id])

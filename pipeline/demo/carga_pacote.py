@@ -23,7 +23,8 @@ O pacote (PACOTE/obra.json; os caminhos de arquivo são relativos a PACOTE):
   "plantas": [{"pavimento": "Térreo", "trecho": "Planta inteira", "prancha": "...", "revisao": "R03",
                "imagem": "plantas/terreo.png", "largura": 2000, "altura": 1300,
                "pecas": [{"tipo": "P", "nome": "P1", "secao": "20x40", "polys": [[[x, y], ...]], "rotulo": [x, y]}]}],
-  "elementos": [{"pavimento": "Térreo", "tipo": "S", "nome": "E1", "secao": "D30"}],   (sem desenho: S, K, L)
+  "elementos": [{"pavimento": "Térreo", "tipo": "S", "nome": "E1", "secao": "D30"}],   (sem desenho: S, K, L;
+                                            a laje com contorno pode ir na planta, tipo L)
   "concretagens": [{"chave": "fund", "pavimento": "Térreo", "planta": "Planta inteira", "dias_antes": 30,
                     "local": "...", "alvo": "pilares", "fck": 25,
                     "caminhoes": [{"volume_m3": 8, "pecas": [["P", "P1"]], "cps": {"7": [20.1, 21.0], "28": [26, 27]}}]}],
@@ -96,7 +97,7 @@ def ler_pacote(pasta: pathlib.Path) -> dict:
         _exigir((pasta / pl["imagem"]).exists(), f"falta a imagem {pl['imagem']}")
         _exigir(pl["largura"] > 0 and pl["altura"] > 0, f"planta {k} sem tamanho")
         for pc in pl["pecas"]:
-            _exigir(pc["tipo"] in ("P", "V"), f"{pc['nome']}: na planta só P e V (S, K e L vão em \"elementos\")")
+            _exigir(pc["tipo"] in ("P", "V", "L"), f"{pc['nome']}: na planta só P, V e L com desenho (S e K vão em \"elementos\")")
             pecas.add((pl["pavimento"], pc["tipo"], pc["nome"]))
     for el in p.get("elementos") or []:
         _exigir(el["pavimento"] in nomes_pav, f"elemento em pavimento que não existe: {el['pavimento']}")

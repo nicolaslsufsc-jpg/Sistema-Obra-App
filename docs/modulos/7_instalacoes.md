@@ -275,6 +275,8 @@ Antes, o SPDA abria como "Só consulta", porque nenhuma ficha marcava os pontos 
 
 ## Ambiente dos pontos nos pavimentos sem IFC de arquitetura (25/11/2026, frente 20, commit 1f2fb2a)
 
+**Pontos sem ambiente (análise de 25/11):** motivos, contagem por tipo, regra proposta e as 3 perguntas de engenharia em [7_instalacoes_sem_ambiente.md](7_instalacoes_sem_ambiente.md). Próximo passo: esperar as respostas do Nicolas; nada muda no código até lá.
+
 Mezanino, pilotis e subsolo não têm IFC de arquitetura; o do mezanino tem só 37 objetos. Por isso o chat 22 tirou as salas da prancha em PDF. Os pontos de instalações, porém, estão nas coordenadas do modelo.
 
 - **Encaixe:** a prancha do pavimento é casada com as paredes de um andar tipo, por `ambientes.casar_com_a_prancha`, porque o núcleo e os pilares se repetem.

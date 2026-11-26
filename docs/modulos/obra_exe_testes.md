@@ -61,6 +61,22 @@ O formato está no começo de `pipeline/demo/carga_pacote.py`.
   camada de pilares mais perto do rótulo `Pn`; viga = par de faces ao lado do rótulo `Vn` (a busca do leitor da obra,
   com as coordenadas ×2 porque a escala é 1:75); seção pelo texto `LxA`; contornos no sentido em que a página aparece.
   Testes: `pipeline/testes/test_demo_forma_pdf.py` (prancha fictícia desenhada na hora, com e sem giro).
+- Leitor de forma em DXF (`pipeline/demo/forma_dxf.py`, 25/11/2026), para a obra demo de vários pavimentos (DWG
+  exportado com DXFOUT no accoreconsole). Mesma saída do leitor de PDF, camadas vindas do pacote (padrão de nomes do
+  Revit/AIA por omissão). Pilar `Pn`, `PCn`, `PDn`: contorno mais perto do rótulo, vindo de hachura, polilinha
+  fechada, laço de linhas soltas (pilar sem hachura) ou bloco (pilar circular, seção `D70`). Viga `Vn`/`VPn`: faces
+  ao lado do rótulo (faixa_reta; desenho girado, faixa_inclinada), com a largura da busca tirada da seção do rótulo
+  (até 150 cm). Laje `Ln` + `h=..`: contorno = hachura da laje que contém o rótulo ou, sem hachura, a menor região
+  fechada pelas vigas e bordas (shapely; sem ele, laje sem contorno). Unidades cm, mm ou m. Testes:
+  `pipeline/testes/test_demo_forma_dxf.py` (forma fictícia, também girada; pulam sem ezdxf/pymupdf, como no CI).
+- Folha plotada (25/11/2026): `extensao_do_cad` + `na_folha` passam o resultado (peças e lajes) para a página que o
+  `pipeline/fvs/plotar_dwg.py` gera (Model inteiro, cabe na folha, centrado). Conferido sobrepondo.
+- **Pacote EXE-PV montado em 25/11/2026, fora do repositório** (pasta da obra demo, com o script que o monta):
+  6 pavimentos (subsolo ao rooftop, um trecho de cada), 136 pilares, 79 vigas e 93 lajes com desenho, 4 concretagens
+  e diário de EXEMPLO, 6 projetos. 464 linhas, 12 arquivos, imagens 5,9 MB. Conferido no Postgres local junto com a
+  EXE: duas rodadas sem duplicar.
+- Ainda de fora (21 peças, vão para `sem_contorno`): vigas curvas, viga mais larga que 150 cm, pilar que só aparece
+  como projeção do andar de baixo e alguns pilares do rooftop com o rótulo longe do contorno.
 - **Pacote da CPT2 montado em 25/11/2026, fora do repositório** (pasta da obra demo, com LEIA-ME, fontes e o script
   que monta o pacote): 4 pavimentos, 3 plantas inteiras, 811 peças, 950 linhas. Conferido no Postgres local junto com
   a EXE: 1470 linhas, duas rodadas sem duplicar. **Não publicado**: espera o Professor conferir; o envio dos arquivos

@@ -134,6 +134,37 @@ class TestRestauracaoInteira(unittest.TestCase):
             conn.close()
         self.assertFalse(any("projetos_pedidos_atualizacao" in l for l in linhas if l.startswith("  - ")))
 
+    def test_duas_obras_no_mesmo_backup_a_pessoa_recebe_o_acesso_das_duas(self):
+        """A conta nasce na primeira obra; na segunda já existe, mas recebe o acesso que tinha nela
+        (só esse, só dessa obra), sem mudar o papel."""
+        self._restaurar()  # obra EXE: cria a conta da PESSOA
+        conn = self.banco.conectar()
+        try:
+            papel_antes = conn.execute("select papel from public.perfis where id = %s", [PESSOA]).fetchone()[0]
+        finally:
+            conn.close()
+        obra2 = "0b000000-0000-0000-0000-000000000002"
+        obra = {"id": obra2, "codigo": "EXE-NO2", "nome": "Obra Exemplo 2", "empresa": None, "criado_por": None,
+                "criado_em_servidor": "2026-11-21T09:00:00+00:00", "atualizado_em": "2026-11-21T09:00:00+00:00", "apagado": False}
+        perfis = [{"id": PESSOA, "nome": "Pessoa", "papel": "admin", "criado_em": "2026-11-21T09:00:00+00:00",
+                   "atualizado_em": "2026-11-21T09:00:00+00:00", "email": None}]
+        acessos = [{"usuario_id": PESSOA, "obra_id": obra2, "papel": "gestor",
+                    "criado_em": "2026-11-21T09:00:00+00:00", "atualizado_em": "2026-11-21T09:00:00+00:00"},
+                   # linha de outra obra que viesse por engano não vira acesso
+                   {"usuario_id": PESSOA, "obra_id": OBRA, "papel": "leitura",
+                    "criado_em": "2026-11-21T09:00:00+00:00", "atualizado_em": "2026-11-21T09:00:00+00:00"}]
+        sql = self.trabalho / "restaurar_obra2.sql"
+        sql.write_text(rb.exp.montar_sql(obra, [], acessos, perfis, [PESSOA]), encoding="utf-8")
+        conn = self.banco.conectar()
+        try:
+            antes_exe = conn.execute("select papel from public.acessos where usuario_id = %s and obra_id = %s", [PESSOA, OBRA]).fetchall()
+            self.banco.r.rodar_arquivo(conn, str(sql), {})
+            self.assertEqual(conn.execute("select papel from public.acessos where usuario_id = %s and obra_id = %s", [PESSOA, obra2]).fetchall(), [("gestor",)])
+            self.assertEqual(conn.execute("select papel from public.acessos where usuario_id = %s and obra_id = %s", [PESSOA, OBRA]).fetchall(), antes_exe)
+            self.assertEqual(conn.execute("select papel from public.perfis where id = %s", [PESSOA]).fetchone()[0], papel_antes)
+        finally:
+            conn.close()
+
     def test_servidor_local_responde_como_o_supabase(self):
         pasta_zip = self._restaurar()
         conn = self.banco.conectar()

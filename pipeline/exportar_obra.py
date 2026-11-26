@@ -39,6 +39,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 URL_PADRAO = "https://zktsuwxgvvyufuihkndj.supabase.co"  # projeto em São Paulo (04/11/2026)
 # Chave pública (publishable): o acesso é controlado pelas regras do banco. Não é segredo.
@@ -470,7 +471,8 @@ def montar_sql(
 
     Usa jsonb_populate_recordset: o próprio Postgres converte cada campo para o tipo da coluna.
     Os gatilhos ficam desligados durante a carga para manter as horas originais do servidor.
-    Contas que já existiam no destino não mudam de papel nem ganham acessos.
+    Contas que já existiam no destino não mudam de papel; recebem só o acesso que tinham nesta obra
+    (o mesmo do backup, nada além: a obra é nova no destino).
     """
     marca = f"$so_{secrets.token_hex(6)}$"
     email_de = {p["id"]: (p.get("email") or "").strip().lower() or None for p in perfis}
@@ -479,7 +481,7 @@ def montar_sql(
         "-- Restauração da obra " + obra["codigo"] + " (Sistema Obra, formato " + str(FORMATO) + ")",
         "-- Aplicar com psql num banco que já tenha as migrações de supabase/migrations/.",
         "-- Falha (e não grava nada) se a obra já existir no banco de destino.",
-        "-- Contas que já existiam no destino ficam como estão (papel e acessos por conta do admin de lá).",
+        "-- Contas que já existiam no destino mantêm o papel; recebem só o acesso que tinham nesta obra.",
         "set client_encoding = 'UTF8';",
         "",
         "begin;",
@@ -487,7 +489,7 @@ def montar_sql(
         "-- Pessoas citadas nos registros. Num banco novo, cria a conta com o e-mail de login (quando a",
         "-- exportação foi feita pelo admin) para a pessoa entrar de novo na mesma conta; e-mail que já",
         "-- é de outra conta no destino fica de fora. Nome e papel vêm do perfil exportado. Quem não veio",
-        "-- na exportação fica como 'pessoa não exportada'. Só contas criadas aqui recebem papel e acessos.",
+        "-- na exportação fica como 'pessoa não exportada'. Só contas criadas aqui recebem papel.",
         "create temp table so_novas (id uuid primary key) on commit drop;",
         "create temp table so_contas on commit drop as",
         f"  select * from jsonb_to_recordset({literal_json(contas, marca)}::jsonb) as c(id uuid, email text);",
@@ -541,9 +543,11 @@ def montar_sql(
     partes += [f"alter table {tabela} enable trigger user;" for tabela, _ in tabelas]
     partes.append("")
     partes += [
+        "-- Os acessos desta obra, como estavam no backup, para todas as pessoas, inclusive conta que já",
+        "-- existia (por exemplo, criada pela obra restaurada antes, do mesmo backup). Só desta obra.",
         "insert into public.acessos",
         f"select * from jsonb_populate_recordset(null::public.acessos, {literal_json(acessos, marca)}::jsonb) a",
-        "where a.usuario_id in (select id from so_novas)",
+        f"where a.obra_id = '{uuid.UUID(str(obra['id']))}'::uuid",
         "on conflict (usuario_id, obra_id) do nothing;",
         "",
         "commit;",
@@ -569,7 +573,7 @@ O que tem aqui
   Comando:
       psql "URL_DO_BANCO" -v ON_ERROR_STOP=1 -f restaurar.sql
   Falha inteiro se a obra já existir no destino. Contas que já existiam no destino não mudam
-  de papel nem ganham acessos (fica por conta do admin de lá).
+  de papel; recebem só o acesso que tinham nesta obra (o do backup).
   Os arquivos voltam para o armazenamento no mesmo caminho: {{obra_id}}/... (arquivos/ = {obra_id}/).
 
 Conferência

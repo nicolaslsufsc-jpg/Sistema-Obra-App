@@ -108,6 +108,12 @@ class TestLeitura(unittest.TestCase):
     def test_revisao_fora_do_formato(self):
         self.recusa(lambda p: p["projetos"][0]["revisoes"].append({"fase": "R", "numero": "3", "dias_antes": 1}))
 
+    def test_laje_com_contorno_na_planta(self):
+        p = pacote_de_teste()
+        p["plantas"][0]["pecas"].append({"tipo": "L", "nome": "L1", "secao": "h12", "polys": [[[40, 45], [200, 45], [200, 200], [40, 200]]]})
+        with Pasta(p) as d:
+            self.assertIn("L1", [pc["nome"] for pc in cp.ler_pacote(d)["plantas"][0]["pecas"]])
+
     def test_pavimento_inexistente(self):
         self.recusa(lambda p: p["elementos"].append({"pavimento": "Cobertura", "tipo": "S", "nome": "E2"}))
 

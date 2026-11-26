@@ -1807,6 +1807,16 @@
     .fv-prog .fv-prog-lib {
       white-space: nowrap;
     }
+    /* com "Pincel" e "Por item" no topo (25/11), em 768 com a fonte larga do Linux o "Por item" saía
+       25 px para fora da tela: os dois botões e o espaço entre os blocos ficam mais justos */
+    .fv-topo {
+      gap: 6px;
+    }
+    .fv-bpincel,
+    .fv-bitem {
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
   }
   .fv-etapa {
     max-width: 120px;

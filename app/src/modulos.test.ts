@@ -7,10 +7,10 @@ import { modulosDoMenu } from './modulos'
 describe('módulos do menu', () => {
   it('com e sem conta, os mesmos módulos: Projetos e Documentos nos dois', () => {
     const ids = (semConta: boolean) => modulosDoMenu(semConta).map((m) => m.id)
-    expect(ids(false)).toEqual(['fvs', 'projetos', 'concreto', 'documentos', 'ifc'])
-    expect(ids(true)).toEqual(['fvs', 'projetos', 'concreto', 'documentos', 'ifc'])
-    // o único beta do menu é o Projetos, com e sem conta
-    expect(modulosDoMenu(false).filter((m) => m.beta).map((m) => m.id)).toEqual(['projetos'])
-    expect(modulosDoMenu(true).filter((m) => m.beta).map((m) => m.id)).toEqual(['projetos'])
+    expect(ids(false)).toEqual(['fvs', 'projetos', 'concreto', 'documentos', 'ifc', 'canteiro'])
+    expect(ids(true)).toEqual(['fvs', 'projetos', 'concreto', 'documentos', 'ifc', 'canteiro'])
+    // os betas do menu, com e sem conta: Projetos e o Mapa do canteiro (26/11)
+    expect(modulosDoMenu(false).filter((m) => m.beta).map((m) => m.id)).toEqual(['projetos', 'canteiro'])
+    expect(modulosDoMenu(true).filter((m) => m.beta).map((m) => m.id)).toEqual(['projetos', 'canteiro'])
   })
 })

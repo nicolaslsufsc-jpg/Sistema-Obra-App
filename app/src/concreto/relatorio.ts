@@ -110,6 +110,22 @@ function celula(v: string | number | null | undefined): string {
   return t
 }
 
+/**
+ * Legenda do relatório (26/11/2026): só as explicações do que aparece nele. Uma frase por linha.
+ */
+export function legendaDoRelatorio(porCaminhao: readonly LinhaPorCaminhao[]): string[] {
+  const itens = porCaminhao.flatMap((l) => l.pecas)
+  const linhas: string[] = []
+  if (itens.some((i) => i.parcial))
+    linhas.push('Percentual ao lado da peça (ex.: 45%): a área desenhada cobre só essa parte da peça (menos de 90%). Confira se outro caminhão completou a peça.')
+  if (itens.some((i) => i.peca.id === LAJE_DESENHADA.id))
+    linhas.push('Laje (área desenhada): o caminhão tem área de laje desenhada na planta; a planta não traz o contorno da laje, então não há percentual.')
+  if (itens.some((i) => i.origem === 'manual' && i.peca.id !== LAJE_DESENHADA.id))
+    linhas.push('Peça marcada no toque (sem desenho) entra inteira, sem percentual.')
+  if (porCaminhao.some((l) => l.pecas.length === 0))
+    linhas.push('Sem peça desenhada: o caminhão ainda não tem área nem peça marcada. Abra "Desenhar na planta" na concretagem.')
+  return linhas
+}
 export function percentual(f: number | null): string {
   return f === null ? '' : `${Math.round(f * 100)}%`
 }

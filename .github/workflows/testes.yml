@@ -22,7 +22,7 @@ concurrency:
 jobs:
   testes:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       # Nomes de obra e de empresa que não podem ir no site (fora do repositório, como segredo).
       # Sem o segredo, o build para no GitHub: ver app/sem_dados_de_obra.ts.

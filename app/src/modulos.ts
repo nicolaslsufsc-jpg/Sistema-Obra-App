@@ -20,7 +20,12 @@ const ProjetosSobDemanda = sobDemanda('Projetos', () =>
   import('./projetos/telas/ModuloProjetos').then((m) => m.ModuloProjetos),
 )
 
-export type IdModulo = 'fvs' | 'projetos' | 'concreto' | 'documentos' | 'relatorios' | 'ifc'
+// Mapa do canteiro (26/11/2026): quadro do canteiro com figuras; guarda só no aparelho (docs/modulos/8_canteiro.md).
+const CanteiroSobDemanda = sobDemanda('o Mapa do canteiro', () =>
+  import('./canteiro/telas/ModuloCanteiro').then((m) => m.ModuloCanteiro),
+)
+
+export type IdModulo = 'fvs' | 'projetos' | 'concreto' | 'documentos' | 'relatorios' | 'ifc' | 'canteiro'
 
 export interface PropsModulo {
   usuario: UsuarioLocal
@@ -58,6 +63,8 @@ export interface Modulo {
 // "a entregar"), só sem conta como o Documentos: a base e a lista ainda ficam no aparelho. Relatórios continua fora.
 // Desde 20/11/2026 (o Nicolas aprovou a lista de distribuição com conta, item 2 do núcleo, #44) o Projetos aparece
 // também com conta, ainda com o selo "beta". Com o Documentos (item 3), nenhum módulo do menu fica só sem conta.
+// Desde 26/11/2026 (pedido do Nicolas) o Mapa do canteiro entra no menu do app de testes, com o selo "beta":
+// funciona com e sem conta, mas o mapa fica só no aparelho (ainda sem tabela no servidor).
 // Para um deles voltar ao menu, apague o `foraDoMenu` da linha dele (e ligue `BETAS_NO_MENU` em testes/local.e2e.test.ts).
 const REGISTRO: readonly Modulo[] = [
   { id: 'fvs', nome: 'FVS', descricao: 'Fichas de pilares, vigas, lajes, furos e ambientes', Tela: FvsSobDemanda },
@@ -66,6 +73,7 @@ const REGISTRO: readonly Modulo[] = [
   { id: 'documentos', nome: 'Documentos', descricao: 'Lista mestra do PBQP-H: revisões, validade e impressão', Tela: DocumentosSobDemanda },
   { id: 'relatorios', nome: 'Relatórios', descricao: 'Diário de obra, problemas, limpeza', Tela: RelatoriosSobDemanda, foraDoMenu: true },
   { id: 'ifc', nome: 'IFC', descricao: 'Modelo 3D do projeto: abrir, buscar e cortar', Tela: IfcSobDemanda },
+  { id: 'canteiro', nome: 'Mapa do canteiro', descricao: 'Quadro do canteiro: caminhão, caçamba, grua, baias e setores', Tela: CanteiroSobDemanda, beta: true },
 ]
 
 // Só nos testes de tela: o build de teste liga VITE_TESTE_MODULOS_FORA_DO_MENU=1 para abrir também os

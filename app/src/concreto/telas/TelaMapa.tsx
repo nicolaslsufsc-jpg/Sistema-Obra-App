@@ -1,7 +1,7 @@
 // Mapa do pavimento: onde foi cada caminhão. Com um caminhão escolhido, a caneta desenha a
-// área que ele encheu e o dedo (toque curto numa peça) inclui ou tira a peça. São duas canetas
-// (07/11/2026): a dos pilares e a das vigas e da laje; cada área vale só nas peças da sua caneta,
-// e a área de vigas e laje põe a laje do trecho no caminhão.
+// área que ele encheu e o dedo (toque curto numa peça) inclui ou tira a peça. São seis canetas
+// (canetas.ts, 26/11/2026: pilares, vigas, lajes e as combinações); cada área vale só nas peças da
+// sua caneta, e as canetas com laje põem a laje do trecho no caminhão.
 // Sem caminhão escolhido, o mapa das concretagens: cada concretagem com uma cor, nas peças e nas
 // áreas desenhadas (é o "mapa de concretagem" do pavimento). Ou, na outra vista, a cor da situação
 // dos CPs. O toque numa peça mostra quais caminhões foram nela.
@@ -14,6 +14,7 @@ import type { ComponentChildren } from 'preact'
 import {
   cancelar,
   carregar,
+  corrigir,
   concretagemDe,
   garantirLaje,
   idadesDoCaminhao,
@@ -28,7 +29,12 @@ import {
 } from '../dados'
 import { areaDe, caixaDe, prepararArea, simplificarParaGravar, type Ponto } from '../geometria'
 import { instalarCaneta } from '../caneta'
+import { AVISO_DO_CANTO, areaNoPonto, cantoPerto, ladosSeCruzam, moverCanto, problemaDoCanto, temCantosEditaveis } from '../desenho'
+import { CANETAS, canetaComLaje, canetaDesconhecida, ehCaneta, lajePeloDesenho, NOME_DA_CANETA, separarPorParte } from '../canetas'
 import { ehLajeDeTrecho, lajeDoTrecho, nomeDaLaje } from '../lajes'
+import { recortar } from '../recorte'
+import { guardarAcao, planoDoDesfazer, TEXTO_DO_DESFAZER, tirarUltima, type AcaoDoMapa, type PassoDoDesfazer } from '../desfazer'
+import { unirAreas } from '../uniao'
 import { mudancaDaLajeDoDesenho, mudancasDoDesenhoPorPlanta, pecaNoPonto, prepararPecas } from '../pecas'
 import { ehFundacao, ORDEM_DO_TIPO } from '../tipos_peca'
 import { carregarPlantas, idDaRef, revisaoDaRef, type PlantaPavimento } from '../planta'
@@ -57,11 +63,10 @@ const ll = ([x, y]: Ponto): L.LatLngTuple => [-y, x]
 /** Cor de cada concretagem no mapa (pela posição na lista do pavimento: a mais recente é a primeira). */
 const corDaConcretagem = (i: number) => corDoCaminhao(i + 1)
 
-const ROTULO_CANETA: Record<AlvoDaArea, string> = { pilares: 'pilares', vigas_laje: 'vigas e laje' }
-
 function lerCaneta(chave: string): AlvoDaArea {
   try {
-    return localStorage.getItem(chave) === 'vigas_laje' ? 'vigas_laje' : 'pilares'
+    const v = localStorage.getItem(chave)
+    return ehCaneta(v) ? v : 'pilares'
   } catch {
     return 'pilares'
   }
@@ -116,6 +121,38 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     } catch {
       /* só não lembra */
     }
+  }
+  // jeito de desenhar (26/11): traço livre (como sempre) ou linhas retas, canto a canto
+  const chaveRetas = `concreto:retas:${obra.id}`
+  const [retas, setRetas] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(chaveRetas) === '1'
+    } catch {
+      return false
+    }
+  })
+  const trocarRetas = (v: boolean) => {
+    setRetas(v)
+    trocarCantos([])
+    try {
+      localStorage.setItem(chaveRetas, v ? '1' : '0')
+    } catch {
+      /* só não lembra */
+    }
+  }
+  // cantos da área em linhas retas ainda aberta, em coordenadas da planta (o dedo pode mover a
+  // planta entre um toque e outro)
+  const cantos = useRef<Ponto[]>([])
+  const [nCantos, setNCantos] = useState(0)
+  const trocarCantos = (l: Ponto[]) => {
+    cantos.current = l
+    setNCantos(l.length)
+  }
+  // borracha (26/11): com ela ligada, o toque numa área do caminhão apaga só aquela área
+  const [borracha, setBorracha] = useState(false)
+  const trocarBorracha = (v: boolean) => {
+    setBorracha(v)
+    if (v) trocarCantos([])
   }
   // sem caminhão escolhido: o mapa das concretagens (uma cor por concretagem) ou a situação dos laudos
   const [vista, setVista] = useState<'concretagens' | 'laudos'>('concretagens')
@@ -190,6 +227,8 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const zoomPendente = useRef<number | null>(null)
   const pendenteDesde = useRef(0)
   const [noLimite, setNoLimite] = useState({ mais: false, menos: false })
+  // zoom da planta (meio em meio nível): o número do caminhão muda de lugar conforme o tamanho na tela
+  const [zoomAgora, setZoomAgora] = useState(0)
   const zoomPeloBotao = (passo: number) => {
     const m = mapa.current
     if (!m) return
@@ -212,10 +251,12 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const desenho = useRef<L.Canvas | null>(null)
   const grupoRotulos = useRef<L.LayerGroup | null>(null)
   // estado lido pelos ouvintes do mapa sem remontar o mapa
-  const atual = useRef({ camSel, pode, mouseDesenha, cor: '#1565c0', alvo: canetaAlvo })
-  atual.current = { camSel, pode, mouseDesenha, cor: camAtual ? corDoCaminhao(camAtual.sequencia) : '#1565c0', alvo: canetaAlvo }
+  const atual = useRef({ camSel, pode, mouseDesenha, cor: '#1565c0', alvo: canetaAlvo, retas, borracha })
+  atual.current = { camSel, pode, mouseDesenha, cor: camAtual ? corDoCaminhao(camAtual.sequencia) : '#1565c0', alvo: canetaAlvo, retas, borracha }
+  const grupoCantos = useRef<L.LayerGroup | null>(null)
   const aoTraco = useRef<(pts: Array<[number, number]>, comp: number) => void>(() => {})
   const aoTocarPeca = useRef<(id: string) => void>(() => {})
+  const aoClicarMapa = useRef<(x: number, y: number) => void>(() => {})
 
   useEffect(() => {
     if (!planta || !caixaMapa.current || !tinta.current) return
@@ -244,14 +285,25 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const caixaPecas = pontos.length > 0 ? caixaDe(pontos) : null
     const alvo = caixaPecas ? L.latLngBounds(ll([caixaPecas.x0, caixaPecas.y1]), ll([caixaPecas.x1, caixaPecas.y0])) : limites
     let enquadrado = false
+    // Enquanto a pessoa não moveu nem ampliou a planta, ela se reenquadra quando o tamanho da tela
+    // muda (girar o tablet, abrir ou fechar o painel): antes, ao deitar o tablet, parte das peças
+    // ficava fora da tela (26/11). Depois que ela mexe, o lugar escolhido fica.
+    let mexeu = false
+    let ajustando = false
     const enquadrar = () => {
       m.invalidateSize({ pan: false })
       const t = m.getSize()
-      if (!enquadrado && t.x > 50 && t.y > 50) {
+      if ((!enquadrado || !mexeu) && t.x > 50 && t.y > 50) {
+        ajustando = true
         m.fitBounds(alvo, { padding: [16, 16], animate: false })
+        ajustando = false
         enquadrado = true
       }
     }
+    m.on('dragstart', () => (mexeu = true))
+    m.on('zoomstart', () => {
+      if (!ajustando) mexeu = true
+    })
     enquadrar()
     if (!enquadrado) m.setView(limites.getCenter(), -2, { animate: false })
     const rend = L.canvas({ tolerance: 6, padding: 0.3 })
@@ -279,6 +331,9 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     }
     camadasPeca.current = camadas
     grupoAreas.current = L.layerGroup().addTo(m)
+    grupoCantos.current = L.layerGroup().addTo(m)
+    // toque do dedo (ou clique do mouse que move) em qualquer lugar da planta: usado pela borracha
+    m.on('click', (e: L.LeafletMouseEvent) => aoClicarMapa.current(e.latlng.lng, -e.latlng.lat))
 
     // nomes das peças: só na planta de teste (a planta da FVS já tem os nomes no desenho)
     if (!planta.fundo) {
@@ -312,6 +367,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
       }
       zoomPendente.current = null
       setNoLimite({ mais: z >= m.getMaxZoom(), menos: z <= m.getMinZoom() })
+      setZoomAgora(Math.round(z * 2) / 2)
     }
     m.on('zoomend', aoFimDoZoom)
     aoFimDoZoom()
@@ -344,6 +400,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const camsVisiveis = camSel ? caminhoesConc : concSel ? caminhoesConc : caminhoesPav.map((p) => p.x)
     // mapa das concretagens: a área fica com a cor da concretagem, cheia, como um "carimbo"
     const porConcretagem = !camSel && vista === 'concretagens'
+    const escalaAgora = Math.pow(2, m.getZoom())
     const situacaoDoCam = new Map<string, SituacaoCP | null>()
     for (const { x, c } of caminhoesPav) situacaoDoCam.set(x.raiz, piorDoCaminhao(dados, x, c, hoje))
     for (const c of camsVisiveis) {
@@ -354,20 +411,43 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
         : !camSel && situacao
           ? COR_SITUACAO[grupoDa(situacao)]
           : corDoCaminhao(c.sequencia)
-      // só as áreas desenhadas nesta planta (outro trecho tem outras coordenadas)
-      for (const a of areasPorPlanta(c.raiz).get(planta.id) ?? []) {
-        // A área de vigas e laje é a laje que o caminhão encheu (a forma não traz o contorno da
-        // laje): fica cheia, como laje concretada (pedido do Nicolas, 22/11). A dos pilares só
-        // contorna os pilares: contínua e quase sem preenchimento.
-        const laje = a.alvo === 'vigas_laje'
-        const outroCam = !!camSel && !sel
-        L.polygon(a.contorno.map((p) => ll(p as Ponto)), {
-          renderer: desenho.current!,
+      // só as áreas desenhadas nesta planta (outro trecho tem outras coordenadas). As que se
+      // encostam ou se sobrepõem viram um desenho só (uniao.ts, 26/11): um preenchimento e o
+      // contorno de fora, mesmo com canetas diferentes. Cada área continua gravada como foi.
+      const outroCam = !!camSel && !sel
+      for (const grupo of unirAreas(areasPorPlanta(c.raiz).get(planta.id) ?? [])) {
+        // Grupo com caneta de laje é a laje que o caminhão encheu (a forma não traz o contorno da
+        // laje): fica cheio, como laje concretada (pedido do Nicolas, 22/11). Sem laje (pilares,
+        // vigas) só contorna as peças: contínuo e quase sem preenchimento.
+        L.polygon(
+          grupo.aneis.map((r) => r.map(ll)),
+          {
+            renderer: desenho.current!,
+            interactive: false,
+            stroke: false,
+            fillColor: cor,
+            fillRule: 'nonzero',
+            fillOpacity: grupo.laje ? (sel ? 0.4 : outroCam ? 0.15 : 0.35) : sel ? 0.18 : outroCam ? 0.06 : 0.2,
+          },
+        ).addTo(g)
+        L.polyline(
+          grupo.borda.map((l) => l.map(ll)),
+          { renderer: desenho.current!, interactive: false, color: cor, weight: sel || !camSel ? 2.5 : 1.5, dashArray: outroCam ? '6 4' : undefined, lineJoin: 'round' },
+        ).addTo(g)
+        // O número do caminhão no desenho (26/11): sem ele, só a cor dizia de quem é a área. O
+        // caminhão escolhido não precisa (está no painel). Área pequena na tela (em volta de um
+        // pilar): o número fica logo acima dela, para não tampar a peça.
+        if (sel) continue
+        const pequena = Math.min(grupo.caixa.x1 - grupo.caixa.x0, grupo.caixa.y1 - grupo.caixa.y0) * escalaAgora < 56
+        L.marker(ll(pequena ? [(grupo.caixa.x0 + grupo.caixa.x1) / 2, grupo.caixa.y0] : grupo.rotulo), {
           interactive: false,
-          color: cor,
-          weight: sel || !camSel ? 2.5 : 1.5,
-          dashArray: outroCam ? '6 4' : undefined,
-          fillOpacity: laje ? (sel ? 0.4 : outroCam ? 0.15 : 0.35) : sel ? 0.18 : outroCam ? 0.06 : 0.2,
+          keyboard: false,
+          icon: L.divIcon({
+            className: `cc-num-cam${outroCam ? ' fraco' : ''}`,
+            html: `<span style="border-color:${cor};color:${cor}">${c.sequencia}</span>`,
+            iconSize: [26, 26],
+            iconAnchor: pequena ? [13, 30] : [13, 13],
+          }),
         }).addTo(g)
       }
     }
@@ -427,7 +507,53 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
       }
       for (const l of ls) l.setStyle({ color: cor, fillColor: cor, fillOpacity: fill, weight: peso, dashArray: tracejado })
     }
-  }, [dados, planta, camSel, concSel, pecaSel, vista])
+  }, [dados, planta, camSel, concSel, pecaSel, vista, zoomAgora])
+
+  // linhas retas: outro caminhão ou outra planta começa uma área nova
+  useEffect(() => {
+    trocarCantos([])
+    setBorracha(false)
+  }, [camSel, planta?.id])
+
+  // linhas retas: os cantos já tocados, ligados por linha, e o primeiro maior (tocar nele fecha)
+  useEffect(() => {
+    const g = grupoCantos.current
+    if (!g || !mapa.current) return
+    g.clearLayers()
+    const l = cantos.current
+    const cor = camAtual ? corDoCaminhao(camAtual.sequencia) : '#1565c0'
+    // com "Retas" ligado, os cantos das áreas de linhas retas já gravadas aparecem: arrastar move
+    if (retas && !borracha && camAtual && pode && planta && l.length === 0) {
+      for (const a of areasPorPlanta(camAtual.raiz).get(planta.id) ?? []) {
+        if (!temCantosEditaveis(a.contorno)) continue
+        for (const p of a.contorno)
+          L.circleMarker(ll(p), { renderer: desenho.current!, interactive: false, radius: 6, color: cor, weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(g)
+      }
+    }
+    if (l.length === 0) return
+    L.polyline(l.map(ll), { renderer: desenho.current!, interactive: false, color: cor, weight: 3 }).addTo(g)
+    l.forEach((p, i) =>
+      L.circleMarker(ll(p), { renderer: desenho.current!, interactive: false, radius: i === 0 && l.length >= 3 ? 9 : 5, color: cor, weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(g),
+    )
+  }, [nCantos, planta, camSel, retas, borracha, dados])
+
+  const fecharRetas = () => {
+    const m = mapa.current
+    const l = cantos.current
+    if (!m || l.length < 3) return
+    const escala = Math.pow(2, m.getZoom())
+    // cruzada primeiro: a área de uma "gravata" dá quase zero e o aviso de pequena enganaria
+    if (ladosSeCruzam(l)) {
+      setMsg('Os lados da área se cruzam. Arraste um canto ou tire o último antes de fechar.')
+      return
+    }
+    if (areaDe(l) * escala * escala < 400) {
+      setMsg('Área pequena demais. Toque os cantos em volta das peças.')
+      return
+    }
+    trocarCantos([])
+    salvarArea([...l])
+  }
 
   // ------------------------------------------------------------------
   // Ações
@@ -446,18 +572,20 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const recalcular = async (camRaiz: string) => {
     const d = await carregar(obra.id)
     const areas = d.areasDe.get(camRaiz) ?? []
-    // cada caneta vale só nas suas peças: a dos pilares nos pilares, a das vigas e laje no resto.
-    // Área sem alvo (de antes das duas canetas) vale em todas. A peça fica com a maior fração.
+    // cada caneta vale só nas suas peças (canetas.ts): pilar nas com pilares, laje nas com laje e o
+    // resto nas com vigas. Área sem alvo (de antes das canetas) vale em todas; caneta desconhecida
+    // (de versão mais nova) em nenhuma. Cada peça soma as áreas que valem nela.
     const tipoDe = (pl: PlantaPavimento, id: string) => d.pecaPorId.get(id)?.tipo ?? pl.elementos.find((e) => e.id === id)?.tipo ?? ''
     const porPlanta = (plantas ?? []).flatMap((pl) => {
       const pecas = pecasPorPlanta.get(pl.id) ?? []
       const daPlanta = areas.filter((a) => naPlanta(a, pl.id))
-      const preparadas = (alvo: AlvoDaArea | null) => daPlanta.filter((a) => (a.alvo ?? null) === alvo).map((a) => prepararArea(a.contorno as Ponto[]))
-      return [
-        { pecas, areas: preparadas(null) },
-        { pecas: pecas.filter((p) => tipoDe(pl, p.id) === 'P'), areas: preparadas('pilares') },
-        { pecas: pecas.filter((p) => tipoDe(pl, p.id) !== 'P'), areas: preparadas('vigas_laje') },
-      ]
+      // caneta desconhecida: não vale em peça nenhuma, mas a peça que ela cobre não sai (pecas.ts)
+      const desconhecidas = daPlanta.filter((a) => canetaDesconhecida(a.alvo)).map((a) => prepararArea(a.contorno as Ponto[]))
+      return separarPorParte(pecas, (id) => tipoDe(pl, id), daPlanta).map((g) => ({
+        pecas: g.pecas,
+        areas: g.areas.map((a) => prepararArea(a.contorno as Ponto[])),
+        desconhecidas,
+      }))
     })
     const mud = mudancasDoDesenhoPorPlanta(porPlanta, d.registrosPecasDe.get(camRaiz) ?? [])
     await registrarPecas(obra.id, usuario.id, camRaiz, mud, 'desenho')
@@ -465,14 +593,17 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   }
 
   /**
-   * Laje do trecho que vem com a caneta das vigas e laje (pecas.ts): fica no caminhão enquanto ele
-   * tiver área dessa caneta no trecho. Chamar depois de desenhar, desfazer ou apagar áreas.
+   * Laje do trecho que vem com as canetas com laje (pecas.ts): fica no caminhão enquanto ele
+   * tiver área de uma delas no trecho. Chamar depois de desenhar, desfazer ou apagar áreas.
    * Devolve 'entrou' ou 'saiu' quando o caminhão mudou (laje marcada no toque não muda).
    */
   const acertarLaje = async (camRaiz: string, pavId: string, trecho: string): Promise<'entrou' | 'saiu' | null> => {
     const d = await carregar(obra.id)
     const doTrecho = new Set((plantas ?? []).filter((pl) => pl.trecho === trecho).map((pl) => pl.id))
-    const temArea = (d.areasDe.get(camRaiz) ?? []).some((a) => a.alvo === 'vigas_laje' && [...doTrecho].some((id) => naPlanta(a, id)))
+    const pelo = lajePeloDesenho((d.areasDe.get(camRaiz) ?? []).filter((a) => [...doTrecho].some((id) => naPlanta(a, id))).map((a) => a.alvo))
+    // só área de caneta desconhecida no trecho: pode ser de laje, então a laje fica como está
+    if (pelo === null) return null
+    const temArea = pelo
     const pecasPav = d.pecasDoPavimento.get(pavId) ?? []
     let lajeId = lajeDoTrecho(pecasPav, trecho)?.id
     if (!lajeId && temArea && podeCriar) lajeId = await garantirLaje(obra.id, usuario.id, pavId, trecho, pecasPav)
@@ -490,6 +621,60 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const m = mapa.current
     if (!m || !planta || !camAtual) return
     const escala = Math.pow(2, m.getZoom()) // px de tela por px da planta
+    if (atual.current.borracha) {
+      // toque curto: apaga a área tocada inteira; traço em volta de um pedaço: recorta só o pedaço
+      if (comprimento < 12) {
+        const p = m.containerPointToLatLng(pts[0])
+        return apagarNoPonto(p.lng, -p.lat)
+      }
+      const traco = simplificarParaGravar(
+        pts.map((q): Ponto => {
+          const p = m.containerPointToLatLng(q)
+          return [Math.round(p.lng * 10) / 10, Math.round(-p.lat * 10) / 10]
+        }),
+        1.5 / escala,
+      )
+      ultimaBorracha.current = Date.now()
+      if (traco.length < 3 || areaDe(traco) * escala * escala < 400) return setMsg('Traço pequeno demais. Passe a borracha em volta do pedaço que quer tirar.')
+      // o clique do mapa que chega quando a caneta solta não pode valer como toque de borracha
+      ultimaBorracha.current = Date.now()
+      return recortarComTraco(traco, 100 / (escala * escala))
+    }
+    if (atual.current.retas) {
+      // linhas retas: cada toque da caneta (ou clique do mouse) é um canto. Tocar perto do
+      // primeiro canto (ou no botão Fechar) fecha a área. O dedo continua movendo a planta.
+      const q = pts[pts.length - 1]
+      const p = m.containerPointToLatLng(q)
+      const novo: Ponto = [Math.round(p.lng * 10) / 10, Math.round(-p.lat * 10) / 10]
+      const lista = cantos.current
+      if (comprimento >= 12) {
+        // arrastar a partir de um canto move o canto: da área aberta ou, sem área aberta, de uma
+        // área de linhas retas já gravada deste caminhão
+        const ini = m.containerPointToLatLng(pts[0])
+        const alcance = 22 / escala
+        const i = cantoPerto(lista, ini.lng, -ini.lat, alcance)
+        if (i >= 0) {
+          const movida = moverCanto(lista, i, novo)
+          if (ladosSeCruzam(movida, false) && !ladosSeCruzam(lista, false)) return setMsg(AVISO_DO_CANTO.cruza)
+          return trocarCantos(movida)
+        }
+        if (lista.length === 0) {
+          for (const a of areasPorPlanta(camAtual.raiz).get(planta.id) ?? []) {
+            if (!temCantosEditaveis(a.contorno)) continue
+            const k = cantoPerto(a.contorno, ini.lng, -ini.lat, alcance)
+            if (k >= 0) return moverCantoGravado(a, k, novo)
+          }
+        }
+      }
+      if (lista.length >= 3) {
+        const c0 = m.latLngToContainerPoint(ll(lista[0]))
+        if (Math.hypot(c0.x - q[0], c0.y - q[1]) <= 22) return fecharRetas()
+      }
+      const ult = lista[lista.length - 1]
+      if (ult && Math.hypot(ult[0] - novo[0], ult[1] - novo[1]) * escala < 4) return // toque repetido
+      trocarCantos([...lista, novo])
+      return
+    }
     if (comprimento < 12) {
       // toque curto com a caneta = toque na peça (com folga de 8 px: viga é fina na tela)
       const p = m.containerPointToLatLng(pts[0])
@@ -506,6 +691,125 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
       setMsg('Traço pequeno demais para ser uma área. Desenhe em volta das peças.')
       return
     }
+    salvarArea(contorno)
+  }
+
+  const ultimaBorracha = useRef(0)
+  /** Ações desta tela que o "Desfazer" volta (desfazer.ts). Só na memória: ao sair, zera. */
+  const pilhaDesfazer = useRef<AcaoDoMapa[]>([])
+  const guardar = (tipo: AcaoDoMapa['tipo'], caminhao: string, planta: string, passos: PassoDoDesfazer[]) => {
+    pilhaDesfazer.current = guardarAcao(pilhaDesfazer.current, { tipo, caminhao, planta, passos })
+  }
+  const repor = (a: Area): PassoDoDesfazer => ({ tipo: 'repor', planta_ref: a.planta_ref, contorno: a.contorno.map(([x, y]): Ponto => [x, y]), alvo: a.alvo ?? null })
+  const voltarContorno = (a: Area): PassoDoDesfazer => ({ tipo: 'voltar', raiz: a.raiz, contorno: a.contorno.map(([x, y]): Ponto => [x, y]) })
+  /** Borracha: apaga a área do caminhão escolhido que está no ponto tocado (só ela). */
+  const apagarNoPonto = (x: number, y: number) => {
+    if (!planta || !camAtual || !pode) return
+    // o mesmo toque pode chegar duas vezes (pela caneta e pelo clique do mapa): vale só o primeiro
+    const agora = Date.now()
+    if (agora - ultimaBorracha.current < 500) return
+    ultimaBorracha.current = agora
+    const cam = camAtual
+    const plantaId = planta.id
+    const pavId = pav?.id
+    const trecho = planta.trecho
+    enfileirar(async () => {
+      const d = await carregar(obra.id)
+      const alvo = areaNoPonto((d.areasDe.get(cam.raiz) ?? []).filter((a) => naPlanta(a, plantaId)), x, y)
+      if (!alvo) return setMsg(`Toque dentro de uma área do caminhão ${cam.sequencia}.`)
+      await cancelar('caminhao_areas', obra.id, usuario.id, alvo)
+      guardar('apagar', cam.raiz, plantaId, [repor(alvo)])
+      await recalcular(cam.raiz)
+      const laje = pavId ? await acertarLaje(cam.raiz, pavId, trecho) : null
+      await recarregar()
+      setMsg(laje === 'saiu' ? `Área apagada. A ${nomeDaLaje(trecho)} também saiu.` : 'Área apagada.')
+    })
+  }
+  aoClicarMapa.current = (x, y) => {
+    if (atual.current.borracha) apagarNoPonto(x, y)
+  }
+
+  /**
+   * Borracha de trecho: tira das áreas do caminhão o pedaço coberto pelo traço (recorte.ts). A
+   * área que muda vira linha nova que substitui a anterior; se o traço parte a área em duas, o
+   * segundo pedaço é uma área nova com a mesma caneta; área toda coberta é cancelada.
+   */
+  const recortarComTraco = (traco: Ponto[], areaMinima: number) => {
+    if (!planta || !camAtual || !pode) return
+    const cam = camAtual
+    const plantaId = planta.id
+    const pavId = pav?.id
+    const trecho = planta.trecho
+    enfileirar(async () => {
+      const d = await carregar(obra.id)
+      let mudaram = 0
+      let furo = false
+      let falhou = false
+      const passos: PassoDoDesfazer[] = []
+      for (const a of (d.areasDe.get(cam.raiz) ?? []).filter((x) => naPlanta(x, plantaId))) {
+        const r = recortar(a.contorno, traco, areaMinima)
+        if (r.tipo === 'furo') furo = true
+        else if (r.tipo === 'falhou') falhou = true
+        else if (r.tipo === 'some') {
+          await cancelar('caminhao_areas', obra.id, usuario.id, a)
+          passos.push(repor(a))
+          mudaram++
+        } else if (r.tipo === 'sobra') {
+          await corrigir('caminhao_areas', obra.id, usuario.id, a, { contorno: r.contornos[0] })
+          passos.push(voltarContorno(a))
+          for (const extra of r.contornos.slice(1)) {
+            const nova = await registrar('caminhao_areas', obra.id, usuario.id, { caminhao_id: cam.raiz, planta_ref: a.planta_ref, contorno: extra, alvo: a.alvo ?? null })
+            passos.push({ tipo: 'tirar', raiz: nova.id })
+          }
+          mudaram++
+        }
+      }
+      guardar('recorte', cam.raiz, plantaId, passos)
+      if (mudaram === 0) {
+        return setMsg(
+          furo
+            ? 'A borracha precisa cruzar a borda da área: o app não guarda furo no meio.'
+            : falhou
+              ? 'Não deu para recortar com este traço. Tente um traço mais simples, sem cruzar por cima dele mesmo.'
+              : `O traço não pegou nenhuma área do caminhão ${cam.sequencia}.`,
+        )
+      }
+      await recalcular(cam.raiz)
+      const laje = pavId ? await acertarLaje(cam.raiz, pavId, trecho) : null
+      await recarregar()
+      const texto = mudaram === 1 ? 'Pedaço apagado.' : `Pedaço apagado em ${mudaram} áreas.`
+      setMsg(laje === 'saiu' ? `${texto} A ${nomeDaLaje(trecho)} também saiu.` : texto)
+    })
+  }
+
+  /** Move um canto de uma área já gravada (linha nova que substitui a anterior) e recalcula as peças. */
+  const moverCantoGravado = (area: Area, i: number, novo: Ponto) => {
+    if (!planta || !camAtual) return
+    const cam = camAtual
+    const pavId = pav?.id
+    const trecho = planta.trecho
+    const escala = Math.pow(2, mapa.current?.getZoom() ?? 0)
+    const contorno = moverCanto(area.contorno, i, novo)
+    // área cruzada, pequena ou achatada numa lasca: nada é gravado e o canto fica onde estava
+    const problema = problemaDoCanto(area.contorno, contorno, escala)
+    if (problema) return setMsg(AVISO_DO_CANTO[problema])
+    const plantaId = planta.id
+    enfileirar(async () => {
+      const d = await carregar(obra.id)
+      const vigente = (d.areasDe.get(cam.raiz) ?? []).find((a) => a.id === area.id)
+      if (!vigente) return
+      await corrigir('caminhao_areas', obra.id, usuario.id, vigente, { contorno })
+      guardar('canto', cam.raiz, plantaId, [voltarContorno(vigente)])
+      await recalcular(cam.raiz)
+      if (pavId) await acertarLaje(cam.raiz, pavId, trecho)
+      await recarregar()
+      setMsg('Canto movido.')
+    })
+  }
+
+  /** Grava a área desenhada (traço livre ou linhas retas) e recalcula as peças do caminhão. */
+  const salvarArea = (contorno: Ponto[]) => {
+    if (!planta || !camAtual) return
     // mostra já (antes de gravar), para a tela responder na hora
     L.polygon(contorno.map(ll), { renderer: desenho.current!, interactive: false, color: atual.current.cor, weight: 3, fillOpacity: 0.18 }).addTo(
       grupoAreas.current!,
@@ -514,13 +818,15 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const alvo = atual.current.alvo
     const pavId = pav?.id
     const trecho = planta.trecho
+    const plantaId = planta.id
     enfileirar(async () => {
-      await registrar('caminhao_areas', obra.id, usuario.id, { caminhao_id: cam.raiz, planta_ref: planta.ref, contorno, alvo })
+      const nova = await registrar('caminhao_areas', obra.id, usuario.id, { caminhao_id: cam.raiz, planta_ref: planta.ref, contorno, alvo })
+      guardar('desenho', cam.raiz, plantaId, [{ tipo: 'tirar', raiz: nova.id }])
       const antes = (await carregar(obra.id)).pecasDe.get(cam.raiz)
       const mud = await recalcular(cam.raiz)
-      // caneta das vigas e laje: a área desenhada é a parte da laje que o caminhão encheu, então a
+      // caneta com laje: a área desenhada é a parte da laje que o caminhão encheu, então a
       // laje do trecho entra no caminhão junto (a forma não traz o contorno dela)
-      const lajeEntrou = alvo === 'vigas_laje' && pavId ? (await acertarLaje(cam.raiz, pavId, trecho)) === 'entrou' : false
+      const lajeEntrou = canetaComLaje(alvo) && pavId ? (await acertarLaje(cam.raiz, pavId, trecho)) === 'entrou' : false
       await recarregar()
       // só as que entraram agora: peça que já estava (ou que foi tirada no toque) não conta
       const entraram = mud.filter((x) => {
@@ -534,6 +840,8 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
 
   aoTocarPeca.current = (id) => {
     const nome = planta?.elementos.find((e) => e.id === id)?.nome ?? 'Peça'
+    // borracha ligada: o toque apaga área (aoClicarMapa), não marca peça
+    if (atual.current.borracha) return
     if (camAtual && pode) {
       const cam = camAtual
       enfileirar(async () => {
@@ -582,16 +890,29 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const trecho = planta.trecho
     enfileirar(async () => {
       const d = await carregar(obra.id)
-      const areas = (d.areasDe.get(cam.raiz) ?? [])
-        .filter((a) => naPlanta(a, plantaId))
-        .sort((a, b) => a.criado_em_dispositivo.localeCompare(b.criado_em_dispositivo))
-      const ultima = areas.at(-1)
-      if (!ultima) return setMsg('Este caminhão não tem área desenhada nesta planta.')
-      await cancelar('caminhao_areas', obra.id, usuario.id, ultima)
+      const areas = (d.areasDe.get(cam.raiz) ?? []).filter((a) => naPlanta(a, plantaId))
+      // volta a última ação desta tela (desenho, borracha, recorte, canto ou "apagar áreas"): o
+      // Desfazer não apaga mais "a área mais recente", que depois de um recorte era o que sobrou
+      const ultima = tirarUltima(pilhaDesfazer.current, cam.raiz, plantaId)
+      if (!ultima) {
+        return setMsg(
+          areas.length === 0
+            ?'Este caminhão não tem área desenhada nesta planta.'
+            : 'Nada para desfazer desde que a planta abriu. Para tirar uma área, use a Borracha.',
+        )
+      }
+      pilhaDesfazer.current = ultima.resto
+      const plano = planoDoDesfazer(ultima.acao, areas)
+      for (const a of plano.tirar) await cancelar('caminhao_areas', obra.id, usuario.id, a)
+      for (const v of plano.voltar) await corrigir('caminhao_areas', obra.id, usuario.id, v.area, { contorno: v.contorno })
+      for (const r of plano.repor) await registrar('caminhao_areas', obra.id, usuario.id, { caminhao_id: cam.raiz, ...r })
+      if (plano.tirar.length + plano.voltar.length + plano.repor.length === 0)
+        return setMsg('Não deu para desfazer: a área já mudou (em outro aparelho, por exemplo).')
       await recalcular(cam.raiz)
       const laje = pavId ? await acertarLaje(cam.raiz, pavId, trecho) : null
       await recarregar()
-      setMsg(laje === 'saiu' ? `Última área apagada. A ${nomeDaLaje(trecho)} também saiu.` : 'Última área apagada.')
+      const texto = TEXTO_DO_DESFAZER[ultima.acao.tipo] + (plano.perdidos > 0 ? ' Parte dela já tinha mudado e ficou como estava.' : '')
+      setMsg(laje ? `${texto} A ${nomeDaLaje(trecho)} também ${laje}.` : texto)
     })
   }
 
@@ -606,9 +927,13 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
     const trecho = planta.trecho
     enfileirar(async () => {
       const d = await carregar(obra.id)
+      const passos: PassoDoDesfazer[] = []
       for (const a of d.areasDe.get(cam.raiz) ?? []) {
-        if (naPlanta(a, plantaId)) await cancelar('caminhao_areas', obra.id, usuario.id, a)
+        if (!naPlanta(a, plantaId)) continue
+        await cancelar('caminhao_areas', obra.id, usuario.id, a)
+        passos.push(repor(a))
       }
+      guardar('tudo', cam.raiz, plantaId, passos)
       await recalcular(cam.raiz)
       const laje = pavId ? await acertarLaje(cam.raiz, pavId, trecho) : null
       await recarregar()
@@ -635,7 +960,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
   const pecasDoCam = camAtual
     ? [...(dados.pecasDe.get(camAtual.raiz)?.values() ?? [])].filter((e) => e.incluido)
     : []
-  const lajeDesenhadaNoCam = camAtual && planta ? (areasPorPlanta(camAtual.raiz).get(planta.id) ?? []).filter((a) => a.alvo === 'vigas_laje').length : 0
+  const lajeDesenhadaNoCam = camAtual && planta ? (areasPorPlanta(camAtual.raiz).get(planta.id) ?? []).filter((a) => canetaComLaje(a.alvo)).length : 0
   const nomeDa = (id: string) => dados.pecaPorId.get(id)?.nome ?? planta?.elementos.find((e) => e.id === id)?.nome ?? '?'
   const ordemTipo = (id: string) => ORDEM_DO_TIPO[dados.pecaPorId.get(id)?.tipo ?? ''] ?? 9
 
@@ -649,7 +974,11 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
           <div class="cc-titulo">
             <h1>{pav?.nome ?? 'Pavimento'}</h1>
             <p class="discreto">
-              {camAtual && pode ? `Caneta marca ${ROTULO_CANETA[canetaAlvo]} · dedo move e marca peça` : 'Toque numa peça para ver os caminhões'}
+              {camAtual && pode
+                ? borracha
+                  ? 'Borracha: toque apaga a área · traço em volta tira o pedaço'
+                  : `Caneta marca ${NOME_DA_CANETA[canetaAlvo].toLowerCase()}${retas ? ' por linhas retas' : ''} · dedo move e marca peça`
+                : 'Toque numa peça para ver os caminhões'}
               {aviso && <span data-testid="aviso-sync"> · {aviso}</span>}
             </p>
           </div>
@@ -732,16 +1061,79 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
           )}
         </div>
         {camAtual && pode && (
-          <div class="cc-chips cc-canetas" role="group" aria-label="Caneta">
-            <span class="discreto">Caneta:</span>
-            {(['pilares', 'vigas_laje'] as const).map((a) => (
-              <button type="button" key={a} class={`cc-chip${canetaAlvo === a ? ' on' : ''}`} aria-pressed={canetaAlvo === a} data-testid={`caneta-${a}`} onClick={() => trocarCaneta(a)}>
-                {a === 'pilares' ? 'Pilares' : 'Vigas e laje'}
-              </button>
-            ))}
+          <div class="cc-chips cc-canetas">
+            {/* celular: as seis não cabem em uma linha, então um seletor; tablet e PC: os botões */}
+            <label class="cc-canetas-seletor">
+              <span class="discreto">Caneta:</span>
+              <select value={canetaAlvo} aria-label="Caneta" data-testid="caneta-seletor" onChange={(e) => ehCaneta(e.currentTarget.value) && trocarCaneta(e.currentTarget.value)}>
+                {CANETAS.map((a) => (
+                  <option key={a} value={a}>
+                    {NOME_DA_CANETA[a]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div class="cc-canetas-botoes" role="group" aria-label="Caneta">
+              <span class="discreto">Caneta:</span>
+              {CANETAS.map((a) => (
+                <button type="button" key={a} class={`cc-chip${canetaAlvo === a ? ' on' : ''}`} aria-pressed={canetaAlvo === a} data-testid={`caneta-${a}`} onClick={() => trocarCaneta(a)}>
+                  {NOME_DA_CANETA[a]}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              class={`cc-chip cc-retas-liga${retas && !borracha ? ' on' : ''}`}
+              aria-pressed={retas && !borracha}
+              data-testid="modo-retas"
+              title="Desenhar a área por linhas retas, tocando os cantos" aria-label="Linhas retas"
+              onClick={() => {
+                // com a borracha ligada, o toque em "Retas" volta para as linhas retas
+                trocarRetas(borracha ? true : !retas)
+                setBorracha(false)
+              }}
+            >
+              Retas
+            </button>
+            <button
+              type="button"
+              class={`cc-chip cc-retas-liga${borracha ? ' on' : ''}`}
+              aria-pressed={borracha}
+              data-testid="modo-borracha"
+              title="Apagar uma área: toque nela"
+              onClick={() => trocarBorracha(!borracha)}
+            >
+              Borracha
+            </button>
           </div>
         )}
       </header>
+
+      {planta && camAtual && pode && borracha && (
+        <div class="cc-retas-ancora">
+          <div class="cc-retas cc-borracha" role="group" aria-label="Borracha" data-testid="barra-borracha">
+            <button type="button" class="principal" onClick={() => setBorracha(false)} data-testid="borracha-pronto">
+              Pronto
+            </button>
+            <span class="discreto">Toque na área para apagar · contorne um pedaço para tirar só ele</span>
+          </div>
+        </div>
+      )}
+
+      {planta && camAtual && pode && retas && !borracha && (
+        // no alto da planta, fora do .cc-mapa pelo mesmo motivo dos botões de zoom (a caneta não desenha em cima)
+        <div class="cc-retas-ancora">
+          <div class="cc-retas" role="group" aria-label="Linhas retas" data-testid="barra-retas">
+          <span class="discreto">{nCantos === 0 ? 'Toque os cantos da área · arraste um canto para mover' : plural(nCantos, 'canto', 'cantos')}</span>
+          <button type="button" onClick={() => trocarCantos(cantos.current.slice(0, -1))} disabled={nCantos === 0} data-testid="retas-tirar">
+            Tirar canto
+          </button>
+          <button type="button" class="principal" onClick={fecharRetas} disabled={nCantos < 3} data-testid="retas-fechar">
+            Fechar área
+          </button>
+          </div>
+        </div>
+      )}
 
       {planta ? (
         <div class="cc-mapa" ref={caixaMapa} data-testid="mapa">
@@ -819,7 +1211,7 @@ export function TelaMapa({ ctx, pavimentoId, concretagemRaiz, caminhaoRaiz, plan
               {pode && !lajeAtual && !podeCriar && (
                 <p class="discreto">A laje deste trecho ainda não foi criada. Só gestor ou administrador cria a laje; depois disso ela pode ser marcada aqui.</p>
               )}
-              {lajeDesenhadaNoCam && (
+              {lajeDesenhadaNoCam > 0 && (
                 <p class="cc-laje-desenhada" data-testid="laje-desenhada">
                   <i style={{ background: corDoCaminhao(camAtual.sequencia) }} /> Laje concretada: {plural(lajeDesenhadaNoCam, 'área desenhada', 'áreas desenhadas')} nesta planta
                 </p>

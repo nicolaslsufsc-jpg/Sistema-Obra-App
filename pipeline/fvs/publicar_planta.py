@@ -1146,27 +1146,47 @@ def regra_dos_ambientes(c: dict, pontos_por_disciplina: dict, novos: list | None
         return {a["nome"]: b["ambientes"][a["indice"]] for a in b["nomeados"]}, []
     casado = ambientes_do_pacote_casado(c, com_imagem=True)
     geometrias = dict(casado["geometrias"])
+    rotulos = grupos_do_pacote(c["pacote"])  # {nome: {"grupo", "comodo"}}: o nome de gente de cada ambiente
     if c.get("casas"):
         cc = {**c, **c["casas"]}
         casas = ambientes_do_pacote_casado(cc, grupo=c["casas"].get("grupo") or "Casa")
-        repetidas = sorted(set(casas) & set(geometrias))
-        if repetidas:
-            raise mod_inst.ErroInstalacoes(f"as casas repetem nomes de ambientes do pavimento: {', '.join(repetidas)}")
+        # casa que a planta de ambientes deste pavimento já tem (a 2ª volta, depois do "ambientes_novos"): vale a
+        # do pavimento, com o id dela; antes isto parava a geração e a ordem do doc (instalações -> ambientes ->
+        # instalações de novo) não fechava (26/11)
+        casas = {n: g for n, g in casas.items() if n not in geometrias}
         print(f"  {len(casas)} casas da planta de ambientes de {pathlib.Path(cc['pacote']).parent.parent.name} (FVS por casa)")
         geometrias.update(casas)
+        rotulos.update(grupos_do_pacote(cc["pacote"]))
         if novos is not None:
             novos += ambientes_novos_na_prancha(casas, casado["t"], grupos_do_pacote(cc["pacote"]))
     rec = mod_inst.recintos_da_prancha(casado["imagem"] > 0.5, casado["k"], casado["t"], geometrias)
     if c.get("recintos_sem_nome", True):
-        todos = [p for lidos in pontos_por_disciplina.values() for p in lidos]
-        novos_rec = mod_inst.nomear_recintos(rec["sem_ambiente"], todos, casado["textos"])
-        pendentes = [n for n in novos_rec if n.startswith(mod_inst.RECINTO_SEM_NOME)]
-        print(f"  {len(novos_rec)} recintos fechados sem ambiente, com ponto dentro: {len(novos_rec) - len(pendentes)} com nome "
-              f"pelo texto da prancha, {len(pendentes)} \"{mod_inst.RECINTO_SEM_NOME} N\" (pendência: o Nicolas dá o nome)")
+        from shapely.ops import unary_union
+
+        todos = [{**p, "disciplina": disc} for disc, lidos in pontos_por_disciplina.items() for p in lidos]
+        # vizinhos com o nome de gente ("Escada", "Casa 3"); ambientes com o mesmo nome contam juntos
+        por_rotulo: dict[str, list] = {}
+        for nome, g in geometrias.items():
+            info = rotulos.get(nome) or {}
+            por_rotulo.setdefault(str(info.get("comodo") or info.get("grupo") or nome), []).append(g)
+        vizinhos = {r: (gs[0] if len(gs) == 1 else unary_union(gs)) for r, gs in por_rotulo.items()}
+        origem: dict = {}
+        achados = mod_inst.nomear_recintos(rec["sem_ambiente"], todos, casado["textos"], vizinhos=vizinhos, origem=origem)
+        # nome igual ao de um ambiente que já existe: o ponto iria para o outro; o recinto ganha " (recinto)"
+        novos_rec = {}
+        for n, g in achados.items():
+            nome = n if n not in geometrias else f"{n} (recinto)"
+            novos_rec[nome] = g
+            origem[nome] = origem.get(n)
+        conta = {por: sum(1 for n in novos_rec if origem.get(n) == por) for por in ("texto", "texto_perto", "igual", "vizinho", "pontos", None)}
+        print(f"  {len(novos_rec)} recintos fechados sem ambiente, com ponto dentro: nome pelo texto de dentro {conta['texto']}, "
+              f"pelo texto perto {conta['texto_perto']}, por ser igual a outro {conta['igual']}, pelo vizinho {conta['vizinho']}, "
+              f"pelos pontos {conta['pontos']}; "
+              f"{conta[None]} \"{mod_inst.RECINTO_SEM_NOME} N\" (pendência: o Nicolas dá o nome)")
         if novos is not None:
             ja = {a["nome"] for a in novos}
-            novos += ambientes_novos_na_prancha({n: g for n, g in novos_rec.items() if n not in geometrias and n not in ja}, casado["t"], {})
-        geometrias.update({n: g for n, g in novos_rec.items() if n not in geometrias})
+            novos += ambientes_novos_na_prancha({n: g for n, g in novos_rec.items() if n not in ja}, casado["t"], {}, origem)
+        geometrias.update(novos_rec)
     return geometrias, (rec["shafts"] if shaft_perto(c) else [])
 
 
@@ -1179,11 +1199,12 @@ def grupos_do_pacote(pacote: str) -> dict:
             if e.get("tipo") == "A" and e.get("nome")}
 
 
-def ambientes_novos_na_prancha(geometrias: dict, t: dict, grupos: dict) -> list[dict]:
+def ambientes_novos_na_prancha(geometrias: dict, t: dict, grupos: dict, origem: dict | None = None) -> list[dict]:
     """As casas e os recintos (polígonos em metros do modelo) na prancha deste pavimento (pontos do PDF, o inverso
     de instalacoes.prancha_para_modelo), no formato que ambientes.ler_planta lê de "ambientes_novos": a planta de
     ambientes cria um elemento A para cada um, com o mesmo nome (e o mesmo id) que o ponto leva. Recinto: área comum;
-    "Recinto sem nome N" fica como pendência para o Nicolas dar o nome."""
+    "Recinto sem nome N" fica como pendência para o Nicolas dar o nome. origem: {nome: de onde veio o nome do
+    recinto} (instalacoes.nomear_recintos) vai em "nome_por", para conferir os nomes que o programa deu."""
     def para_prancha(x: float, y: float) -> list[float]:
         return [round((x - t["x0"]) * t["pt_por_m"] + t["dx_pt"], 2), round((t["y1"] - y) * t["pt_por_m"] + t["dy_pt"], 2)]
 
@@ -1199,6 +1220,8 @@ def ambientes_novos_na_prancha(geometrias: dict, t: dict, grupos: dict) -> list[
             reg["comodo"] = info.get("comodo") or info.get("grupo")
         if nome.startswith(mod_inst.RECINTO_SEM_NOME):
             reg["pendencia"] = "nome"
+        elif origem and origem.get(nome):
+            reg["nome_por"] = origem[nome]
         saida.append(reg)
     return saida
 

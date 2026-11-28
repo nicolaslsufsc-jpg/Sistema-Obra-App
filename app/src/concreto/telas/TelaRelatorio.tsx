@@ -1,11 +1,16 @@
 import { useState } from 'preact/hooks'
-import { csvPorCaminhao, percentual, relatorioPorCaminhao, relatorioPorPeca, type PecaRelatorio } from '../relatorio'
+import { csvPorCaminhao, legendaDoRelatorio, percentual, relatorioPorCaminhao, relatorioPorPeca, type PecaRelatorio } from '../relatorio'
 import type { Contexto } from './ModuloConcreto'
 import { caminhoesComLajeDesenhada } from '../dados'
 import { sistemaDaObra } from '../../integracoes/sistema_oficial'
 import { corDoCaminhao, dataBR, numBR, plural, Topo } from './comum'
 import { nomeDaConcretagem } from '../exemplo'
-import { BotaoExportarPdf } from '../../telas/ExportarPdf'
+import { BotaoExportarPdf, quemGera } from '../../telas/ExportarPdf'
+import { ehLajeDeTrecho } from '../lajes'
+import { figuraDoDesenho, type FiguraDoDesenho } from '../pdf_desenho'
+import { carregarPlantas, idDaRef } from '../planta'
+import { ehFundacao } from '../tipos_peca'
+import { RelatorioComDesenho } from './DesenhoPdf'
 import type { FolhaPdf } from '../../telas/folha_pdf'
 
 export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concretagemRaiz: string }) {
@@ -27,6 +32,7 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
   const pecas = new Map<string, PecaRelatorio>([...dados.pecaPorId.values()].map((p) => [p.id, { id: p.id, nome: p.nome, tipo: p.tipo }]))
   const porCaminhao = relatorioPorCaminhao(cams, dados.pecasDe, pecas, dados.lajesFvsDe, caminhoesComLajeDesenhada(dados))
   const porPeca = relatorioPorPeca(porCaminhao)
+  const legenda = legendaDoRelatorio(porCaminhao)
   const volume = cams.reduce((s, x) => s + (x.volume_m3 ?? 0), 0)
   const nomeArquivo = `${c.data}_concreto_${(pav?.nome ?? 'pavimento').replace(/[^\p{L}\p{N}]+/gu, '-')}.csv`
 
@@ -61,10 +67,65 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
         curtas: [0],
         linhas: porPeca.map((l) => [l.peca.nome, l.caminhoes.map((x) => `${x.caminhao.sequencia} (NF ${x.caminhao.nota_fiscal || '—'}${x.parcial ? `, ${percentual(x.fracao)}` : ''})`).join(', ')]),
         vazio: 'Sem peças desenhadas',
-        nota: 'Parcial: menos de 90% da peça desenhada.',
+        // uma frase por linha (a quebra vale dentro de .cc-pdf, concreto.css)
+        nota: legenda.join('\n') || undefined,
       },
     ],
   })
+  // O PDF (26/11): antes das tabelas, uma página por trecho com o desenho de onde foi cada caminhão
+  // (áreas unidas por caminhão, com o número). Sem área desenhada, saem só as tabelas, como antes.
+  const montarPdf = async (): Promise<FolhaPdf> => {
+    const padrao = folha()
+    const figuras: FiguraDoDesenho[] = []
+    if (pav) {
+      const pecasDaPlanta = (dados.pecasDoPavimento.get(pav.id) ?? []).filter((p) => !ehLajeDeTrecho(p) && !ehFundacao(p.tipo))
+      const plantas = await carregarPlantas({ obraId: ctx.obra.id, obraCodigo: ctx.obra.codigo, pavimento: pav, pecas: pecasDaPlanta })
+      const chaveDe = dados.chavePlanta ?? ((id: string) => id)
+      for (const pl of plantas) {
+        const f = figuraDoDesenho(
+          pl,
+          cams.map((x) => ({
+            sequencia: x.sequencia,
+            cor: corDoCaminhao(x.sequencia),
+            areas: (dados.areasDe.get(x.raiz) ?? []).filter((a) => chaveDe(idDaRef(a.planta_ref)) === chaveDe(pl.id)),
+          })),
+        )
+        if (f) figuras.push(f)
+      }
+      // o fundo da planta são imagens: carregadas antes, para já estarem prontas quando o Imprimir abrir
+      await Promise.all(
+        figuras.flatMap((f) =>
+          f.ladrilhos.map(
+            (l) =>
+              new Promise<void>((ok) => {
+                const im = new Image()
+                im.onload = im.onerror = () => ok()
+                im.src = l.url
+              }),
+          ),
+        ),
+      )
+    }
+    const quando = new Date()
+    const quem = await quemGera(ctx.usuario)
+    return {
+      ...padrao,
+      propria: (
+        <RelatorioComDesenho
+          folha={padrao}
+          figuras={figuras}
+          legenda={cams.map((x) => ({
+            sequencia: x.sequencia,
+            cor: corDoCaminhao(x.sequencia),
+            texto: `Caminhão ${x.sequencia} · NF ${x.nota_fiscal || '—'}${x.volume_m3 !== null ? ` · ${numBR(x.volume_m3, 2)} m³` : ''}`,
+          }))}
+          obra={ctx.obra}
+          quem={quem}
+          quando={quando}
+        />
+      ),
+    }
+  }
   const copiar = async () => {
     try {
       await navigator.clipboard.writeText(csvPorCaminhao(c, porCaminhao, sistema).replace('﻿', '').replace(/;/g, '\t'))
@@ -100,7 +161,7 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
         <button type="button" onClick={copiar}>
           Copiar para o Excel
         </button>
-        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={folha} testid="concreto-pdf-relatorio" />
+        <BotaoExportarPdf obra={ctx.obra} usuario={ctx.usuario} montar={montarPdf} testid="concreto-pdf-relatorio" />
       </div>
       {copiado && <p class="aviso nao-imprimir">{copiado}</p>}
 
@@ -150,6 +211,13 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
             </tr>
           </thead>
           <tbody>
+            {porPeca.length === 0 && (
+              <tr>
+                <td colSpan={2} class="discreto">
+                  Nenhuma peça ainda. Abra "Desenhar na planta" na concretagem.
+                </td>
+              </tr>
+            )}
             {porPeca.map((l) => (
               <tr key={l.peca.id}>
                 <td>
@@ -169,7 +237,13 @@ export function TelaRelatorio({ ctx, concretagemRaiz }: { ctx: Contexto; concret
           </tbody>
         </table>
       )}
-      <p class="discreto">Parcial: a área desenhada cobre menos de 90% da peça. Confira se outro caminhão completou a peça.</p>
+      {legenda.length > 0 && (
+        <ul class="cc-legenda-relatorio discreto" data-testid="legenda-relatorio">
+          {legenda.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      )}
     </main>
   )
 }

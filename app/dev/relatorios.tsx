@@ -57,6 +57,26 @@ async function semear() {
   linhas.push({ tabela: 'diario_efetivo', linha: { ...corrigivel, id: uuid('c1000000', 3), data, empresa: 'Empresa de Teste', funcao: 'Pedreiro', quantidade: 6, observacao: null } })
   linhas.push({ tabela: 'diario_efetivo', linha: { ...corrigivel, id: uuid('c1000000', 4), data, empresa: 'Empresa de Teste', funcao: 'Servente', quantidade: 4, observacao: null } })
   linhas.push({ tabela: 'diario_equipamentos', linha: { ...corrigivel, id: uuid('c1000000', 5), data, nome: 'Grua', quantidade: 1, situacao: 'operando', observacao: null } })
+  if (params.get('auto')) {
+    // ?auto=1 (Diário automático, 26/11/2026): o que a FVS e o Concreto registraram HOJE, para o bloco "O que o app
+    // registrou hoje": 3 pilares do 3º pavimento na ficha de pilares (um NC e um NA; uma pessoa com nome e a da
+    // bancada, sem nome), 2 vigas do 4º na ficha de vigas, e a concretagem de duas lajes com 2 caminhões
+    const agora = new Date()
+    const dia = { ...base, criado_em_dispositivo: agora.toISOString() }
+    linhas.push({ tabela: 'fichas_modelo', linha: { ...dia, id: uuid('f0000000', 1), codigo: 'TESTE-PVS-01', titulo: 'Pilares (ficha de teste)', revisao: '0', aplica_a: ['P'], itens: [] } })
+    linhas.push({ tabela: 'fichas_modelo', linha: { ...dia, id: uuid('f0000000', 2), codigo: 'TESTE-PVS-02', titulo: 'Vigas (ficha de teste)', revisao: '0', aplica_a: ['V'], itens: [] } })
+    let k = 0
+    const ev = (elemento: number, ficha: number, item: number, resultado: string, quem: string | null) =>
+      linhas.push({ tabela: 'fvs_eventos', linha: { ...dia, id: uuid('fe000000', ++k), elemento_id: uuid('e0000000', elemento), ficha_id: uuid('f0000000', ficha), item, rodada: 1, resultado, observacao: null, verificado_por: quem } })
+    // pilares P1, P2 e P3 do 3º pavimento (elementos 1 a 3)
+    for (const el of [1, 2, 3]) for (const it of [1, 2, 3, 4]) ev(el, 1, it, el === 2 && it === 3 ? 'NC' : el === 3 && it === 4 ? 'NA' : 'C', el === 1 ? 'Pessoa Um' : null)
+    // vigas V1 e V2 do 4º pavimento (o 3º tem 20 P, 26 V e 6 L = 52 elementos; no 4º, 12 pilares e depois as vigas)
+    for (const el of [65, 66]) for (const it of [1, 2]) ev(el, 2, it, 'C', 'Pessoa Dois')
+    const cor = { ...dia, substitui_id: null, cancelado: false }
+    linhas.push({ tabela: 'concretagens', linha: { ...cor, id: uuid('cc000000', 1), pavimento_id: pavs[0].id, data: dataLocal(agora), local_descricao: 'lajes L1 e L2', fornecedor: 'Concreteira Exemplo', fck_mpa: 30, slump_cm: 12, idades_dias: [7, 28], cps_por_idade: 2 } })
+    linhas.push({ tabela: 'caminhoes', linha: { ...cor, id: uuid('cc100000', 1), concretagem_id: uuid('cc000000', 1), nota_fiscal: '1001', volume_m3: 8, ordem: 1 } })
+    linhas.push({ tabela: 'caminhoes', linha: { ...cor, id: uuid('cc100000', 2), concretagem_id: uuid('cc000000', 1), nota_fiscal: '1002', volume_m3: 7.5, ordem: 2 } })
+  }
   await banco.registros.bulkPut(linhas.map((l) => ({ tabela: l.tabela, id: l.linha.id, obra_id: OBRA, linha: l.linha as never, pendente: 0 as const })))
 }
 

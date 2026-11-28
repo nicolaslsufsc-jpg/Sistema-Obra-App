@@ -4,6 +4,7 @@ import type { Linha } from '../nucleo/banco_local'
 import type { PapelNaObra } from '../nucleo/conta'
 import { sincronizador } from '../nucleo/servicos'
 import { dataLocal, piorSituacao, situacaoDasIdades, type IdadeCP, type ResultadoCP, type SituacaoCP } from './cps'
+import { canetaComLaje } from './canetas'
 import { idDaLaje, lajeDoTrecho, nomeNoBanco } from './lajes'
 import { estadoDasPecas, type EstadoPeca, type MudancaPeca } from './pecas'
 import { montarRastreioDasLajes } from './rastreio'
@@ -63,9 +64,9 @@ export type Caminhao = Vigente<Corrigivel> & {
   observacao: string | null
 }
 
-/** Em que peças a área vale: 'pilares', 'vigas_laje' (vigas e a laje do trecho) ou vazio = todas (áreas antigas). */
-export type AlvoDaArea = 'pilares' | 'vigas_laje'
-export type Area = Vigente<Corrigivel> & { caminhao_id: string; planta_ref: string; contorno: Array<[number, number]>; alvo?: AlvoDaArea | null }
+/** Em que peças a área vale: a caneta (canetas.ts) ou vazio = todas (áreas antigas). */
+export type { AlvoDaArea } from './canetas'
+export type Area = Vigente<Corrigivel> & { caminhao_id: string; planta_ref: string; contorno: Array<[number, number]>; alvo?: string | null }
 
 export type Resultado = Vigente<Corrigivel> & ResultadoCP & {
   caminhao_id: string
@@ -249,10 +250,10 @@ export function piorDoCaminhao(d: DadosConcreto, c: Caminhao, conc: Concretagem,
   return piorSituacao(idadesDoCaminhao(d, c, conc, hoje).map((i) => i.situacao))
 }
 
-/** Caminhões (raiz) com área de "vigas e laje" desenhada: a laje que encheram (relatório e mapa). */
+/** Caminhões (raiz) com área de caneta com laje desenhada: a laje que encheram (relatório e mapa). */
 export function caminhoesComLajeDesenhada(d: Pick<DadosConcreto, 'areasDe'>): Set<string> {
   const s = new Set<string>()
-  for (const [raiz, areas] of d.areasDe) if (areas.some((a) => a.alvo === 'vigas_laje')) s.add(raiz)
+  for (const [raiz, areas] of d.areasDe) if (areas.some((a) => canetaComLaje(a.alvo))) s.add(raiz)
   return s
 }
 

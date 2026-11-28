@@ -1310,6 +1310,52 @@ suite('FVS na bancada (Chrome)', () => {
     }, 180_000)
   }
 
+  // Caixa da planta no topo (achado do FVS-5, 26/11/2026): no tablet a caixa cortava o nome ("Planta inte",
+  // "Água fria e") com espaço sobrando no topo. O nome escolhido cabe inteiro na caixa.
+  for (const [largura, altura] of [
+    [768, 1024],
+    [800, 1280],
+    [1024, 768],
+    [1280, 800],
+  ] as const) {
+    it(`${largura}x${altura}: a caixa da planta no topo mostra o nome inteiro ("Água fria e quente")`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: false })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1`)
+      await noInicio(p)
+      const medir = () =>
+        p.evaluate(() => {
+          const sel = document.querySelector('.fv-nomes select') as HTMLSelectElement
+          const cs = getComputedStyle(sel)
+          const cv = document.createElement('canvas').getContext('2d')!
+          cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+          const texto = sel.options[sel.selectedIndex].text
+          // o texto, o recuo dos dois lados e a seta da caixa (20 px)
+          return { texto, precisa: Math.ceil(cv.measureText(texto).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 20), tem: sel.clientWidth }
+        })
+      for (const secao of ['Hidráulica', 'Preventivo contra incêndio']) {
+        await naDisciplina(p, 'instalacoes')
+        await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: new RegExp(`^${secao}$`) }) }).getByRole('button').first().click()
+        await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+        const m = await medir()
+        // "Hidrantes, extintores e sprinklers" só cabe a partir de 1024; em 768 e 800 a caixa usa a largura que há
+        if (secao === 'Hidráulica' || largura > 900) expect(m.tem, `"${m.texto}" inteiro na caixa (${JSON.stringify(m)})`).toBeGreaterThanOrEqual(m.precisa)
+        else expect(m.tem, JSON.stringify(m)).toBeGreaterThanOrEqual(200)
+        expect(await topoCabe(p)).toBe(true)
+        expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+        const b = await buscaInteira(p)
+        expect(b.tem, `"Buscar" inteiro (${JSON.stringify(b)})`).toBeGreaterThanOrEqual(b.precisa)
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `caixa_planta_${largura}_${secao.slice(0, 4)}${process.env.SO_FONTE_LARGA ? '_larga' : ''}.png`) })
+        await p.locator('.fv-topo .fv-voltar').click()
+        await noInicio(p)
+      }
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
   // obra demo EXE-PV (26/11/2026): planta deitada só no terço de cima no celular e no tablet em pé, e
   // "1º Pavimen…" cortado em 375. Rode também com SO_FONTE_LARGA=1 (Verdana, como o Linux do GitHub).
   for (const [largura, altura] of [

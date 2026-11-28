@@ -568,52 +568,158 @@ def recintos_da_prancha(parede, k: float, t: dict, ambientes: dict) -> dict:
     return {"shafts": shafts, "sem_ambiente": sem}
 
 
-def nomear_recintos(recintos: list, pontos: list[dict], textos: list | None = None, metros_por_cm: float = 0.01) -> dict:
+TEXTO_PERTO_M = 2.0  # o rótulo do recinto pode estar do lado de fora, até esta distância do contorno
+ESCADA_PERTO_M = 3.0  # a anotação de escada ("SOBE", "VAI AO 2º PAV.") fica na chegada, um pouco mais longe
+AREA_IGUAL = 0.03  # recintos com a área até 3% diferente contam como o mesmo cômodo repetido
+VIZINHO_PERTO_M = 0.6  # recinto encostado num ambiente com nome (uma parede no meio)
+VIZINHO_MIN = 0.5  # o vizinho dá o nome se encosta em pelo menos metade do contorno que tem vizinho
+PONTOS_MIN = 0.7  # o tipo de ponto dá o nome se pelo menos esta parte dos pontos é da mesma disciplina
+# o que o recinto é, pelo que tem dentro (último recurso antes da pendência)
+NOME_PELA_DISCIPLINA = {"hidro": "Área técnica de água", "sanitario": "Área técnica de esgoto",
+                        "eletrico": "Área técnica elétrica", "preventivo": "Área de prevenção de incêndio",
+                        "spda": "Área do SPDA"}
+
+
+def nomear_recintos(recintos: list, pontos: list[dict], textos: list | None = None, metros_por_cm: float = 0.01,
+                    vizinhos: dict | None = None, origem: dict | None = None) -> dict:
     """{nome: polígono} só dos recintos com algum ponto dentro, em ordem de cima para baixo e da esquerda para a
-    direita. O nome sai do texto da prancha dentro do recinto (textos: [(texto, x, y)] em metros do modelo,
-    textos_da_prancha); sem texto que sirva, "Recinto sem nome N", pendência para o Nicolas editar (decisão de
-    25/11). Nome repetido ganha " 2", " 3"."""
+    direita. O programa tenta dar o nome sozinho (decisão do Nicolas, 25/11), nesta ordem:
+    1. "texto": o texto da prancha dentro do recinto (textos: [(texto, x, y)] em metros do modelo);
+    2. "texto_perto": o texto com cara de nome mais perto do contorno, até TEXTO_PERTO_M, que não esteja dentro
+       de outro ambiente nem de outro recinto; anotação de escada ("SOBE", "VAI AO 2º PAV.", até ESCADA_PERTO_M,
+       dentro ou perto) dá o nome "Escada";
+    3. "igual": o recinto com a mesma área e a mesma caixa (até AREA_IGUAL) de outro que ganhou nome pelo texto leva o mesmo nome
+       (a escada que se repete em cada bloco);
+    4. "vizinho": o ambiente com nome em que o recinto mais encosta (vizinhos: {rótulo: polígono}) -> "Anexo de X";
+    5. "pontos": a disciplina de quase todos os pontos de dentro ("Área técnica de água"; com quadro elétrico,
+       "Sala de quadros");
+    sem nenhum, "Recinto sem nome N": pendência para o Nicolas editar. Nome repetido ganha " 2", " 3".
+    origem (dict, opcional) recebe {nome: "texto" | "texto_perto" | "igual" | "vizinho" | "pontos" | None}."""
     from shapely.geometry import Point
     from shapely.strtree import STRtree
 
     if not recintos:
         return {}
     arvore = STRtree(recintos)
-    usados = set()
+    dentro: dict[int, list[dict]] = {}
     for p in pontos:
         q = Point(p["x"] * metros_por_cm, p["y"] * metros_por_cm)
-        usados.update(int(i) for i in arvore.query(q) if recintos[i].contains(q))
-    ordem = sorted(usados, key=lambda i: (-round(recintos[i].centroid.y), round(recintos[i].centroid.x)))
+        for i in arvore.query(q):
+            if recintos[i].contains(q):
+                dentro.setdefault(int(i), []).append(p)
+    ordem = sorted(dentro, key=lambda i: (-round(recintos[i].centroid.y), round(recintos[i].centroid.x)))
+    nomes_txt = [(s, x, y) for s, x, y in (textos or []) if texto_e_nome(s) or RE_ESCADA.search(s.strip())]
+    # texto livre: fora de todo ambiente com nome e de todo recinto (senão é o rótulo de outro lugar)
+    ocupados = list(recintos) + list((vizinhos or {}).values())
+    arv_ocup = STRtree(ocupados) if ocupados else None
+    livres = [(s, Point(x, y)) for s, x, y in nomes_txt
+              if arv_ocup is None or not any(ocupados[k].contains(Point(x, y)) for k in arv_ocup.query(Point(x, y)))]
+    achados, usados_perto = {}, set()
+    for i in ordem:
+        g = recintos[i]
+        nome, por = nome_pelo_texto(g, textos or []), "texto"
+        if not nome:
+            perto = sorted((g.distance(q), n) for n, (s, q) in enumerate(livres) if n not in usados_perto
+                           and g.distance(q) <= (ESCADA_PERTO_M if RE_ESCADA.search(s.strip()) else TEXTO_PERTO_M))
+            # o texto só vale se este recinto é o mais perto dele (senão é de outro recinto)
+            for d, n in perto:
+                s, q = livres[n]
+                if all(recintos[k].distance(q) >= d for k in ordem if k != i):
+                    nome, por = ("Escada" if RE_ESCADA.search(s.strip()) else " ".join(s.split())), "texto_perto"
+                    usados_perto.add(n)
+                    break
+        achados[i] = (nome, por) if nome else None
+    # 3. "igual": o recinto que se repete (a escada de cada bloco) leva o nome do igual que tem nome pelo texto
+    def lados(g):  # largura e altura da caixa, a menor primeiro
+        x0, y0, x1, y1 = g.bounds
+        return sorted((x1 - x0, y1 - y0))
+
+    com_texto = [(recintos[i].area, achados[i][0], lados(recintos[i])) for i in ordem if achados[i]]
     saida, sem_nome = {}, 0
     for i in ordem:
-        nome = nome_pelo_texto(recintos[i], textos or [])
+        g = recintos[i]
+        nome, por = achados[i] or (None, None)
+        if not nome:
+            iguais = sorted((abs(a - g.area), n) for a, n, ld in com_texto if abs(a - g.area) <= AREA_IGUAL * g.area
+                            and all(abs(u - v) <= 2 * AREA_IGUAL * max(v, 0.1) for u, v in zip(ld, lados(g))))
+            if iguais:
+                nome, por = iguais[0][1], "igual"
+        if not nome:
+            nome, por = nome_pelo_vizinho(g, vizinhos or {}), "vizinho"
+        if not nome:
+            nome, por = nome_pelos_pontos(dentro[i]), "pontos"
         if not nome:
             sem_nome += 1
-            nome = f"{RECINTO_SEM_NOME} {sem_nome}"
+            nome, por = f"{RECINTO_SEM_NOME} {sem_nome}", None
         base, n = nome, 1
-        while nome in saida:
+        while nome in saida or nome in (vizinhos or {}):
             n += 1
             nome = f"{base} {n}"
-        saida[nome] = recintos[i]
+        saida[nome] = g
+        if origem is not None:
+            origem[nome] = por
     return saida
 
 
 RE_TEXTO_QUE_NAO_E_NOME = re.compile(
-    r"m²|m2\b|^\s*[AÁ]\s*[:=]|^[\s\d.,+\-=:%()/x]*$|^(PISO|FORRO|PAREDE|RODAP[EÉ]|TETO|H\s*=|N[IÍ]VEL|COTA|PD|P\.D|EL\.?)\b",
+    r"m²|m2\b|^\s*[AÁ]\s*[:=]|^[\s\d.,+\-=:%()/x]*$|^(PISO|FORRO|PAREDE|RODAP[EÉ]|TETO|H\s*=|N[IÍ]VEL|COTA|PD|P\.D|EL\.?)\b"
+    r"|^(PROJ|CORTE|DET|VER\b|SOBE|DESCE|EIXO|JUNTA|VIGA|LAJE|PILAR|ESC\b|ESCALA|NOTA|OBS|LEGENDA|PLANTA|i\s*=)",
     re.IGNORECASE)
 
 
+RE_ESCADA = re.compile(r"^(ESCADA|VAI AO|VEM DO|SOBE|DESCE)\b", re.IGNORECASE)
+
+
+def texto_e_nome(s: str) -> bool:
+    """Texto da prancha com cara de nome de cômodo: pelo menos 3 letras e não é área, cota, nível, acabamento
+    nem anotação de desenho (projeção, corte, detalhe, sobe/desce)."""
+    s = s.strip()
+    return sum(ch.isalpha() for ch in s) >= 3 and not RE_TEXTO_QUE_NAO_E_NOME.search(s) and not RE_ESCADA.search(s)
+
+
 def nome_pelo_texto(recinto, textos: list) -> str | None:
-    """O nome do recinto pelo texto da prancha que cai dentro dele: a linha mais alta com pelo menos 3 letras que
-    não seja área, cota, nível ou acabamento. None se não houver."""
+    """O nome do recinto pelo texto da prancha que cai dentro dele: a linha mais alta com cara de nome
+    (texto_e_nome); só com anotação de escada dentro, "Escada". None se não houver."""
     from shapely.geometry import Point
 
-    bons = [(y, x, s.strip()) for s, x, y in textos
-            if sum(ch.isalpha() for ch in s) >= 3 and not RE_TEXTO_QUE_NAO_E_NOME.search(s.strip())
-            and recinto.contains(Point(x, y))]
-    if not bons:
+    dentro = [(y, x, s.strip()) for s, x, y in textos if recinto.contains(Point(x, y))]
+    bons = [d for d in dentro if texto_e_nome(d[2])]
+    if bons:
+        return " ".join(max(bons)[2].split())
+    return "Escada" if any(RE_ESCADA.search(d[2]) for d in dentro) else None
+
+
+def nome_pelo_vizinho(recinto, vizinhos: dict) -> str | None:
+    """"Anexo de X": X é o ambiente com nome em que o recinto mais encosta (até VIZINHO_PERTO_M), se ele sozinho
+    encosta em pelo menos VIZINHO_MIN do contorno que tem vizinho. None se não encosta em nenhum ou se divide."""
+    borda = recinto.exterior if hasattr(recinto, "exterior") else recinto.boundary
+    contato = {}
+    for rotulo, g in vizinhos.items():
+        if recinto.distance(g) > VIZINHO_PERTO_M:
+            continue
+        trecho = borda.intersection(g.buffer(VIZINHO_PERTO_M)).length
+        if trecho > 0:
+            contato[rotulo] = trecho
+    if not contato:
         return None
-    return " ".join(max(bons)[2].split())
+    melhor = max(contato, key=lambda r: (contato[r], r))
+    if contato[melhor] < VIZINHO_MIN * sum(contato.values()):
+        return None
+    return f"Anexo de {melhor}"
+
+
+def nome_pelos_pontos(pontos: list[dict]) -> str | None:
+    """O que o recinto é pelos pontos de dentro: quadro elétrico -> "Sala de quadros"; senão a disciplina de pelo
+    menos PONTOS_MIN dos pontos. O ponto precisa trazer "disciplina" (o publicador põe). None se misturado."""
+    discs = [p.get("disciplina") for p in pontos if p.get("disciplina")]
+    if not discs:
+        return None
+    if any(p.get("tipo") == "quadro" for p in pontos):
+        return "Sala de quadros"
+    melhor = max(set(discs), key=lambda d: (discs.count(d), d))
+    if discs.count(melhor) < PONTOS_MIN * len(discs):
+        return None
+    return NOME_PELA_DISCIPLINA.get(melhor)
 
 
 def textos_da_prancha(page, para_modelo) -> list:
@@ -657,7 +763,8 @@ PRIORIDADE = ("ponto_agua", "hidrometro", "registro")
 
 def juntar_proximos(dentro: dict, raio_cm: float, pt_por_cm: float) -> dict:
     """Junta os pontos (já na folha) a menos de raio_cm uns dos outros. O ponto que fica é o de menor id do grupo
-    (estável entre gerações); o tipo é o mais importante do grupo; o nome conta os itens ("2 Válvula Esfera, ...")."""
+    (estável entre gerações); o tipo é o mais importante do grupo; o nome conta os itens
+    ("2× Válvula Esfera, ..."; com "×" desde 26/11, porque "2 Válvula Esfera" na tela parecia parte do nome)."""
     ids = sorted(dentro)
     lim = raio_cm * pt_por_cm
     pai = {i: i for i in ids}
@@ -696,7 +803,7 @@ def juntar_proximos(dentro: dict, raio_cm: float, pt_por_cm: float) -> dict:
         contagem: dict[str, int] = {}
         for r in regs:
             contagem[r["nome"]] = contagem.get(r["nome"], 0) + 1
-        nome = ", ".join(f"{q} {n}" if q > 1 else n for n, q in sorted(contagem.items(), key=lambda x: (-x[1], x[0])))
+        nome = ", ".join(f"{q}× {n}" if q > 1 else n for n, q in sorted(contagem.items(), key=lambda x: (-x[1], x[0])))
         xs = [r["ponto"][0] for r in regs]
         ys = [r["ponto"][1] for r in regs]
         saida[chefe] = {**dentro[chefe], "tipo": tipo, "nome": nome,

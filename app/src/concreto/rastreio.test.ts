@@ -244,6 +244,16 @@ describe('rastreio do concreto na laje (área da FVS)', () => {
     expect(situacaoDoRastreio(r.get('laje-a')?.caminhoes ?? [])).toEqual({ resultado: null, parcial: false })
   })
 
+  it('seis canetas (26/11): as com laje contam; vigas e pilares e vigas não; caneta desconhecida também não', () => {
+    const quem = (alvo: string) =>
+      montarRastreioDasLajes(baseLaje({ caminhao_areas: [area('k1', ref1, ret(0, 0, 100, 100), { alvo })] }), [LAJE]).has('laje-a')
+    expect(['laje', 'vigas_laje', 'pilares_vigas_laje', 'vigas', 'pilares_vigas', 'pilares', 'nova'].filter(quem)).toEqual([
+      'laje',
+      'vigas_laje',
+      'pilares_vigas_laje',
+    ])
+  })
+
   it('área antiga sem alvo (antes das duas canetas) conta; ref antiga sem "@" também', () => {
     const r = montarRastreioDasLajes(baseLaje({ caminhao_areas: [area('k1', T1, ret(0, 0, 100, 100), { alvo: null })] }), [LAJE])
     expect(r.get('laje-a')!.caminhoes.map((c) => c.caminhao_raiz)).toEqual(['k1'])

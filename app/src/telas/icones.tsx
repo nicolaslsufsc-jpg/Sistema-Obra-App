@@ -20,6 +20,8 @@ const TRACOS: Record<IdModulo, string[]> = {
   relatorios: ['M6 3h11a2 2 0 0 1 2 2v16H7a2 2 0 0 1-2-2V4a1 1 0 0 1 1-1z', 'M5 17a2 2 0 0 1 2-2h12', 'M9 7h6', 'M9 11h4'],
   // cubo: modelo 3D
   ifc: ['M12 2.5l8.5 4.75v9.5L12 21.5l-8.5-4.75v-9.5z', 'M3.5 7.25L12 12l8.5-4.75', 'M12 12v9.5'],
+  // folha dobrada com um marcador: mapa do canteiro
+  canteiro: ['M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z', 'M9 4v14', 'M15 6v14'],
 }
 
 /** Ícones de ação (no lugar de "‹", "›", "×", "▾", "✓", "↗" escritos como texto). */

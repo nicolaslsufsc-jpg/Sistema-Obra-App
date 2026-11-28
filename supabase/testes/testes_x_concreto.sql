@@ -61,6 +61,25 @@ select teste.deve_falhar($$
           'teste:pavimento-1', '[[0,0],[100,0],[100,100]]', 'paredes', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
 $$, '23514', 'concreto: alvo da área fora da lista é recusado');
 
+-- seis canetas (20261126120000_concreto_canetas_combinadas.sql): as combinações novas entram;
+-- "pilares e lajes" sem as vigas continua fora; a área que já existia não mudou
+insert into public.caminhao_areas (id, obra_id, caminhao_id, planta_ref, contorno, alvo, dispositivo_id, criado_em_dispositivo)
+select gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'c1000000-0000-0000-0000-000000000001',
+       'teste:pavimento-1', '[[0,0],[100,0],[100,100]]', v, 'dddddddd-dddd-dddd-dddd-dddddddddddd', now()
+from unnest(array['vigas', 'laje', 'pilares_vigas', 'pilares_vigas_laje']) as v;
+select teste.ok(
+  (select count(distinct alvo) from public.caminhao_areas where alvo in ('vigas', 'laje', 'pilares_vigas', 'pilares_vigas_laje')) = 4,
+  'concreto: as canetas combinadas (vigas, laje, pilares e vigas, pilares vigas e laje) entram');
+select teste.deve_falhar($$
+  insert into public.caminhao_areas (id, obra_id, caminhao_id, planta_ref, contorno, alvo, dispositivo_id, criado_em_dispositivo)
+  values (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'c1000000-0000-0000-0000-000000000001',
+          'teste:pavimento-1', '[[0,0],[100,0],[100,100]]', 'pilares_laje', 'dddddddd-dddd-dddd-dddd-dddddddddddd', now())
+$$, '23514', 'concreto: pilares e lajes sem as vigas é recusado');
+select teste.ok(
+  (select alvo from public.caminhao_areas where id = 'c2000000-0000-0000-0000-000000000002') = 'vigas_laje'
+  and (select alvo from public.caminhao_areas where id = 'c2000000-0000-0000-0000-000000000001') is null,
+  'concreto: as áreas que já existiam ficam como estavam');
+
 insert into public.caminhao_elementos (id, obra_id, caminhao_id, elemento_id, origem, fracao, incluido,
                                        dispositivo_id, criado_em_dispositivo)
 values ('c3000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',

@@ -152,6 +152,12 @@ export interface PlantaComAreas {
   pecas: readonly PecaPreparada[]
   /** Áreas do caminhão desenhadas NESTA planta (outro trecho tem outras coordenadas). */
   areas: readonly AreaPreparada[]
+  /**
+   * Áreas do caminhão nesta planta feitas com uma caneta que esta versão do app não conhece
+   * (aparelho mais novo). Não se sabe em que peças elas valem, então a peça que uma delas cobre
+   * não sai do caminhão nem diminui no recálculo (26/11/2026: o aparelho antigo tirava e gravava).
+   */
+  desconhecidas?: readonly AreaPreparada[]
 }
 
 /**
@@ -164,9 +170,13 @@ export function mudancasDoDesenhoPorPlanta(
   registrosDoCaminhao: readonly Linha[],
 ): MudancaPeca[] {
   const fracoes = new Map<string, number>()
-  for (const { pecas, areas } of plantas) {
+  const protegidas = new Set<string>()
+  const tocaEm = (p: PecaPreparada, lista: readonly AreaPreparada[]) =>
+    lista.some((a) => a.caixa.x0 <= p.caixa.x1 && p.caixa.x0 <= a.caixa.x1 && a.caixa.y0 <= p.caixa.y1 && p.caixa.y0 <= a.caixa.y1)
+  for (const { pecas, areas, desconhecidas } of plantas) {
     for (const p of pecas) {
-      const toca = areas.some((a) => a.caixa.x0 <= p.caixa.x1 && p.caixa.x0 <= a.caixa.x1 && a.caixa.y0 <= p.caixa.y1 && p.caixa.y0 <= a.caixa.y1)
+      if (desconhecidas?.length && tocaEm(p, desconhecidas) && fracaoDentro(p.amostras, desconhecidas) >= LIMITE_INCLUIR) protegidas.add(p.id)
+      const toca = tocaEm(p, areas)
       const f = toca ? Math.round(fracaoDentro(p.amostras, areas) * 1000) / 1000 : 0
       fracoes.set(p.id, Math.max(fracoes.get(p.id) ?? 0, f))
     }
@@ -177,6 +187,8 @@ export function mudancasDoDesenhoPorPlanta(
   for (const [id, fracao] of fracoes) {
     const incluido = fracao >= LIMITE_INCLUIR
     const antes = ultimo.get(id)
+    // coberta por área de caneta desconhecida: pode entrar ou crescer, nunca sair nem diminuir
+    if (protegidas.has(id) && antes?.incluido && (!incluido || fracao < (numero(antes.fracao) ?? 0))) continue
     if (!antes) {
       if (incluido) mudancas.push({ elemento_id: id, incluido, fracao })
       continue

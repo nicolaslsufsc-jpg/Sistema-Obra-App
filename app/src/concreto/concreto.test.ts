@@ -270,6 +270,28 @@ describe('várias plantas por pavimento (um trecho por prancha)', () => {
     expect(mud.find((m) => m.elemento_id === 'P9')!.fracao).toBe(1)
   })
 
+  it('caneta desconhecida (aparelho mais novo): a peça que ela cobre não sai nem diminui no recálculo', () => {
+    const pecas = prepararPecas([
+      { id: 'P1', tipo: 'P', nome: 'P1', rotulo: [0, 0, 1, 1], polys: [quadrado(100, 100)] },
+      { id: 'P2', tipo: 'P', nome: 'P2', rotulo: [0, 0, 1, 1], polys: [quadrado(400, 100)] },
+      { id: 'P3', tipo: 'P', nome: 'P3', rotulo: [0, 0, 1, 1], polys: [quadrado(700, 100)] },
+    ])
+    const reg = (elemento_id: string, fracao: number) => ({ id: elemento_id, elemento_id, incluido: true, fracao, origem: 'desenho', criado_em_dispositivo: '2026-11-26T10:00:00Z' }) as never
+    const jaNoCaminhao = [reg('P1', 1), reg('P2', 1), reg('P3', 1)]
+    const nova = prepararArea([[50, 50], [500, 50], [500, 200], [50, 200]]) // cobre P1 e P2, caneta que este app não conhece
+    // sem a proteção (como o aparelho antigo): as três saem
+    expect(mudancasDoDesenhoPorPlanta([{ pecas, areas: [] }], jaNoCaminhao).map((m) => m.elemento_id).sort()).toEqual(['P1', 'P2', 'P3'])
+    // com a área desconhecida: só a P3, que nenhuma área cobre, sai
+    const mud = mudancasDoDesenhoPorPlanta([{ pecas, areas: [], desconhecidas: [nova] }], jaNoCaminhao)
+    expect(mud).toEqual([{ elemento_id: 'P3', incluido: false, fracao: 0 }])
+    // área conhecida pegando metade da P1: a P1 não diminui (a desconhecida pode cobrir o resto)
+    const metade = prepararArea([[50, 50], [120, 50], [120, 200], [50, 200]])
+    expect(mudancasDoDesenhoPorPlanta([{ pecas, areas: [metade], desconhecidas: [nova] }], jaNoCaminhao).map((m) => m.elemento_id)).toEqual(['P3'])
+    // peça nova entra normalmente pela área conhecida, mesmo coberta pela desconhecida
+    const inteira = prepararArea([[50, 50], [200, 50], [200, 200], [50, 200]])
+    expect(mudancasDoDesenhoPorPlanta([{ pecas, areas: [inteira], desconhecidas: [nova] }], [])).toEqual([{ elemento_id: 'P1', incluido: true, fracao: 1 }])
+  })
+
   it('fonte de plantas: a de verdade vence a de teste, em ordem de trecho; fonte com erro é pulada', async () => {
     const pedido = { obraId: 'o', obraCodigo: 'TESTE', pavimento: { id: 'pav', nome: 'Térreo' }, pecas: [{ id: 'p', tipo: 'P', nome: 'P1' }] }
     const soTeste = await carregarPlantas(pedido)

@@ -4,7 +4,8 @@ import type { ComponentChildren } from 'preact'
 import { SeloExemplo } from './TelaInicio'
 import { useEffect, useState } from 'preact/hooks'
 import { dataLocal } from '../../concreto/cps'
-import { copiarDoDia, corrigir, doQueOAppSabe, fecharDia, podeFechar, podeRegistrar, reabrirDia, registrar, type DoApp } from '../dados'
+import type { Automatico } from '../automatico'
+import { automaticoDoDia, copiarDoDia, corrigir, fecharDia, horaDoFechamento, podeFechar, podeRegistrar, reabrirDia, registrar } from '../dados'
 import { dataBR, depoisDoFechamento, diasAntes, ehRelato, numeroAoFechar, resumoDoDia, textoDoLocal, TIPO_RELATO, ultimoDiaCom, type Registro, diaDeExemplo, diaTemExemplo, semExemplos } from '../regras'
 import { PERIODOS, rotulo, SECOES, SITUACOES_EQUIPAMENTO, SITUACOES_SERVICO, TEMPOS, TIPOS_OCORRENCIA, type TabelaSecao } from '../tipos'
 import type { Contexto } from './ModuloRelatorios'
@@ -28,17 +29,26 @@ export function TelaDia({ ctx, data }: { ctx: Contexto; data: string }) {
   const resumo = resumoDoDia(dados, data)
   const pode = podeRegistrar(obra.papel) && !resumo.fechado
   const [msg, setMsg] = usarMensagem()
-  const [app, setApp] = useState<DoApp | null>(null)
+  const [app, setApp] = useState<Automatico | null>(null)
+  const ate = horaDoFechamento(dados, data)
 
+  // refaz ao abrir o dia, ao fechar ou reabrir, e quando o aparelho volta a esta tela (a pessoa marcou na FVS e voltou)
   useEffect(() => {
     let vivo = true
-    doQueOAppSabe(obra.id, data).then((r) => {
-      if (vivo) setApp(r)
-    })
+    const ler = () =>
+      automaticoDoDia(obra.id, data, ate).then((r) => {
+        if (vivo) setApp(r)
+      })
+    ler()
+    const aoVoltar = () => {
+      if (document.visibilityState === 'visible') ler()
+    }
+    document.addEventListener('visibilitychange', aoVoltar)
     return () => {
       vivo = false
+      document.removeEventListener('visibilitychange', aoVoltar)
     }
-  }, [obra.id, data])
+  }, [obra.id, data, ate, dados])
 
   const seguro: Seguro = (acao) => {
     acao().catch((e) => setMsg(`Não foi possível salvar: ${erroEmTexto(e)}`))
@@ -77,6 +87,26 @@ export function TelaDia({ ctx, data }: { ctx: Contexto; data: string }) {
           {msg}
         </p>
       )}
+
+      {/* Diário automático (26/11, pedido do Nicolas): o dia abre com o que a FVS e o Concreto registraram, em frases.
+          Refaz-se sozinho enquanto o dia está aberto; fechado, fica como estava na hora do fechamento. O que a pessoa
+          escreve fica nas seções de baixo, e o bloco nunca mexe nelas */}
+      <section class="cartao rl-secao rl-auto" data-testid="do-app">
+        <h2 class="sem-topo">O que o app registrou {data === hoje ? 'hoje' : 'neste dia'}</h2>
+        {app === null && <p class="discreto">Lendo…</p>}
+        {app && app.frases.length === 0 && <p class="discreto">Nada da FVS nem do Concreto neste dia.</p>}
+        {app?.frases.map((f) => (
+          <p key={f} class="rl-auto-frase" data-testid="auto-frase">
+            {f}
+          </p>
+        ))}
+        {app && app.frases.length > 0 && (
+          <p class="discreto" data-testid="auto-nota">
+            {resumo.fechado ? 'Como estava quando o dia foi fechado.' : 'Montado pelo app; atualiza sozinho até o dia ser fechado.'}
+            {app.depois > 0 ? ` ${plural(app.depois, 'registro feito', 'registros feitos')} depois do fechamento ${app.depois === 1 ? 'ficou' : 'ficaram'} de fora.` : ''}
+          </p>
+        )}
+      </section>
 
       <Clima ctx={ctx} data={data} pode={pode} seguro={seguro} />
 
@@ -170,24 +200,6 @@ export function TelaDia({ ctx, data }: { ctx: Contexto; data: string }) {
           <button type="button" data-testid="novo-relatorio-dia" onClick={() => ir({ nome: 'novo-relatorio', data })}>
             Novo relatório neste dia
           </button>
-        )}
-      </section>
-
-      <section class="cartao rl-secao" data-testid="do-app">
-        <h2 class="sem-topo">Registrado em outros módulos</h2>
-        {app === null && <p class="discreto">Lendo…</p>}
-        {app && app.concretagens.length === 0 && app.fvs.pecas === 0 && <p class="discreto">Nada do Concreto nem da FVS neste dia.</p>}
-        {app?.concretagens.map((c) => (
-          <p key={c.raiz}>
-            <strong>Concretagem:</strong> {c.local || 'sem local'}
-            {c.fornecedor ? ` · ${c.fornecedor}` : ''} · {plural(c.caminhoes, 'caminhão', 'caminhões')}
-            {c.volume ? ` · ${numBR(c.volume)} m³` : ''}
-          </p>
-        ))}
-        {app && app.fvs.pecas > 0 && (
-          <p>
-            <strong>FVS:</strong> {plural(app.fvs.pecas, 'peça verificada', 'peças verificadas')} · {app.fvs.aprovados} C · {app.fvs.reprovados} NC · {app.fvs.naoAplica} NA
-          </p>
         )}
       </section>
 

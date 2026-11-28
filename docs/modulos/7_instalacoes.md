@@ -28,7 +28,7 @@ Frente aberta em 20/11/2026, com o pedido do Nicolas repassado pelo Professor. C
   - Classificação, conferida no IFC real de hidráulica e de esgoto (21/11). O Revit põe prefixo com sublinhado ("HID_", "SAN_"), que vira espaço antes de comparar. Conexões (IfcFlowFitting: joelho, tê, adaptador) e tubos não entram.
     - sanitário: "SAN_Ralo Linear" → ralo; "HID_Caixa Sifonada" → caixa sifonada; o "Prolongamento para Caixa Sifonada" (acessório) e o "Nicho" ficam fora;
     - hidro (IfcFlowController): "Valvula Esfera", "Registro Gaveta", "Registro Pressao", válvula redutora e de alívio → registro; "Misturador", "Ducha", "Chuveiro", "Torneira" → ponto de água; "Hidrometro" → hidrômetro; filtro, ventosa e flange de incêndio ("PCI_") ficam fora.
-  - No elétrico e no SPDA, também suposição, porque ainda não abri os IFC reais. Pelas classes de elétrica (IfcJunctionBox, IfcElectricDistributionBoard, IfcLightFixture...) e pelo nome ("CAIXA DE PASSAGEM", "OCTOGONAL", "QDL", "CAPTOR", "DESCIDA", "CAIXA DE INSPEÇÃO", "HASTE").
+  - No elétrico e no SPDA, conferida nos IFC reais (21 a 25/11; antes era suposição). Pelas classes de elétrica (IfcJunctionBox, IfcElectricDistributionBoard, IfcLightFixture...) e pelo nome ("CAIXA DE PASSAGEM", "OCTOGONAL", "QDL", "CAPTOR", "DESCIDA", "CAIXA DE INSPEÇÃO", "HASTE").
   - Trecho de tubo ou cabo só vira ponto no SPDA, e só se o nome disser "descida". O eletroduto vira linha no elétrico (acima).
 - **Encaixe (modelo para a folha):** o mesmo dos furos do pavimento, ou `"encaixe"` à mão. Encaixe duvidoso não serve.
   - **Suposição:** os modelos de hidráulica e de sanitário estão nas mesmas coordenadas do modelo de furação, porque saem do mesmo projeto no Revit.
@@ -89,10 +89,10 @@ O Nicolas pediu, nas palavras dele: "usa o mesmo princípio das armaduras de laj
   - correção do revisor (21/11): o id do ponto leva obra e pavimento. Branch `instalacoes/id-ponto-planta`. Os pontos publicados antes mudam de id, mas nenhum foi publicado no servidor.
   - 21/11: toque de barras e pontos em 1 verde, 2 vermelho, 3 tira (também com a caixa do NC aberta) e eletroduto como linha. Branch `instalacoes/toque-e-eletroduto`, testada na bancada em 375 px e em tablet, com toques rápidos e lentos.
   - 21/11: download das pranchas e modelos vigentes de HI, SA e EL, guardados e no índice. Piloto do 2º, fora do repositório, com hidráulica e esgoto: centenas de pontos de água e de esgoto. O encaixe está certo (conferido): quase todas as caixas sifonadas caem sobre um furo de laje Ø20, a milímetros dele. Branch `instalacoes/classificar-ifc-real`.
-- **Falta:**
-  1. O download das pranchas e modelos vigentes. O Nicolas deu o ok no chat da frente em 20/11.
-  2. O piloto no 2º pavimento real, fora do repositório. Depende do download e serve para conferir a classificação e o encaixe; no elétrico e no SPDA, também os nomes reais.
-  3. As fichas como dado da obra, fora do repositório, com o item dos pontos marcado:
+- **O que faltava em 21/11 (conferido em 26/11; só o 4 segue aberto, com o Nicolas):**
+  1. **Feito (21/11):** o download das pranchas e modelos vigentes, guardados e no índice.
+  2. **Feito (21 a 24/11):** o piloto no 2º pavimento real e depois todos os pavimentos, fora do repositório; a classificação e o encaixe foram conferidos, com os nomes reais do elétrico e do SPDA.
+  3. **Feito (23 a 25/11, só no servidor de testes):** as fichas como dado da obra, fora do repositório, com o item dos pontos marcado:
      - hidro e sanitário: EXE-PVS-12, EXE-PVS-14, EXE-PVS-15 e EXE-PVS-16;
      - elétrico: EXE-PVS-2x, mais a laje elétrica como suposição;
      - SPDA: EXE-PVS-31 e EXE-PVS-32.
@@ -168,9 +168,9 @@ Pedido do Professor: hidráulica e elétrica na FVS além dos furos, com o 2º p
 - **No servidor de testes (24/11):**
   - fichas EXE-PVS-14, EXE-PVS-16, EXE-PVS-15, EXE-PVS-26 e EXE-PVS-27: 4 novas e 1 com os itens trocados;
   - instalações do 2º, as cinco disciplinas: uns milhares de locais em água, esgoto e elétrico; dezenas a centenas no preventivo e no SPDA.
-- **Falta:** a conferência na tela, com o Professor quando o Nicolas entrar.
+- **Feito (25/11, chat 10):** a conferência na tela, na bancada com os pacotes reais, em 375 px e no tablet. Refeita em 26/11 pela frente 20 no 3º (seção "Conferência de 26/11").
 - **Caixas empilhadas (24/11, achado do 10, commit bd17ee4):** o "módulo ... não listável" saía como ponto à parte, no mesmo lugar do conjunto. Agora não vira ponto. No 2º da obra piloto, as caixas de parede caíram bastante (centenas de grupos empilhados), e não sobrou nenhum. O elétrico do 2º foi republicado nos testes, e o 10 conferiu na tela.
-- **Pendência (app):** a planta republicada com a mesma prancha mantém a revisão, e o menu mostra "Revisão nova… Baixar" com a mesma revisão. A proposta é o app comparar pelo id da planta e dizer "Planta atualizada". O pipeline não muda a revisão, porque o planta_ref do Concreto depende dela.
+- **Resolvido no app (24/11, `fvs/revisoes.ts`, com teste):** a planta republicada com a mesma prancha mantém a revisão, e o menu mostrava "Revisão nova… Baixar" com a mesma revisão. O app agora compara pelo id da planta e diz "Planta atualizada · Baixar de novo". O pipeline não muda a revisão, porque o planta_ref do Concreto depende dela.
 
 ## Estrutura no servidor de testes (23 e 24/11/2026, frente 20)
 
@@ -221,8 +221,38 @@ Os números da obra de verdade ficam fora do repositório (pasta da obra no PC).
 - **Caixa de passagem na parede (25/11, regra do Nicolas):** a "Caixa de Passagem na Parede" do Revit sai como
   `caixa_parede` (ficha de alvenaria ou drywall); a "CAIXA DE PASSAGEM 4X2 - CONDUTELE" continua
   `caixa_passagem`. O que já está no servidor só muda quando for republicado.
-- **Próximo passo:** as casas e os recintos novos entrarem na planta de ambientes de cada pavimento e a
-  republicação, com o OK do Professor.
+- **Próximo passo:** a republicação no servidor de testes, com o OK do Professor e sem estourar o limite de
+  egress: instalações (`--so-gerar`) → planta de ambientes com `"ambientes_novos"` → instalações de novo. A cadeia
+  foi rodada no PC em 26/11 (seção "Conferência de 26/11").
+
+## Conferência de 26/11/2026 (frente 20, noite liberada pelo Nicolas; só local, nada publicado)
+
+- **Nome sozinho dos recintos** e **"2×" nos pontos juntos**: regras em
+  [7_instalacoes_sem_ambiente.md](7_instalacoes_sem_ambiente.md). O ponto que junta dois registros passa a se
+  chamar "2× Registro" (antes "2 Registro", que na tela parecia parte do nome). Pacote já publicado só muda
+  quando for republicado.
+- **Cadeia das casas (3d30562, com teste):** na segunda volta, a planta de ambientes do pavimento já tem as casas;
+  a geração das instalações parava com "as casas repetem nomes". Agora vale a casa do pavimento.
+- **Tela, com os pacotes locais, em 768 x 1024 e 375:**
+  - lista de instalações: a planta sozinha na seção pega a linha inteira no tablet, e em 375 "eletrodutos" não
+    quebra no meio da palavra (1927825, `fvs.css`);
+  - sem defeito: abrir as cinco plantas, número por área, toque no ponto e no tubo (verde, com "Desfazer"), SPDA
+    e a aba Furos.
+- **Achado sem conserto (é do topo da planta, frente da FVS):** no tablet, a caixa da planta no topo corta o nome
+  ("Planta inte", "Água fria e") com espaço sobrando.
+- **Furo de laje gravando (768 e 375):** com a ficha de laje que tem o item da instalação, um toque no furo
+  grava OK e o contador anda; com "Desfazer". Com uma ficha de laje sem esse item, o furo abre "só para ver"
+  (era o caso do arquivo local antigo, não é defeito).
+- **Cadeia inteira num pavimento sem IFC com casas (só no PC):** instalações → planta de ambientes com
+  `"ambientes_novos"` → instalações de novo, sem erro. Na planta de ambientes, as casas e os recintos entram
+  depois dos "AC-xx", nenhum como pendência de nome, e nenhum ponto fica com id de ambiente que não existe.
+  O número de pontos fora de cômodo bate com a conta feita antes.
+- **Na tela, com essa cadeia (768 e 375):** a casa aparece na planta de ambientes ("Casa 1 · Ambiente UN-01",
+  com a área) e abre a ficha escolhida; na planta de água, o toque no tubo grava no item do trajeto da ficha de
+  redes e o toque no registro ou no ponto de água grava no item da ficha de alvenaria e drywall, cada ponto com
+  o registro dele (o contador de ambientes liberados não muda com um ponto: é a regra do app).
+- **Roteiro dos números:** de longe, cada toque num número aproxima no máximo dois zooms; em três ou quatro
+  toques os pontos aparecem. Nenhum número ficou preso.
 
 ## Vigia sempre religado (24/11/2026, achado do revisor)
 

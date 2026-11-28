@@ -3,7 +3,7 @@
 import { BUCKET_OBRAS } from '../config'
 import { carregarPlantas, type PecaCadastrada, type PlantaPavimento } from '../concreto/planta'
 import { dataLocal } from '../concreto/cps'
-import { camposDeCorrecao, vigentes, type Corrigivel } from '../concreto/vigentes'
+import { camposDeCorrecao } from '../concreto/vigentes'
 import { reduzirFoto } from '../fvs/dados'
 import { pacotesNoAparelho } from '../fvs/pacote'
 import { plantasDoPavimento } from '../fvs/plantas'
@@ -11,6 +11,7 @@ import type { PapelNaObra } from '../nucleo/conta'
 import type { Linha } from '../nucleo/banco_local'
 import { banco, cliente, sincronizador } from '../nucleo/servicos'
 import { campoDoAlvo, COLUNAS, montarDados, numeroAoFechar, recusaDaFoto, tipoDaFoto, type Alvo, type DadosRelatorios, type Foto, type LinhasPorTabela, type Registro, type TabelaCorrigivel } from './regras'
+import { montarAutomatico, type Automatico } from './automatico'
 import { TABELAS_RELATORIOS } from './tabelas'
 
 export function podeRegistrar(papel: PapelNaObra): boolean {
@@ -132,34 +133,28 @@ export async function pavimentoComPlanta(obraId: string, pavimentos: readonly { 
 // O que os outros módulos já registraram no dia
 // ---------------------------------------------------------------------
 
-export interface DoApp {
-  concretagens: Array<{ raiz: string; local: string; fornecedor: string; caminhoes: number; volume: number }>
-  /** Quantos itens foram verificados na FVS. */
-  fvs: { aprovados: number; reprovados: number; naoAplica: number; pecas: number }
+/**
+ * O bloco "O que o app registrou hoje" (automatico.ts): lê do aparelho só quando o dia abre (a FVS pode ter
+ * dezenas de milhares de registros). `ate`: a hora do fechamento do dia; o que veio depois fica fora.
+ */
+export async function automaticoDoDia(obraId: string, data: string, ate?: string | null): Promise<Automatico> {
+  const nomesDasTabelas = ['fvs_eventos', 'fichas_modelo', 'elementos', 'fvs_areas', 'plantas', 'pavimentos', 'concretagens', 'caminhoes', 'caminhao_elementos'] as const
+  const [t, nomes] = await Promise.all([
+    Promise.all(nomesDasTabelas.map((n) => sincronizador.linhas(n, obraId).catch(() => [] as Linha[]))),
+    // os nomes de quem marcou (perfis.nome), que a FVS guarda no aparelho; sem eles, o texto diz "1 pessoa"
+    banco.lerMeta<Record<string, string>>('fvs_nomes').catch(() => undefined),
+  ])
+  const [eventos, fichas, elementos, areas, plantas, pavimentos, concretagens, caminhoes, caminhaoElementos] = t
+  return montarAutomatico({ data, ate, eventos, fichas, elementos, areas, plantas, pavimentos, concretagens, caminhoes, caminhaoElementos, nomes: nomes ?? {} })
 }
 
-/** Lê do aparelho só quando o dia abre: a FVS pode ter dezenas de milhares de registros. */
-export async function doQueOAppSabe(obraId: string, data: string): Promise<DoApp> {
-  const [conc, cam, fvs] = await Promise.all([
-    sincronizador.linhas('concretagens', obraId),
-    sincronizador.linhas('caminhoes', obraId),
-    sincronizador.linhas('fvs_eventos', obraId),
-  ])
-  const caminhoes = vigentes(cam as Corrigivel[])
-  const concretagens = vigentes(conc as Corrigivel[])
-    .filter((c) => c.data === data)
-    .map((c) => {
-      const deste = caminhoes.filter((x) => x.concretagem_id === c.raiz)
-      return {
-        raiz: c.raiz,
-        local: String(c.local_descricao ?? ''),
-        fornecedor: String(c.fornecedor ?? ''),
-        caminhoes: deste.length,
-        volume: deste.reduce((s, x) => s + Number(x.volume_m3 ?? 0), 0),
-      }
-    })
-  return { concretagens, fvs: contarFvsDoDia(fvs, data) }
+/** A hora em que o dia foi fechado (o bloco automático para de mudar nela); dia aberto ou reaberto: null. */
+export function horaDoFechamento(d: DadosRelatorios, data: string): string | null {
+  const f = d.fechamentos.get(data)
+  return f && f.acao === 'fechado' ? f.criado_em_dispositivo : null
 }
+
+export type DoAppFvs = { aprovados: number; reprovados: number; naoAplica: number; pecas: number }
 
 /**
  * Itens da FVS verificados no dia. A FVS grava por registros: escrever a descrição de uma NC, trocar
@@ -167,7 +162,7 @@ export async function doQueOAppSabe(obraId: string, data: string): Promise<DoApp
  * (peça, ficha, item e rodada) uma vez, pelo último registro dele no dia; antes, a descrição de uma NC
  * fazia o Diário mostrar "2 NC" para uma só (obra de demonstração, 13/11).
  */
-export function contarFvsDoDia(fvs: readonly Linha[], data: string): DoApp['fvs'] {
+export function contarFvsDoDia(fvs: readonly Linha[], data: string): DoAppFvs {
   const ultimo = new Map<string, Linha>()
   for (const e of fvs) {
     if (dataLocal(e.criado_em_dispositivo) !== data) continue

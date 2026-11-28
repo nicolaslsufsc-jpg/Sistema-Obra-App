@@ -233,7 +233,7 @@ class TestClassificar(unittest.TestCase):
         j = instalacoes.juntar_proximos(d, 20, pt)
         self.assertEqual(sorted(j), ["a", "z"])
         self.assertEqual(j["a"]["tipo"], "ponto_agua")
-        self.assertEqual(j["a"]["nome"], "2 Valvula Esfera, Misturador")
+        self.assertEqual(j["a"]["nome"], "2× Valvula Esfera, Misturador")  # 26/11: "2 Valvula" parecia parte do nome
         self.assertEqual(j["a"]["modelo_id"], "1,2,3")
 
     def test_trecho_de_tubo_e_trecho(self):
@@ -693,6 +693,32 @@ class TestAmbientesNovos(unittest.TestCase):
 
     T = {"pt_por_m": 10.0, "x0": 2.0, "y1": 50.0, "dx_pt": 100.0, "dy_pt": 40.0}
 
+    def test_segunda_volta_com_as_casas_ja_na_planta(self):
+        """26/11 (3d30562): depois do ambientes_novos, a planta de ambientes do pavimento já tem as casas; a
+        geração das instalações não para, e a casa que vale é a do pavimento (obra EXE, inventada)."""
+        from unittest import mock
+
+        from shapely.geometry import box
+
+        do_pavimento = {"AC-01": box(0, 0, 4, 4), "UN-01": box(10, 0, 16, 8)}  # a UN-01 já veio do ambientes_novos
+        de_cima = {"UN-01": box(10.2, 0, 16, 8), "UN-02": box(20, 0, 26, 8)}  # as casas do pavimento de cima
+
+        def casado(c, com_imagem=False, grupo=None):
+            if grupo:
+                return dict(de_cima)
+            return {"geometrias": dict(do_pavimento), "t": self.T, "imagem": __import__("numpy").zeros((4, 4)), "k": 1.0, "textos": []}
+
+        cfg = {"pacote": "EXE/Ambientes", "casas": {"pacote": "EXE-cima/Ambientes", "prancha": "x.pdf"}}
+        novos: list = []
+        with mock.patch.object(publicar_planta, "ambientes_do_pacote_casado", casado), \
+                mock.patch.object(publicar_planta, "grupos_do_pacote", lambda pacote: {}), \
+                mock.patch.object(instalacoes, "recintos_da_prancha", lambda *a, **k: {"shafts": [], "sem_ambiente": []}):
+            geo, shafts = publicar_planta.regra_dos_ambientes(cfg, {"hidro": [{"x": 1200.0, "y": 300.0}]}, novos)
+        self.assertEqual(sorted(geo), ["AC-01", "UN-01", "UN-02"])
+        self.assertEqual(geo["UN-01"], do_pavimento["UN-01"])  # a do pavimento, com o id dela
+        self.assertEqual([a["nome"] for a in novos], ["UN-02"])  # só a que a planta ainda não tem
+        self.assertEqual(shafts, [])
+
     def test_volta_para_a_prancha(self):
         from shapely.geometry import box
 
@@ -800,10 +826,56 @@ class TestRecintosEShaft(unittest.TestCase):
         instalacoes.ambiente_dos_pontos(pts, geo)
         self.assertEqual(pts[0]["ambiente"], "AC-01")
 
+    def test_nome_sozinho_em_cascata(self):
+        """26/11 (decisão do Nicolas: o programa analisa; pendência só no que não conseguir). Obra EXE inventada."""
+        from shapely.geometry import box
+
+        recintos = [box(0, 10, 3, 13),    # 0: rótulo do lado de fora, a 1 m
+                    box(10, 10, 13, 14),  # 1: escada (anotação "SOBE" a 2,5 m)
+                    box(20, 10, 23, 14),  # 2: igual à escada, sem texto
+                    box(0, 0, 2, 2),      # 3: encostado na "Garagem"
+                    box(10, 0, 12, 2),    # 4: só pontos de água
+                    box(20, 0, 22, 2),    # 5: pontos misturados, nada perto: pendência
+                    box(30, 0, 32, 2)]    # 6: sem ponto: não entra
+        pt = lambda x, y, disc, tipo="tubo": {"x": x * 100, "y": y * 100, "disciplina": disc, "tipo": tipo}
+        pontos = [pt(1, 11, "hidro"), pt(11, 11, "preventivo"), pt(21, 11, "preventivo"), pt(1, 1, "hidro"),
+                  pt(11, 1, "hidro"), pt(11.5, 1, "hidro"), pt(11, 1.5, "hidro"), pt(11.5, 1.5, "sanitario"),
+                  pt(21, 1, "hidro"), pt(21.5, 1, "sanitario")]
+        textos = [("SALA DE  BOMBAS", 1.5, 14.0), ("A: 9,00 m²", 1.5, 13.5), ("SOBE", 11.5, 16.5),
+                  ("GARAGEM", 5.0, 1.0), ("DEPÓSITO", 21.0, 6.0)]  # o depósito está a 4 m: longe demais
+        vizinhos = {"Garagem": box(2.2, -5, 9, 5)}
+        origem = {}
+        nomes = instalacoes.nomear_recintos(recintos, pontos, textos, vizinhos=vizinhos, origem=origem)
+        self.assertEqual(origem, {"SALA DE BOMBAS": "texto_perto", "Escada": "texto_perto", "Escada 2": "igual",
+                                  "Anexo de Garagem": "vizinho", "Área técnica de água": "pontos", "Recinto sem nome 1": None})
+        self.assertEqual(nomes["Escada 2"], recintos[2])
+        self.assertEqual(nomes["Recinto sem nome 1"], recintos[5])
+
+    def test_texto_de_outro_lugar_nao_da_nome(self):
+        from shapely.geometry import box
+
+        a, b = box(0, 0, 2, 2), box(3, 0, 5.5, 2)
+        pontos = [{"x": 100, "y": 100}, {"x": 400, "y": 100}]
+        # "COPA" está dentro do ambiente vizinho com nome: é o rótulo dele; "HALL" está mais perto do recinto b
+        textos = [("COPA", 1.0, 3.0), ("HALL", 4.0, 2.5)]
+        origem = {}
+        nomes = instalacoes.nomear_recintos([a, b], pontos, textos, vizinhos={"Copa": box(0, 2.3, 2, 5)}, origem=origem)
+        self.assertEqual(list(nomes), ["Anexo de Copa", "HALL"])
+        self.assertEqual(origem, {"Anexo de Copa": "vizinho", "HALL": "texto_perto"})
+
+    def test_quadro_e_anotacao_nao_sao_nome(self):
+        self.assertEqual(instalacoes.nome_pelos_pontos([{"disciplina": "eletrico", "tipo": "quadro"}, {"disciplina": "hidro", "tipo": "tubo"}]),
+                         "Sala de quadros")
+        self.assertIsNone(instalacoes.nome_pelos_pontos([{"tipo": "tubo"}]))
+        for s in ("PROJEÇÃO DA LAJE", "CORTE AA", "VER DET. 3", "SOBE", "VAI AO 2o PAV.", "i=2%", "+4,78"):
+            self.assertFalse(instalacoes.texto_e_nome(s), s)
+        for s in ("COPA", "CASA DE BOMBAS", "Hall social"):
+            self.assertTrue(instalacoes.texto_e_nome(s), s)
+
     def test_nome_pelo_texto_da_prancha(self):
         from shapely.geometry import box
 
-        recintos = [box(0, 5, 2, 7), box(3, 5, 5, 7), box(6, 5, 8, 7)]
+        recintos = [box(0, 5, 2, 7), box(3, 5, 5, 7.5), box(6, 5, 8, 7)]  # o do meio tem outro tamanho
         pts = [{"x": 100, "y": 600}, {"x": 400, "y": 600}, {"x": 700, "y": 600}]
         textos = [("A: 6,20 m²", 1.0, 5.5), ("CASA DE  BOMBAS", 1.0, 6.5), ("PISO: CIMENTADO", 1.0, 6.8),
                   ("+4,78", 4.0, 6.0), ("CASA DE BOMBAS", 7.0, 6.0)]

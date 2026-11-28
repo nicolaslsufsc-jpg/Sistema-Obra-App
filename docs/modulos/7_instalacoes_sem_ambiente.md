@@ -35,9 +35,9 @@ No bloco `instalacoes.ambientes` do pavimento.json:
   todos os pavimentos; `"perto_cm"` troca.
 - Só com o `"pacote"` (ambientes tirados do PDF):
   - `SHAFT_PERTO_CM` = 100: ponto no shaft vai para o cômodo vizinho até 1 m. `"shaft_perto_cm": 0` desliga.
-  - Recintos fechados sem ambiente e com ponto dentro viram ambientes. O nome vem do texto da prancha dentro do
-    recinto (a linha mais alta que não é área, cota, nível ou acabamento). Sem texto: `"Recinto sem nome N"`,
-    pendência para o Nicolas editar. `"recintos_sem_nome": false` desliga.
+  - Recintos fechados sem ambiente e com ponto dentro viram ambientes. O programa tenta dar o nome sozinho
+    (seção "Nome sozinho" abaixo); só o que ele não consegue fica `"Recinto sem nome N"`, pendência para o
+    Nicolas editar. `"recintos_sem_nome": false` desliga.
   - `"casas": {"pacote", "prancha", "grupo": "Casa"}`: os ambientes do grupo "Casa" da planta de ambientes de
     outro pavimento (o de cima da mesma casa) entram como ambientes deste, com a prancha dele casada pelo mesmo
     andar tipo.
@@ -46,8 +46,43 @@ No bloco `instalacoes.ambientes` do pavimento.json:
 - Para o ponto levar o ambiente no app, o ambiente novo (casa, recinto) precisa existir como elemento A na
   planta de ambientes do pavimento; senão o publicador manda o ponto sem ambiente (`ambiente_pelo_id`).
 
-Funções: `instalacoes.recintos_da_prancha`, `nomear_recintos`, `nome_pelo_texto`, `textos_da_prancha` e
+Funções: `instalacoes.recintos_da_prancha`, `nomear_recintos` (`nome_pelo_texto`, `nome_pelo_vizinho`,
+`nome_pelos_pontos`, `texto_e_nome`), `textos_da_prancha` e
 `ambiente_dos_pontos`; no publicador, `regra_dos_ambientes` e `shaft_perto`. Testes em `TestRecintosEShaft`.
+
+## Nome sozinho dos recintos (26/11/2026, noite)
+
+Decisão do Nicolas (25/11): "Faça o programa analisar e caso n consiga identificar ficar uma pendencia para editar
+o nome". `instalacoes.nomear_recintos` tenta, nesta ordem, e anota de onde veio o nome (`"nome_por"` no
+`ambientes_novos.json`, para conferir o que o programa deu):
+
+1. **`texto`**: o texto da prancha dentro do recinto (a linha mais alta com cara de nome). Não é nome: área,
+   cota, nível, acabamento e anotação de desenho (projeção, corte, detalhe, viga, laje...).
+2. **`texto_perto`**: o texto com cara de nome mais perto do contorno, até 2 m, desde que não esteja dentro de
+   outro ambiente nem de outro recinto (senão é o rótulo de outro lugar) e que este recinto seja o mais perto dele.
+   Anotação de escada ("SOBE", "DESCE", "VAI AO 2º PAV.", "ESCADA"), dentro ou até 3 m, dá o nome **"Escada"**.
+3. **`igual`**: recinto com a mesma área e a mesma caixa (até 3%) de outro que ganhou nome pelo texto leva o
+   mesmo nome. É a escada que se repete em cada bloco, com o texto só numa delas.
+4. **`vizinho`**: "Anexo de X", onde X é o ambiente com nome em que o recinto mais encosta (uma parede no meio,
+   até 60 cm), se ele sozinho pega pelo menos metade do contorno que tem vizinho.
+5. **`pontos`**: pelo que tem dentro. Com quadro elétrico, "Sala de quadros"; com 70% ou mais dos pontos de uma
+   disciplina, "Área técnica de água", "Área técnica de esgoto", "Área técnica elétrica", "Área de prevenção de
+   incêndio" ou "Área do SPDA".
+6. Nada disso: **"Recinto sem nome N"**, com `"pendencia": "nome"`.
+
+Nome repetido ganha " 2", " 3". Nome igual ao de um ambiente que já existe ganha " (recinto)".
+
+Decisões desta noite, sem pergunta (anotadas): os nomes dos passos 3 a 5 são palpite do programa, mas **não**
+ficam como pendência (o pedido foi pendência só no que ele não consegue); quem quiser conferir olha o `nome_por`.
+"Anexo de X" foi escolhido por não inventar função para o cômodo. O texto longe (mais de 2 m) não vale, porque
+pegava pedaço de rótulo de outro lugar.
+
+Exemplo (obra EXE, inventado): recinto com "SALA DE BOMBAS" escrito a 1 m da parede → "SALA DE BOMBAS"
+(`texto_perto`); recinto com "SOBE" na chegada → "Escada"; o recinto igual do outro bloco → "Escada 2" (`igual`);
+recinto encostado na garagem, sem texto → "Anexo de Garagem"; recinto só com tubos e registros de água → "Área
+técnica de água"; recinto com pontos misturados e nada por perto → "Recinto sem nome 1" (pendência).
+
+Na obra piloto (conferido no PC, sem publicar): nenhum recinto ficou como pendência nos três pavimentos sem IFC.
 
 ## Exemplo (obra fictícia EXE, números inventados)
 

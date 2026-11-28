@@ -159,6 +159,24 @@ beforeAll(async () => {
   url = `${servidor.resolvedUrls!.local[0]}dev/relatorios.html`
   const pw = createRequire(import.meta.url)(process.env.SO_PLAYWRIGHT || 'playwright')
   navegador = await pw.chromium.launch(process.env.SO_CHROME ? { channel: process.env.SO_CHROME, headless: true } : { headless: true })
+  // SO_FONTE_LARGA=1 (como na bancada da FVS): todas as páginas em Verdana, mais larga que a fonte do Windows e
+  // parecida com a do Linux do GitHub
+  if (process.env.SO_FONTE_LARGA) {
+    const novo = navegador.newContext.bind(navegador)
+    navegador.newContext = async (...a: unknown[]) => {
+      const ctx = await novo(...a)
+      await ctx.addInitScript(() => {
+        const aplicar = () => {
+          const s = document.createElement('style')
+          s.textContent = '*{font-family:Verdana, sans-serif !important}'
+          document.head.appendChild(s)
+        }
+        if (document.head) aplicar()
+        else document.addEventListener('DOMContentLoaded', aplicar)
+      })
+      return ctx
+    }
+  }
 }, 120_000)
 
 afterAll(async () => {
@@ -222,6 +240,137 @@ const PASTA = process.env.SO_PASTA
 })
 
 suite('Relatórios na bancada (Chrome)', () => {
+  // Diário automático (26/11/2026, pedido do Nicolas): o dia abre com "O que o app registrou hoje", em frases;
+  // refaz-se enquanto o dia está aberto, para de mudar no fechamento, sai na folha e não mexe no que a pessoa escreveu
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: o dia abre com o que a FVS e o Concreto registraram, em frases; fecha, imprime e o relato fica`, async () => {
+      const { contexto, p, erros } = await novoContexto({ width: largura, height: altura }, '?auto=1')
+      const larga = process.env.SO_FONTE_LARGA ? '_larga' : ''
+      const frases = () => porTeste(p, 'auto-frase').allInnerTexts()
+      /** Um registro novo da FVS agora (P4, P5... do 3º pavimento, item 1 conforme), como se a pessoa tivesse marcado na FVS. */
+      const marcarNaFvs = (n: number) =>
+        p.evaluate(`(async () => {
+          const { banco } = await import('/src/nucleo/servicos.ts')
+          const id = 'fe000000-0000-0000-0000-0000000009' + String(${n}).padStart(2, '0')
+          const linha = {
+            id,
+            obra_id: 'b0000000-0000-0000-0000-0000000000bb',
+            usuario_id: '00000000-0000-0000-0000-0000000000a1',
+            dispositivo_id: '00000000-0000-0000-0000-000000000000',
+            criado_em_dispositivo: new Date().toISOString(),
+            apagado: false,
+            elemento_id: 'e0000000-0000-0000-0000-00000000000' + (3 + ${n}),
+            ficha_id: 'f0000000-0000-0000-0000-000000000001',
+            item: 1,
+            rodada: 1,
+            resultado: 'C',
+            observacao: null,
+            verificado_por: 'Pessoa Um',
+          }
+          await banco.registros.put({ tabela: 'fvs_eventos', id, obra_id: linha.obra_id, linha, pendente: 0 })
+        })()`)
+      const reabrirODia = async () => {
+        await porTeste(p, 'dia-anterior').click()
+        await porTeste(p, 'dia-seguinte').click()
+        await porTeste(p, 'do-app').waitFor()
+      }
+      await porTeste(p, 'abrir-hoje').click()
+      const bloco = porTeste(p, 'do-app')
+      await bloco.getByRole('heading', { name: 'O que o app registrou hoje' }).waitFor()
+      await porTeste(p, 'auto-frase').first().waitFor()
+      // concretagem primeiro, depois as fichas por pavimento
+      expect(await frases()).toEqual([
+        'Foi realizada a concretagem de lajes L1 e L2 no 3º Pavimento, com 2 caminhões e 15,5 m³ de concreto fck 30 MPa (Concreteira Exemplo).',
+        'Foi realizada a verificação da ficha TESTE-PVS-01 · Pilares (ficha de teste) no 3º Pavimento, em 3 locais: 10 itens conformes, 1 não conforme e 1 não se aplica. Marcado por Pessoa Um e 1 outra pessoa.',
+        'Foi realizada a verificação da ficha TESTE-PVS-02 · Vigas (ficha de teste) no 4º Pavimento, em 2 locais: 4 itens conformes. Marcado por Pessoa Dois.',
+      ])
+      expect(await porTeste(p, 'auto-nota').innerText()).toContain('atualiza sozinho até o dia ser fechado')
+      // o bloco vem antes do clima, e nada sai da tela
+      expect(await p.evaluate(() => document.querySelector('[data-testid="do-app"]')!.getBoundingClientRect().top < document.querySelector('[data-testid="clima"]')!.getBoundingClientRect().top)).toBe(true)
+      const cabe = () =>
+        p.evaluate(() => {
+          const b = document.querySelector('[data-testid="do-app"]') as HTMLElement
+          // quem passa da borda direita (o mais de dentro), para a falha dizer de onde vem a rolagem
+          const largos = [...document.querySelectorAll('main *')].filter((e) => e.getBoundingClientRect().right > innerWidth + 0.5 && ![...e.children].some((c) => c.getBoundingClientRect().right > innerWidth + 0.5))
+          return {
+            rola: document.documentElement.scrollWidth - innerWidth,
+            fora: [...b.querySelectorAll('p, h2')].filter((e) => e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > innerWidth).length,
+            largos: largos.map((e) => `${e.tagName.toLowerCase()}.${e.className} "${(e.textContent || '').trim().slice(0, 20)}"`),
+          }
+        })
+      expect(await cabe()).toEqual({ rola: 0, fora: 0, largos: [] })
+      await capturar(p, `auto_dia_${largura}${larga}`)
+
+      // a pessoa escreve o relato; o bloco não mexe nele
+      await porTeste(p, 'escrever-relato').click()
+      await p.getByLabel('Relato do dia').fill('Montagem das fôrmas do 4º pavimento. Chuva fraca à tarde, sem parar o serviço.')
+      await porTeste(p, 'salvar-relato').click()
+      await porTeste(p, 'msg-relato').waitFor()
+
+      // marcou mais um pilar na FVS e voltou ao dia: o bloco se refaz (4 locais, 11 conformes) e o relato fica
+      await marcarNaFvs(1)
+      await reabrirODia()
+      await expect.poll(async () => (await frases())[1]).toContain('em 4 locais: 11 itens conformes')
+      expect(await porTeste(p, 'relato-dia').innerText()).toContain('Montagem das fôrmas do 4º pavimento')
+
+      // fecha o dia: o bloco fica como estava; o que for marcado depois fica de fora, com o aviso
+      await porTeste(p, 'fechar-dia').scrollIntoViewIfNeeded()
+      await porTeste(p, 'fechar-dia').click()
+      await porTeste(p, 'situacao-dia').getByText('RDO nº 1').waitFor()
+      await expect.poll(() => porTeste(p, 'auto-nota').innerText()).toContain('Como estava quando o dia foi fechado.')
+      const fechado = await frases()
+      await p.waitForTimeout(30)
+      await marcarNaFvs(2)
+      await reabrirODia()
+      await expect.poll(() => porTeste(p, 'auto-nota').innerText()).toContain('1 registro feito depois do fechamento ficou de fora.')
+      expect(await frases()).toEqual(fechado)
+      expect(await porTeste(p, 'relato-dia').innerText()).toContain('Montagem das fôrmas do 4º pavimento')
+      expect(await cabe()).toEqual({ rola: 0, fora: 0, largos: [] })
+
+      // na folha do dia: as mesmas frases, antes do relato
+      await porTeste(p, 'imprimir-dia').click()
+      await p.getByRole('heading', { name: 'Relatório Diário de Obra' }).waitFor()
+      const impresso = porTeste(p, 'automatico-impresso')
+      await impresso.waitFor()
+      expect(await impresso.locator('p').allInnerTexts()).toEqual(fechado)
+      expect(await porTeste(p, 'relato-impresso').innerText()).toContain('Montagem das fôrmas do 4º pavimento')
+      expect(await p.evaluate(() => document.querySelector('[data-testid="automatico-impresso"]')!.getBoundingClientRect().top < document.querySelector('[data-testid="relato-impresso"]')!.getBoundingClientRect().top)).toBe(true)
+      expect(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+      if (PRINTS) {
+        await p.emulateMedia({ media: 'print' })
+        await capturar(p, `auto_impressao_${largura}${larga}`, true)
+        if (largura === 1024) await p.pdf({ path: path.join(PRINTS, `relatorios_rdo_automatico${larga}.pdf`), format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } })
+        await p.emulateMedia({ media: 'screen' })
+      }
+
+      // reaberto: volta a contar tudo (5 locais)
+      await p.getByRole('button', { name: /Voltar/ }).click()
+      await porTeste(p, 'reabrir-dia').scrollIntoViewIfNeeded()
+      await porTeste(p, 'reabrir-dia').click()
+      await porTeste(p, 'situacao-dia').getByText('Aberto').waitFor()
+      await expect.poll(async () => (await frases())[1]).toContain('em 5 locais: 12 itens conformes')
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
+  // dia sem nada da FVS nem do Concreto: o bloco diz isso, e a folha não ganha seção vazia
+  it('375 px: dia sem registro do app diz "Nada da FVS nem do Concreto" e a folha fica sem a seção', async () => {
+    const { contexto, p, erros } = await novoContexto({ width: 375, height: 812 })
+    await porTeste(p, 'abrir-hoje').click()
+    await porTeste(p, 'do-app').getByText('Nada da FVS nem do Concreto neste dia.').waitFor()
+    expect(await porTeste(p, 'auto-frase').count()).toBe(0)
+    await porTeste(p, 'imprimir-dia').click()
+    await p.getByRole('heading', { name: 'Relatório Diário de Obra' }).waitFor()
+    expect(await porTeste(p, 'automatico-impresso').count()).toBe(0)
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 60_000)
+
   it('tablet deitado: escreve o dia, marca na planta com dedo e caneta, fecha, imprime', async () => {
     const { contexto, p, erros } = await novoContexto({ width: 1280, height: 800 })
     await capturar(p, 'tablet_inicio')

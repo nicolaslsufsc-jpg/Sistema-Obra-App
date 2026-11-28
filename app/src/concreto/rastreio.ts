@@ -9,6 +9,7 @@
 
 import type { Linha } from '../nucleo/banco_local'
 import { sincronizador } from '../nucleo/servicos'
+import { contaNaLaje } from './canetas'
 import { idsDasConcretagensDeExemplo } from './exemplo'
 import { amostrasDaPeca, caixaDe, caixasSeTocam, fracaoDentro, prepararArea, type AreaPreparada, type Ponto } from './geometria'
 import { estadoDasPecas, LIMITE_INCLUIR, LIMITE_INTEIRA } from './pecas'
@@ -172,8 +173,8 @@ const AMOSTRAS_LAJE = 400
 
 /**
  * Puro: caminhões de cada área de laje da FVS. Vale a área do caminhão desenhada na mesma planta
- * (trecho) que a área da FVS, com a caneta "vigas e laje" ou das de antes das duas canetas (sem alvo);
- * a caneta "pilares" não conta. Sem tabela nova: a ligação é a sobreposição dos dois desenhos.
+ * (trecho) que a área da FVS, com caneta que tem laje ou das de antes das canetas (sem alvo);
+ * as canetas sem laje (pilares, vigas, pilares e vigas) não contam (canetas.ts). Sem tabela nova: a ligação é a sobreposição dos dois desenhos.
  * Área sem caminhão não entra no Map (pendente).
  */
 export function montarRastreioDasLajes(l: LinhasDoRastreioDaLaje, areas: readonly AreaDeLajeFvs[]): Map<string, RastreioDaLaje> {
@@ -182,7 +183,7 @@ export function montarRastreioDasLajes(l: LinhasDoRastreioDaLaje, areas: readonl
   // áreas vigentes dos caminhões válidos, por trecho e por caminhão
   const porSetor = new Map<string, Map<string, AreaPreparada[]>>()
   for (const a of vigentes(l.caminhao_areas as Corrigivel[])) {
-    if (a.alvo === 'pilares') continue
+    if (!contaNaLaje(a.alvo)) continue
     const cam = String(a.caminhao_id)
     if (!validos.has(cam)) continue
     const contorno = a.contorno as Ponto[] | undefined

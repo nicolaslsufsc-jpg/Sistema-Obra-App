@@ -4,7 +4,8 @@ import { useEffect, useState } from 'preact/hooks'
 import { dataLocal } from '../../concreto/cps'
 import { caixaDe } from '../../concreto/geometria'
 import { idDaRef, type PlantaPavimento } from '../../concreto/planta'
-import { doQueOAppSabe, plantasDe, type DoApp } from '../dados'
+import type { Automatico } from '../automatico'
+import { automaticoDoDia, horaDoFechamento, plantasDe } from '../dados'
 import { COR_CATEGORIA, dataBR, diasEntre, ehRelato, resumoDoDia, situacaoDoRelatorio, textoDoLocal, type Foto, type Marca, semExemplos } from '../regras'
 import { GRAVIDADES, PERIODOS, RESULTADOS_ITEM, rotulo, SITUACOES_EQUIPAMENTO, SITUACOES_RELATORIO, SITUACOES_SERVICO, TEMPOS, tipoRelatorio, TIPOS_OCORRENCIA } from '../tipos'
 import type { Contexto } from './ModuloRelatorios'
@@ -212,10 +213,11 @@ export function TelaImprimirDia({ ctx: comExemplos, data }: { ctx: Contexto; dat
   const relato = doDia.find(ehRelato)
   const ocorrencias = doDia.filter((l) => !ehRelato(l))
   const relatorios = dados.relatorios.filter((x) => x.data === data)
-  const [app, setApp] = useState<DoApp | null>(null)
+  const [app, setApp] = useState<Automatico | null>(null)
+  const ate = horaDoFechamento(dados, data)
   useEffect(() => {
-    doQueOAppSabe(obra.id, data).then(setApp)
-  }, [obra.id, data])
+    automaticoDoDia(obra.id, data, ate).then(setApp)
+  }, [obra.id, data, ate])
 
   const marcas: MarcaColorida[] = [
     ...servicos.flatMap((s) => (dados.marcas.get(s.raiz) ?? []).map((marca) => ({ marca, cor: s.situacao === 'concluido' ? COR_CATEGORIA.servico_concluido : COR_CATEGORIA.servico }))),
@@ -238,6 +240,17 @@ export function TelaImprimirDia({ ctx: comExemplos, data }: { ctx: Contexto; dat
       )}
       <Cabecalho ctx={ctx} data={data} titulo="Relatório Diário de Obra" numero={r.numero ? `RDO nº ${r.numero}` : 'sem número até fechar'} />
 
+      {/* o bloco automático (26/11): o que a FVS e o Concreto registraram no dia, em frases; some se não houve nada */}
+      {app && app.frases.length > 0 && (
+        <section class="rl-doc-secao" data-testid="automatico-impresso">
+          <h2>O que o app registrou no dia</h2>
+          {app.frases.map((f) => (
+            <p key={f} class="rl-auto-frase">
+              {f}
+            </p>
+          ))}
+        </section>
+      )}
       <section class="rl-doc-secao" data-testid="relato-impresso">
         <h2>Relato do dia</h2>
         {relato ? <p class="rl-relato">{txt(relato.descricao)}</p> : <p class="discreto">Nada escrito.</p>}
@@ -290,23 +303,6 @@ export function TelaImprimirDia({ ctx: comExemplos, data }: { ctx: Contexto; dat
             return [tipoRelatorio(x.tipo).t, x.titulo, rotulo(SITUACOES_RELATORIO, situacaoDoRelatorio(x, dados.andamentos.get(x.raiz))), m.length ? textoDoLocal(dados, m) : txt(x.local_texto)]
           })}
         />
-      )}
-      {app && (app.concretagens.length > 0 || app.fvs.pecas > 0) && (
-        <section class="rl-doc-secao">
-          <h2>Registrado em outros módulos</h2>
-          {app.concretagens.map((c) => (
-            <p key={c.raiz}>
-              Concretagem: {c.local || 'sem local'}
-              {c.fornecedor ? ` · ${c.fornecedor}` : ''} · {plural(c.caminhoes, 'caminhão', 'caminhões')}
-              {c.volume ? ` · ${numBR(c.volume)} m³` : ''}
-            </p>
-          ))}
-          {app.fvs.pecas > 0 && (
-            <p>
-              FVS: {plural(app.fvs.pecas, 'peça verificada', 'peças verificadas')} ({app.fvs.aprovados} A, {app.fvs.reprovados} R, {app.fvs.naoAplica} NA)
-            </p>
-          )}
-        </section>
       )}
       {marcas.length > 0 && (
         <section class="rl-doc-secao">

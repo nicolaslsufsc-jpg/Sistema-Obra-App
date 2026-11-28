@@ -1,0 +1,338 @@
+/* Mapa do canteiro. Cores só pelas variáveis do tema (src/tema.css e style.css): nada de cor solta aqui.
+   A folha e as figuras têm cor própria no SVG (figuras.ts), porque são papel branco na tela e na impressão. */
+
+/* tela cheia, sem rolagem: topo, desenho (o que sobra) e pé com a paleta */
+.ct-tela {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--fundo);
+  color: var(--texto);
+  overflow: hidden;
+  /* toques seguidos no mesmo botão (girar, girar) são dois toques, não "dois toques para ampliar" */
+  touch-action: manipulation;
+}
+
+.ct-topo {
+  flex: none;
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+  padding: calc(env(safe-area-inset-top, 0px) + 0.3rem) max(0.5rem, env(safe-area-inset-right, 0px)) 0.4rem max(0.5rem, env(safe-area-inset-left, 0px));
+}
+.ct-topo header.so-cabecalho {
+  margin-bottom: 0.35rem;
+  border-bottom: 0;
+  padding: 0;
+}
+.ct-ajuda-botao {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ct-ajuda {
+  margin: 0 0 0.4rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--fundo);
+  font-size: var(--fs-texto);
+  line-height: 1.35;
+}
+
+/* duas barras: a de cima escolhe folha, mapa e fundo; a de baixo tem os botões */
+.ct-barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.ct-barra-botoes {
+  margin-top: 0.35rem;
+  flex-wrap: nowrap;
+}
+.ct-folga {
+  flex: 1 1 0;
+}
+.ct-barra select {
+  flex: 1 1 7rem;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  font: inherit;
+  font-size: var(--fs-texto);
+}
+.ct-barra button,
+.ct-mapas button {
+  flex: 0 0 auto;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  font-size: var(--fs-texto);
+  white-space: nowrap;
+}
+
+/* painel "Mapas": nome do mapa, novo, copiar, apagar */
+.ct-mapas {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--borda);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ct-mapas-linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.ct-mapas .ct-apagar {
+  color: var(--erro);
+  border-color: var(--erro);
+}
+
+/* desenho */
+.ct-palco {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--fundo);
+}
+.ct-desenho {
+  display: block;
+  /* o módulo cuida do toque: arrastar, pinça e caneta não rolam nem ampliam a página */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.ct-armada .ct-desenho {
+  cursor: crosshair;
+}
+.ct-desenho text {
+  pointer-events: none;
+}
+.ct-carregando {
+  margin: 1rem;
+  color: var(--discreto);
+}
+
+.ct-zoom {
+  position: absolute;
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.ct-zoom button {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* pé: as ações da figura escolhida (altura fixa, para o desenho não pular) e a paleta */
+.ct-pe {
+  flex: none;
+  background: var(--superficie);
+  border-top: 1px solid var(--borda);
+  padding: 0.35rem max(0.5rem, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 0.35rem) max(0.5rem, env(safe-area-inset-left, 0px));
+}
+/* celular: duas filas (nome e Apagar; depois os botões). Tablet: uma fila só (mais abaixo). */
+.ct-linha {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  height: 94px;
+  margin-bottom: 0.35rem;
+}
+.ct-linha-nome {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.ct-acoes {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.ct-linha button {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.ct-linha button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ct-linha button.ct-texto {
+  width: auto;
+  padding: 0 0.6rem;
+  font-size: var(--fs-texto);
+  white-space: nowrap;
+}
+.ct-linha button.principal {
+  background: var(--cor-primaria);
+  color: var(--cor-primaria-texto);
+  border-color: var(--cor-primaria);
+}
+.ct-linha .ct-apagar {
+  color: var(--erro);
+  border-color: var(--erro);
+}
+/* botão da cor: a bolinha mostra a cor atual; cada toque passa para a seguinte */
+.ct-cor span {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--superficie);
+  outline: 1px solid var(--borda);
+}
+.ct-nome {
+  flex: 1 1 4rem;
+  min-width: 0;
+  height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  background: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-size: 16px; /* 16 px: o Android não dá zoom sozinho ao focar */
+}
+.ct-dica {
+  color: var(--discreto);
+  font-size: var(--fs-texto);
+  overflow-wrap: anywhere;
+}
+
+/* paleta: uma fila que corre de lado só dentro dela (a página não rola de lado) */
+.ct-paleta {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: 0.2rem;
+}
+.ct-fig {
+  flex: 0 0 auto;
+  width: 78px;
+  min-height: 78px;
+  padding: 0.25rem 0.15rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.15rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-max);
+  /* a figura é desenhada para papel branco: o botão é branco nos dois temas */
+  background: var(--papel-fundo);
+  color: var(--papel-texto);
+  font: inherit;
+  cursor: pointer;
+}
+.ct-fig[aria-pressed='true'] {
+  background: var(--cor-selecionado);
+  color: var(--cor-selecionado-texto);
+  border-color: var(--cor-primaria);
+  outline: 2px solid var(--cor-primaria);
+  outline-offset: -2px;
+}
+.ct-fig-desenho {
+  width: 46px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+.ct-fig-desenho svg {
+  max-width: 46px;
+  max-height: 40px;
+  width: 100%;
+  height: 100%;
+}
+.ct-fig-nome {
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* tablet e PC: ações numa fila só e a paleta em filas, com todas as figuras à vista */
+@media (min-width: 700px) {
+  .ct-linha {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    height: 46px;
+  }
+  .ct-linha-nome {
+    flex: 1 1 auto;
+  }
+  .ct-paleta {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    max-height: 262px;
+    overflow-y: auto;
+  }
+  /* 9 por fila em 768 px: as 25 cabem em três filas, sem rolar */
+  .ct-fig {
+    width: 76px;
+  }
+}
+
+/* celular deitado: pouca altura; ações numa fila só e a paleta encolhe */
+@media (max-height: 480px) {
+  .ct-linha {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    height: 44px;
+    margin-bottom: 0.25rem;
+  }
+  .ct-linha-nome {
+    flex: 1 1 auto;
+  }
+  .ct-fig {
+    min-height: 54px;
+    width: 64px;
+  }
+  .ct-fig-nome {
+    display: none;
+  }
+}

@@ -90,6 +90,24 @@ suite('Concreto na bancada (Chrome)', () => {
     url = `${servidor.resolvedUrls!.local[0]}dev/concreto.html`
     const pw = createRequire(import.meta.url)(process.env.SO_PLAYWRIGHT || 'playwright')
     navegador = await pw.chromium.launch(process.env.SO_CHROME ? { channel: process.env.SO_CHROME, headless: true } : { headless: true })
+    // SO_FONTE_LARGA=1 (como na FVS, 25/11): todas as páginas em Verdana, mais larga que a fonte do
+    // Windows e parecida com a do Linux do GitHub; pega no PC o topo que só estoura no CI
+    if (process.env.SO_FONTE_LARGA) {
+      const novo = navegador.newContext.bind(navegador)
+      navegador.newContext = async (...a: unknown[]) => {
+        const ctx = await novo(...a)
+        await ctx.addInitScript(() => {
+          const aplicar = () => {
+            const s = document.createElement('style')
+            s.textContent = '*{font-family:Verdana, sans-serif !important}'
+            document.head.appendChild(s)
+          }
+          if (document.head) aplicar()
+          else document.addEventListener('DOMContentLoaded', aplicar)
+        })
+        return ctx
+      }
+    }
   }, 120_000)
 
   afterAll(async () => {
@@ -440,6 +458,446 @@ suite('Concreto na bancada (Chrome)', () => {
     await contexto.close()
   }, 90_000)
 
+  // Pedido do Nicolas (26/11/2026): "tem vezes que a gente concreta os três juntos", e "Vigas" só.
+  it('seis canetas: cada uma vale só nas peças dela; botões no tablet, seletor no celular (375, 768 e 1024)', async () => {
+    const contexto = await navegador.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    p.on('dialog', (d: any) => d.accept())
+    await p.goto(url)
+    await clicar(p, /Pavimento em 2 trechos/)
+    await clicar(p, '+ Nova concretagem')
+    await p.getByLabel('Local').fill('Trecho 1 · seis canetas')
+    await p.getByLabel('fck (MPa)').fill('35')
+    await clicar(p, 'Salvar concretagem')
+    await clicar(p, '+ Caminhão')
+    await p.getByLabel('Nota fiscal').fill('760001')
+    await clicar(p, /^Salvar$/)
+    await clicar(p, 'Desenhar onde foi')
+    await p.getByTestId('laje').waitFor()
+
+    // o topo do mapa: em 768 e 1024 os seis botões inteiros na tela; em 375 o seletor, sem rolar de lado
+    for (const largura of [375, 768, 1024]) {
+      // 768: tablet em pé (768 x 1024); 1024: tablet deitado
+      const altura = largura === 375 ? 812 : largura === 768 ? 1024 : 768
+      await p.setViewportSize({ width: largura, height: altura })
+      await p.waitForTimeout(150)
+      const topo = await p.evaluate(() => {
+        const visivel = (el: Element) => (el as HTMLElement).offsetParent !== null
+        const botoes = [...document.querySelectorAll('[data-testid^=caneta-]:not([data-testid=caneta-seletor])')]
+        const seletor = document.querySelector('[data-testid=caneta-seletor]')!
+        return {
+          botoes: botoes.filter(visivel).map((b) => {
+            const r = b.getBoundingClientRect()
+            return { texto: (b as HTMLElement).innerText, dentro: r.left >= 0 && r.right <= window.innerWidth + 1, alto: r.height }
+          }),
+          seletor: visivel(seletor),
+          topo: document.querySelector('.cc-mapa-topo')!.getBoundingClientRect().height,
+          rolaDeLado: document.documentElement.scrollWidth > window.innerWidth + 1,
+        }
+      })
+      // girar o aparelho ou mudar a largura: a planta se reenquadra e o P1 (120, 120) continua na tela
+      const [px, py] = await naTela(p, 120, 120)
+      const caixaMapa = await p.getByTestId('mapa').boundingBox()
+      expect(px >= caixaMapa.x && px <= caixaMapa.x + caixaMapa.width && py >= caixaMapa.y && py <= caixaMapa.y + caixaMapa.height).toBe(true)
+      expect(topo.rolaDeLado).toBe(false)
+      if (largura === 375) {
+        expect(topo.seletor).toBe(true)
+        expect(topo.botoes).toEqual([])
+      } else {
+        expect(topo.seletor).toBe(false)
+        expect(topo.botoes.map((b: { texto: string }) => b.texto)).toEqual(['Pilares', 'Vigas', 'Lajes', 'Pilares e vigas', 'Vigas e lajes', 'Pilares, vigas e lajes'])
+        expect(topo.botoes.every((b: { dentro: boolean; alto: number }) => b.dentro && b.alto >= 40)).toBe(true)
+      }
+      await capturar(p, `canetas_${largura}${process.env.SO_FONTE_LARGA ? '_larga' : ''}`)
+      // o topo não come o mapa
+      expect(topo.topo).toBeLessThan(altura * 0.4)
+    }
+
+    // em volta da V1 com P1 e P2 inteiros (trecho 1: P1 em 120,120 e P2 em 440,120)
+    await p.setViewportSize({ width: 1024, height: 768 })
+    const cdp = await contexto.newCDPSession(p)
+    const emVolta: Array<[number, number]> = [[85, 85], [475, 85], [475, 155], [85, 155], [85, 85]]
+    const pecas = async (n: number) => {
+      await p
+        .waitForFunction((k: number) => document.querySelectorAll('[data-testid=pecas-caminhao] li').length === k, n, { timeout: 8000 })
+        .catch(() => undefined)
+      return (await pecasDoPainel(p)).sort()
+    }
+
+    // "Pilares e vigas": os dois pilares e a viga, sem a laje
+    await p.getByTestId('caneta-pilares_vigas').click()
+    await tracarComCaneta(p, cdp, emVolta)
+    expect(await pecas(3)).toEqual(['P1 100%', 'P2 100%', 'V1 100%'])
+    await clicar(p, 'Apagar áreas')
+    await pecas(0)
+
+    // "Vigas": só a viga, mesmo com os pilares dentro do traço
+    await p.getByTestId('caneta-vigas').click()
+    await tracarComCaneta(p, cdp, emVolta)
+    expect(await pecas(1)).toEqual(['V1 100%'])
+    await clicar(p, 'Apagar áreas')
+    await pecas(0)
+
+    // "Pilares, vigas e lajes": tudo, e a laje do trecho entra junto
+    await p.getByTestId('caneta-pilares_vigas_laje').click()
+    await tracarComCaneta(p, cdp, emVolta)
+    await p.getByTestId('toast').filter({ hasText: 'A Laje do Trecho 1 também entrou' }).waitFor()
+    expect(await pecas(4)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%', 'V1 100%'])
+    await capturar(p, 'canetas_tres_juntos_1024')
+
+    // no celular, o seletor troca a caneta (e ela fica lembrada)
+    await p.setViewportSize({ width: 375, height: 812 })
+    await p.getByTestId('caneta-seletor').selectOption('laje')
+    await p.getByText('Caneta marca lajes').waitFor()
+    await p.setViewportSize({ width: 1024, height: 768 })
+    expect(await p.getByTestId('caneta-laje').getAttribute('aria-pressed')).toBe('true')
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 120_000)
+
+  it('desenho unido e linhas retas: áreas que se tocam viram um contorno só; cantos tocados fecham a área (375, 768 e 1024)', async () => {
+    const contexto = await navegador.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    p.on('dialog', (d: any) => d.accept())
+    await p.goto(url)
+    await clicar(p, /Pavimento em 2 trechos/)
+    await clicar(p, '+ Nova concretagem')
+    await p.getByLabel('Local').fill('Trecho 1 · desenho unido')
+    await p.getByLabel('fck (MPa)').fill('35')
+    await clicar(p, 'Salvar concretagem')
+    await clicar(p, '+ Caminhão')
+    await p.getByLabel('Nota fiscal').fill('770001')
+    await clicar(p, /^Salvar$/)
+    await clicar(p, 'Desenhar onde foi')
+    await p.getByTestId('laje').waitFor()
+    const cdp = await contexto.newCDPSession(p)
+    const pecas = async (n: number) => {
+      await p
+        .waitForFunction((k: number) => document.querySelectorAll('[data-testid=pecas-caminhao] li').length === k, n, { timeout: 8000 })
+        .catch(() => undefined)
+      return (await pecasDoPainel(p)).sort()
+    }
+    // desenhos das áreas no mapa: contornos (linha sem preenchimento) e preenchimentos (sem linha)
+    const desenhos = () =>
+      p.evaluate(() => {
+        const m = (document.querySelector('.cc-mapa') as HTMLElement & { __mapa: any }).__mapa
+        let contornos = 0
+        let cheios = 0
+        m.eachLayer((l: any) => {
+          if (!l._latlngs || l.options.interactive !== false) return
+          if (l.options.fill === false && l.options.weight >= 2) contornos++
+          if (l.options.stroke === false) cheios++
+        })
+        return { contornos, cheios, numeros: document.querySelectorAll('.cc-num-cam').length }
+      })
+
+    // pilares em volta do P1 e, encostando nela, uma área de laje: um desenho só
+    await p.getByTestId('caneta-pilares').click()
+    await tracarComCaneta(p, cdp, laco([120, 120]))
+    await pecas(1)
+    await p.getByTestId('caneta-laje').click()
+    await tracarComCaneta(p, cdp, [[150, 150], [300, 150], [300, 300], [150, 300], [150, 150]])
+    await p.getByTestId('toast').filter({ hasText: 'também entrou' }).waitFor()
+    expect(await desenhos()).toEqual({ contornos: 1, cheios: 1, numeros: 0 })
+    await capturar(p, 'desenho_unido_1024')
+    // as duas continuam gravadas, cada uma com a sua caneta
+    await p.getByText('2 áreas nesta planta').waitFor()
+
+    // linhas retas: em volta do P2 (440, 120), canto a canto; tocar o primeiro fecha
+    await p.getByTestId('caneta-pilares').click()
+    await p.getByTestId('modo-retas').click()
+    await p.getByText('Toque os cantos da área', { exact: false }).waitFor()
+    // a barra fica no alto da planta: traz o P2 para o meio, como o dedo faria
+    await p.evaluate(() => {
+      const m = (document.querySelector('.cc-mapa') as HTMLElement & { __mapa: any }).__mapa
+      m.setView([-120, 440], m.getZoom(), { animate: false })
+    })
+    for (const q of [[400, 80], [480, 80], [480, 160], [400, 160]] as Array<[number, number]>) await tocarComCaneta(p, cdp, ...q)
+    await p.getByText('4 cantos').waitFor()
+    // tirar o último e pôr de novo
+    await p.getByTestId('retas-tirar').click()
+    await p.getByText('3 cantos').waitFor()
+    await tocarComCaneta(p, cdp, 400, 160)
+    await capturar(p, 'linhas_retas_cantos_1024')
+    await tocarComCaneta(p, cdp, 400, 80)
+    expect(await pecas(3)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%'])
+    await p.getByText('3 áreas nesta planta').waitFor()
+    // área longe das outras: dois desenhos
+    // caminhão escolhido: sem número (está no painel); em "Ver", cada desenho mostra o número do caminhão
+    expect(await desenhos()).toEqual({ contornos: 2, cheios: 2, numeros: 0 })
+    await p.getByRole('button', { name: 'Ver', exact: true }).click()
+    await p.waitForFunction(() => document.querySelectorAll('.cc-num-cam').length === 2)
+    expect(await p.locator('.cc-num-cam').allInnerTexts()).toEqual(['1', '1'])
+    await capturar(p, 'numero_do_caminhao_1024')
+    await p.getByTestId('chip-1').click()
+    await p.getByTestId('barra-retas').waitFor()
+
+    // a barra das linhas retas cabe no celular e no tablet, sem cobrir o + e −
+    for (const [w, h] of [[375, 812], [768, 1024], [1024, 768]]) {
+      await p.setViewportSize({ width: w, height: h })
+      await p.waitForTimeout(150)
+      const r = await p.evaluate(() => {
+        const caixa = (s: string) => document.querySelector(s)!.getBoundingClientRect()
+        const barra = caixa('[data-testid=barra-retas]')
+        const zoom = caixa('.cc-zoom')
+        const botoes = [...document.querySelectorAll('[data-testid=barra-retas] button')].map((b) => b.getBoundingClientRect())
+        return {
+          rolaDeLado: document.documentElement.scrollWidth > window.innerWidth + 1,
+          cobreZoom: barra.right > zoom.left && barra.bottom > zoom.top && barra.top < zoom.bottom,
+          dentro: botoes.every((b) => b.left >= 0 && b.right <= window.innerWidth + 1 && b.height >= 44),
+          liga: document.querySelector('[data-testid=modo-retas]')!.getBoundingClientRect().right <= window.innerWidth + 1,
+        }
+      })
+      expect(r).toEqual({ rolaDeLado: false, cobreZoom: false, dentro: true, liga: true })
+      await capturar(p, `linhas_retas_${w}${process.env.SO_FONTE_LARGA ? '_larga' : ''}`)
+    }
+
+    // "Fechar área" pelo botão: em volta do P3 (760, 120), três cantos já fecham
+    await p.setViewportSize({ width: 1024, height: 768 })
+    await p.waitForTimeout(150)
+    // cantos em gravata (lados cruzados): o Fechar recusa e os cantos ficam
+    for (const q of [[700, 70], [820, 220], [820, 70], [700, 220]] as Array<[number, number]>) await tocarComCaneta(p, cdp, ...q)
+    await p.getByText('4 cantos').waitFor()
+    await p.getByTestId('retas-fechar').click()
+    await p.getByTestId('toast').filter({ hasText: 'se cruzam' }).waitFor()
+    await p.getByText('4 cantos').waitFor()
+    for (let k = 0; k < 4; k++) await p.getByTestId('retas-tirar').click()
+    await p.getByText('Toque os cantos da área', { exact: false }).waitFor()
+    for (const q of [[700, 70], [820, 70], [760, 220]] as Array<[number, number]>) await tocarComCaneta(p, cdp, ...q)
+    await p.getByText('3 cantos').waitFor()
+    await p.getByTestId('retas-fechar').click()
+    expect(await pecas(4)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%', 'P3 100%'])
+    // mover um canto: com "Retas" ligado, arrastar a ponta de baixo do triângulo para cima tira o P3
+    await tracarComCaneta(p, cdp, [[760, 220], [760, 105]])
+    await p.getByTestId('toast').filter({ hasText: 'Canto movido' }).waitFor()
+    expect(await pecas(3)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%'])
+    await p.getByText('4 áreas nesta planta').waitFor()
+    // rodada 12: arrastar o canto para perto de outro achatava a área numa lasca, sem aviso. Agora
+    // o canto volta ao lugar, avisa e nada é gravado
+    const contornosDoTriangulo = () =>
+      p.evaluate(() => {
+        const m = (document.querySelector('.cc-mapa') as HTMLElement & { __mapa: any }).__mapa
+        const caixas: string[] = []
+        m.eachLayer((l: any) => {
+          if (!l._latlngs || l.options.interactive !== false || l.options.stroke !== false) return
+          const b = l.getBounds()
+          if (b.getWest() >= 650) caixas.push([b.getWest(), -b.getNorth(), b.getEast(), -b.getSouth()].map(Math.round).join(','))
+        })
+        return caixas
+      })
+    const antesDaLasca = await contornosDoTriangulo()
+    expect(antesDaLasca).toHaveLength(1)
+    await tracarComCaneta(p, cdp, [[760, 105], [735, 88], [712, 76]])
+    await p.getByTestId('toast').filter({ hasText: 'O canto voltou ao lugar' }).waitFor()
+    expect(await contornosDoTriangulo()).toEqual(antesDaLasca)
+    expect(await pecas(3)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%'])
+    // Desfazer depois de mover o canto: o canto volta para onde estava e o P3 entra de novo
+    await p.getByTestId('desfazer').click()
+    await p.getByTestId('toast').filter({ hasText: 'O canto voltou para onde estava' }).waitFor()
+    expect(await pecas(4)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%', 'P3 100%'])
+    // a ponta de baixo voltou para perto de 220 (o toque arredonda um pixel)
+    expect(Number((await contornosDoTriangulo())[0].split(',')[3])).toBeGreaterThan(215)
+    await p.getByText('4 áreas nesta planta').waitFor()
+
+    // borracha: o toque da caneta apaga só a área tocada (o triângulo); o do dedo, a do P2
+    await p.getByTestId('modo-borracha').click()
+    await p.getByText('Toque na área para apagar').waitFor()
+    await tocarComCaneta(p, cdp, 760, 82)
+    await p.getByTestId('toast').filter({ hasText: 'Área apagada' }).waitFor()
+    await p.getByText('3 áreas nesta planta').waitFor()
+    // Desfazer depois da borracha: a área apagada volta (antes, apagava mais uma)
+    await p.getByTestId('desfazer').click()
+    await p.getByTestId('toast').filter({ hasText: 'A área apagada voltou' }).waitFor()
+    await p.getByText('4 áreas nesta planta').waitFor()
+    expect(await pecas(4)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%', 'P2 100%', 'P3 100%'])
+    await p.waitForTimeout(600) // a borracha ignora dois toques em menos de meio segundo
+    await tocarComCaneta(p, cdp, 760, 82)
+    await p.getByText('3 áreas nesta planta').waitFor()
+    await p.waitForTimeout(600)
+    await tocarComDedo(p, 440, 120)
+    await p.getByText('2 áreas nesta planta').waitFor()
+    expect(await pecas(2)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%'])
+    // fora de qualquer área: avisa e não apaga nada
+    await p.waitForTimeout(600)
+    await tocarComCaneta(p, cdp, 760, 440)
+    await p.getByTestId('toast').filter({ hasText: 'Toque dentro de uma área' }).waitFor()
+    // borracha de trecho: um traço em volta da metade direita da área de laje (150..300) tira só
+    // esse pedaço; a área continua lá, menor, e continua sendo uma só com a do P1
+    const direita = () =>
+      p.evaluate(() => {
+        const m = (document.querySelector('.cc-mapa') as HTMLElement & { __mapa: any }).__mapa
+        let maior = -Infinity
+        m.eachLayer((l: any) => {
+          if (l._latlngs && l.options.interactive === false && l.options.stroke === false) maior = Math.max(maior, l.getBounds().getEast())
+        })
+        return Math.round(maior)
+      })
+    expect(await direita()).toBe(300)
+    await tracarComCaneta(p, cdp, [[240, 130], [340, 130], [340, 320], [240, 320], [240, 130]])
+    await p.getByTestId('toast').filter({ hasText: 'Pedaço apagado' }).waitFor()
+    expect(await direita()).toBe(240)
+    await p.getByText('2 áreas nesta planta').waitFor()
+    // Desfazer depois do recorte: o pedaço volta (antes, apagava o que tinha sobrado da área)
+    await p.getByTestId('desfazer').click()
+    await p.getByTestId('toast').filter({ hasText: 'O pedaço recortado voltou' }).waitFor()
+    await expect.poll(direita).toBe(300)
+    await p.getByText('2 áreas nesta planta').waitFor()
+    expect(await pecas(2)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%'])
+    // recorta de novo para seguir
+    await tracarComCaneta(p, cdp, [[240, 130], [340, 130], [340, 320], [240, 320], [240, 130]])
+    await p.getByTestId('toast').filter({ hasText: 'Pedaço apagado' }).waitFor()
+    await expect.poll(direita).toBe(240)
+    expect(await desenhos()).toEqual({ contornos: 1, cheios: 1, numeros: 0 })
+    expect(await pecas(2)).toEqual(['Laje do Trecho 1 com a área', 'P1 100%'])
+    // traço no meio da área, sem cruzar a borda: avisa (não há furo) e nada muda
+    await tracarComCaneta(p, cdp, [[170, 200], [220, 200], [220, 260], [170, 260], [170, 200]])
+    await p.getByTestId('toast').filter({ hasText: 'precisa cruzar a borda' }).waitFor()
+    expect(await direita()).toBe(240)
+    await capturar(p, 'borracha_1024')
+    await p.setViewportSize({ width: 375, height: 812 })
+    await p.waitForTimeout(150)
+    const b = await p.evaluate(() => {
+      const r = document.querySelector('[data-testid=borracha-pronto]')!.getBoundingClientRect()
+      const z = document.querySelector('.cc-zoom')!.getBoundingClientRect()
+      const liga = document.querySelector('[data-testid=modo-borracha]')!.getBoundingClientRect()
+      return {
+        rolaDeLado: document.documentElement.scrollWidth > window.innerWidth + 1,
+        pronto: r.left >= 0 && r.right <= window.innerWidth + 1 && r.height >= 44 && !(r.right > z.left && r.bottom > z.top && r.top < z.bottom),
+        liga: liga.right <= window.innerWidth + 1 && liga.height >= 40,
+      }
+    })
+    expect(b).toEqual({ rolaDeLado: false, pronto: true, liga: true })
+    await capturar(p, `borracha_375${process.env.SO_FONTE_LARGA ? '_larga' : ''}`)
+    await p.setViewportSize({ width: 1024, height: 768 })
+    await p.getByTestId('borracha-pronto').click()
+    expect(await p.getByTestId('barra-borracha').count()).toBe(0)
+    // volta para o traço livre: a barra some
+    await p.getByTestId('modo-retas').click()
+    expect(await p.getByTestId('barra-retas').count()).toBe(0)
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 120_000)
+
+  it('desenho unido em aparelho fraco: com a CPU 4x mais lenta, unir as áreas de um caminhão cabe num piscar', async () => {
+    const contexto = await navegador.newContext({ viewport: { width: 768, height: 1024 } })
+    const p = await contexto.newPage()
+    await p.goto(url)
+    const cdp = await contexto.newCDPSession(p)
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
+    const medir = (quantas: number, pontos: number) =>
+      p.evaluate(
+        async ([n, k]: [number, number]) => {
+          // import pelo navegador (o vitest trocaria um import() escrito aqui)
+          const { unirAreas } = await new Function('u', 'return import(u)')('/src/concreto/uniao.ts')
+          const roda = (cx: number, cy: number, r: number) =>
+            Array.from({ length: k }, (_, i) => {
+              const a = (i / k) * Math.PI * 2
+              const rr = r + Math.sin(i * 1.7) * 3
+              return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]
+            })
+          const tempos: number[] = []
+          for (let vez = 0; vez < 3; vez++) {
+            // ids novos a cada vez: sem o resultado guardado
+            const areas = Array.from({ length: n }, (_, i) => ({ id: `d${n}-${k}-${vez}-${i}`, contorno: roda(200 + i * 150, 300 + (i % 2) * 60, 100), alvo: 'vigas_laje' }))
+            const t0 = performance.now()
+            unirAreas(areas)
+            tempos.push(performance.now() - t0)
+          }
+          return Math.round(tempos.sort((a, b) => a - b)[1])
+        },
+        [quantas, pontos] as [number, number],
+      )
+    const comum = await medir(4, 80) // dia a dia: 4 áreas de traço curto
+    const pesado = await medir(12, 400) // exagero: 12 áreas de traço longo, todas encadeadas
+    console.log(`DESEMPENHO uniao CPU4x: comum ${comum} ms, pesado ${pesado} ms`)
+    if (PRINTS) (await import('node:fs')).writeFileSync(path.join(PRINTS, 'desempenho_uniao.txt'), `comum ${comum} ms, pesado ${pesado} ms\n`)
+    expect(comum).toBeLessThan(50)
+    expect(pesado).toBeLessThan(350)
+    await contexto.close()
+  }, 120_000)
+  it('PDF do relatório: uma página com o desenho dos caminhões (áreas unidas e número) antes das tabelas, legenda em linhas', async () => {
+    const contexto = await navegador.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true })
+    // o Imprimir do navegador não abre no teste: a folha fica na página e é conferida
+    await contexto.addInitScript(() => {
+      window.print = () => {}
+    })
+    const p = await contexto.newPage()
+    const erros: string[] = []
+    p.on('pageerror', (e: Error) => erros.push(e.message))
+    await p.goto(url)
+    await clicar(p, /Pavimento pequeno/)
+    // a concretagem de exemplo da bancada é sempre de ontem (dev/concreto.tsx)
+    const ontem = new Date()
+    ontem.setDate(ontem.getDate() - 1)
+    const dd = (n: number) => String(n).padStart(2, '0')
+    await clicar(p, new RegExp(`${dd(ontem.getDate())}/${dd(ontem.getMonth() + 1)}/${ontem.getFullYear()}`))
+    await clicar(p, 'Desenhar na planta')
+    await p.getByTestId('mapa').waitFor()
+    const cdp = await contexto.newCDPSession(p)
+    const pecas = async (n: number) =>
+      p.waitForFunction((k: number) => document.querySelectorAll('[data-testid=pecas-caminhao] li').length === k, n, { timeout: 8000 })
+    // caminhão 1: pilares P1 e P2 inteiros e parte do P3 (duas áreas separadas); caminhão 2: vigas e lajes
+    await p.getByTestId('chip-1').click()
+    await p.getByTestId('caneta-pilares').click()
+    await tracarComCaneta(p, cdp, [[80, 80], [480, 80], [480, 160], [80, 160], [80, 80]])
+    await pecas(2)
+    await tracarComCaneta(p, cdp, [[700, 80], [760, 80], [760, 160], [700, 160], [700, 80]])
+    await pecas(3)
+    await p.getByTestId('chip-2').click()
+    await p.getByTestId('caneta-vigas_laje').click()
+    await tracarComCaneta(p, cdp, [[100, 100], [600, 100], [600, 300], [100, 300], [100, 100]])
+    await p.getByTestId('toast').filter({ hasText: 'também entrou' }).waitFor()
+    await p.goBack()
+    await clicar(p, 'Relatório de peças')
+    await p.getByTestId('relatorio-caminhao').waitFor()
+
+    for (const [w, h] of [[375, 812], [768, 1024]]) {
+      await p.setViewportSize({ width: w, height: h })
+      await p.getByTestId('concreto-pdf-relatorio').click()
+      await p.getByTestId('pdf-desenho').waitFor({ state: 'attached' })
+      const f = await p.evaluate(() => {
+        const folha = document.querySelector('.so-folha-pdf')!
+        const desenho = folha.querySelector('[data-testid=pdf-desenho]')!
+        return {
+          paginasDeDesenho: folha.querySelectorAll('[data-testid=pdf-desenho]').length,
+          // a página do desenho vem antes das tabelas
+          antesDasTabelas: !!(desenho.compareDocumentPosition(folha.querySelector('.sf-tabela')!) & Node.DOCUMENT_POSITION_FOLLOWING),
+          numeros: [...desenho.querySelectorAll('svg circle + text')].map((t) => t.textContent).sort(),
+          contornos: desenho.querySelectorAll('svg path[fill=none]').length,
+          legenda: [...desenho.querySelectorAll('.cc-pdf-legenda li')].map((li) => li.textContent),
+          titulo: desenho.querySelector('.sf-titulo')!.textContent,
+          nota: [...folha.querySelectorAll('.sf-secao .sf-nota')].map((n) => n.textContent)[0] ?? '',
+          tabelas: folha.querySelectorAll('.sf-tabela').length,
+        }
+      })
+      expect(f.paginasDeDesenho).toBe(1)
+      expect(f.antesDasTabelas).toBe(true)
+      // caminhão 1 tem dois desenhos separados (um número em cada); o 2, um; o 3 não desenhou
+      expect(f.numeros).toEqual(['1', '1', '2'])
+      expect(f.contornos).toBe(3)
+      expect(f.legenda).toEqual(['1Caminhão 1 · NF 184201 · 8,5 m³', '2Caminhão 2 · NF 184202 · 8,5 m³'])
+      expect(f.titulo).toBe('Concreto · Onde foi cada caminhão')
+      expect(f.tabelas).toBe(2)
+      // legenda das tabelas: uma frase por linha
+      expect(f.nota.split('\n').length).toBeGreaterThanOrEqual(2)
+      expect(f.nota).toContain('Percentual ao lado da peça')
+      if (PRINTS && w === 768) {
+        await p.emulateMedia({ media: 'print' })
+        await p.screenshot({ path: path.join(PRINTS, 'concreto_pdf_relatorio_desenho.png'), fullPage: true })
+        await p.pdf({ path: path.join(PRINTS, 'concreto_relatorio_com_desenho.pdf'), preferCSSPageSize: true, printBackground: true })
+        await p.emulateMedia({ media: null })
+      }
+      // de volta ao app: a folha sai
+      await p.keyboard.press('Shift')
+      await p.waitForFunction(() => !document.querySelector('.so-folha-pdf'))
+    }
+    expect(erros).toEqual([])
+    await contexto.close()
+  }, 120_000)
   it('laje da FVS: a área de laje desenhada na FVS aparece no relatório do caminhão que desenhou em cima (celular e tablet)', async () => {
     const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true })
     const p = await contexto.newPage()
@@ -768,7 +1226,8 @@ suite('Concreto na bancada (Chrome)', () => {
       // laje no caminhão pelo mapa e, de volta, o botão "Tirar" numa linha só
       await clicar(p, 'Desenhar onde foi')
       await p.locator('[data-testid=mapa] canvas.leaflet-zoom-animated').first().waitFor()
-      await p.getByRole('button', { name: /Laje/ }).first().click()
+      // o botão da laje do trecho (não a caneta "Lajes", desde 26/11)
+      await p.getByTestId('laje').click()
       await p.getByTestId('toast').filter({ hasText: 'entrou' }).waitFor()
       await clicar(p, 'Ver caminhão e CPs')
       const tirar = p.locator('.cc-pecas li button').first()
@@ -1148,6 +1607,8 @@ suite('Concreto na bancada (Chrome)', () => {
       await p.getByTestId('planilha-modelo').setInputFiles(await exemplo.path())
       const [gerado] = await Promise.all([p.waitForEvent('download'), secao.getByRole('button', { name: 'Gerar planilha' }).click()])
       expect(await p.getByTestId('planilha-mensagem').innerText()).toMatch(/Planilha gerada: \d+ caminh/)
+      // com SO_PRINTS, a planilha gerada fica guardada para abrir com outro leitor (openpyxl, Excel)
+      if (PRINTS) await gerado.saveAs(path.join(PRINTS, `planilha_gerada_${largura}.xlsx`))
       const a = await abrirXlsx(new Uint8Array(readFileSync(await gerado.path())))
       const aba = texto(a, 'xl/worksheets/sheet2.xml')!
       expect(aba).toContain(`80${largura}`)

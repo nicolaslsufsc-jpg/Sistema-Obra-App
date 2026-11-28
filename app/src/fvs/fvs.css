@@ -1329,6 +1329,24 @@
     line-height: 1.2;
   }
 }
+/* planta sozinha na seção (instalações: uma planta por disciplina, 26/11/2026): no tablet o botão ocupava só
+   metade da largura e o nome e a prancha quebravam em 3 ou 4 linhas; sozinho, ele pega a linha inteira */
+.fv-grade-armadura > :only-child {
+  grid-column: 1 / -1;
+}
+/* celular de 375 px (26/11, pacotes reais): "eletrodutos" quebrava no meio da palavra por faltarem ~6 px;
+   o ícone e as folgas encolhem um pouco */
+@media (max-width: 420px) {
+  .fv-bt-armadura {
+    gap: 8px;
+    padding: 10px 8px;
+  }
+  .fv-bt-icone {
+    flex-basis: 28px;
+    width: 28px;
+    height: 28px;
+  }
+}
 .fv-sem-peca summary {
   cursor: pointer;
   min-height: 44px;
@@ -2635,4 +2653,24 @@ header.so-cabecalho.fv-topo-inicio {
 }
 .fv-apto-ok {
   color: var(--fv-ok);
+}
+
+/* tablet e PC, planta sem as abas de tipo (instalações, furação): a caixa da planta cortava o nome ("Planta inte",
+   "Água fria e") com espaço sobrando no topo (achado do FVS-5, 26/11). Sem as abas sobra largura: o título pode ir a
+   262 px e a caixa fica do tamanho do nome. Com as abas (planta de forma) nada muda. Navegador sem :has: como antes */
+@media (min-width: 701px) {
+  .fv-topo:not(:has(> .fv-seg)) > .fv-tit {
+    max-width: 262px;
+    flex-shrink: 0;
+  }
+  .fv-topo:not(:has(> .fv-seg)) .fv-nomes select {
+    max-width: 100%;
+  }
+}
+/* a partir de 901 px cabe também o nome mais comprido ("Hidrantes, extintores e sprinklers"); em 768 e 800 ele
+   ainda termina em reticências, porque o resto do topo não cede mais */
+@media (min-width: 901px) {
+  .fv-topo:not(:has(> .fv-seg)) > .fv-tit {
+    max-width: 330px;
+  }
 }

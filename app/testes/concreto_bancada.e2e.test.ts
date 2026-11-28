@@ -892,8 +892,13 @@ suite('Concreto na bancada (Chrome)', () => {
         await p.emulateMedia({ media: null })
       }
       // de volta ao app: a folha sai
-      await p.keyboard.press('Shift')
-      await p.waitForFunction(() => !document.querySelector('.so-folha-pdf'))
+      // a folha só escuta a tecla depois que o Imprimir foi chamado (um quadro depois de aparecer): em máquina
+      // lenta a primeira tecla chega antes, então repete até a folha sair
+      for (let i = 0; i < 60 && (await p.locator('.so-folha-pdf').count()) > 0; i++) {
+        await p.keyboard.press('Shift')
+        await p.waitForTimeout(250)
+      }
+      expect(await p.locator('.so-folha-pdf').count()).toBe(0)
     }
     expect(erros).toEqual([])
     await contexto.close()

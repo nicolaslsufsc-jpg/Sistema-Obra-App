@@ -10,6 +10,7 @@
  * Aqui só contas puras; quem grava é a tela (marcarLote, em dados.ts).
  */
 import { historicoDeUnidades, unidadeDe, type RegrasFvs, type Unidade } from './regras'
+import { ultimosPorItem, type EventoFvs } from './situacao'
 
 export const NOME_DA_UNIDADE: Record<Unidade, string> = {
   peca: 'peça',
@@ -82,4 +83,24 @@ export function avisoDaUnidadeAnterior(regras: RegrasFvs, codigoDaFicha: string 
   const antes = vigentes.filter((u) => u.desde <= maisAntigo).at(-1) ?? vigentes[0]
   if (antes.unidade === atual.unidade) return null
   return `Conferido por ${NOME_DA_UNIDADE[antes.unidade]} até ${diaCurto(atual.desde)}`
+}
+
+/**
+ * Os itens que o grupo recebe depois de um toque de vários itens (pincel, "Etapa C"): só os que ficaram C no
+ * local tocado (os gravados agora e os que já eram C). Item NC ou NA no local não vira C nos outros
+ * (revisão de 25/11). eventos: os registros do local nesta ficha, já com os do toque.
+ */
+export function itensCDoLocal(fichaId: string, eventos: readonly EventoFvs[], pedidos: readonly number[]): number[] {
+  const ult = ultimosPorItem(eventos.filter((e) => e.ficha_id === fichaId))
+  return pedidos.filter((n) => ult.get(n)?.resultado === 'C')
+}
+
+/**
+ * "Marcado antes do prazo" aceito no local tocado: a mesma observação vai a cada item do grupo.
+ * prazo: a observação por `${local}#${item}` (prazosDoLote); devolve item -> observação.
+ */
+export function observacoesDoLocal(local: string, prazo: ReadonlyMap<string, string>): Map<number, string> {
+  const m = new Map<number, string>()
+  for (const [k, v] of prazo) if (k.startsWith(`${local}#`)) m.set(Number(k.slice(local.length + 1)), v)
+  return m
 }

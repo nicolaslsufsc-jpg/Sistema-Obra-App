@@ -187,6 +187,18 @@ async function buscar(p: Page, texto: string) {
   await p.press('.fv-busca', 'Enter')
 }
 
+/** "Buscar" inteiro no campo de busca: o texto com a fonte do campo, mais o recuo, contra a largura dele.
+ *  Obra demo EXE-PV (26/11): em 375 com a fonte larga, Pincel e "Por item", saía "Buscai". */
+const buscaInteira = (p: Page): Promise<{ precisa: number; tem: number }> =>
+  p.evaluate(() => {
+    const busca = document.querySelector('.fv-busca') as HTMLInputElement
+    const cb = getComputedStyle(busca)
+    const cv = document.createElement('canvas').getContext('2d')!
+    cv.font = `${cb.fontWeight} ${cb.fontSize} ${cb.fontFamily}`
+    // 4 px de folga: com 0,2 px sobrando o Chrome já cortava o "r" (o cursor do campo ocupa o fim)
+    return { precisa: cv.measureText(busca.placeholder).width + parseFloat(cb.paddingLeft) + parseFloat(cb.paddingRight) + 4, tem: busca.clientWidth }
+  })
+
 const semRolagemHorizontal = (p: Page): Promise<number> => p.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 
 /** Tudo o que está no topo da planta fica dentro dele (nada cortado nem para fora da tela). */
@@ -279,6 +291,24 @@ suite('FVS na bancada (Chrome)', () => {
     url = `${servidor.resolvedUrls!.local[0]}dev/fvs.html`
     const pw = createRequire(import.meta.url)(process.env.SO_PLAYWRIGHT || 'playwright')
     navegador = await pw.chromium.launch(process.env.SO_CHROME ? { channel: process.env.SO_CHROME, headless: true } : { headless: true })
+    // SO_FONTE_LARGA=1 (25/11): todas as páginas em Verdana, mais larga que a fonte do Windows e parecida com a
+    // do Linux do GitHub; para pegar no PC o topo que estoura só no CI
+    if (process.env.SO_FONTE_LARGA) {
+      const novo = navegador.newContext.bind(navegador)
+      navegador.newContext = async (...a: unknown[]) => {
+        const ctx = await novo(...a)
+        await ctx.addInitScript(() => {
+          const aplicar = () => {
+            const s = document.createElement('style')
+            s.textContent = '*{font-family:Verdana, sans-serif !important}'
+            document.head.appendChild(s)
+          }
+          if (document.head) aplicar()
+          else document.addEventListener('DOMContentLoaded', aplicar)
+        })
+        return ctx
+      }
+    }
   }, 120_000)
 
   afterAll(async () => {
@@ -1176,6 +1206,313 @@ suite('FVS na bancada (Chrome)', () => {
         if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `ambientes_topo_${largura}_${tema}.png`) })
       }
       await p.evaluate(() => delete document.documentElement.dataset.tema)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
+  // Instalações sem ambiente (decisão do Nicolas, 25/11/2026): o ponto fora de cômodo (jardim, deck, laje, vazio;
+  // o SPDA de fachada) grava no item da instalação da ficha de laje em todas as disciplinas, como no elétrico
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: ponto de instalação fora de cômodo vai para o item da laje em todas as disciplinas`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1&fora=1&furoslaje=1`)
+      await noInicio(p)
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      const doPonto = (id: string) => registros(p).then((rs) => rs.filter((r) => r.barra === id).map((r) => [r.ficha, r.item, r.r]))
+      const F = (n: number) => `f0000000-0000-0000-0000-${String(n).padStart(12, '0')}`
+      const secao = (s: string) => p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: new RegExp(`^${s}$`) }) })
+      // [seção, disciplina, linha y na folha, tipo no aviso, item da ficha de laje de teste (6 esgoto, 7 água, 8 elétrica)]
+      const casos = [
+        ['Hidráulica', 'hidro', 200, 'tubo', 7],
+        ['Esgoto', 'sanitario', 350, 'tubo', 6],
+        ['Elétrico', 'eletrico', 500, 'caixa de parede', 8],
+        ['Preventivo contra incêndio', 'preventivo', 650, 'hidrante', 7],
+        ['SPDA', 'spda', 800, 'descida', 8],
+      ] as const
+      await naDisciplina(p, 'instalacoes')
+      // o preventivo, sem ficha de ambiente, deixa de ser só consulta: o ponto fora de cômodo marca a laje
+      await expect.poll(() => secao('Preventivo contra incêndio').getByRole('button').first().innerText()).not.toContain('só consulta')
+      for (const [nomeSecao, d, y, tipo, item] of casos) {
+        await secao(nomeSecao).getByRole('button').first().click()
+        await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+        await enquadrar(p, [-y, 1350], 2)
+        await tocarNaPlanta(p, 1350, y)
+        await aviso(`FORA ${d.toUpperCase()} (${tipo}): OK`)
+        await expect.poll(() => doPonto(`pt-${d}-fora`)).toEqual([[F(9), item, 'C']])
+        expect(await p.getByTestId('fvs-escolha-ficha').count()).toBe(0)
+        expect(await topoCabe(p)).toBe(true)
+        expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+        if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `fora_de_comodo_${d}_${largura}${process.env.SO_FONTE_LARGA ? '_larga' : ''}.png`) })
+        await p.locator('.fv-topo .fv-voltar').click()
+        await noInicio(p)
+        await naDisciplina(p, 'instalacoes')
+      }
+      // dentro de cômodo, como antes: o ponto de água do 101-01 grava na ficha de ambiente (item 1), não na laje
+      await secao('Hidráulica').getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await enquadrar(p, [-200, 300], 2)
+      await tocarNaPlanta(p, 300, 200)
+      await aviso('PONTO_AGUA 1 (ponto de água): OK')
+      await expect.poll(() => doPonto('pt-hidro-1').then((r) => r.map(([, it]) => it))).toEqual([1])
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 180_000)
+  }
+
+  // Casas e recintos das instalações (26/11/2026, ambientes_novos do pipeline): a casa inteira é um ambiente ("UN-01 ·
+  // Casa 1", FVS por casa) e o ponto dentro dela grava na ficha de ambiente; o recinto sem nome entra com o nome provisório
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: a casa é um ambiente da planta e o ponto de dentro dela grava na ficha de ambiente`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0&instalacoes=1&fora=1&furoslaje=1&casas=1`)
+      await noInicio(p)
+      // na planta de ambientes: a casa e o recinto são locais como os outros
+      await abrirPlantaDeAmbientes(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await buscar(p, 'UN-01')
+      // o painel mostra o cômodo ("Casa 1") em destaque, com o número da unidade ao lado
+      await nomeNoPainel(p, 'Casa 1')
+      expect(await p.getByTestId('fvs-painel').innerText()).toContain('UN-01')
+      expect(await topoCabe(p)).toBe(true)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `casa_ambiente_${largura}${process.env.SO_FONTE_LARGA ? '_larga' : ''}.png`) })
+      await buscar(p, 'Recinto sem nome 1')
+      await nomeNoPainel(p, 'Recinto sem nome 1')
+      await p.locator('.fv-topo .fv-voltar').click()
+      await noInicio(p)
+      // na hidráulica: o ponto da casa grava no item 1 da ficha de ambiente de teste, não na laje
+      await naDisciplina(p, 'instalacoes')
+      await p.getByTestId('fvs-secao-outra').filter({ has: p.locator('h3', { hasText: /^Hidráulica$/ }) }).getByRole('button').first().click()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await enquadrar(p, [-230, 1220], 2)
+      await tocarNaPlanta(p, 1220, 230)
+      await p.waitForFunction(() => document.querySelector('.fv-toast')?.textContent?.includes('AF CASA 1 (ponto de água): OK'))
+      const doPonto = await registros(p).then((rs) => rs.filter((r) => r.barra === 'pt-hidro-casa').map((r) => r.item))
+      expect(doPonto).toEqual([1])
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 180_000)
+  }
+
+  // obra demo EXE-PV (26/11/2026): planta deitada só no terço de cima no celular e no tablet em pé, e
+  // "1º Pavimen…" cortado em 375. Rode também com SO_FONTE_LARGA=1 (Verdana, como o Linux do GitHub).
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: planta deitada usa a altura da tela e o nome do pavimento cabe inteiro`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=0`)
+      await noInicio(p)
+      await abrirForma(p)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await mapaParado(p)
+      // as peças (pilares e vigas) na tela: a caixa delas contra a área do mapa
+      const medir = () =>
+        p.evaluate(() => {
+          const m = (window as any).__fvMapa
+          const c = m.getContainer().getBoundingClientRect()
+          let b: any = null
+          m.eachLayer((l: any) => {
+            if (!l.getBounds || l.options?.stroke === false || l.options?.interactive === false) return
+            b = b ? b.extend(l.getBounds()) : l.getBounds()
+          })
+          const a = m.latLngToContainerPoint(b.getNorthWest())
+          const z = m.latLngToContainerPoint(b.getSouthEast())
+          return { mapaAlto: c.height, mapaLargo: c.width, alto: z.y - a.y, largo: z.x - a.x, topo: a.y, esquerda: a.x }
+        })
+      const r = await medir()
+      expect(r.topo, 'o desenho começa no alto').toBeLessThanOrEqual(r.mapaAlto * 0.1)
+      if (r.mapaAlto > r.mapaLargo) {
+        // tela em pé: a planta deitada é ampliada até a altura, no máximo 2x (aí passa da largura e o resto se
+        // vê arrastando); antes ficava no terço de cima, com a largura da tela (alto ~ 35%)
+        expect(r.alto >= r.mapaAlto * 0.8 || r.largo >= r.mapaLargo * 1.5, JSON.stringify(r)).toBe(true)
+        expect(r.alto, JSON.stringify(r)).toBeGreaterThanOrEqual(r.mapaAlto * 0.5)
+      } else {
+        // tela deitada (tablet deitado): as peças inteiras na tela, sem corte dos lados
+        expect(r.esquerda, JSON.stringify(r)).toBeGreaterThanOrEqual(-1)
+        expect(r.esquerda + r.largo, JSON.stringify(r)).toBeLessThanOrEqual(r.mapaLargo + 1)
+      }
+      // nome do pavimento como o da obra demo, com Pincel e "Por item" no topo: cada palavra inteira, em até
+      // duas linhas e sem reticências
+      await p.evaluate(() => void (document.querySelector('.fv-nomes b')!.textContent = '1º Pavimento'))
+      const nome = await p.evaluate(() => {
+        const b = document.querySelector('.fv-nomes b') as HTMLElement
+        const cs = getComputedStyle(b)
+        const cv = document.createElement('canvas').getContext('2d')!
+        cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+        const g = document.createRange()
+        g.selectNodeContents(b)
+        const linhas = new Set([...g.getClientRects()].map((q) => Math.round(q.top))).size
+        return { palavra: Math.max(...b.textContent!.split(/\s+/).map((w) => cv.measureText(w).width)), cabe: b.clientWidth, linhas }
+      })
+      expect(nome.palavra, `"Pavimento" cabe (${JSON.stringify(nome)})`).toBeLessThanOrEqual(nome.cabe)
+      expect(nome.linhas).toBeLessThanOrEqual(2)
+      expect(await p.locator('.fv-bitem').count()).toBe(1)
+      const b = await buscaInteira(p)
+      expect(b.tem, `"Buscar" inteiro (${JSON.stringify(b)})`).toBeGreaterThanOrEqual(b.precisa)
+      expect(await topoCabe(p)).toBe(true)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `planta_deitada_${largura}${process.env.SO_FONTE_LARGA ? '_larga' : ''}.png`) })
+      expect(erros).toEqual([])
+      await contexto.close()
+    }, 120_000)
+  }
+
+  // obra demo EXE-PV (26/11/2026): a planta com laje L no pacote (contorno do projeto) já tem lajes para
+  // marcar; o aviso "Nenhuma área de laje nesta planta" sumiu. Sem L no pacote, o aviso segue.
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: laje L do pacote na planta: sem o aviso de "nenhuma área de laje"`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      let p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      // sem laje no pacote: o aviso aparece (como antes)
+      await p.goto(url)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await p.getByTestId('fvs-dica-area').waitFor()
+      await contexto.close()
+      // com laje L no pacote (aparelho novo: o pacote fica guardado): a aba Lajes mostra as lajes, sem o
+      // aviso; desenhar área continua possível
+      const contexto2 = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      p = await contexto2.newPage()
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?lajes=1`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      await p.locator('.fv-seg button', { hasText: 'Lajes' }).click()
+      await p.getByTestId('fvs-nova-area').waitFor()
+      await p.waitForTimeout(300)
+      expect(await p.getByTestId('fvs-dica-area').count()).toBe(0)
+      await buscar(p, 'L1')
+      await nomeNoPainel(p, 'L1')
+      // com a aba Lajes, Pincel não aparece mas "+ Área" sim: o "Buscar" inteiro aqui também
+      const b = await buscaInteira(p)
+      expect(b.tem, `"Buscar" inteiro (${JSON.stringify(b)})`).toBeGreaterThanOrEqual(b.precisa)
+      expect(await topoCabe(p)).toBe(true)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `laje_do_pacote_${largura}${process.env.SO_FONTE_LARGA ? '_larga' : ''}.png`) })
+      expect(erros).toEqual([])
+      await contexto2.close()
+    }, 120_000)
+  }
+
+  // ideia 14 (25/11/2026, noite): o pincel, o "Por item" e o desenho do grupo da unidade de conferência
+  for (const [largura, altura] of [
+    [375, 812],
+    [768, 1024],
+    [1024, 768],
+  ] as const) {
+    it(`${largura}x${altura}: grupo da unidade por trecho: desenho na planta, "Por item" com Desfazer e pincel marcam o grupo`, async () => {
+      const contexto = await navegador.newContext({ ...NO_BRASIL, viewport: { width: largura, height: altura }, hasTouch: largura < 700 })
+      const p: Page = await contexto.newPage()
+      const erros: string[] = []
+      p.on('pageerror', (e: Error) => erros.push(e.message))
+      await p.goto(`${url}?abrir=ambientes&regras=unidades&servico=TESTE-PVS-REB&aba=ambientes`)
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
+      const REB = 'f0000000-0000-0000-0000-000000000004'
+      const aviso = (texto: string) => p.waitForFunction((t: string) => document.querySelector('.fv-toast')?.textContent?.includes(t), texto)
+      // camadas do mapa com o contorno do grupo (canvas: lido nas opções da camada)
+      const tracejadas = () =>
+        p.evaluate(() => {
+          let n = 0
+          ;(window as any).__fvMapa.eachLayer((l: any) => void (l.options?.dashArray === '7 5' && n++))
+          return n
+        })
+      const tocarEm = async (x: number, y: number) => {
+        await enquadrar(p, [-y, x], 0)
+        await tocarNaPlanta(p, x, y)
+      }
+      const ultimoDe = (rs: Registro[], el: string, item: number) => rs.filter((r) => r.el === el && r.item === item && r.ficha === REB).at(-1)
+
+      // ------------------------------------------------ desenho: local aberto, os outros do trecho tracejados
+      expect(await tracejadas()).toBe(0)
+      await buscar(p, '101-01')
+      await nomeNoPainel(p, '101-01')
+      const doGrupo = p.getByTestId('fvs-unidade-grupo')
+      await doGrupo.waitFor()
+      expect(await doGrupo.innerText()).toMatch(/Junto: 101-02, 101-03, .+ e mais \d+\./)
+      await expect.poll(tracejadas).toBeGreaterThan(5)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `unidade_grupo_desenho_${largura}.png`) })
+      // fechou o painel: o contorno sai
+      await p.goBack()
+      await p.getByTestId('fvs-painel').waitFor({ state: 'detached' })
+      await expect.poll(tracejadas).toBe(0)
+      expect(await topoCabe(p)).toBe(true)
+
+      // ------------------------------------------------ "Por item": o C de um toque marca o item no trecho todo
+      await p.getByTestId('fvs-bt-por-item').click()
+      await p.getByTestId('fvs-por-item').waitFor()
+      await p.getByTestId('fvs-por-item-escolha').selectOption('2')
+      const antes = (await registros(p)).length
+      await tocarEm(320, 480) // 101-03
+      await aviso('101-03 · Chapisco curado: OK · mais')
+      expect(await p.locator('.fv-toast').innerText()).toMatch(/mais \d+ locais do trecho/)
+      const doItem = (await registros(p)).slice(antes)
+      const locaisDoItem = new Set(doItem.map((r) => r.el))
+      expect(locaisDoItem.size).toBeGreaterThan(5)
+      expect(doItem.every((r) => r.item === 2 && r.r === 'C' && r.ficha === REB)).toBe(true)
+      // Desfazer volta o toque e o grupo
+      await p.getByTestId('fvs-desfazer').click()
+      await aviso('Desfeito: 101-03')
+      await expect.poll(async () => {
+        const rs = await registros(p)
+        return [...locaisDoItem].filter((el) => ultimoDe(rs, el, 2)?.r === 'C').length
+      }).toBe(0)
+      // NA no item 2 do 101-03 fica só no local (o NA não vai ao grupo)
+      await p.getByTestId('fvs-por-item-NA').click()
+      const antesDoNa = (await registros(p)).length
+      await tocarEm(320, 480)
+      await aviso('101-03 · Chapisco curado: não se aplica')
+      expect((await registros(p)).slice(antesDoNa).map((r) => r.r)).toEqual(['NA'])
+      await p.getByTestId('fvs-por-item-sair').click()
+      await p.getByTestId('fvs-por-item').waitFor({ state: 'detached' })
+
+      // ------------------------------------------------ pincel: o C do toque marca os mesmos itens no trecho
+      // (revisão de 25/11: só os que ficaram C no local; o item 2, NA no 101-03, não vira C nos outros)
+      await p.locator('.fv-bpincel', { hasText: 'Pincel' }).click()
+      const antesDoPincel = (await registros(p)).length
+      await tocarEm(320, 480)
+      await aviso('101-03: 3 itens C')
+      expect(await p.locator('.fv-toast').innerText()).toMatch(/mais \d+ locais do trecho/)
+      const doPincel = (await registros(p)).slice(antesDoPincel)
+      const locaisDoPincel = new Set(doPincel.map((r) => r.el))
+      expect(locaisDoPincel.size).toBeGreaterThan(5)
+      expect(doPincel.every((r) => r.r === 'C' && r.lote)).toBe(true)
+      // cada local do grupo com os itens 1, 3 e 4 do reboco, e o item 2 sem marcar
+      const rs = await registros(p)
+      expect([...locaisDoPincel].filter((el) => [1, 3, 4].some((n) => ultimoDe(rs, el, n)?.r !== 'C'))).toEqual([])
+      expect(doPincel.filter((r) => r.item === 2)).toEqual([])
+      // o diário de toques ficou vazio (o banco confirmou o toque e o lote do grupo)
+      expect(await p.evaluate((o: string) => localStorage.getItem(`fvs_toques:${o}`), OBRA)).toBeNull()
+      expect(await topoCabe(p)).toBe(true)
+      expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
+      if (PRINTS) await p.screenshot({ path: path.join(PRINTS, `unidade_grupo_pincel_${largura}.png`) })
       expect(erros).toEqual([])
       await contexto.close()
     }, 120_000)
@@ -3212,7 +3549,9 @@ suite('FVS na bancada (Chrome)', () => {
       expect(await noMapa()).toBe(0)
       expect(await semRolagemHorizontal(p)).toBeLessThanOrEqual(0)
       if (PRINTS) await p.screenshot({ path: `${PRINTS}/muitos_${nome}_longe.png` })
-      // o toque longe não marca: pede para aproximar
+      // o toque longe não marca: pede para aproximar (a folha inteira na tela: desde 26/11 a planta deitada
+      // abre ampliada até a altura no celular em pé, e o ponto (300, 500) podia ficar fora dela)
+      await verFolhaInteira(p)
       await tocarNaPlanta(p, 300, 500)
       await aviso('Muitos pontos aqui')
       expect((await registros(p)).filter((r) => r.barra?.startsWith('pt-eletrico-'))).toEqual([])
@@ -3927,6 +4266,7 @@ suite('FVS na bancada (Chrome)', () => {
       // aba Esquadrias: das 7, as 2 do banho (PM70 e PM90) saem da conta e o toque nelas só avisa
       await p.goto(`${url}?abrir=ambientes&comodos=1&esquadrias=1&servico=TESTE-PVS-REB&aba=esquadrias`)
       await p.getByTestId('fvs-item-esquadria').waitFor()
+      await p.locator('.fv-mapa .leaflet-tile').first().waitFor()
       expect(await p.getByTestId('fvs-progresso').innerText()).toBe('0/5 OK')
       await enquadrar(p, [-296, 220], 1)
       await tocarNaPlanta(p, 220, 312)

@@ -173,6 +173,14 @@
   .fv-topo.muitas-abas .fv-busca {
     flex-shrink: 0;
   }
+  /* 26/11: com "Pincel" e "Por item" no topo, em 1024 com a fonte larga a busca encolhia até "Busca";
+     ela fica com o tamanho dela e quem cede é o título, a etapa ou o contador */
+  .fv-planta .fv-busca {
+    flex-shrink: 0;
+  }
+  .fv-planta .fv-nomes {
+    min-width: 96px;
+  }
   .fv-topo.muitas-abas .fv-nomes {
     min-width: 96px;
   }
@@ -1312,7 +1320,7 @@
   color: var(--primaria-claro, var(--primaria));
   border: 2px solid var(--primaria-claro, var(--primaria));
 }
-/* celular (23/11, pacotes reais): "Baixar 6,1 MB" numa linha deixava ~80 px para o título e o código da
+/* celular (23/11, pacotes reais): "Baixar N MB" numa linha deixava ~80 px para o título e o código da
    prancha, que quebravam palavra por palavra; o tamanho desce para a segunda linha do botão */
 @media (max-width: 700px) {
   .fv-bt-acao.fv-bt-baixar {
@@ -1835,9 +1843,12 @@
   .fv-nomes select {
     font-size: 13px;
   }
+  /* 13 px como a caixa do trecho: com a fonte larga (Verdana / Linux do GitHub) faltava 1 px para o
+     "Buscar" em 84 px, e não sobra largura no topo para alargar (26/11) */
   .fv-planta .fv-busca {
     flex: none;
     width: 84px;
+    font-size: 13px;
   }
   /* quatro abas (Furos): numa linha só não cabiam; "Etapas" saía cortado e o contador ia a 4 linhas
      (rodada com a obra piloto, 20/11). Em cima título, contador e botões; embaixo abas, etapa e busca */
@@ -1984,11 +1995,13 @@
     padding: 0 4px !important;
   }
   /* aba Pilares com o "Por item" (18/11): os dois botões dividem o canto, o título e o progresso apertam */
+  /* 26/11 (obra demo EXE-PV): com 4 colunas, "Pavimento" (65 px; 78 na fonte larga) não cabia e o nome
+     saía "1º Pavimen…". O título fica com 5 colunas e o contador com 3 ("0/24" e "liberados" em duas linhas) */
   .fv-topo.com-item .fv-tit {
-    grid-column: 1 / 5;
+    grid-column: 1 / 6;
   }
   .fv-topo.com-item .fv-prog {
-    grid-column: 5 / 9;
+    grid-column: 6 / 9;
   }
   /* com a caixa de trecho, o título não cede ao progresso: em 384 px a caixa mostrava só "Trecho",
      sem o número (teste com cabo 20/11). O progresso quebra em mais linhas (a linha 1 é mais alta) */
@@ -2109,6 +2122,12 @@
     grid-column: 10 / 13;
     grid-row: 2;
     width: 100%;
+  }
+  /* obra demo EXE-PV (26/11): em 375 com a fonte larga saía "Buscai" (o texto cabia por 0,2 px e o Chrome
+     corta antes). Recuo de 5 px em vez de 8: sobram 6 px */
+  .fv-planta .fv-busca {
+    padding-left: 5px !important;
+    padding-right: 5px !important;
   }
   /* quatro abas (Furos): em 384 px "Furos" saía cortado ("Fu"; rodada com a obra piloto, 20/11). As abas
      ficam com a segunda linha inteira; etapa e busca descem para a terceira (como com-servico) */

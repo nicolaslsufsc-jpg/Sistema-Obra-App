@@ -22,7 +22,16 @@ interface Base {
 export type Toque =
   | (Base & { tipo: 'item'; pecaId: string; fichaId: string; item: number; resultado: Resultado; observacao?: string | null })
   | (Base & { tipo: 'desmarcar'; pecaId: string; fichaId: string; item: number })
-  | (Base & { tipo: 'lote'; pecas: Array<{ id: string; fichaId: string; fichaCampoId: string | null }>; etapa: string | null; resultado: 'C' | 'NA' })
+  | (Base & {
+      tipo: 'lote'
+      pecas: Array<{ id: string; fichaId: string; fichaCampoId: string | null }>
+      etapa: string | null
+      resultado: 'C' | 'NA'
+      /** só estes itens (o C que vale para o grupo da unidade de conferência: ideia 14); sem: todos */
+      itens?: number[]
+      /** a observação de cada item ("Marcado antes do prazo" aceito no local tocado), por número do item */
+      obs?: Record<string, string>
+    })
 
 const chave = (obraId: string) => `fvs_toques:${obraId}`
 

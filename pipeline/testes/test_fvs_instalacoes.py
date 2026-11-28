@@ -685,5 +685,132 @@ class TestAmbientesDoPacote(unittest.TestCase):
             instalacoes.ambientes_do_pacote({"elementos": {}}, lambda x, y: (x, y))
 
 
+
+@unittest.skipIf(_FALTA or _iu.find_spec("scipy") is None, "precisa de shapely, numpy e scipy")
+@unittest.skipIf(_FALTA, f"falta {', '.join(_FALTA)}")
+class TestAmbientesNovos(unittest.TestCase):
+    """26/11: as casas e os recintos das instalações viram elementos A da planta de ambientes (ambientes_novos)."""
+
+    T = {"pt_por_m": 10.0, "x0": 2.0, "y1": 50.0, "dx_pt": 100.0, "dy_pt": 40.0}
+
+    def test_volta_para_a_prancha(self):
+        from shapely.geometry import box
+
+        casa = box(3.0, 10.0, 9.0, 18.0)
+        rec = box(20.0, 30.0, 23.0, 32.0)
+        novos = publicar_planta.ambientes_novos_na_prancha(
+            {"UN-01": casa, f"{instalacoes.RECINTO_SEM_NOME} 1": rec}, self.T, {"UN-01": {"grupo": "Casa 1", "comodo": None}})
+        self.assertEqual([a["nome"] for a in novos], ["UN-01", "Recinto sem nome 1"])
+        un, r1 = novos
+        self.assertEqual((un["grupo"], un["comodo"], un["area_m2"]), ("Casa 1", "Casa 1", 48.0))
+        self.assertNotIn("pendencia", un)
+        self.assertEqual((r1["grupo"], r1["pendencia"]), ("Área comum", "nome"))
+        self.assertNotIn("comodo", r1)
+        # de volta ao modelo pela mesma conta do publicador (prancha_para_modelo): o mesmo polígono
+        conv = instalacoes.prancha_para_modelo(self.T)
+        from shapely.geometry import Polygon
+
+        volta = Polygon([conv(x, y) for x, y in un["polys"][0]])
+        self.assertAlmostEqual(volta.symmetric_difference(casa).area, 0, places=6)
+
+    def test_planta_de_ambientes_le_os_novos(self):
+        import ambientes
+
+        with tempfile.TemporaryDirectory() as d:
+            arq = pathlib.Path(d) / "ambientes_novos.json"
+            lista = [{"nome": "UN-01", "grupo": "Casa 1", "comodo": "Casa 1", "area_m2": 48.0, "polys": [[[0, 0], [60, 0], [60, 80], [0, 80]]]},
+                     {"nome": "Recinto sem nome 1", "grupo": "Área comum", "area_m2": 6.0, "pendencia": "nome",
+                      "polys": [[[100, 100], [130, 100], [130, 120], [100, 120]]]}]
+            arq.write_text(json.dumps(lista), encoding="utf-8")
+            pecas = ambientes.ler_ambientes_novos(str(arq), {"AC-01"})
+            self.assertEqual([(p["tipo"], p["nome"], p["grupo"]) for p in pecas], [("A", "UN-01", "Casa 1"), ("A", "Recinto sem nome 1", "Área comum")])
+            self.assertEqual(pecas[0]["comodo"], "Casa 1")
+            self.assertEqual(pecas[1]["pendencia"], "nome")
+            self.assertEqual(pecas[1]["secao"], ambientes.area_br(6.0))
+            # o rótulo cai dentro do contorno
+            x0, y0, x1, y1 = pecas[1]["rotulo"]
+            self.assertTrue(100 <= (x0 + x1) / 2 <= 130 and 100 <= (y0 + y1) / 2 <= 120)
+            # nome que a planta já tem: erro (o ponto iria para o ambiente errado)
+            with self.assertRaises(ambientes.ErroAmbientes):
+                ambientes.ler_ambientes_novos(str(arq), {"UN-01"})
+
+
+@unittest.skipIf(_FALTA or _iu.find_spec("scipy") is None, "precisa de shapely, numpy e scipy")
+class TestRecintosEShaft(unittest.TestCase):
+    """25/11: recintos fechados da prancha sem ambiente e a proposta do shaft (atrás de parâmetro)."""
+
+    # 1 pixel = 1 ponto da prancha = 10 cm; modelo: x = i * 0,1, y = 10 - j * 0,1 (metros)
+    T = {"pt_por_m": 10.0, "x0": 0.0, "y1": 10.0, "dx_pt": 0.0, "dy_pt": 0.0}
+
+    def planta(self):
+        import numpy as np
+
+        p = np.zeros((100, 100), bool)
+        p[10:12, 10:90] = p[88:90, 10:90] = p[10:90, 10:12] = p[10:90, 88:90] = True  # contorno
+        p[10:90, 49:51] = True  # parede do meio, com uma porta de 60 cm
+        p[60:66, 49:51] = False
+        p[20:22, 60:77] = p[37:39, 60:77] = p[20:39, 60:62] = p[20:39, 75:77] = True  # shaft de 1,3 m x 1,5 m
+        return p
+
+    def test_recintos(self):
+        from shapely.geometry import Point, box
+
+        amb = {"AC-01": box(1.2, 1.1, 4.9, 8.8)}  # a sala da esquerda (o modelo tem y para cima)
+        r = instalacoes.recintos_da_prancha(self.planta(), 1.0, self.T, amb)
+        self.assertEqual(len(r["shafts"]), 1)
+        self.assertLess(r["shafts"][0].area, instalacoes.SHAFT_MAX_M2)
+        self.assertTrue(r["shafts"][0].contains(Point(6.8, 7.1)))
+        self.assertEqual(len(r["sem_ambiente"]), 1)  # a sala da direita; a de fora (borda) não entra
+        self.assertGreater(r["sem_ambiente"][0].area, 20)
+
+    def test_nome_neutro_so_com_ponto(self):
+        from shapely.geometry import box
+
+        recintos = [box(0, 5, 2, 7), box(3, 5, 5, 7), box(0, 0, 2, 2)]
+        pts = [{"x": 100, "y": 100}, {"x": 400, "y": 600}, {"x": 150, "y": 650}]  # cm
+        nomes = instalacoes.nomear_recintos(recintos, pts)
+        self.assertEqual(list(nomes), ["Recinto sem nome 1", "Recinto sem nome 2", "Recinto sem nome 3"])
+        self.assertEqual(nomes["Recinto sem nome 1"], recintos[0])  # de cima para baixo, da esquerda para a direita
+        self.assertEqual(nomes["Recinto sem nome 3"], recintos[2])
+        self.assertEqual(instalacoes.nomear_recintos(recintos, [{"x": 900, "y": 900}]), {})
+
+    def test_shaft_e_distancia(self):
+        """Decisão do Nicolas (25/11): cômodo vizinho; parede até 60 cm, shaft até 1 m."""
+        from shapely.geometry import box
+
+        self.assertEqual((instalacoes.AMBIENTE_PERTO_CM, instalacoes.SHAFT_PERTO_CM), (60.0, 100.0))
+        geo = {"201-01": box(0, 0, 3, 3)}
+        shaft = box(3.2, 0, 4, 1)
+        pts = lambda: [{"x": 385, "y": 50}, {"x": 345, "y": 200}, {"x": 375, "y": 200}]  # shaft a 85 cm; parede a 45 e 75 cm
+        padrao = pts()
+        instalacoes.ambiente_dos_pontos(padrao, geo)  # sem shafts: só os 60 cm
+        self.assertEqual([p.get("ambiente") for p in padrao], [None, "201-01", None])
+        com_shaft = pts()
+        instalacoes.ambiente_dos_pontos(com_shaft, geo, shafts=[shaft], shaft_perto_cm=instalacoes.SHAFT_PERTO_CM)
+        self.assertEqual([p.get("ambiente") for p in com_shaft], ["201-01", "201-01", None])
+        a_30 = pts()
+        instalacoes.ambiente_dos_pontos(a_30, geo, perto_cm=30)  # a regra até 25/11
+        self.assertEqual([p.get("ambiente") for p in a_30], [None, None, None])
+
+    def test_dentro_de_dois_vale_o_primeiro(self):
+        from shapely.geometry import box
+
+        geo = {"AC-01": box(0, 0, 3, 3), "UN-01": box(2, 0, 6, 3)}
+        pts = [{"x": 250, "y": 100}]
+        instalacoes.ambiente_dos_pontos(pts, geo)
+        self.assertEqual(pts[0]["ambiente"], "AC-01")
+
+    def test_nome_pelo_texto_da_prancha(self):
+        from shapely.geometry import box
+
+        recintos = [box(0, 5, 2, 7), box(3, 5, 5, 7), box(6, 5, 8, 7)]
+        pts = [{"x": 100, "y": 600}, {"x": 400, "y": 600}, {"x": 700, "y": 600}]
+        textos = [("A: 6,20 m²", 1.0, 5.5), ("CASA DE  BOMBAS", 1.0, 6.5), ("PISO: CIMENTADO", 1.0, 6.8),
+                  ("+4,78", 4.0, 6.0), ("CASA DE BOMBAS", 7.0, 6.0)]
+        nomes = instalacoes.nomear_recintos(recintos, pts, textos)
+        self.assertEqual(list(nomes), ["CASA DE BOMBAS", "Recinto sem nome 1", "CASA DE BOMBAS 2"])
+        self.assertIsNone(instalacoes.nome_pelo_texto(recintos[1], textos))
+
+
 if __name__ == "__main__":
     unittest.main()

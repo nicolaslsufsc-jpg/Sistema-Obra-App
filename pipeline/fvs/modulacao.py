@@ -29,11 +29,11 @@ inteiro e (quando há nota) em que as paredes dele batem melhor; sem nota, a mai
 não cabe inteiro em nenhuma, cada cômodo procura a sua.
 
 No pavimento.json, dentro de "ambientes":
-  "modulacao": {"pranchas": "../Modulacao/*.VD.EX.02[4-8].*.pdf", "escala": 50}
+  "modulacao": {"pranchas": "../Modulacao/*.MOD.*.pdf", "escala": 50}
   "projetos": [
-    {"titulo": "Paginação de piso", "pranchas": "../Piso/*.AR.DE.05[3-7].*.pdf", "escala": 50, "fichas": ["PVS-024"]},
-    {"titulo": "Impermeabilização", "pranchas": "../Imperm/*.IM.EX.006.*.pdf", "escala": 200, "pela_arquitetura": true,
-     "fichas": ["PVS-024", "PVS-015"]}
+    {"titulo": "Paginação de piso", "pranchas": "../Piso/*.PISO.*.pdf", "escala": 50, "fichas": ["EXE-PVS-PISO"]},
+    {"titulo": "Impermeabilização", "pranchas": "../Imperm/*.IMP.*.pdf", "escala": 200, "pela_arquitetura": true,
+     "fichas": ["EXE-PVS-PISO", "EXE-PVS-REB"]}
   ]
   opcionais: "margem_m" (folga em volta do recorte, 0,30 m), "coincidencia_minima" (0,08 pelas paredes, 0,30 pela
   arquitetura), "nota_minima" (0,50: parte das paredes do apartamento que precisa bater na prancha),
@@ -52,7 +52,7 @@ import unicodedata
 
 MARGEM_M = 0.30
 COINCIDENCIA_MINIMA = 0.08
-COINCIDENCIA_MINIMA_ARQ = 0.30  # pela imagem inteira, contra a planta de arquitetura (conferido nos 5 andares da obra piloto)
+COINCIDENCIA_MINIMA_ARQ = 0.30  # pela imagem inteira, contra a planta de arquitetura (conferido nos andares da obra piloto)
 NOTA_MINIMA = 0.50
 COINCIDENCIA_MINIMA_ESCALA = 0.05  # pela arquitetura em outra escala: a prancha de setor cobre só parte do andar
 DESTAQUE_MINIMO = 1.30  # e o ponto achado tem que ser 1,3 vez melhor que o segundo (fora disso é chute)

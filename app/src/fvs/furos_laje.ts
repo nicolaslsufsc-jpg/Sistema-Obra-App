@@ -167,9 +167,9 @@ export function avisoDoCEletrico(sits: readonly Situacao[]): string | null {
 }
 
 // ---------------------------------------------------------------- densidade na planta (20/11/2026)
-// No 2º pavimento da obra piloto são 954 furos de laje. Com a planta inteira na tela, o alvo de 44 px de
-// cada furo cobre metros de obra e quase todo toque pegava o furo errado (medido: 88% ou mais; 2% no
-// zoom 1,5; 0% do 2 para cima). Decisões do Nicolas (20/11, pelo Professor): longe, um número por área
+// Um pavimento real tem perto de mil furos de laje. Com a planta inteira na tela, o alvo de 44 px de
+// cada furo cobre metros de obra e quase todo toque pegava o furo errado (medido: quase todos; poucos no
+// zoom 1,5; nenhum do 2 para cima). Decisões do Nicolas (20/11, pelo Professor): longe, um número por área
 // no lugar dos furos; toque que pega dois furos pergunta qual; o contador só com os conferíveis; os
 // furos que não são de esgoto, água nem elétrica (Geral, Climatização, Incêndio) ficam escondidos.
 

@@ -18,7 +18,7 @@ import importar_construpoint as ic  # noqa: E402
 
 PILAR, VIGA = "EXE-PVS-001", "EXE-PVS-002"
 ITENS = {PILAR: ["(INÍCIO) Limpeza: Local limpo", "(EXECUÇÃO) Prumo:\tVerificar o prumo"], VIGA: ["(INÍCIO) Fundo: Conferir o fundo"]}
-PECAS = {"Pilotis": {"P": {"P27": "id-p27", "P90": "id-p90", "P216": "id-p216"}, "V": {"V14": "id-v14"}},
+PECAS = {"Pilotis": {"P": {"P27": "id-p27", "P90": "id-p90", "P61": "id-p61"}, "V": {"V14": "id-v14"}},
          "2º Pavimento": {"P": {"P100": "id-2p100"}}}
 FICHAS_DO_APP = {PILAR, VIGA}
 
@@ -48,13 +48,13 @@ class TestPartes(unittest.TestCase):
 
     def test_peca_do_local(self):
         self.assertEqual(ic.peca_do_local("Pilotis \\ Trecho 1 \\ Pilares \\ P27"), ("Pilotis", "P", "P27"))
-        self.assertEqual(ic.peca_do_local("Torre \\ 2° Pavimento \\ Residencial D - Vigas \\ V144"), ("2º Pavimento", "V", "V144"))
-        self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 4 \\ Pilares \\ p216"), ("Mezanino", "P", "P216"))
-        self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 6 \\ Pilares \\ p326a"), ("Mezanino", "P", "P326A"))
-        self.assertEqual(ic.peca_do_local("Torre \\ 2° Pavimento \\ Pilares \\ P102aa"), ("2º Pavimento", "P", "P102AA"))
+        self.assertEqual(ic.peca_do_local("Torre \\ 2° Pavimento \\ Residencial X - Vigas \\ V7"), ("2º Pavimento", "V", "V7"))
+        self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 4 \\ Pilares \\ p61"), ("Mezanino", "P", "P61"))
+        self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 6 \\ Pilares \\ p36a"), ("Mezanino", "P", "P36A"))
+        self.assertEqual(ic.peca_do_local("Torre \\ 2° Pavimento \\ Pilares \\ P12aa"), ("2º Pavimento", "P", "P12AA"))
         self.assertEqual(ic.peca_do_local("Mezanino \\ Trecho 1 \\ Pilares \\ P9O"), ("Mezanino", "P", "P90"))  # letra O no lugar de zero
-        for sem_peca in ("Térreo Comercial", "Pilotis \\ Trecho 1", "Infra estrutura \\ Residencial 1 \\ BL129", "Pilotis \\ Trecho 1 \\ ETE \\ PAREDE 1",
-                         "Infra estrutura \\ Residencial 1 \\ Bloco P81"):
+        for sem_peca in ("Térreo Comercial", "Pilotis \\ Trecho 1", "Infra estrutura \\ Residencial X \\ BL9", "Pilotis \\ Trecho 1 \\ ETE \\ PAREDE 1",
+                         "Infra estrutura \\ Residencial X \\ Bloco P8"):
             self.assertIsNone(ic.peca_do_local(sem_peca), sem_peca)
 
     def test_observacao_junta_problema_e_solucao(self):
@@ -179,10 +179,10 @@ if __name__ == "__main__":
 
 
 class TestPilarComLetra(unittest.TestCase):
-    """Achado 4 da lista de campo (24/11): "P184" no Construpoint é o "P184a" no app. Pares do 2º (P102a e
-    P102aa): fica o que não é só de detalhe no pacote; sem pacote, o nome mais curto, com aviso."""
+    """Achado 4 da lista de campo (24/11): "P18" no Construpoint é o "P18a" no app. Pares do 2º (P12a e
+    P12aa): fica o que não é só de detalhe no pacote; sem pacote, o nome mais curto, com aviso."""
 
-    PECAS_2 = {"2º Pavimento": {"P": {"P184A": "id-p184a", "P102A": "id-p102a", "P102AA": "id-p102aa", "P50": "id-p50",
+    PECAS_2 = {"2º Pavimento": {"P": {"P18A": "id-p18a", "P12A": "id-p12a", "P12AA": "id-p12aa", "P50": "id-p50",
                                       "P505": "id-p505"}}}
     LOCAL = "Torre \\ 2° Pavimento \\ Pilares \\ {}"
 
@@ -190,29 +190,29 @@ class TestPilarComLetra(unittest.TestCase):
         return ic.montar("EXE", [], [ficha(1, self.LOCAL.format(nome))], ITENS, self.PECAS_2, FICHAS_DO_APP, so_detalhe=so_detalhe)
 
     def test_pilar_sem_letra_liga_no_unico_com_letra(self):
-        h = self.montar("P184", so_detalhe={"2º Pavimento": set()})
+        h = self.montar("P18", so_detalhe={"2º Pavimento": set()})
         f = h["fichas_campo"][0]
-        self.assertEqual((f["elemento_id"], f["nome"]), ("id-p184a", "P184A"))
+        self.assertEqual((f["elemento_id"], f["nome"]), ("id-p18a", "P18A"))
         self.assertEqual(h["resumo"]["pilares_ligados_pelo_numero"], 1)
         self.assertEqual(h["pendencias"], [])
 
     def test_par_do_2o_fica_o_que_nao_e_so_detalhe(self):
-        h = self.montar("P102", so_detalhe={"2º Pavimento": {"P102A"}})
-        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102aa")
+        h = self.montar("P12", so_detalhe={"2º Pavimento": {"P12A"}})
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p12aa")
         self.assertEqual(h["pendencias"], [])
-        h = self.montar("P102", so_detalhe={"2º Pavimento": {"P102AA"}})
-        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102a")
+        h = self.montar("P12", so_detalhe={"2º Pavimento": {"P12AA"}})
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p12a")
 
     def test_par_sem_pacote_fica_o_mais_curto_e_avisa(self):
-        h = self.montar("P102")
-        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102a")
+        h = self.montar("P12")
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p12a")
         (p,) = h["pendencias"]
         self.assertIn("pilar ligado pelo número", p["motivo"])
-        self.assertIn("P102A, P102AA", p["local"])
+        self.assertIn("P12A, P12AA", p["local"])
 
     def test_nome_exato_ganha_e_numero_diferente_nao_liga(self):
-        h = self.montar("P102AA")
-        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p102aa")
+        h = self.montar("P12AA")
+        self.assertEqual(h["fichas_campo"][0]["elemento_id"], "id-p12aa")
         self.assertEqual(h["resumo"]["pilares_ligados_pelo_numero"], 0)
         h = self.montar("P5")  # P50 e P505 têm outro número: não liga
         self.assertIsNone(h["fichas_campo"][0]["elemento_id"])
@@ -222,9 +222,9 @@ class TestPilarComLetra(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sub = pathlib.Path(tmp) / "EXE_2"
             sub.mkdir()
-            (sub / "relatorio.json").write_text(json.dumps({"pavimento": "2º Pavimento", "so_detalhe": ["P102a"],
-                "pecas": [{"tipo": "P", "nome": "P102a", "id": "a"}, {"tipo": "P", "nome": "P102aa", "id": "aa"}]}), encoding="utf-8")
+            (sub / "relatorio.json").write_text(json.dumps({"pavimento": "2º Pavimento", "so_detalhe": ["P12a"],
+                "pecas": [{"tipo": "P", "nome": "P12a", "id": "a"}, {"tipo": "P", "nome": "P12aa", "id": "aa"}]}), encoding="utf-8")
             so = {}
             pecas = ic.ler_pecas(pathlib.Path(tmp), so)
-        self.assertEqual(so, {"2º Pavimento": {"P102A"}})
-        self.assertEqual(pecas["2º Pavimento"]["P"], {"P102A": "a", "P102AA": "aa"})
+        self.assertEqual(so, {"2º Pavimento": {"P12A"}})
+        self.assertEqual(pecas["2º Pavimento"]["P"], {"P12A": "a", "P12AA": "aa"})

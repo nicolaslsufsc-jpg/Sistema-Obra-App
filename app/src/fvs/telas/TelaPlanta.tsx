@@ -130,7 +130,7 @@ import { eventoDaTratativa, repetiuNoLocal, responsaveisDaObra, tratativaDaRodad
 import { pecasDoMesmoDesenho } from '../mesmo_desenho'
 import { avisoDeRevisaoNova, chaveDoRedesenho, comRedesenhos, TIPOS_REDESENHAVEIS } from '../redesenhos'
 import { ARRASTE_MINIMO_PX, pecasNoRetangulo, retanguloEntre } from '../selecao'
-import { chaveDaEscolhaDoPonto, disciplinaDePontos, escolhaLembradaDoPonto, fichaDosPontos, fichasDoPonto, lembrarEscolhaDoPonto, nomeDoFiltroDePontos, nomeDoPonto, opcoesDoFiltroDePontos, PONTOS_PARA_JUNTAR, pontoTocado, pontosNoFiltro, pontosPorQuadrado, zoomDosPontos, type FiltroDePontos } from '../pontos'
+import { ambientesCalculados, chaveDaEscolhaDoPonto, disciplinaDePontos, escolhaLembradaDoPonto, fichaDosPontos, fichasDoPonto, lembrarEscolhaDoPonto, nomeDoFiltroDePontos, nomeDoPonto, opcoesDoFiltroDePontos, PONTOS_PARA_JUNTAR, pontoTocado, pontosNoFiltro, pontosPorQuadrado, zoomDosPontos, type FiltroDePontos } from '../pontos'
 import { anotarToque, esquecerToque, type Toque } from '../toques'
 import './escolha.css'
 import type { ContextoFvs } from './ModuloFvs'
@@ -139,7 +139,7 @@ import { recortesDoAmbiente } from '../projetos_ambiente'
 import { usarCamadas } from './usarCamadas'
 import type { AbaDosAmbientes } from '../opcoes_ambientes'
 import { ambientesSemTipo, fichaValeNoLocal } from '../comodos'
-import { avisoDaUnidadeAnterior, NOME_DA_UNIDADE, outrosDoGrupo, unidadeDeGrupo, type LocalDoGrupo } from '../unidade'
+import { avisoDaUnidadeAnterior, itensCDoLocal, NOME_DA_UNIDADE, observacoesDoLocal, outrosDoGrupo, unidadeDeGrupo, type LocalDoGrupo } from '../unidade'
 import { pecasNasAreas as pecasDentroDasAreas } from '../ligacoes'
 import { esquadriasPorUnidade, pontosPorMetroDasEsquadrias, posicoesDasEsquadrias, zoomDasEsquadrias } from '../esquadrias_longe'
 
@@ -213,8 +213,20 @@ function enquadrarNoTopo(m: L.Map, b: L.LatLngBounds, limites: L.LatLngBounds) {
   // o limite do mapa, menor que a tela, puxaria o desenho de volta para o meio: solta e depois inclui a vista
   m.setMaxBounds(null as unknown as L.LatLngBounds)
   m.fitBounds(b, { animate: false })
-  const z = m.getZoom()
-  const alto = m.project(b.getSouthEast(), z).y - m.project(b.getNorthWest(), z).y
+  let z = m.getZoom()
+  const altoNo = (zz: number) => m.project(b.getSouthEast(), zz).y - m.project(b.getNorthWest(), zz).y
+  // planta deitada em tela em pé (obra demo EXE-PV, 26/11): enquadrada pela largura, ocupava só o terço de
+  // cima e embaixo ficava branco. Amplia até a altura toda, no máximo 2x (pelo menos metade da largura
+  // continua na tela; o resto se vê arrastando para o lado), centrada no meio das peças. Só com a tela em pé:
+  // deitada (tablet deitado, PC), a planta fica inteira, sem cortar os lados
+  const emPe = m.getSize().y > m.getSize().x
+  const folga = emPe ? Math.log2(m.getSize().y / altoNo(z)) : 0
+  const mais = Math.min(1, Math.floor(folga * 4) / 4)
+  if (mais > 0) {
+    z += mais
+    m.setView(b.getCenter(), z, { animate: false })
+  }
+  const alto = altoNo(z)
   const sobra = m.getSize().y - alto
   if (sobra <= 2) {
     m.setMaxBounds(limites)
@@ -425,8 +437,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (!pontos) return m
     const fa = fichasPara('A', dados.fichas)
     const fl = fichasPara('L', dados.fichas)
+    // ponto fora de cômodo vai para o item da laje (todas as disciplinas, 25/11/2026)
+    const comAmb = ambientesCalculados(pontos)
     for (const [id, p] of Object.entries(pontos)) {
-      const fs = fichasDoPonto(fa, p, fl, (p.ambiente && semFichasGuardado(p.ambiente)) || [])
+      const fs = fichasDoPonto(fa, p, fl, (p.ambiente && semFichasGuardado(p.ambiente)) || [], comAmb)
       if (fs.length) m.set(id, fs)
     }
     return m
@@ -436,10 +450,12 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     () => (pontosVisiveis ? Object.keys(pontosVisiveis).filter((id) => fichasDosPontos.has(id)) : undefined),
     [pontosVisiveis, fichasDosPontos],
   )
-  // muitos pontos (23/11/2026, 908 no elétrico do mezanino): longe, um número por quadrado; os pontos só de perto
+  // muitos pontos (23/11/2026, pacote real com centenas de pontos colados): longe, um número por quadrado; os pontos só de perto
   const zPontos = useMemo(() => zoomDosPontos(pontos), [pontos])
   // a modulação (paredes) não tem área de laje
   // a planta de blocos (fundação, 23/11/2026) não tem laje: sem a aba Lajes e sem áreas
+  /** laje L que vem no pacote (contorno do projeto), sem ser área desenhada */
+  const temLajeDoPacote = Object.values(manifest?.elementos ?? {}).some((e) => e.tipo === 'L' && !e.so_detalhe)
   const aceitaAreas = !!manifest && !ehDeAmbientes(planta) && !ehDeVedacao(planta) && !ehDeFundacao(planta) && !deArmadura && !deFuracao && !deInstalacoes && (pode || areasDaPlanta.length > 0)
   /** Furo de laje de outra planta (forma com os furos de laje separados, ou outra camada): fica escondido aqui. */
   // aba Furos (21/11/2026, "compilar as abas em uma só"): a planta de furação com todos os furos ganha um
@@ -490,7 +506,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (porItem && porItem.tipo !== tipo) setPorItem(null)
   }, [tipo])
 
-  // folha única tem a obra inteira do pavimento (até 850 peças): cada desenho da tela pergunta a
+  // folha única tem a obra inteira do pavimento (centenas de peças): cada desenho da tela pergunta a
   // ficha e a situação de todas, e o toque tem que responder em 0,1 s. Só calcula uma vez por desenho.
   // planta de fundação com grade de escavação (24/11/2026): nos quadrados (ambiente "A") só valem as fichas do
   // pacote (`fichas_da_grade`), e não as de reboco, pintura... dos cômodos
@@ -846,8 +862,8 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
   }
 
   /**
-   * Lote grande ("+ Área" de muitos pontos ou furos, 24/11/2026): o aparelho grava um registro por vez e 4.600
-   * pontos levam segundos. A faixa de aviso conta "Gravando 1.200 de 4.600…" umas 40 vezes no lote, sem
+   * Lote grande ("+ Área" de muitos pontos ou furos, 24/11/2026): o aparelho grava um registro por vez e milhares de
+   * pontos levam segundos. A faixa de aviso conta "Gravando N de M…" umas 40 vezes no lote, sem
    * relógio; o aviso do fim (com o Desfazer) toma o lugar dela.
    */
   function avisarGravando(feitos: number, total: number) {
@@ -921,7 +937,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     if (!manifest || !pacote || !divMapa.current || mapa.current) return
     const m = L.map(divMapa.current, {
       crs: L.CRS.Simple,
-      // folha grande (6.500 pontos) em 375 px precisa de menos que -4 para caber inteira
+      // folha grande (milhares de pontos) em 375 px precisa de menos que -4 para caber inteira
       minZoom: -6,
       maxZoom: 3,
       zoomSnap: 0.25,
@@ -1085,7 +1101,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     m.on('zoomend', mostrarNomes)
     // furos de laje: só de perto (longe, o alvo de 44 px cobre metros de obra e o toque pega o furo errado)
     const zEsq = zoomDasEsquadrias(pontosPorMetroDasEsquadrias(manifest.elementos, manifest.escala))
-    // calculado uma vez (23/11: a cada zoom, travava a tela no andar-tipo com ~5.900 pontos)
+    // calculado uma vez (23/11: a cada zoom, travava a tela num pavimento com milhares de pontos)
     const zPts = zoomDosPontos(manifest.pontos)
     const verFurosPerto = () => {
       setFurosPerto(m.getZoom() >= ZOOM_DOS_FUROS_DE_LAJE)
@@ -1247,7 +1263,7 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         // pontos (23/11): no máximo 2 zooms por toque, para não perder onde está; o número se divide e se toca de novo
         const zMax = tipo === 'I' ? Math.max(mapaDoEfeito.getZoom() + 2, zCabe) : Infinity
         const z = Math.min(Math.max(zCabe, Math.min(zPerto, zMax)), mapaDoEfeito.getMaxZoom())
-        // pontos que não cabem na tela no zoom novo (23/11, pacote real do 2º no celular: o número da planta
+        // pontos que não cabem na tela no zoom novo (23/11, pacote real no celular: o número da planta
         // inteira, em L, levava ao canto vazio e os números novos ficavam na beira): vai para o quadrado do zoom
         // novo com mais pontos
         if (tipo === 'I' && z > zCabe && pontosVisiveis) {
@@ -1322,6 +1338,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
     }
   }, [pontosVisiveis, pacote, pontosLonge])
 
+  // unidade de conferência por trecho, área ou pavimento (ideia 14): os outros locais do grupo do local aberto,
+  // que o C dele marca junto; na planta, contorno tracejado escuro
+  const grupoDoSel = (() => {
+    const es = sel && !porItemAtivo && !desenho ? elementoDe(sel) : undefined
+    const g = es && !abertasDe(sel!).length ? grupoDe(sel!, fichaDoLocal(sel!, es.tipo)) : undefined
+    return new Set(g ? g.outros().map((o) => o.id) : [])
+  })()
+
   // cores (situação da peça na ficha, só a etapa escolhida, se houver)
   useEffect(() => {
     if (!manifest) return
@@ -1339,13 +1363,14 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
       const duplicada = duplicadaDe(id)
       // parede da modulação pendente (20/11): cinza claro e mais grossa, para aparecer em cima da parede preta da prancha
       const paredePendente = e.tipo === 'M' && s === 'nada' && doItem !== 'NA'
-      const color = sel === id ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
+      const noGrupo = grupoDoSel.has(id)
+      const color = sel === id || noGrupo ? '#111' : duplicada ? COR_DUPLICADA : paredePendente ? '#b8bec4' : cor
       // arranque (só detalhe) e cômodo em que o serviço não vale: tracejado e quase sem cor, para não parecer peça a marcar
       const soDetalhe = !!e.so_detalhe || foraDoServico(e)
       const fillOpacity = soDetalhe ? 0.02 : ehArea ? (ativo ? Math.min(f, OPACIDADE_MAX_AREA) : Math.min(f, OPACIDADE_MAX_AREA) * 0.5) : pendenteLeve ? 0.05 : ativo ? f : f * 0.25
-      const opacity = ehArea ? (ativo ? 1 : 0.6) : !ativo ? 0.3 : soDetalhe && sel !== id ? 0.6 : pendenteLeve && sel !== id ? 0.6 : 1
-      const weight = sel === id ? 4 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : e.tipo === 'M' ? 3 : 2
-      const dashArray = soDetalhe ? '5 4' : undefined
+      const opacity = ehArea ? (ativo ? 1 : 0.6) : !ativo ? 0.3 : noGrupo ? 1 : soDetalhe && sel !== id ? 0.6 : pendenteLeve && sel !== id ? 0.6 : 1
+      const weight = sel === id ? 4 : noGrupo ? 2.5 : duplicada ? 3 : e.tipo === 'A' ? 1.25 : e.tipo === 'M' ? 3 : 2
+      const dashArray = noGrupo ? '7 5' : soDetalhe ? '5 4' : undefined
       if (ehFilho(e.tipo)) {
         // furo (ou esquadria) pendente: miolo branco (fica visível em cima da viga); fora da aba dele, apagado e sem toque
         const fill = s === 'nada' ? '#ffffff' : cor
@@ -1380,7 +1405,10 @@ export function TelaPlanta({ ctx, plantaId, pecaInicial, fichaCampoInicial, item
         if (ehArea) (l.options as { interactive?: boolean }).interactive = ativo
         if (estilos.current.get(l) === chave) continue
         estilos.current.set(l, chave)
-        l.setStyle({ color, fillColor: cor, fillOpacity, opacity, weight, ...(dashArray ? { dashArray } : {}) })
+        const origem = tracejadoDeOrigem(l) // antes do primeiro setStyle, que muda o options
+        // dashArray sempre: o contorno do grupo da unidade vai e volta com o local aberto; fora dele, volta o
+        // tracejado com que a camada nasceu (o rótulo sem contorno nasce com '4 3'; vazio tira o tracejado)
+        l.setStyle({ color, fillColor: cor, fillOpacity, opacity, weight, dashArray: dashArray || origem })
       }
       const caixa = caixas.current.get(id)
       if (caixa) caixa.texto.className = `s-${s}${sel === id ? ' on' : ''}`
@@ -1829,18 +1857,26 @@ O redesenho fica guardado no histórico.`)) return
       const comPrazo = noPrazo.size > 0 && confirm(`${e.nome}: ${perguntaDoLote(noPrazo.size)}`)
       const fichaDoPincel = comPrazo || !noPrazo.size ? ficha : { ...ficha, itens: ficha.itens.filter((i) => !noPrazo.has(`${id}#${i.n}`)) }
       const toque: Toque = { tipo: 'lote', id: crypto.randomUUID(), obraId: c.obraId, usuarioId: c.usuarioId, plantaId: c.plantaId, fichaCampoId: cDoPincel.fichaCampoId, pecas: [{ id, fichaId: ficha.id, fichaCampoId: cDoPincel.fichaCampoId }], etapa: et || null, resultado }
+      // unidade de conferência por trecho, área ou pavimento (ideia 14): o C do pincel marca os mesmos itens nos
+      // outros locais do grupo, como o C do painel. Só no marcado no app (ficha aberta do sistema oficial é do local);
+      // NA fica só no local.
+      const grupo = resultado === 'C' && !aberta ? grupoDe(id, daPeca) : undefined
       anotarToque(toque)
       executar(async (evs) => {
         const evsDaPeca = eventosNaFicha(evs(id), cDoPincel.fichaCampoId, abertasDe(id))
         const gravados = await marcarLote(cDoPincel, [{ id, ficha: fichaDoPincel, eventos: evsDaPeca }], et || null, resultado, toque.id, noPrazo).finally(() => esquecerToque(toque.obraId, toque.id))
         const ligados = resultado === 'C' ? await ligar(cDoPincel, id, daPeca, gravados.map((g) => Number(g.item)), [...evsDaPeca, ...(gravados as unknown as EventoFvs[])]) : []
+        // ao grupo, só os itens que ficaram C no local tocado (NC e NA do local não viram C nos outros); o "antes do
+        // prazo" aceito vai junto
+        const cDoLocal = itensCDoLocal(daPeca.id, [...evsDaPeca, ...(gravados as unknown as EventoFvs[])], fichaDoPincel.itens.map((i) => i.n))
+        const doGrupo = grupo ? await marcarGrupo(cDoPincel, grupo.outros(), et || null, cDoLocal, comPrazo ? observacoesDoLocal(id, noPrazo) : undefined) : []
         const n = gravados.length
         // segundo toque na mesma peça (toque duplo): não tira o "Desfazer" da tela
-        if (n || ultimaDoPincel.current !== id) {
-          avisarLote(n ? `${e.nome}: ${n} ${n === 1 ? 'item' : 'itens'} ${resultado}${et ? ` em ${et.toLowerCase()}` : ''}${maisLigados(ligados)}` : `${e.nome}: nada a marcar (já estava preenchido)`, [...gravados, ...ligados])
+        if (n || doGrupo.length || ultimaDoPincel.current !== id) {
+          avisarLote(n || doGrupo.length ? `${e.nome}: ${n} ${n === 1 ? 'item' : 'itens'} ${resultado}${et ? ` em ${et.toLowerCase()}` : ''}${maisLigados(ligados)}${maisDoGrupo(grupo, doGrupo)}` : `${e.nome}: nada a marcar (já estava preenchido)`, [...gravados, ...ligados, ...doGrupo])
         }
         ultimaDoPincel.current = id
-        return [...gravados, ...ligados]
+        return [...gravados, ...ligados, ...doGrupo]
       })
       return
     }
@@ -1905,21 +1941,25 @@ O redesenho fica guardado no histórico.`)) return
       )
       // ligação entre fichas: o C marca os itens ligados da peça (o "Desfazer" volta os dois)
       const ligados = gravado.resultado === 'C' ? await ligar(cx, id, ficha, [item.n], [...eventos, gravado as unknown as EventoFvs]) : []
+      // unidade de conferência por trecho, área ou pavimento (ideia 14): o C (não a reinspeção nem o NA) marca o
+      // mesmo item nos outros locais do grupo; ficha aberta do sistema oficial fica só no local
+      const grupo = gravado.resultado === 'C' && esperado !== 'NC' && !fichaCampoId ? grupoDe(id, ficha) : undefined
+      const doGrupo = grupo ? await marcarGrupo(cx, grupo.outros(), null, [item.n]) : []
       // os ligados do próprio local contam para "ficha completa"; os das peças de dentro da área, não
       const depois = [...eventos, gravado as unknown as EventoFvs, ...(ligados.filter((l) => localDoRegistro(l) === id) as unknown as EventoFvs[])]
       // o toque que fecha a ficha inteira da peça avisa
       const fechou = situacaoDaPeca(ficha, eventos) !== 'liberado' && situacaoDaPeca(ficha, depois) === 'liberado'
       const reinspecao = esperado === 'NC' ? ` (reinspeção ${rotuloRodada(Number(gravado.rodada))})` : ''
-      avisar(`${nome} · ${item.titulo}: ${textoDoResultado(resultado)}${reinspecao}${maisLigados(ligados)}${fechou ? ' · ficha completa' : ''}`, () => {
+      avisar(`${nome} · ${item.titulo}: ${textoDoResultado(resultado)}${reinspecao}${maisLigados(ligados)}${maisDoGrupo(grupo, doGrupo)}${fechou ? ' · ficha completa' : ''}`, () => {
         setMsg(null)
         executar(async (evs2) => {
-          const desfeitos = ligados.length ? await desfazerLote(cx, ligados, evs2) : []
+          const desfeitos = ligados.length || doGrupo.length ? await desfazerLote(cx, [...ligados, ...doGrupo], evs2) : []
           const volta = await voltarItem(cx, gravado, anterior, eventosNaFicha(evs2(id), fichaCampoId, abertasDe(id)))
           avisar(volta ? `Desfeito: ${nome} · ${item.titulo}` : 'Nada a desfazer: o item já mudou.')
           return volta ? [...desfeitos, volta] : desfeitos
         })
       })
-      return [gravado, ...ligados]
+      return [gravado, ...ligados, ...doGrupo]
     })
   }
 
@@ -3068,7 +3108,9 @@ O redesenho fica guardado no histórico.`)) return
       </button>
 
       <div class="fv-mapa" ref={divMapa}>
-        {tipo === 'L' && aceitaAreas && areasDaPlanta.length === 0 && !desenho && !caixaNova && (
+        {/* a laje L que vem no pacote (contorno do projeto, obra demo EXE-PV 26/11) já é laje na planta: sem o aviso.
+            A regra da área desenhada não muda (aceitar a laje do pacote como área é decisão do Nicolas) */}
+        {tipo === 'L' && aceitaAreas && areasDaPlanta.length === 0 && !temLajeDoPacote && !desenho && !caixaNova && (
           <p class="fv-dica-area" data-testid="fvs-dica-area">
             {pode ? 'Nenhuma área de laje nesta planta. Toque em “+ Área” e marque os cantos da parte da laje.' : 'Nenhuma área de laje nesta planta.'}
           </p>
@@ -3795,6 +3837,56 @@ interface PropsPainel {
   nomeDe: (id: string) => string | undefined
 }
 
+/**
+ * O C nos mesmos itens dos outros locais do grupo (unidade de conferência, ideia 14), num lote só (vazios; o já
+ * marcado não muda). Vai para o diário de toques antes de gravar: se o app fechar no meio, ao abrir de novo o
+ * que faltou do grupo é marcado com o mesmo lote (e o mesmo "Desfazer").
+ */
+async function marcarGrupo(
+  cx: Contexto,
+  outros: Array<{ id: string; ficha: Ficha; eventos: readonly EventoFvs[] }>,
+  etapa: string | null,
+  itens: readonly number[],
+  /** "Marcado antes do prazo" aceito no local tocado: item -> observação (a mesma em cada local do grupo) */
+  obs?: ReadonlyMap<number, string>,
+): Promise<Linha[]> {
+  if (!outros.length || !itens.length) return []
+  const toque: Toque = {
+    tipo: 'lote',
+    id: crypto.randomUUID(),
+    obraId: cx.obraId,
+    usuarioId: cx.usuarioId,
+    plantaId: cx.plantaId,
+    fichaCampoId: null,
+    pecas: outros.map((o) => ({ id: o.id, fichaId: o.ficha.id, fichaCampoId: null })),
+    etapa,
+    resultado: 'C',
+    itens: [...itens],
+    ...(obs?.size ? { obs: Object.fromEntries([...obs].map(([n, o]) => [String(n), o])) } : {}),
+  }
+  anotarToque(toque)
+  const observacoes = obs?.size ? new Map(outros.flatMap((o) => [...obs].map(([n, t]) => [`${o.id}#${n}`, t] as const))) : undefined
+  return marcarLote({ ...cx, fichaCampoId: null }, outros, etapa, 'C', toque.id, observacoes, new Set(itens)).finally(() => esquecerToque(toque.obraId, toque.id))
+}
+
+/**
+ * Os nomes dos locais que vão junto (a lista do grupo, no painel): " Junto: 102-01, 103-01, 104-01 e mais 9."
+ * Só os que o C marca de fato (sem ficha aberta no sistema oficial, com a mesma ficha); até 6 nomes.
+ */
+function nomesDoGrupo(grupo: GrupoDoPainel, nomeDe: (id: string) => string | undefined): string {
+  const nomes = grupo.outros().map((o) => nomeDe(o.id) ?? o.id).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+  if (!nomes.length) return ' Nenhum outro local do grupo está livre para marcar junto.'
+  const MAX = 6
+  return ` Junto: ${nomes.slice(0, MAX).join(', ')}${nomes.length > MAX ? ` e mais ${nomes.length - MAX}` : ''}.`
+}
+
+/** O tracejado com que a camada nasceu (guardado no primeiro estilo), ou '' (linha cheia). */
+function tracejadoDeOrigem(l: L.Path): string {
+  const o = l as L.Path & { __tracejado?: string }
+  if (o.__tracejado === undefined) o.__tracejado = typeof l.options.dashArray === 'string' ? l.options.dashArray : ''
+  return o.__tracejado
+}
+
 /** " · mais 12 locais do pavimento" no aviso do toque que marcou o grupo. */
 function maisDoGrupo(grupo: GrupoDoPainel | undefined, gravados: readonly unknown[]): string {
   if (!grupo || !gravados.length) return ''
@@ -3829,9 +3921,9 @@ function Painel(p: PropsPainel) {
   const grupo = trilha ? undefined : p.grupoDe?.(ficha)
   const avisoUnidade = avisoDaUnidadeAnterior(ctx.dados.regras, ficha?.codigo, eventos.filter((e) => e.ficha_id === ficha?.id && e.resultado).map((e) => e.criado_em_dispositivo))
   /** Marca C nos mesmos itens dos outros locais do grupo (vazios; o já marcado não é sobrescrito), num lote. */
-  const marcarNoGrupo = async (itens: readonly number[], etapa: string | null) => {
+  const marcarNoGrupo = async (itens: readonly number[], etapa: string | null, obs?: ReadonlyMap<number, string>) => {
     if (!grupo || !itens.length) return []
-    return marcarLote({ ...c, fichaCampoId: null }, grupo.outros(), etapa, 'C', undefined, undefined, new Set(itens))
+    return marcarGrupo(c, grupo.outros(), etapa, itens, obs)
   }
   const det = peca.detalhe ? pacote.manifest.detalhes[peca.detalhe] : undefined
   const imgDet = peca.detalhe ? pacote.url(`d:${peca.detalhe}`) : undefined
@@ -3953,7 +4045,9 @@ function Painel(p: PropsPainel) {
                     const ligados = await p.ligar(c, ficha, gravados.map((g) => Number(g.item)), [...evs, ...(gravados as unknown as EventoFvs[])])
                     const n = gravados.length
                     // unidade de conferência por grupo: os mesmos itens nos outros locais (ideia 14)
-                    const doGrupo = await marcarNoGrupo(fichaDoLote.itens.filter((x) => x.etapa === et).map((x) => x.n), et)
+                    // só os itens que ficaram C aqui (NC e NA do local não viram C nos outros); o "antes do prazo" vai junto
+                    const cDoLocal = itensCDoLocal(ficha.id, [...evs, ...(gravados as unknown as EventoFvs[])], fichaDoLote.itens.filter((x) => x.etapa === et).map((x) => x.n))
+                    const doGrupo = await marcarNoGrupo(cDoLocal, et, comPrazo ? observacoesDoLocal(p.id, noPrazo) : undefined)
                     // toque duplo: o segundo não acha nada vazio e não pode tirar o "Desfazer" da tela
                     if (n || doGrupo.length) p.avisarLote(`${peca.nome}: ${n} ${n === 1 ? 'item' : 'itens'} C${et ? ` em ${et.toLowerCase()}` : ''}${maisLigados(ligados)}${maisDoGrupo(grupo, doGrupo)}`, [...gravados, ...ligados, ...doGrupo])
                     return [...gravados, ...ligados, ...doGrupo]
@@ -4537,6 +4631,7 @@ function Painel(p: PropsPainel) {
           {!soDetalhe && !p.foraDaFicha && grupo && (
             <p class="discreto" data-testid="fvs-unidade-grupo">
               Conferência por {NOME_DA_UNIDADE[grupo.unidade]}: o C marca também {grupo.quantos === 1 ? 'o outro local' : `os outros ${grupo.quantos} locais`} {grupo.unidade === 'area' ? 'da área' : `do ${grupo.unidade}`}. O que já está marcado não muda.
+              {nomesDoGrupo(grupo, p.nomeDe)}
             </p>
           )}
           {!soDetalhe && !p.foraDaFicha && avisoUnidade && (

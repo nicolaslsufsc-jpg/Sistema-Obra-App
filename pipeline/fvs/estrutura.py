@@ -1,7 +1,7 @@
 """Leitura das pranchas de estrutura (forma, detalhamento de pilares e de vigas) para o pacote da FVS.
 
 A leitura em si é a do gerador legado (pipeline/legado/gerador_fvs.py), que está em uso na obra
-e foi conferido no 3º pavto tipo de uma obra real (198 pilares e 192 vigas, 100% com detalhe). Aqui só
+e foi conferido num pavimento tipo de uma obra real (todos os pilares e vigas com detalhe). Aqui só
 se adapta a saída: imagens em bytes (não base64) e nomes de prancha sem o título.
 Quando o HTML legado sair de uso, o código de leitura muda para cá.
 

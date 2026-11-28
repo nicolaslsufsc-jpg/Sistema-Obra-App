@@ -47,7 +47,7 @@ Assistente "Nova obra" dentro do próprio app (opção B): página `app/nova_obr
 - Tela (tablet 1280 e celular 375): `testes/nova_obra.e2e.test.ts` (monta a obra, cola ficha, sobe PDF, ensina, lê, salva, abre o `.zip` no app e na FVS).
 - Ver os PDFs da Obra Exemplo 2: `OBRA2_SAIDA=<pasta fora do repo> npx vitest run testes/obra_exemplo2.test.ts`.
 - Medida de tempo e memória: `SO_MEDIR=1 ... npx vitest run testes/nova_obra_medida.e2e.test.ts` (em 09/11: 3,9 a 4,6 s e 180 a 205 MB, PC freado, não tablet).
-- Gabarito da obra piloto: fora do repositório, na pasta "Nova obra" ao lado dos pacotes da obra piloto no PC do Nicolas (com LEIA-ME). Com o perfil da piloto, as 5.080 peças das 49 pranchas saem iguais às do Python.
+- Gabarito da obra piloto: fora do repositório, na pasta "Nova obra" ao lado dos pacotes da obra piloto no PC do Nicolas (com LEIA-ME). Com o perfil da piloto, as peças de todas as pranchas (uns milhares) saem iguais às do Python (conferido).
 
 ## Decisões que ainda valem
 

@@ -22,7 +22,7 @@ Base comum de todos os módulos: estrutura do repositório, banco, login, sincro
 - Supabase: projeto `zktsuwxgvvyufuihkndj` (região São Paulo, organização "Conferencias"), URL `https://zktsuwxgvvyufuihkndj.supabase.co`. Desde 04/11/2026; o projeto anterior `wtptoyvyypaeotxiqupy` ficava nos EUA e deve ser pausado e depois apagado pelo Nicolas.
 - Publishable key (pública): `sb_publishable_UkMxFtS6lcprzAlWCpxwHQ_KKLLJ0op`. Login por e-mail ativo.
 - Chaves secretas nunca no chat nem no repositório: `.env` no PC do Nicolas.
-- Pavimentos da obra piloto: Subsolo, Pilotis, Térreo Comercial, Mezanino, 2º, 3º, 4º, 5º e 6º Pavimento, Cobertura, Barrilete.
+- Pavimentos da obra piloto: conferidos, ficam no cadastro da obra (dado de obra, fora do repositório).
 - De-para trecho da prancha × setor do Construpoint: depois.
 - Dados da obra piloto só sobem depois do e-mail de ok dos chefes da empresa.
 

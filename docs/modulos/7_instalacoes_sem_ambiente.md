@@ -1,98 +1,90 @@
-# Instalações: pontos sem ambiente no pilotis, mezanino e subsolo (25/11/2026)
+# Instalações: ambiente dos pontos sem ambiente (regra de 25 e 26/11/2026)
 
-Pedido do Professor (frente 20 · INST). Análise feita só no PC, com os pacotes e configs da publicação de 25/11
-(nada baixado de novo, nada republicado, nenhum código mudado).
+Como o pipeline escolhe o ambiente (cômodo) de cada ponto de instalação nos pavimentos sem IFC de arquitetura,
+e o que acontece com o ponto que não cai em cômodo nenhum. Os números da obra de verdade ficam fora do
+repositório (pasta da obra no PC); aqui só a regra e um exemplo da obra fictícia EXE.
 
-## Como foi feito
+## Por que um ponto fica sem ambiente
 
-- Pontos: os mesmos IFC de instalações e a mesma regra da publicação (`ambiente_dos_pontos`: dentro do polígono, ou
-  o ambiente mais perto até 30 cm). Ambientes: o pacote Ambientes do chat 22, casado com a prancha de arquitetura
-  (1:200) pelas paredes do 2º pavimento, como em `ambientes_do_pacote_casado`.
-- Para cada ponto sem ambiente, a prancha de arquitetura vira uma imagem de 10 cm por pixel só com as paredes
-  (hachura escura), com os vãos de porta fechados (até ~1 m). Daí o motivo:
-  - **na parede**: o ponto cai na parede. Se há cômodo a até 60 cm dos dois lados, "entre dois cômodos"; senão,
-    "parede de um lado só" (parede externa, de shaft, de jardim);
-  - **shaft**: recinto fechado com menos de 4 m²;
-  - **área aberta**: recinto que encosta na borda da prancha ou com mais de 3.000 m² (jardim, deck, circulação
-    externa, vazio, e também o que as paredes da prancha não fecharam);
-  - **recinto sem ambiente**: recinto fechado, maior que 4 m², onde o pacote não tem ambiente nenhum.
-- A conta dá um pouco diferente da publicada (pilotis 5.176 × 5.064, mezanino 1.876 × 1.874, subsolo 70 × 64)
-  porque aqui entram pontos que a publicação junta ou descarta; a proporção não muda.
-- A conferência foi feita na imagem (pontos coloridos por motivo sobre a prancha), guardada fora do repositório.
+Para achar o motivo, a prancha de arquitetura vira uma imagem de 10 cm por pixel só com as paredes (hachura
+escura), com os vãos de porta fechados (até ~1 m). O vazio entre as paredes forma os recintos. Motivos:
 
-## Resultado
+- **na parede**: o ponto cai dentro da parede, longe do cômodo;
+- **shaft**: recinto fechado com menos de 4 m²;
+- **área aberta**: recinto encostado na borda da prancha ou com mais de 3.000 m² (jardim, deck, laje, vazio);
+- **recinto sem ambiente**: recinto fechado que a planta de ambientes não tem;
+- **casa sem ambiente**: unidade que a planta de ambientes do pavimento não desenhou, mas a de outro
+  pavimento tem (casa de dois andares).
 
-| Motivo | Pilotis | Mezanino | Subsolo |
-|---|---:|---:|---:|
-| Área aberta (fora de cômodo) | 3.190 | 1.582 | 4 |
-| Na parede, um lado só | 1.162 | 279 | 3 |
-| Na parede, entre dois cômodos | 0 | 0 | 0 |
-| Shaft (< 4 m²) | 595 | 0 | 0 |
-| Recinto sem ambiente | 229 | 15 | 63 |
-| **Total** | **5.176** | **1.876** | **70** |
+## Decisões do Nicolas (25/11/2026, ~22:45, página de perguntas, repassadas pelo Professor)
 
-Por disciplina:
+1. **Casas:** FVS **por casa**.
+2. **Shaft e parede:** **cômodo vizinho**: shaft até 1 m, parede até 60 cm.
+3. **Fora de cômodo:** vai para o **item da laje**, em **todas** as disciplinas.
+4. **SPDA de fachada** (descida, captor): **laje**.
+5. **Cômodos sem nome:** o programa tenta achar o nome; se não conseguir, fica **pendência para editar o nome**.
 
-| Pavimento | Motivo | Água | Esgoto | Elétrico | PPCI | SPDA |
-|---|---|---:|---:|---:|---:|---:|
-| Pilotis | Área aberta | 671 | 1.798 | 656 | 64 | 1 |
-| Pilotis | Parede | 517 | 311 | 258 | 53 | 23 |
-| Pilotis | Shaft | 425 | 133 | 35 | 2 | 0 |
-| Pilotis | Recinto sem ambiente | 153 | 66 | 8 | 2 | 0 |
-| Mezanino | Área aberta | 125 | 1.377 | 14 | 45 | 21 |
-| Mezanino | Parede | 74 | 130 | 11 | 37 | 27 |
-| Mezanino | Recinto sem ambiente | 0 | 0 | 0 | 15 | 0 |
-| Subsolo | Recinto sem ambiente | 58 | 0 | 0 | 1 | 4 |
-| Subsolo | Área aberta e parede | 2 | 0 | 0 | 1 | 4 |
+Sem resposta, regra mais simples (anotada): ponto na parede entre duas casas vizinhas fica com a casa onde está o
+centro do ponto; se o centro cair na parede, a casa mais perto.
 
-Tipos que mais aparecem (todos os motivos):
+## Como funciona no pipeline (desde 26/11, já é o padrão)
 
-- **Pilotis**: tubo de esgoto 2.196, tubo de água 1.474, eletroduto 497, caixa de parede 408, registro 163,
-  coluna de água 93, sinalização 74, ralo 51, caixa de passagem 44, caixa sifonada 31, coluna de esgoto 27,
-  iluminação de emergência 24, descida do SPDA 24, ponto de água 24.
-- **Mezanino**: tubo de esgoto 1.446, tubo de água 182, sinalização 70, coluna de esgoto 57, descida 27,
-  captor 20, iluminação de emergência 19, eletroduto 14, caixa de parede 11.
-- **Subsolo**: tubo de água 44, registro 12, descida 5, ponto de água 4, conector 2, detector, caixa de inspeção
-  e iluminação de emergência (1 cada).
+No bloco `instalacoes.ambientes` do pavimento.json:
 
-## O que cada motivo é, na prancha
+- `AMBIENTE_PERTO_CM` = 60 (era 30): o ponto fora de qualquer ambiente fica com o mais perto até 60 cm. Vale para
+  todos os pavimentos; `"perto_cm"` troca.
+- Só com o `"pacote"` (ambientes tirados do PDF):
+  - `SHAFT_PERTO_CM` = 100: ponto no shaft vai para o cômodo vizinho até 1 m. `"shaft_perto_cm": 0` desliga.
+  - Recintos fechados sem ambiente e com ponto dentro viram ambientes. O nome vem do texto da prancha dentro do
+    recinto (a linha mais alta que não é área, cota, nível ou acabamento). Sem texto: `"Recinto sem nome N"`,
+    pendência para o Nicolas editar. `"recintos_sem_nome": false` desliga.
+  - `"casas": {"pacote", "prancha", "grupo": "Casa"}`: os ambientes do grupo "Casa" da planta de ambientes de
+    outro pavimento (o de cima da mesma casa) entram como ambientes deste, com a prancha dele casada pelo mesmo
+    andar tipo.
+- Ponto dentro de dois ambientes: fica com o primeiro (as salas do pacote, depois as casas, depois os recintos).
+- Fora de cômodo e SPDA de fachada: o pipeline manda o ponto sem ambiente; quem põe no item da laje é o app.
+- Para o ponto levar o ambiente no app, o ambiente novo (casa, recinto) precisa existir como elemento A na
+  planta de ambientes do pavimento; senão o publicador manda o ponto sem ambiente (`ambiente_pelo_id`).
 
-1. **Pilotis, a faixa das casas.** A maior parte da "área aberta" e quase todo o "shaft" e a "parede" do pilotis
-   ficam nas casas da faixa de cima e da faixa da direita. O chat 22 deixou as casas fora do pacote (a prancha não
-   tem a etiqueta de área delas), então ali não existe ambiente nenhum. Os montes de pontos são banheiros e
-   cozinhas das casas: tubo, registro, ralo, caixa sifonada, caixa de parede. É o maior grupo do pilotis.
-2. **Área aberta de verdade.** Jardins, deck e borda da piscina, circulação externa, rampas. No mezanino é quase
-   tudo tubo de esgoto (1.336) correndo na laje em volta da piscina e no vazio entre os blocos, mais colunas,
-   sinalização do PPCI e captores do SPDA.
-3. **Parede de um lado só.** Ponto a mais de 30 cm do cômodo, dentro de parede externa, de shaft ou de mureta
-   de jardim: colunas, descidas do SPDA, caixas de parede da fachada, sinalização na parede.
-4. **Parede entre dois cômodos: não acontece.** A regra dos 30 cm já resolve (vai para o mais perto).
-5. **Shaft.** Pilotis: 595 pontos em recintos de menos de 4 m², quase todos água e esgoto (tubo, registro,
-   caixa sifonada). Na maioria, shafts das casas.
-6. **Recinto sem ambiente.** Recinto fechado sem ambiente no pacote. No subsolo, 63 dos 70: a sala do alçapão
-   de acesso aos reservatórios (tubos e registros de água) e a casa de bombas. No mezanino, 15 pontos de PPCI
-   (sinalização e emergência) em escadas e antecâmaras. No pilotis, 229, a maioria dentro das casas.
+Funções: `instalacoes.recintos_da_prancha`, `nomear_recintos`, `nome_pelo_texto`, `textos_da_prancha` e
+`ambiente_dos_pontos`; no publicador, `regra_dos_ambientes` e `shaft_perto`. Testes em `TestRecintosEShaft`.
 
-## Regra proposta por motivo
+## Exemplo (obra fictícia EXE, números inventados)
 
-| Motivo | Regra proposta | Quem decide |
-|---|---|---|
-| Casas do pilotis sem ambiente | O chat 22 cria um ambiente por casa (como as UN-01..09 do mezanino), desenhado à mão se a prancha não der a área. Os pontos de dentro passam a ter ambiente pela regra de hoje. | Pergunta de engenharia (1) |
-| Shaft | O ponto do shaft vai para o cômodo vizinho mais perto (até 1 m), porque a FVS do shaft é feita de dentro do banheiro ou da cozinha. | Pergunta de engenharia (2) |
-| Parede de um lado só | Subir a distância de 30 cm para 60 cm só para tubo, coluna, descida e caixa de parede; o que passar disso fica sem ambiente. Medir quantos entram antes de mudar. | Pergunta de engenharia (2) |
-| Área aberta (jardim, deck, laje, vazio) | Fica sem ambiente e vai para o item da laje, como já vale para a elétrica. | Pergunta de engenharia (3) |
-| Recinto sem ambiente (reservatórios, casa de bombas, escadas) | O chat 22 cria esses ambientes no pacote (são cômodos de verdade). Não é regra nova. | Só técnica (chat 22) |
-| Entre dois cômodos | Nada a fazer. | — |
+> Exemplo, não é medição. Pilotis da EXE com 1.000 pontos.
 
-Código: nenhum conserto óbvio. Todas as mudanças acima mexem na regra de que ficha recebe o ponto, então
-esperam a resposta do Nicolas.
+| Situação | Antes (30 cm) | Com as decisões |
+|---|---:|---:|
+| Num ambiente do pacote | 300 | 340 (parede até 60 cm e shaft) |
+| Numa casa (do pavimento de cima) | 0 | 400 |
+| Num recinto novo | 0 | 20 ("Sala de Bombas" pelo texto; "Recinto sem nome 1" sem texto) |
+| Sem ambiente (vai para o item da laje no app) | 700 | 240 |
 
-## Perguntas de engenharia para o Nicolas
+## O que o app precisa (FVS-3)
 
-1. **Casas do pilotis.** Os banheiros e cozinhas das casas têm FVS por casa (um ambiente por casa, como no
-   mezanino) ou por cômodo de cada casa?
-2. **Shaft e parede.** O tubo, o registro e a coluna dentro do shaft ou na parede do banheiro são conferidos na
-   ficha do banheiro (cômodo do lado) ou numa ficha própria de shaft/prumada?
-3. **Fora de cômodo.** O que está fora de qualquer cômodo (jardim, deck da piscina, laje do mezanino, vazio) vai
-   para o item da laje, como a elétrica? Isso vale também para água, esgoto, PPCI e SPDA? A descida e o captor
-   do SPDA na fachada ficam no item da laje ou numa ficha do SPDA por prumada?
+1. Ponto de instalação sem ambiente vai para o item da laje do pavimento, em todas as disciplinas.
+2. O SPDA de fachada segue a mesma regra.
+3. Ficha por casa: o ambiente do ponto é a casa, e a FVS de instalação da casa junta os pontos dela.
+4. "Recinto sem nome N" é provisório: a tela deixa o Nicolas editar o nome.
+5. O pacote não muda: o ponto tem "ambiente" = id do elemento A, ou não tem o campo.
+
+## O que entrou no app (26/11/2026, FVS-AMB)
+
+- **Peça 1, fora de cômodo vai para a laje:** na planta de pontos em que o pipeline calculou o ambiente (algum
+  ponto tem `"ambiente"`), o ponto sem ambiente grava no item da instalação da ficha de laje, em todas as
+  disciplinas, sem perguntar. Água → item de água; esgoto → esgoto; elétrico e SPDA (inclusive descida e captor
+  de fachada) → elétrica; preventivo: rede de água (hidrante, sprinkler, tubulação, registro, coluna) → água, o
+  resto → elétrica. Dúvida de engenharia anotada (seguiu o mais simples): a ficha de laje não tem item de PPCI nem
+  de SPDA; se o Nicolas quiser um item próprio, entra na ficha de laje da obra (montagem, sem código). Pacote sem
+  ambiente calculado: nada muda. Teste de tela: `?instalacoes=1&fora=1&furoslaje=1` na bancada (375, 768, 1024).
+- **Peça 2, casas e recintos como ambientes A (pipeline, só local, nada publicado):** a publicação das
+  instalações (`--so-gerar`) grava `ambientes_novos.json` com as casas (`"casas"`) e os recintos sem ambiente, já
+  nas coordenadas da prancha do pavimento (`ambientes_novos_na_prancha`). No `"ambientes"` da planta de ambientes do
+  mesmo pavimento, `"ambientes_novos": "<esse arquivo>"` cria um elemento A para cada um, depois dos "AC-xx" (os
+  ids de antes não mudam), com o mesmo nome que o ponto leva: a casa com o grupo e o cômodo dela ("Casa 1"), o
+  recinto como área comum, e o "Recinto sem nome N" com `"pendencia": "nome"` no pacote. Nome repetido com um
+  ambiente da planta para a geração com erro. FVS por casa: a casa é um ambiente só; o ponto dentro dela leva o
+  ambiente da casa e grava na ficha de ambiente, como em qualquer cômodo (decisão mais simples, anotada: a tela
+  não soma os pontos por casa; cada ponto continua com o registro dele). Ordem para publicar: instalações
+  (`--so-gerar`) → planta de ambientes com `"ambientes_novos"` → instalações de novo (o ponto acha o id).
+  Teste de tela: `?casas=1` na bancada.

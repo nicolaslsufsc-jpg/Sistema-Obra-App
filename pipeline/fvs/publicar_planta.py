@@ -43,6 +43,13 @@ pavimento.json (fica fora do repositório, junto das pranchas):
                   "ambientes": {"ifc", "andar", "prancha"}}         opcional: o ambiente de cada ponto (a arquitetura do andar);
                   ou {"pacote": ".../Ambientes", "prancha", "escala", "ifc", "andar"}: pavimento sem IFC (25/11), salas do
                   pacote da planta de ambientes do PDF, prancha casada com as paredes de um andar tipo ("ifc"/"andar")
+                  opcionais no "ambientes" (decisões do Nicolas de 25/11 já são o padrão): "perto_cm" (60), e só com
+                  "pacote": "shaft_perto_cm" (100; 0 desliga), "recintos_sem_nome" (true; false desliga) e "casas":
+                  {"pacote", "prancha", "grupo": "Casa"} = as casas da planta de ambientes de outro pavimento (o
+                  mezanino) como ambientes deste (o pilotis): FVS por casa
+                  as casas e os recintos que não estão na planta de ambientes vão para "ambientes_novos.json" (--so-gerar);
+                  no "ambientes" (planta de ambientes) do mesmo pavimento, "ambientes_novos": "<esse arquivo>" cria um
+                  elemento A para cada um, com o mesmo nome do ponto ("Recinto sem nome N": pendência de nome)
 }
 Caminhos relativos valem a partir da pasta do pavimento.json.
 
@@ -169,7 +176,7 @@ def ler_config(caminho: pathlib.Path) -> dict:
             if len(achados) != 1:
                 raise ErroPublicacao(f"ambientes: \"{campo}\" tem que ser um arquivo só (achei {len(achados)})")
             amb[campo] = achados[0]
-        for campo in ("nomes", "fichas_por_comodo"):
+        for campo in ("nomes", "fichas_por_comodo", "ambientes_novos"):
             if amb.get(campo):
                 achados = arquivos(amb[campo])
                 if len(achados) != 1:
@@ -265,6 +272,25 @@ def ler_config(caminho: pathlib.Path) -> dict:
                 if not pac.is_file():
                     raise ErroPublicacao(f"instalacoes: \"ambientes\": não achei o pacote {pac}")
                 amb_inst = {**amb_inst, "pacote": str(pac)}
+            # 25/11 (decisões do Nicolas, já no padrão): distância do ponto na parede, ponto do shaft no cômodo
+            # vizinho, recintos fechados sem ambiente (nome pelo texto da prancha ou pendência), casas por casa
+            for chave, minimo in (("perto_cm", 0), ("shaft_perto_cm", 0)):
+                if chave in amb_inst and (not isinstance(amb_inst[chave], (int, float)) or isinstance(amb_inst[chave], bool)
+                                          or amb_inst[chave] < minimo):
+                    raise ErroPublicacao(f"instalacoes: \"ambientes\": \"{chave}\" é um número de centímetros")
+            if not amb_inst.get("pacote") and any(amb_inst.get(k) for k in ("shaft_perto_cm", "recintos_sem_nome", "casas")):
+                raise ErroPublicacao("instalacoes: \"ambientes\": \"shaft_perto_cm\", \"recintos_sem_nome\" e \"casas\" só valem com o \"pacote\"")
+            if amb_inst.get("casas"):
+                casas = amb_inst["casas"]
+                if not isinstance(casas, dict) or not casas.get("pacote") or not casas.get("prancha"):
+                    raise ErroPublicacao("instalacoes: \"ambientes\": \"casas\" precisa do \"pacote\" e da \"prancha\" do outro pavimento")
+                pac = pathlib.Path(casas["pacote"]) if pathlib.Path(casas["pacote"]).is_absolute() else caminho.parent / casas["pacote"]
+                if pac.is_dir():
+                    pac = pac / "manifest.json"
+                prancha = pathlib.Path(casas["prancha"]) if pathlib.Path(casas["prancha"]).is_absolute() else caminho.parent / casas["prancha"]
+                if not pac.is_file() or not prancha.is_file():
+                    raise ErroPublicacao(f"instalacoes: \"ambientes\": \"casas\": não achei {pac if not pac.is_file() else prancha}")
+                amb_inst = {**amb_inst, "casas": {**casas, "pacote": str(pac), "prancha": str(prancha)}}
             inst["ambientes"] = amb_inst
         for disc, valor in bruto.items():
             if disc not in mod_inst.DISCIPLINAS:
@@ -442,6 +468,8 @@ def montar_trecho(forma: dict, detalhes: dict, ids: dict[tuple[str, str], str], 
             reg["sem_fichas"] = p["sem_fichas"]
         if p.get("grade"):
             reg["grade"] = p["grade"]  # quadrado da grade de escavação (blocos.py, item 1.2)
+        if p.get("pendencia"):
+            reg["pendencia"] = p["pendencia"]  # "nome": "Recinto sem nome N", o Nicolas dá o nome (26/11)
         if p["tipo"] == "F":
             if p.get("viga"):
                 reg["viga"] = ids[("V", p["viga"])]
@@ -995,6 +1023,10 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
             n = r["nomes"]
             print(f"  nomes dos cômodos: {n['com_nome']} com nome, {sum(n['sem_nome'].values())} só com o número"
                   + (f"; {len(n['do_tipo_sem_par'])} cômodos do tipo sem par num apartamento (lista no relatorio.json)" if n["do_tipo_sem_par"] else ""))
+        if r.get("ambientes_novos"):
+            an = r["ambientes_novos"]
+            print(f"  {an['ambientes']} ambientes novos das instalações (casas e recintos)"
+                  + (f"; {len(an['sem_nome'])} sem nome (pendência): {', '.join(an['sem_nome'])}" if an["sem_nome"] else ""))
         if r.get("fichas_por_comodo"):
             fc = r["fichas_por_comodo"]
             fora = fc["tipos_fora_da_tabela"]
@@ -1058,15 +1090,16 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
 
             c_amb = cfg["instalacoes"]["ambientes"]
             try:
-                if c_amb.get("pacote"):
-                    geometrias = ambientes_do_pacote_casado(c_amb)
-                else:
-                    b = mod_amb.base_da_planta(c_amb)
-                    geometrias = {a["nome"]: b["ambientes"][a["indice"]] for a in b["nomeados"]}
+                novos: list[dict] = []
+                geometrias, shafts = regra_dos_ambientes(c_amb, detalhes["instalacoes"], novos)
+                # as casas e os recintos que não estão na planta de ambientes: ambientes_novos.json (--so-gerar),
+                # para a planta de ambientes do pavimento criar os elementos A ("ambientes_novos" no "ambientes")
+                detalhes["ambientes_novos"] = novos
             except (mod_amb.ErroAmbientes, mod_inst.ErroInstalacoes) as e:
                 raise ErroPublicacao(f"instalacoes: ambientes: {e}") from e
             for disc, lidos in detalhes["instalacoes"].items():
-                r = mod_inst.ambiente_dos_pontos(lidos, geometrias)
+                r = mod_inst.ambiente_dos_pontos(lidos, geometrias, perto_cm=c_amb.get("perto_cm", mod_inst.AMBIENTE_PERTO_CM),
+                                                 shafts=shafts, shaft_perto_cm=shaft_perto(c_amb))
                 print(f"  {mod_inst.DISCIPLINAS[disc]}: {r['com_ambiente']} pontos num ambiente, {r['sem_ambiente']} fora")
     if cfg.get("barras_laje"):
         import barras_laje
@@ -1089,13 +1122,92 @@ def ler_pranchas(cfg: dict) -> tuple[dict, list[dict]]:
     return detalhes, formas
 
 
-COINCIDENCIA_MIN_OUTRO_ANDAR = 0.10  # prancha do pavimento casada com as paredes de um andar tipo (obra piloto: 0,15)
+COINCIDENCIA_MIN_OUTRO_ANDAR = 0.10  # prancha do pavimento casada com as paredes de um andar tipo
 
 
-def ambientes_do_pacote_casado(c: dict) -> dict:
+def shaft_perto(c: dict) -> float:
+    """A distância do ponto do shaft ao cômodo vizinho: SHAFT_PERTO_CM por padrão, só com o "pacote"."""
+    if not c.get("pacote"):
+        return 0.0
+    return float(c.get("shaft_perto_cm", mod_inst.SHAFT_PERTO_CM) or 0)
+
+
+def regra_dos_ambientes(c: dict, pontos_por_disciplina: dict, novos: list | None = None) -> tuple[dict, list]:
+    """(geometrias, shafts) para o ambiente_dos_pontos. Sem "pacote": os ambientes do IFC de arquitetura. Com o
+    "pacote" (decisões do Nicolas de 25/11): as salas dele; as casas de outro pavimento ("casas", FVS por casa);
+    os recintos fechados sem ambiente com ponto dentro, com o nome do texto da prancha ou "Recinto sem nome N"
+    (pendência para editar; "recintos_sem_nome": false desliga); e os shafts da prancha.
+    novos (lista, opcional): recebe as casas e os recintos, que ainda não são elementos A da planta de ambientes
+    deste pavimento, nas coordenadas da prancha dele (ambientes_novos_na_prancha)."""
+    import ambientes as mod_amb
+
+    if not c.get("pacote"):
+        b = mod_amb.base_da_planta(c)
+        return {a["nome"]: b["ambientes"][a["indice"]] for a in b["nomeados"]}, []
+    casado = ambientes_do_pacote_casado(c, com_imagem=True)
+    geometrias = dict(casado["geometrias"])
+    if c.get("casas"):
+        cc = {**c, **c["casas"]}
+        casas = ambientes_do_pacote_casado(cc, grupo=c["casas"].get("grupo") or "Casa")
+        repetidas = sorted(set(casas) & set(geometrias))
+        if repetidas:
+            raise mod_inst.ErroInstalacoes(f"as casas repetem nomes de ambientes do pavimento: {', '.join(repetidas)}")
+        print(f"  {len(casas)} casas da planta de ambientes de {pathlib.Path(cc['pacote']).parent.parent.name} (FVS por casa)")
+        geometrias.update(casas)
+        if novos is not None:
+            novos += ambientes_novos_na_prancha(casas, casado["t"], grupos_do_pacote(cc["pacote"]))
+    rec = mod_inst.recintos_da_prancha(casado["imagem"] > 0.5, casado["k"], casado["t"], geometrias)
+    if c.get("recintos_sem_nome", True):
+        todos = [p for lidos in pontos_por_disciplina.values() for p in lidos]
+        novos_rec = mod_inst.nomear_recintos(rec["sem_ambiente"], todos, casado["textos"])
+        pendentes = [n for n in novos_rec if n.startswith(mod_inst.RECINTO_SEM_NOME)]
+        print(f"  {len(novos_rec)} recintos fechados sem ambiente, com ponto dentro: {len(novos_rec) - len(pendentes)} com nome "
+              f"pelo texto da prancha, {len(pendentes)} \"{mod_inst.RECINTO_SEM_NOME} N\" (pendência: o Nicolas dá o nome)")
+        if novos is not None:
+            ja = {a["nome"] for a in novos}
+            novos += ambientes_novos_na_prancha({n: g for n, g in novos_rec.items() if n not in geometrias and n not in ja}, casado["t"], {})
+        geometrias.update({n: g for n, g in novos_rec.items() if n not in geometrias})
+    return geometrias, (rec["shafts"] if shaft_perto(c) else [])
+
+
+def grupos_do_pacote(pacote: str) -> dict:
+    """{nome: {"grupo", "comodo"}} dos elementos A do pacote de uma planta de ambientes (manifest.json)."""
+    caminho = pathlib.Path(pacote)
+    caminho = caminho / "manifest.json" if caminho.is_dir() else caminho
+    manifest = json.loads(caminho.read_text(encoding="utf-8"))
+    return {e["nome"]: {"grupo": e.get("grupo"), "comodo": e.get("comodo")} for e in (manifest.get("elementos") or {}).values()
+            if e.get("tipo") == "A" and e.get("nome")}
+
+
+def ambientes_novos_na_prancha(geometrias: dict, t: dict, grupos: dict) -> list[dict]:
+    """As casas e os recintos (polígonos em metros do modelo) na prancha deste pavimento (pontos do PDF, o inverso
+    de instalacoes.prancha_para_modelo), no formato que ambientes.ler_planta lê de "ambientes_novos": a planta de
+    ambientes cria um elemento A para cada um, com o mesmo nome (e o mesmo id) que o ponto leva. Recinto: área comum;
+    "Recinto sem nome N" fica como pendência para o Nicolas dar o nome."""
+    def para_prancha(x: float, y: float) -> list[float]:
+        return [round((x - t["x0"]) * t["pt_por_m"] + t["dx_pt"], 2), round((t["y1"] - y) * t["pt_por_m"] + t["dy_pt"], 2)]
+
+    saida = []
+    for nome, g in geometrias.items():
+        partes = list(getattr(g, "geoms", [g]))
+        polys = [[para_prancha(x, y) for x, y in p.exterior.coords[:-1]] for p in partes if not p.is_empty and p.area > 0]
+        if not polys:
+            continue
+        info = grupos.get(nome) or {}
+        reg = {"nome": nome, "grupo": info.get("grupo") or "Área comum", "area_m2": round(g.area, 2), "polys": polys}
+        if info.get("comodo") or info.get("grupo"):
+            reg["comodo"] = info.get("comodo") or info.get("grupo")
+        if nome.startswith(mod_inst.RECINTO_SEM_NOME):
+            reg["pendencia"] = "nome"
+        saida.append(reg)
+    return saida
+
+
+def ambientes_do_pacote_casado(c: dict, com_imagem: bool = False, grupo: str | None = None):
     """As salas do pacote da planta de ambientes tirada do PDF, nas coordenadas do modelo (metros). A prancha é
-    casada com as paredes do andar tipo de "ifc"/"andar" (ambientes.casar_com_a_prancha): na obra piloto, o 2º, o
-    3º e o 6º dão o mesmo encaixe no mezanino."""
+    casada com as paredes do andar tipo de "ifc"/"andar" (ambientes.casar_com_a_prancha): o núcleo e os pilares
+    se repetem. com_imagem: devolve {"geometrias", "t", "imagem", "k", "textos"} (as
+    paredes e os textos da prancha, para os recintos). grupo: só os ambientes desse grupo ("Casa")."""
     import ambientes as mod_amb
     import pymupdf as fitz
     from shapely import wkt
@@ -1103,14 +1215,21 @@ def ambientes_do_pacote_casado(c: dict) -> dict:
     escala = float(c.get("escala") or 200)
     dados = mod_amb.do_ifc_com_guarda(c["ifc"], str(c["andar"]))
     with fitz.open(c["prancha"]) as doc:
-        t = mod_amb.casar_com_a_prancha(doc[0], wkt.loads(dados["paredes"]), escala)
+        t = mod_amb.casar_com_a_prancha(doc[0], wkt.loads(dados["paredes"]), escala, com_imagem=com_imagem)
+        textos = mod_inst.textos_da_prancha(doc[0], mod_inst.prancha_para_modelo(t)) if com_imagem else []
     print(f"  ambientes do pacote {pathlib.Path(c['pacote']).parent.name}: prancha casada com o andar {c['andar']} "
           f"(coincidência {t['coincidencia']:.0%})")
     if t["coincidencia"] < COINCIDENCIA_MIN_OUTRO_ANDAR:
         raise mod_inst.ErroInstalacoes(f"a prancha não casou com o andar {c['andar']} (coincidência {t['coincidencia']:.0%}); "
                                        "confira a escala e o andar de referência")
     manifest = json.loads(pathlib.Path(c["pacote"]).read_text(encoding="utf-8"))
-    return mod_inst.ambientes_do_pacote(manifest, mod_inst.prancha_para_modelo(t))
+    if grupo:
+        manifest = {**manifest, "elementos": {k: e for k, e in (manifest.get("elementos") or {}).items()
+                                              if str(e.get("grupo") or "").startswith(grupo)}}
+    geometrias = mod_inst.ambientes_do_pacote(manifest, mod_inst.prancha_para_modelo(t))
+    if not com_imagem:
+        return geometrias
+    return {"geometrias": geometrias, "t": t, "imagem": t.pop("imagem"), "k": t.pop("k"), "textos": textos}
 
 
 def ler_vedacao(cfg_amb: dict, base_amb: dict) -> dict:
@@ -1222,6 +1341,11 @@ def publicar_lidas(cfg: dict, detalhes: dict, formas: list[dict], args) -> list[
             resumo["barras_laje"] = rel_barras
             rel_alinhamento.gravar(saida, rel_barras["conflitos"])
         (saida / "relatorio.json").write_text(json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
+        if detalhes.get("ambientes_novos"):
+            # casas e recintos para a planta de ambientes do pavimento ("ambientes_novos" no "ambientes")
+            (saida / "ambientes_novos.json").write_text(json.dumps(detalhes["ambientes_novos"], ensure_ascii=False, indent=1), encoding="utf-8")
+            pend = sum(1 for a in detalhes["ambientes_novos"] if a.get("pendencia"))
+            print(f"  {len(detalhes['ambientes_novos'])} ambientes novos (casas e recintos; {pend} sem nome) -> {saida / 'ambientes_novos.json'}")
         return relatorios
 
     import sessao_local

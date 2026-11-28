@@ -68,6 +68,25 @@ describe('diário de toques', () => {
     expect(toquesAnotados(OBRA)).toEqual([])
   })
 
+  it('o lote do grupo da unidade de conferência volta do diário com só os itens dele (ideia 14)', async () => {
+    const doGrupo: Toque = { ...base, tipo: 'lote', id: 'grupo1', pecas: [{ id: 'p2', fichaId: 'f1', fichaCampoId: null }, { id: 'p3', fichaId: 'f1', fichaCampoId: null }], etapa: null, resultado: 'C', itens: [2, 5] }
+    anotarToque(item('principal', 2))
+    anotarToque(doGrupo)
+    const refeitos: Toque[] = []
+    await refazerToques(
+      OBRA,
+      async () => false,
+      async (t) => {
+        refeitos.push(t)
+        return t.tipo === 'lote' ? [linha('g')] : linha(t.id)
+      },
+    )
+    expect(refeitos.map((t) => t.id)).toEqual(['principal', 'grupo1'])
+    const lido = refeitos[1]
+    expect(lido.tipo === 'lote' && lido.itens).toEqual([2, 5])
+    expect(lido.tipo === 'lote' && lido.pecas.map((p) => p.id)).toEqual(['p2', 'p3'])
+  })
+
   it('sem localStorage (modo privado), o toque segue sem a rede de segurança', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => {

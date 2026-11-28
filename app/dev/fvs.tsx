@@ -190,6 +190,22 @@ async function pacoteDeTeste(): Promise<{ manifest: Manifest; bin: Blob }> {
         polys: [[[x - 7, y + 25], [x + 7, y + 25], [x + 7, y + vao - 25], [x - 7, y + vao - 25]]],
       }
     }
+  if (params.get('lajes')) {
+    // ?lajes=1: lajes L que vêm no pacote (contorno do projeto), como na obra demo EXE-PV (26/11)
+    for (let l = 0; l + 1 < Math.min(linhas, 2); l++)
+      for (let c = 0; c + 1 < Math.min(colunas, 3); c++) {
+        const [x, y] = pilares[l * colunas + c]
+        const n = l * colunas + c + 1
+        // e7000000: prefixo só das lajes de teste (e2000000 é dos ambientes)
+        elementos[uuid('e7000000', n)] = {
+          tipo: 'L',
+          nome: `L${n}`,
+          secao: 'h=12',
+          rotulo: [x + vao / 2 - 20, y + vao / 2 - 10, x + vao / 2 + 20, y + vao / 2 + 10],
+          polys: [[[x + 10, y + 10], [x + vao - 10, y + 10], [x + vao - 10, y + vao - 10], [x + 10, y + vao - 10]]],
+        }
+      }
+  }
   if (params.get('partes')) {
     const [x8, y8] = pilares[7]
     elementos[uuid('e0000000', 8)].partes = [{ tipo: 'consolo', polys: [[[x8 + 10, y8 - 14], [x8 + 50, y8 - 14], [x8 + 50, y8 + 24], [x8 + 10, y8 + 24]]], detalhe: 'C_P8' }]
@@ -483,6 +499,13 @@ async function pacoteDeAmbientesDeTeste(): Promise<{ manifest: Manifest; bin: Bl
   for (let i = 0; i < 2; i++) apto(105 + i, 100 + i * 450, false)
   ambiente('AC-01', 'Área comum', 100, 560, 1790, 140)
   ambiente('AC-02', 'Área comum', 1450, 710, 440, 250)
+  if (params.get('casas')) {
+    // ?casas=1 (26/11/2026, ambientes_novos do pipeline): a casa inteira é um ambiente ("UN-01", FVS por casa) e o
+    // recinto fechado sem nome na prancha entra com o nome provisório e a pendência
+    ambiente('UN-01', 'Casa 1', 1000, 710, 440, 250, 'Casa 1')
+    ambiente('Recinto sem nome 1', 'Área comum', 1000, 1000, 200, 200)
+    elementos[uuid('e2000000', n)].pendencia = 'nome'
+  }
   if (params.get('esquadrias')) {
     // ?esquadrias=1: portas e janelas do apto 101, como o pipeline faz (pipeline/fvs/esquadrias.py): a porta
     // entre dois cômodos fica nos dois, um ponto de cada lado da parede; a janela, só do lado de dentro
@@ -1117,35 +1140,47 @@ async function semearInstalacoes(base: Record<string, unknown>, forma: Manifest,
   }
   const linhas: LinhaDeCadastro[] = []
   const redes = !!params.get('redes')
+  const fora = !!params.get('fora')
   for (const [i, d] of DISCIPLINAS_DE_PONTOS.entries()) {
     const y = 200 + 150 * i
     const pontos: Record<string, PontoPacote> = {}
+    // com ?redes=1 ou ?fora=1 o pipeline calculou o ambiente dos pontos: os de sempre ficam no 101-01 (sem
+    // ambiente, o ponto estaria fora de cômodo e iria para a laje, decisão de 25/11/2026)
+    const noComodo = redes || fora ? { ambiente: uuid('e2000000', 1) } : {}
     TIPOS[d].forEach((tipo, k) => {
-      pontos[`pt-${d}-${k + 1}`] = { disciplina: d, tipo, ponto: [300 + 300 * k, y], nome: `${tipo.toUpperCase()} ${k + 1}`, modelo_id: `${d}-${k + 1}` }
+      pontos[`pt-${d}-${k + 1}`] = { disciplina: d, tipo, ponto: [300 + 300 * k, y], nome: `${tipo.toUpperCase()} ${k + 1}`, modelo_id: `${d}-${k + 1}`, ...noComodo }
     })
+    // ?fora=1 (decisão do Nicolas, 25/11/2026): um ponto fora de cômodo (jardim, deck, laje; SPDA de fachada) em
+    // cada disciplina, em (1350, y), sem "ambiente": vai para o item da instalação na ficha de laje
+    if (fora) {
+      const tipoFora: Record<DisciplinaDePontos, TipoDePonto> = { hidro: 'tubo', sanitario: 'tubo', eletrico: 'caixa_parede', preventivo: 'hidrante', spda: 'descida' }
+      pontos[`pt-${d}-fora`] = { disciplina: d, tipo: tipoFora[d], ponto: [1350, y], nome: `FORA ${d.toUpperCase()}` }
+    }
     if (d === 'eletrico' || d === 'preventivo') {
       const tipo: TipoDePonto = d === 'eletrico' ? 'eletroduto' : 'tubo_incendio'
-      pontos[`pt-${d}-linha`] = { disciplina: d, tipo, ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: d === 'eletrico' ? 'Eletroduto 25 mm' : 'Tubo de incêndio 65 mm' }
+      pontos[`pt-${d}-linha`] = { disciplina: d, tipo, ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: d === 'eletrico' ? 'Eletroduto 25 mm' : 'Tubo de incêndio 65 mm', ...noComodo }
     }
-    // ?muitos=1 (23/11/2026, pacotes reais com 900 pontos): mais 100 pontos de luz juntos no elétrico (grade de
+    // ?muitos=1 (23/11/2026, pacotes reais com centenas de pontos): mais 100 pontos de luz juntos no elétrico (grade de
     // 10 x 10, de 15 em 15, a partir de x = 330, y = 600), para o número por quadrado de longe
     if (d === 'eletrico' && params.get('muitos')) {
-      for (let a = 0; a < 10; a++) for (let b = 0; b < 10; b++) pontos[`pt-eletrico-m${a}${b}`] = { disciplina: d, tipo: 'ponto_luz', ponto: [330 + 15 * a, 600 + 15 * b], nome: `LUZ ${a}${b}` }
+      for (let a = 0; a < 10; a++) for (let b = 0; b < 10; b++) pontos[`pt-eletrico-m${a}${b}`] = { disciplina: d, tipo: 'ponto_luz', ponto: [330 + 15 * a, 600 + 15 * b], nome: `LUZ ${a}${b}`, ...noComodo }
     }
     // pontos no mesmo lugar (sessão 6, 25/11/2026: no PPCI real, a placa fica sobre o extintor): a placa em cima do
     // EXTINTOR 2 (600, y); aproximar não separa, o toque mostra os dois
-    if (d === 'preventivo') pontos['pt-preventivo-placa'] = { disciplina: d, tipo: 'sinalizacao', ponto: [600, y + 0.05], nome: 'Placa de extintor' }
+    if (d === 'preventivo') pontos['pt-preventivo-placa'] = { disciplina: d, tipo: 'sinalizacao', ponto: [600, y + 0.05], nome: 'Placa de extintor', ...noComodo }
     // SPDA igual aos furos (22/11/2026): mais um captor e um conector, 60 abaixo, para o filtro por tipo e o "+ Área"
     if (d === 'spda') {
-      pontos['pt-spda-5'] = { disciplina: d, tipo: 'captor', ponto: [450, y + 60], nome: 'CAPTOR 5', modelo_id: 'spda-5' }
-      pontos['pt-spda-6'] = { disciplina: d, tipo: 'conector', ponto: [1050, y + 60], nome: 'CONECTOR 6', modelo_id: 'spda-6' }
+      pontos['pt-spda-5'] = { disciplina: d, tipo: 'captor', ponto: [450, y + 60], nome: 'CAPTOR 5', modelo_id: 'spda-5', ...noComodo }
+      pontos['pt-spda-6'] = { disciplina: d, tipo: 'conector', ponto: [1050, y + 60], nome: 'CONECTOR 6', modelo_id: 'spda-6', ...noComodo }
     }
     // ?redes=1 (5.1 a 5.3, 23/11/2026): no hidro, um tubo suspenso (linha, y + 60, de 450 a 1050) e uma coluna
     // (1200, y + 60); no elétrico, três caixas de parede (y + 110): x = 450 e 1050 no ambiente 101-01, 750 no 101-02
     // (o ponto diz o ambiente pelo id da peça A, como o pipeline publica)
+    // ?casas=1: um ponto de água dentro da casa UN-01 (o 21º ambiente da planta de teste), em (1220, y + 30)
+    if (params.get('casas') && d === 'hidro') pontos['pt-hidro-casa'] = { disciplina: d, tipo: 'ponto_agua', ponto: [1220, y + 30], nome: 'AF CASA 1', ambiente: uuid('e2000000', 21) }
     if (redes && d === 'hidro') {
       pontos['pt-hidro-tubo'] = { disciplina: d, tipo: 'tubo', ponto: [750, y + 60], linha: [[450, y + 60], [1050, y + 60]], nome: 'Tubo 25 mm', ambiente: uuid('e2000000', 1) }
-      pontos['pt-hidro-coluna'] = { disciplina: d, tipo: 'coluna', ponto: [1200, y + 60], nome: 'AF-1' }
+      pontos['pt-hidro-coluna'] = { disciplina: d, tipo: 'coluna', ponto: [1200, y + 60], nome: 'AF-1', ...noComodo }
     }
     if (redes && d === 'eletrico') {
       pontos['pt-eletrico-cp1'] = { disciplina: d, tipo: 'caixa_parede', ponto: [450, y + 110], nome: 'Caixa 4x2', ambiente: uuid('e2000000', 1) }

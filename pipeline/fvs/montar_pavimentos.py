@@ -12,8 +12,8 @@ Se houver mais de uma revisão da mesma folha, vale a regra do Autodoc: LO vale 
 com número menor; dentro da mesma etapa vale o maior RXX.
 
 Prancha de detalhe de pilar entra no pavimento do nome do arquivo e também no que o carimbo diz
-("Planta: Térreo Comercial"): na obra piloto, 18 pranchas chamadas PILPILOTIS são do Térreo Comercial, e o
-lance delas (do Subsolo ao Pilotis) passa pelos dois. Ler o carimbo precisa de pymupdf; sem ele, o
+("Planta: Térreo Comercial"): pranchas com o nome de um pavimento podem ser de outro pelo carimbo, e o
+lance delas passa pelos dois. Ler o carimbo precisa de pymupdf; sem ele, o
 script avisa e usa só o nome.
 
 A montagem é só biblioteca padrão: testada em pipeline/testes/test_fvs_pacote.py.

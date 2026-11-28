@@ -17,7 +17,7 @@ import { abrirPacoteOuAnterior, limparPacotes, pacotesJaLidos, pacotesNoAparelho
 import { avisoDasPlantas, manterNaLimpeza, textosDaRevisao } from '../revisoes'
 import { opcoesDosAmbientes, type OpcaoDosAmbientes } from '../opcoes_ambientes'
 import { camadaDoTrecho, NOME_DA_CAMADA, situacaoDaBarra, type CamadaDeBarras } from '../barras'
-import { disciplinaDePontos, fichaDosPontos, fichasDoPonto, textoDoAvancoDosPontos } from '../pontos'
+import { ambientesCalculados, disciplinaDePontos, fichaDosPontos, fichasDoPonto, textoDoAvancoDosPontos } from '../pontos'
 import { fichasPara, resumoDaEstrutura, resumoDosAmbientes } from '../situacao'
 import { avancoDosFuros, ehDeCamadaDeFuros, furoDeOutraPlanta, temFuracaoUnica, textoDoAvancoDosFuros } from '../furos_laje'
 import { IconeDoItem } from './icones'
@@ -354,8 +354,9 @@ export function TelaInicio({ ctx, aviso, nivel }: { ctx: ContextoFvs; aviso: str
         // só os pontos que marcam algum item de ficha (pelo tipo e pelo ambiente, 23/11/2026) contam
         const fa = fichasPara('A', dados.fichas)
         const fl = fichasPara('L', dados.fichas)
+        const comAmb = ambientesCalculados(pac.manifest.pontos)
         for (const [id, pt] of Object.entries(pac.manifest.pontos)) {
-          if (!fichasDoPonto(fa, pt, fl, (pt.ambiente && semFichasGuardado(pt.ambiente)) || []).length) continue
+          if (!fichasDoPonto(fa, pt, fl, (pt.ambiente && semFichasGuardado(pt.ambiente)) || [], comAmb).length) continue
           a.total++
           const s = situacaoDaBarra(dados.eventosDe.get(id) ?? [])
           if (s === 'liberado') a.ok++

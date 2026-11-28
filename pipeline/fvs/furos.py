@@ -38,7 +38,7 @@ PT_POR_CM_PAPEL = 72 / 2.54
 FOLGA_CM = 10.0
 # Furo cuja peça, no modelo, tem 2 m ou mais de altura (ALTURA.VIGA) está numa parede ou cortina, não numa
 # viga: não vai para viga nenhuma, mesmo que caia em cima de uma na planta; fica no relatório com o motivo.
-# (Térreo comercial da obra piloto, 20/11: 22 de 28 furos "de viga" estão nas cortinas, com 310 cm.)
+# (20/11: num pavimento real, a maior parte dos furos "de viga" estava nas cortinas, com mais de 3 m.)
 ALTURA_PAREDE_CM = 200.0
 # Encaixe pelos pilares de outro pavimento (encaixe_pela_referencia): mínimo de pilares em comum e erro
 # máximo aceito, em cm de obra, depois de tirar os pilares que não batem (pilar que muda de lugar).
